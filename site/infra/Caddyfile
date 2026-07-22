@@ -31,7 +31,7 @@
 		reverse_proxy rooc:80
 	}
 
-	@rf_host host rfexp.localhost rfexp.karvalho.dev.br
+	@rf_host host rfnext.localhost rfnext.karvalho.dev.br
 	handle @rf_host {
 		import project_auth
 		header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"

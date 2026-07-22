@@ -14,7 +14,7 @@ Endereços:
 
 - Portal: <http://localhost:8088>
 - Guias ROOC AM: <http://ragnarok.localhost:8088>
-- Calculadora RF Next: <http://rfexp.localhost:8088>
+- Calculadora RF Next: <http://rfnext.localhost:8088>
 - Authentik: <http://auth.localhost:8088>
 
 No portal, os cartões apontam para os subdomínios públicos para que as políticas do Cloudflare Access não possam ser contornadas pelo domínio principal.
@@ -37,7 +37,7 @@ docker compose down
 | `karvalho.dev.br` | `http://gateway:80` |
 | `www.karvalho.dev.br` | `http://gateway:80` |
 | `ragnarok.karvalho.dev.br` | `http://gateway:80` |
-| `rfexp.karvalho.dev.br` | `http://gateway:80` |
+| `rfnext.karvalho.dev.br` | `http://gateway:80` |
 | `auth.karvalho.dev.br` | `http://gateway:80` |
 
 5. Inicie a pilha com o perfil do túnel:
