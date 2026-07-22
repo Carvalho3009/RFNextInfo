@@ -1,0 +1,145 @@
+version: 1
+metadata:
+  name: Karvalho - Primeiro acesso por convite
+entries:
+  - identifiers:
+      slug: karvalho-first-access
+    model: authentik_flows.flow
+    id: flow
+    attrs:
+      name: Primeiro acesso Karvalho
+      title: Defina sua senha
+      designation: enrollment
+      authentication: require_unauthenticated
+
+  - identifiers:
+      slug: karvalho-password-recovery
+    model: authentik_flows.flow
+    id: recovery-flow
+    attrs:
+      name: Recuperação de senha Karvalho
+      title: Defina sua nova senha
+      designation: recovery
+      authentication: require_unauthenticated
+
+  - identifiers:
+      name: karvalho-first-access-invitation
+    model: authentik_stages_invitation.invitationstage
+    id: invitation-stage
+    attrs:
+      continue_flow_without_invitation: false
+
+  - identifiers:
+      name: karvalho-first-access-password
+    model: authentik_stages_prompt.prompt
+    id: password
+    attrs:
+      field_key: password
+      label: Senha — mínimo 8 caracteres, com letra minúscula e número
+      type: password
+      required: true
+      placeholder: "Ex.: duas palavras e números"
+      order: 0
+
+  - identifiers:
+      name: karvalho-first-access-password-repeat
+    model: authentik_stages_prompt.prompt
+    id: password-repeat
+    attrs:
+      field_key: password_repeat
+      label: Confirme a senha
+      type: password
+      required: true
+      placeholder: Repita a senha
+      order: 1
+
+  - identifiers:
+      name: karvalho-password-policy
+    model: authentik_policies_password.passwordpolicy
+    id: password-policy
+    attrs:
+      length_min: 8
+      check_static_rules: true
+      check_zxcvbn: false
+      check_have_i_been_pwned: false
+      amount_digits: 1
+      amount_uppercase: 0
+      amount_lowercase: 1
+      amount_symbols: 0
+
+  - identifiers:
+      name: karvalho-first-access-prompt
+    model: authentik_stages_prompt.promptstage
+    id: prompt-stage
+    attrs:
+      fields:
+        - !KeyOf password
+        - !KeyOf password-repeat
+      validation_policies:
+        - !KeyOf password-policy
+
+  - identifiers:
+      name: karvalho-first-access-write
+    model: authentik_stages_user_write.userwritestage
+    id: user-write-stage
+    attrs:
+      user_creation_mode: always_create
+      user_type: internal
+      user_path_template: users/internal
+
+  - identifiers:
+      name: karvalho-password-recovery-write
+    model: authentik_stages_user_write.userwritestage
+    id: recovery-write-stage
+    attrs:
+      user_creation_mode: never_create
+
+  - identifiers:
+      name: karvalho-first-access-login
+    model: authentik_stages_user_login.userloginstage
+    id: user-login-stage
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf invitation-stage
+      order: 5
+    model: authentik_flows.flowstagebinding
+    attrs:
+      evaluate_on_plan: true
+      re_evaluate_policies: true
+
+  - identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf prompt-stage
+      order: 10
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf recovery-write-stage
+      order: 20
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf recovery-flow
+      stage: !KeyOf user-login-stage
+      order: 100
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf prompt-stage
+      order: 10
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf user-write-stage
+      order: 20
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf user-login-stage
+      order: 100
+    model: authentik_flows.flowstagebinding

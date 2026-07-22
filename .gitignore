@@ -22,3 +22,5 @@ oodle-auto/
 *_dataset.json
 Thumbs.db
 .DS_Store
+authentik.env
+users.caddy

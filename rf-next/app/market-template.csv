@@ -1,0 +1,4 @@
+Name,ItemIndex,Enhance,PricePerUnit,SalesTotal,Qty,Grade,Quality,Start,Expire,idHex
++7 Machado Pallacia do Executor,1000150,7,12000,12000,1,4,1,1750000000,1750086400,0xa2
++7 Machado Pallacia do Executor,1000150,7,11800,11800,1,4,1,1750000001,1750086401,0xa1
+Machado Pallacia do Executor,1000150,0,4999,4999,1,4,1,1750000002,1750086402,0xa3

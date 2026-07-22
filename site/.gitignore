@@ -1,0 +1,5 @@
+.env
+infra/authentik.env
+infra/users.caddy
+.DS_Store
+Thumbs.db

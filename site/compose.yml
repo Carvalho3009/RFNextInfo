@@ -1,0 +1,103 @@
+name: karvalho
+
+services:
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - ./infra:/etc/caddy:ro
+    depends_on:
+      - portal
+      - rooc
+      - rfnext
+      - authentik-server
+
+  portal:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ROOT: portal
+    volumes:
+      - ./web:/srv:ro
+      - ./infra/Site.Caddyfile:/etc/caddy/Caddyfile:ro
+
+  rooc:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ROOT: rooc-am
+    volumes:
+      - ./web:/srv:ro
+      - ./infra/Site.Caddyfile:/etc/caddy/Caddyfile:ro
+
+  rfnext:
+    build: "../rf-next/app"
+    image: rf-next-calculadora:local
+    restart: unless-stopped
+    environment:
+      MCP_VISION_URL: http://host.docker.internal:8080/api/vision/ocr
+      MCP_VISION_TOKEN: ${RFNEXT_VISION_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - rfnext-data:/data
+
+  authentik-postgresql:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - ./infra/authentik.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d authentik -U authentik"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    volumes:
+      - authentik-database:/var/lib/postgresql/data
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2026.5.5
+    command: server
+    restart: unless-stopped
+    env_file:
+      - ./infra/authentik.env
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+    shm_size: 512mb
+    volumes:
+      - authentik-data:/data
+      - ./infra/authentik:/blueprints/custom:ro
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2026.5.5
+    command: worker
+    restart: unless-stopped
+    env_file:
+      - ./infra/authentik.env
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+    shm_size: 512mb
+    user: root
+    volumes:
+      - authentik-data:/data
+      - ./infra/authentik:/blueprints/custom:ro
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - gateway
+
+volumes:
+  rfnext-data:
+  authentik-database:
+  authentik-data:

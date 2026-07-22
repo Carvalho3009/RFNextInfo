@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Guia Karvalho para Ragnarok Origin: Classic no servidor Americas.">
+  <title>Guia ROOC Americas — Karvalho</title>
+  <link rel="icon" href="../assets/karvalho-symbol-gold.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="site-header frame-line">
+    <a class="brand" href="#inicio" aria-label="Karvalho — início">
+      <img class="brand-full" src="../assets/karvalho-primary-gold.png" alt="Karvalho">
+      <img class="brand-symbol" src="../assets/karvalho-symbol-gold.png" alt="">
+      <span class="brand-mobile">GUIA ROOC</span>
+    </a>
+
+    <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
+      <span>MENU</span><i aria-hidden="true"></i>
+    </button>
+
+    <nav id="site-nav" class="site-nav" aria-label="Navegação principal">
+      <a href="#inicio">INÍCIO</a>
+      <a href="#classes">CLASSES</a>
+      <a href="#progressao">PROGRESSÃO</a>
+      <a href="#equipamentos">EQUIPAMENTOS</a>
+      <a href="#conteudos">CONTEÚDOS</a>
+      <a href="#agenda">AGENDA</a>
+    </nav>
+    <span class="language" aria-label="Idioma atual: português">PT</span>
+  </header>
+
+  <main id="conteudo">
+    <section id="inicio" class="hero page-shell">
+      <div class="hero-copy">
+        <h1 class="desktop-heading">SEU GUIA PARA<br>COMEÇAR CERTO EM<br><span>MIDGARD.</span></h1>
+        <h1 class="mobile-heading">COMECE<br>CERTO EM<br><span>MIDGARD.</span></h1>
+        <p class="desktop-intro">Classes, evolução, equipamentos e rotinas do servidor Americas — com fontes verificadas e sem misturar versões.</p>
+        <p class="mobile-intro">Classes, evolução e rotinas verificadas para o servidor Americas.</p>
+
+        <div class="hero-actions">
+          <a class="button button-primary" href="#classes">
+            COMEÇAR O GUIA
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="text-link" href="#classes">
+            VER AS 14 CLASSES
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+        </div>
+
+        <div class="launch-panel">
+          <span class="compass" aria-hidden="true">✦</span>
+          <div><small>ABERTURA PREVISTA</small><strong>23 JUL 2026</strong></div>
+        </div>
+        <p class="source-note">Dados oficiais Americas <b>•</b> Atualizado em 15/07/2026</p>
+      </div>
+
+      <div class="hero-media" aria-label="Atlas fantástico de Midgard em rotas elementais">
+        <img src="../assets/hero-atlas.png" alt="Mapa ilustrado com castelo, montanhas, cidades e rotas coloridas">
+      </div>
+    </section>
+
+    <section id="classes" class="section page-shell ruled-section">
+      <header class="section-heading">
+        <span aria-hidden="true"></span>
+        <div>
+          <h2>ESCOLHA SUA ROTA</h2>
+          <p>As 14 classes confirmadas para o Americas, organizadas por função e estilo de jogo.</p>
+        </div>
+        <span aria-hidden="true"></span>
+      </header>
+
+      <div class="filters" role="group" aria-label="Filtrar classes">
+        <button type="button" class="active" data-filter="todas">TODAS</button>
+        <button type="button" data-filter="frente">LINHA DE FRENTE</button>
+        <button type="button" data-filter="dano">DANO</button>
+        <button type="button" data-filter="suporte">SUPORTE</button>
+        <button type="button" data-filter="controle">CONTROLE</button>
+      </div>
+
+      <div id="class-rail" class="class-rail" aria-label="Classes disponíveis"></div>
+
+      <article class="class-detail ornamental-box" aria-live="polite">
+        <div class="class-detail-emblem" id="detail-emblem" aria-hidden="true"></div>
+        <div>
+          <h3 id="detail-name">LORD KNIGHT</h3>
+          <p id="detail-copy">Combate físico, resistência e rotas de lança ou dano corpo a corpo.</p>
+          <p class="detail-meta"><span id="detail-role">LINHA DE FRENTE</span> <b>•</b> <span id="detail-level">COMPLEXIDADE BAIXA–MÉDIA</span></p>
+        </div>
+        <a id="detail-link" class="button button-primary" href="classes.html#lord-knight">
+          ABRIR GUIA DA CLASSE
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </article>
+
+      <section class="class-quiz ornamental-box" aria-labelledby="quiz-title">
+        <div class="quiz-intro">
+          <h3 id="quiz-title">QUAL CLASSE COMBINA COM VOCÊ?</h3>
+          <p>Responda cinco perguntas. O resultado prioriza estilo de jogo, não uma tier list.</p>
+        </div>
+        <form id="class-quiz">
+          <div class="quiz-fields">
+            <label>QUAL PAPEL VOCÊ PREFERE?
+              <select name="role" required><option value="">Selecione</option><option value="frontline">Linha de frente</option><option value="damage">Causar dano</option><option value="support">Apoiar o grupo</option><option value="control">Controlar a luta</option></select>
+            </label>
+            <label>QUAL DISTÂNCIA PARECE MELHOR?
+              <select name="range" required><option value="">Selecione</option><option value="melee">Corpo a corpo</option><option value="ranged">À distância</option><option value="either">Tanto faz</option></select>
+            </label>
+            <label>QUAL RITMO DE COMBATE ATRAI MAIS?
+              <select name="rhythm" required><option value="">Selecione</option><option value="steady">Dano constante</option><option value="burst">Explosão em janelas</option><option value="tactical">Decisões táticas</option><option value="team">Fortalecer a equipe</option></select>
+            </label>
+            <label>QUANTA COMPLEXIDADE VOCÊ QUER?
+              <select name="complexity" required><option value="">Selecione</option><option value="simple">Começo simples</option><option value="balanced">Complexidade média</option><option value="advanced">Quero dominar sistemas</option></select>
+            </label>
+            <label>QUAL CONTEÚDO É PRIORIDADE?
+              <select name="objective" required><option value="">Selecione</option><option value="solo">Farm e jogo solo</option><option value="group">Masmorras e guilda</option><option value="pvp">5v5 e GvG</option><option value="mvp">MVP e alvo único</option></select>
+            </label>
+          </div>
+          <button class="button button-primary" type="submit">DESCOBRIR MINHA CLASSE <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+        </form>
+        <article id="quiz-result" class="quiz-result" aria-live="polite" hidden>
+          <span>SUA MELHOR ROTA INICIAL</span>
+          <h3 id="quiz-result-name"></h3>
+          <p id="quiz-result-copy"></p>
+          <p id="quiz-result-alternatives"></p>
+          <a id="quiz-result-link" class="text-link" href="classes.html">ABRIR FICHA COMPLETA <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </article>
+      </section>
+    </section>
+
+    <section id="progressao" class="section page-shell ruled-section">
+      <header class="section-heading">
+        <span aria-hidden="true"></span>
+        <div>
+          <h2>PROGRESSÃO SEM DESPERDÍCIO</h2>
+          <p>Invista primeiro no que permanece útil. Níveis, custos e drops serão validados no cliente Americas.</p>
+        </div>
+        <span aria-hidden="true"></span>
+      </header>
+
+      <ol class="route">
+        <li><b>01</b><strong>MISSÃO PRINCIPAL</strong><p>Avance na história e libere recursos essenciais.</p></li>
+        <li><b>02</b><strong>BUILD FUNCIONAL</strong><p>Estruture uma rotação coerente antes de otimizar.</p></li>
+        <li><b>03</b><strong>CONTEÚDO DE GRUPO</strong><p>Masmorras e guilda aceleram sua evolução.</p></li>
+        <li><b>04</b><strong>ESPECIALIZAÇÃO</strong><p>Defina a rota final e corrija seu gargalo.</p></li>
+      </ol>
+      <a class="text-link centered" href="primeira-semana.html">
+        VER PLANO DA PRIMEIRA SEMANA
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </section>
+
+    <section id="equipamentos" class="section guide-band">
+      <div class="page-shell guide-band-inner">
+        <div>
+          <h2>EQUIPAMENTOS COM PROPÓSITO</h2>
+          <p>Não refine por reflexo. Compare duração da peça, herança, custo e o gargalo que o upgrade realmente resolve.</p>
+          <a class="button button-dark" href="sistemas.html">
+            ABRIR MANUAL DE SISTEMAS
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+        </div>
+        <dl class="decision-list">
+          <div><dt>01</dt><dd><strong>ATIVA A BUILD?</strong><span>Efeito útil vale mais que poder vazio.</span></dd></div>
+          <div><dt>02</dt><dd><strong>VAI PERMANECER?</strong><span>Item temporário recebe investimento temporário.</span></dd></div>
+          <div><dt>03</dt><dd><strong>É RECUPERÁVEL?</strong><span>Confirme herança, remoção e revenda.</span></dd></div>
+          <div><dt>04</dt><dd><strong>RESOLVE O GARGALO?</strong><span>Meça dano, consumo e sobrevivência.</span></dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section id="conteudos" class="section page-shell ruled-section">
+      <header class="section-heading">
+        <span aria-hidden="true"></span>
+        <div>
+          <h2>CONTEÚDOS CONFIRMADOS</h2>
+          <p>Prepare a função antes de preparar o ranking.</p>
+        </div>
+        <span aria-hidden="true"></span>
+      </header>
+      <div class="content-list">
+        <article><span>PVE</span><h3>CAMPO E MASMORRAS</h3><p>Missões, farm e loot como base da progressão.</p></article>
+        <article><span>MVP</span><h3>CHEFES E CARTAS</h3><p>Composição, contribuição e alvo correto importam.</p></article>
+        <article><span>5V5</span><h3>COMBATE TÁTICO</h3><p>Controle, foco de alvo e coordenação em equipe.</p></article>
+        <article><span>80V80</span><h3>GUERRA DE GUILDAS</h3><p>Função clara, estabilidade e disciplina de chamada.</p></article>
+      </div>
+    </section>
+
+    <section id="agenda" class="section page-shell ruled-section">
+      <header class="section-heading">
+        <span aria-hidden="true"></span>
+        <div><h2>AGENDA AMERICAS</h2><p>Somente datas com fonte e estado verificáveis.</p></div>
+        <span aria-hidden="true"></span>
+      </header>
+
+      <div class="table-wrap ornamental-box">
+        <table>
+          <thead><tr><th>DATA</th><th>EVENTO</th><th>STATUS</th><th>FONTE</th></tr></thead>
+          <tbody>
+            <tr><td>04 JUN 2026</td><td>CBT — Teste de Paixão</td><td class="status-ended">ENCERRADO</td><td>AMERICAS</td></tr>
+            <tr><td>11 JUN — 03 JUL</td><td>Campanha de futebol</td><td class="status-ended">ENCERRADO</td><td>OFICIAL</td></tr>
+            <tr><td class="date-live">23 JUL 2026</td><td>Abertura prevista</td><td class="status-live">CONFIRMADO</td><td>APP STORE</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <a class="text-link centered" href="guia.html#agenda-de-eventos">
+        VER AGENDA COMPLETA
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </section>
+
+    <section class="section page-shell source-section">
+      <div>
+        <h2>GUIA COM RASTRO DE FONTE</h2>
+        <p>Dados do Americas prevalecem. Conteúdo da Ásia aparece identificado como referência, nunca como garantia regional.</p>
+      </div>
+      <div class="source-links">
+        <a href="https://roocamer.gnjoy.game/" target="_blank" rel="noreferrer">SITE OFICIAL</a>
+        <a href="https://play.google.com/store/apps/details?id=com.gravity.roocam.android" target="_blank" rel="noreferrer">GOOGLE PLAY</a>
+        <a href="https://apps.apple.com/ca/app/ragnarok-origin-classic/id6768919292" target="_blank" rel="noreferrer">APP STORE</a>
+        <a href="validacao.html">MATRIZ DE VALIDAÇÃO</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer page-shell frame-line">
+    <img src="../assets/karvalho-symbol-gold.png" alt="" aria-hidden="true">
+    <div><strong>KARVALHO</strong><span>CLARO. CURIOSO. SEM ENROLAÇÃO.</span></div>
+    <p>Guia independente. Ragnarok é propriedade de seus respectivos titulares.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

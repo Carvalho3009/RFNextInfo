@@ -1,0 +1,20 @@
+{
+	auto_https off
+}
+
+:80 {
+	handle /assets/* {
+		root * /srv
+		file_server
+	}
+
+	handle /shared/* {
+		root * /srv
+		file_server
+	}
+
+	handle {
+		root * /srv/{$SITE_ROOT}
+		file_server
+	}
+}
