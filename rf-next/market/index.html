@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mercado — RF Next</title>
+<style>
+  :root{
+    --bg:#12151a;
+    --bg-alt:#181c23;
+    --panel:#1c212a;
+    --panel-2:#232a35;
+    --border:#2c333f;
+    --border-soft:#262c37;
+    --text:#e4e7ec;
+    --text-dim:#9aa4b2;
+    --text-faint:#6b7484;
+    --accent:#4fa3e3;
+    --accent-dim:#2d5f82;
+    --amber:#d9a441;
+    --amber-bg:#3a2f16;
+    --amber-border:#5c4a1f;
+    --gray-badge-bg:#2a2f38;
+    --gray-badge-border:#3a4150;
+    --prime:#c98be0;
+    --prime-bg:#332b3d;
+    --prime-border:#4a3a57;
+    --good:#5fbf7f;
+    --radius:6px;
+    --mono: 'Consolas','SFMono-Regular',Menlo,Monaco,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;
+    line-height:1.4;
+  }
+  a{color:var(--accent);}
+  button, select, input{
+    font-family:inherit;
+    font-size:13px;
+    color:var(--text);
+  }
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:var(--bg);}
+  ::-webkit-scrollbar-thumb{background:#333b47;border-radius:5px;}
+
+  header.top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 20px;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border-bottom:1px solid var(--border);
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  header.top h1{
+    font-size:18px;
+    margin:0;
+    font-weight:700;
+    letter-spacing:.3px;
+    white-space:nowrap;
+  }
+  .region-group{
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+  .region-btn{
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    padding:6px 12px;
+    border-radius:5px;
+    cursor:pointer;
+    font-weight:600;
+    position:relative;
+  }
+  .region-btn.active{
+    background:var(--accent-dim);
+    border-color:var(--accent);
+    color:#fff;
+  }
+  .region-btn[disabled]{
+    cursor:not-allowed;
+    opacity:.55;
+  }
+  .region-btn[disabled]:hover .tooltip{
+    display:block;
+  }
+  .tooltip{
+    display:none;
+    position:absolute;
+    top:120%;
+    left:0;
+    background:#0d1015;
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    padding:6px 9px;
+    border-radius:5px;
+    font-size:11.5px;
+    white-space:nowrap;
+    z-index:50;
+    box-shadow:0 4px 14px rgba(0,0,0,.5);
+  }
+  .snapshot-label{
+    color:var(--text-dim);
+    font-size:12.5px;
+    white-space:nowrap;
+  }
+  .snapshot-label b{color:var(--text);font-weight:600;}
+
+  .filters{
+    position:sticky;
+    top:0;
+    z-index:20;
+    background:var(--bg-alt);
+    border-bottom:1px solid var(--border);
+    padding:10px 20px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px 14px;
+    align-items:flex-end;
+    box-shadow:0 4px 10px rgba(0,0,0,.25);
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  .field label{
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    color:var(--text-faint);
+    font-weight:600;
+  }
+  .field input[type="text"],
+  .field input[type="number"],
+  .field select{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:5px;
+    padding:6px 8px;
+    outline:none;
+  }
+  .field input[type="text"]{width:200px;}
+  .field input[type="number"]{width:70px;}
+  .field select{min-width:120px;}
+  .field input:focus, .field select:focus{border-color:var(--accent);}
+  .lvl-range{display:flex;align-items:center;gap:6px;}
+  .lvl-range span{color:var(--text-faint);}
+
+  .chips{display:flex;gap:5px;flex-wrap:wrap;max-width:260px;}
+  .chip{
+    background:var(--panel);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    padding:5px 9px;
+    border-radius:14px;
+    cursor:pointer;
+    font-size:12px;
+    font-weight:600;
+    user-select:none;
+  }
+  .chip.active{
+    background:var(--accent-dim);
+    border-color:var(--accent);
+    color:#fff;
+  }
+
+  .btn{
+    background:var(--panel);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    padding:6px 12px;
+    border-radius:5px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .btn:hover{border-color:var(--accent);color:var(--text);}
+  .btn.small{padding:4px 9px;font-size:12px;}
+
+  .toolbar-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 20px 4px;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .counter{
+    color:var(--text-dim);
+    font-size:12.5px;
+  }
+  .counter b{color:var(--text);}
+  .expand-controls{display:flex;gap:6px;}
+
+  main{
+    padding:6px 20px 40px;
+    max-width:1200px;
+    margin:0 auto;
+  }
+
+  .item-card{
+    background:var(--panel);
+    border:1px solid var(--border-soft);
+    border-radius:var(--radius);
+    margin-bottom:8px;
+    overflow:hidden;
+  }
+  .item-card.simple .row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:9px 14px;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .item-name{
+    font-weight:600;
+    font-size:13.5px;
+    color:var(--text);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .badge-row{
+    display:flex;
+    gap:6px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .left-cluster{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-width:0;
+    flex:1;
+  }
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    gap:3px;
+    padding:2px 7px;
+    border-radius:4px;
+    font-size:11px;
+    font-weight:600;
+    background:var(--gray-badge-bg);
+    border:1px solid var(--gray-badge-border);
+    color:var(--text-dim);
+    white-space:nowrap;
+  }
+  .badge.grade{color:#c9d3e0;}
+  .badge.prime{
+    background:var(--prime-bg);
+    border-color:var(--prime-border);
+    color:var(--prime);
+  }
+  .badge.sub{color:var(--text-faint);}
+  .badge.lv{color:var(--text-faint);}
+  .badge.nometa{
+    background:var(--gray-badge-bg);
+    border-color:var(--gray-badge-border);
+    color:var(--text-faint);
+    font-style:italic;
+  }
+  .badge.absent{
+    background:var(--amber-bg);
+    border-color:var(--amber-border);
+    color:var(--amber);
+  }
+
+  .summary-right{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:var(--text-dim);
+    font-size:12.5px;
+    white-space:nowrap;
+  }
+  .summary-right .price{color:var(--good);font-weight:700;font-family:var(--mono);}
+  .summary-right .sep{color:var(--text-faint);}
+
+  details.item-card > summary{
+    list-style:none;
+    cursor:pointer;
+    padding:9px 14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  details.item-card > summary::-webkit-details-marker{display:none;}
+  details.item-card > summary::before{
+    content:"▸";
+    color:var(--text-faint);
+    margin-right:8px;
+    transition:transform .12s ease;
+    display:inline-block;
+    flex-shrink:0;
+  }
+  details.item-card[open] > summary::before{
+    transform:rotate(90deg);
+  }
+  details.item-card[open] > summary{
+    border-bottom:1px solid var(--border-soft);
+    background:var(--panel-2);
+  }
+
+  .variants-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12.5px;
+  }
+  .variants-table th{
+    text-align:left;
+    padding:6px 14px;
+    color:var(--text-faint);
+    font-weight:600;
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .variants-table td{
+    padding:6px 14px;
+    border-bottom:1px solid var(--border-soft);
+    font-family:var(--mono);
+  }
+  .variants-table tr:last-child td{border-bottom:none;}
+  .variants-table td.price{color:var(--good);}
+  .variants-table td.ench{color:var(--accent);font-weight:700;}
+
+  .no-results{
+    text-align:center;
+    padding:60px 20px;
+    color:var(--text-faint);
+  }
+
+  footer.foot{
+    padding:16px 20px 30px;
+    color:var(--text-faint);
+    font-size:11.5px;
+    text-align:center;
+    border-top:1px solid var(--border-soft);
+    margin-top:10px;
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Mercado — RF Next</h1>
+  <div class="region-group" id="regionGroup"></div>
+  <div class="snapshot-label">Snapshot: <b id="snapshotLabel"></b></div>
+</header>
+
+<div class="filters">
+  <div class="field">
+    <label for="fSearch">Buscar</label>
+    <input type="text" id="fSearch" placeholder="Nome do item...">
+  </div>
+  <div class="field">
+    <label for="fCat">Categoria</label>
+    <select id="fCat"></select>
+  </div>
+  <div class="field" id="fSubWrap" style="display:none;">
+    <label for="fSub">Subcategoria</label>
+    <select id="fSub"></select>
+  </div>
+  <div class="field">
+    <label>Grade</label>
+    <div class="chips" id="fGrade"></div>
+  </div>
+  <div class="field">
+    <label for="fQual">Qualidade</label>
+    <select id="fQual">
+      <option value="">Todas</option>
+      <option value="1">Normal</option>
+      <option value="2">Prime</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Nível de uso</label>
+    <div class="lvl-range">
+      <input type="number" id="fLvMin" placeholder="mín" min="0">
+      <span>–</span>
+      <input type="number" id="fLvMax" placeholder="máx" min="0">
+    </div>
+  </div>
+  <div class="field">
+    <label for="fSort">Ordenar por</label>
+    <select id="fSort">
+      <option value="price_asc">Menor preço ↑</option>
+      <option value="price_desc">Menor preço ↓</option>
+      <option value="offers">Mais ofertas</option>
+      <option value="name">Nome A-Z</option>
+      <option value="level">Nível</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button class="btn" id="btnClear">Limpar filtros</button>
+  </div>
+</div>
+
+<div class="toolbar-row">
+  <div class="counter" id="counter"></div>
+  <div class="expand-controls">
+    <button class="btn small" id="btnExpandAll">Expandir todos</button>
+    <button class="btn small" id="btnCollapseAll">Recolher todos</button>
+  </div>
+</div>
+
+<main id="list"></main>
+
+<footer class="foot" id="foot"></footer>
+
+<script>
+(function(){
+  "use strict";
+
+  const DATA = {"meta":{"snapshot_file":"rfnext-pc-20260721-192546.exchange.jsonl","snapshot_label":"21/07/2026 19:25","region":"world","entries":2686,"bases":716},"regions":[{"id":"world","label":"Mercado Mundial","available":true},{"id":"wg","label":"Grupo de Mundos","available":false}],"cats":{"1":"Arma","2":"Armadura","3":"Acessórios","4":"Expansão","6":"Livro de Hab.","7":"Material","8":"Outros"},"subs":{"2":"Rifle","3":"Lâmina","4":"Espada","5":"Carregador","6":"Machado","7":"Arma de","8":"Fio","9":"Tipo 9","11":"Protetor Superior","12":"Protetor Cervical","13":"Protetor Inferior","14":"Protetor de","15":"Protetor de","17":"Brincos","18":"Colar","19":"Bracelete","20":"Anel","23":"Tipo 23","27":"Tipo 27","28":"Tipo 28","30":"Tipo 30","31":"Tipo 31","32":"Tipo 32","34":"Tipo 34","35":"Tipo 35"},"grades":{"1":"C","2":"UC","3":"R","4":"E"},"items":[{"id":270005,"n":"Abrasivo Avançado","cat":7,"sub":31,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,9.5,100,273]]},{"id":270001,"n":"Abrasivo Inferior","cat":7,"sub":31,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.202,1415.923,390]]},{"id":270009,"n":"Abrasivo Superior","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,144,260,33]]},{"id":154051,"n":"Acessório Pedra Sangrenta","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,287.5,295,2]]},{"id":152051,"n":"Adaga Tsavorita","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,129,129,1]]},{"id":153057,"n":"Adorno de Cabelo Alado","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,83,92,4]]},{"id":153029,"n":"Algemas Danificadas","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,13]]},{"id":153051,"n":"Alicate de Gemas","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,185,198,8]]},{"id":1000460,"n":"Anel Brilhante","cat":3,"sub":20,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,49,56],[5,10,10,7],[6,10,10,6],[7,11,11,9],[8,24,25,3],[9,138,151,5],[10,110,174,19]]},{"id":1000456,"n":"Anel Comum","cat":3,"sub":20,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,124],[1,999,999,1],[5,10,10,27],[6,23,80,27],[7,10,15,25],[8,10,15,18],[9,25,31,29],[10,109,300,10],[11,98,98,1]]},{"id":1000459,"n":"Anel Desbotado","cat":3,"sub":20,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,40],[1,99,99,1],[5,60,79,8],[6,10,10,2],[7,63,63,3],[8,167,180,4],[9,130,142,12]]},{"id":1000455,"n":"Anel Desgastado","cat":3,"sub":20,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,29999,384],[2,99,99,1],[5,10,10,178],[6,10,15,31],[7,11,15,14],[8,10,20,30],[9,10,10,68],[10,66,119,64],[11,95,97,2]]},{"id":1000458,"n":"Anel Enferrujado","cat":3,"sub":20,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,160],[1,10,10,1],[5,10,10,26],[6,10,10,12],[7,13,70,41],[8,10,10,44],[9,22,125,14],[10,232,300,18],[11,142,142,2]]},{"id":1000464,"n":"Anel Perfeito","cat":3,"sub":20,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,35,25],[5,92,93,2],[6,62,63,12],[7,59,102,14],[8,130,137,8],[9,129,140,4],[10,92,92,1]]},{"id":1000461,"n":"Anel Refinado","cat":3,"sub":20,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,123],[5,10,10,268],[6,10,10,11],[7,10,20,77],[8,13,40,10],[9,18,33,5],[10,25,45,17]]},{"id":1000457,"n":"Anel Rústico","cat":3,"sub":20,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,47,17],[5,43,68,6],[7,21,30,8],[8,33,34,4],[9,44,86,26],[10,297,335,14],[11,157,157,2]]},{"id":1000463,"n":"Anel Trabalhado","cat":3,"sub":20,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,50,22],[5,46,50,6],[7,80,95,8],[8,188,189,5],[9,348,350,2]]},{"id":1000462,"n":"Anel de Alta Qualidade","cat":3,"sub":20,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,172],[5,10,10,3],[6,10,14,13],[7,11,11,18],[8,47,137,28],[9,85,310,23],[10,79,96,12]]},{"id":1000955,"n":"Anel de Armadilha Iônica","cat":3,"sub":20,"grade":4,"q":2,"lv":0,"meta_ok":true,"of":[[6,21600,21600,1]]},{"id":1000470,"n":"Anel de Bobina Solenoide","cat":3,"sub":20,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,171,213,11],[6,300,300,1],[8,900,900,1],[9,1950,1950,1]]},{"id":1000953,"n":"Anel de Bobina Solenoide","cat":3,"sub":20,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[5,2270,2270,1]]},{"id":1000465,"n":"Anel de Circuito Flexível","cat":3,"sub":20,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,510,93],[5,10,15,224],[6,16,30,16],[7,10,20,176],[8,11,30,14],[9,14,149,24],[10,83,83,2],[11,200,200,1]]},{"id":1000948,"n":"Anel de Circuito Flexível","cat":3,"sub":20,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,38,99,18],[1,956,956,6],[5,31,40,20],[6,44,50,25],[7,52,52,61],[9,97,132,22],[10,198,200,6],[11,125,125,3],[12,740,899,3]]},{"id":1000466,"n":"Anel de Eletrodo Polimérico","cat":3,"sub":20,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,34,28],[5,128,172,22],[6,48,74,6],[7,52,71,11],[8,250,905,2],[9,225,254,2],[10,299,299,1]]},{"id":1000949,"n":"Anel de Eletrodo Polimérico","cat":3,"sub":20,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,77,93,13],[5,897,904,7],[6,118,173,8],[7,450,450,3],[8,714,715,2]]},{"id":1000468,"n":"Anel de Micromódulo","cat":3,"sub":20,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,45,199,41],[5,396,399,2],[6,200,200,1],[7,85,288,3],[8,185,210,4],[9,1599,1599,1]]},{"id":1000951,"n":"Anel de Micromódulo","cat":3,"sub":20,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,500,500,1]]},{"id":1000467,"n":"Anel de Selo Helicoidal","cat":3,"sub":20,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,24,60,65],[5,50,50,1],[6,60,65,4],[7,84,84,4],[8,152,160,3],[9,270,270,1],[10,149,150,3],[11,389,389,1]]},{"id":1000950,"n":"Anel de Selo Helicoidal","cat":3,"sub":20,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,163,166,20]]},{"id":1000469,"n":"Anel de Wafer Fino","cat":3,"sub":20,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,48,67,13],[5,280,287,2],[7,197,399,4],[10,499,499,1]]},{"id":1002409,"n":"Arma Blaster Eclipse","cat":1,"sub":9,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,230,48],[5,20,20,5],[6,398,399,2],[7,34,95,19]]},{"id":1002410,"n":"Arma Blaster Etendue","cat":1,"sub":9,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,21,28],[5,10,10,1],[6,109,110,2],[7,113,113,1]]},{"id":1002416,"n":"Arma Blaster de Combate Sigma","cat":1,"sub":9,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,294,10],[5,129,149,4],[7,78,228,3],[9,444,444,1],[12,799,799,1]]},{"id":1002417,"n":"Arma Blaster de Combate Xenon","cat":1,"sub":9,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,82,120,8],[5,215,628,3],[7,400,500,3],[8,500,500,1]]},{"id":1002407,"n":"Arma Weyl Blaster","cat":1,"sub":9,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,30,573],[5,10,10,91],[6,10,10,31],[7,10,10,72],[8,10,15,11],[9,10,10,50],[10,29,29,5]]},{"id":1002412,"n":"Arma de Blaster Magnox","cat":1,"sub":9,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,14,185],[1,367,367,1],[5,16,83,9],[6,20,33,6],[7,84,150,23],[9,98,105,4],[10,22,22,4]]},{"id":1002414,"n":"Arma de Blaster de Combate Cruzado","cat":1,"sub":9,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,26,44,29],[5,222,250,10],[6,88,90,3],[7,69,72,3],[8,129,160,4],[9,350,350,1]]},{"id":1002427,"n":"Arma de Blaster de Combate Cruzado","cat":1,"sub":9,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,397,459,120],[5,324,341,9],[6,559,559,2],[7,992,992,6],[8,949,949,1]]},{"id":1002403,"n":"Arma de Explosão do Especialista","cat":1,"sub":9,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,125,587],[1,10,10,4],[2,10,10,2],[3,10,10,4],[4,10,10,1],[5,10,10,81],[6,10,15,22],[7,10,15,238],[8,10,40,96],[9,10,50,196],[10,19,130,76],[11,93,93,1]]},{"id":1000074,"n":"Arma de Força Eclipse","cat":1,"sub":7,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,23,4],[5,48,50,3],[6,65,65,1],[7,58,69,11],[8,374,375,2]]},{"id":1000075,"n":"Arma de Força Etendue","cat":1,"sub":7,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,20,58,34],[5,89,89,1],[7,137,177,9],[8,290,298,3],[10,999,999,1]]},{"id":1000076,"n":"Arma de Força Kilonova","cat":1,"sub":7,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,46,50,8],[5,199,199,1],[7,299,299,1],[8,494,499,4]]},{"id":1000077,"n":"Arma de Força Magnox","cat":1,"sub":7,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,40,18],[5,34,34,1],[7,75,81,4],[9,373,377,5],[10,270,1280,7]]},{"id":1000156,"n":"Arma de Força Pallacia do Executor","cat":1,"sub":7,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,5999,6000,2],[7,9999,9999,1]]},{"id":1000639,"n":"Arma de Força Pallacia do Executor","cat":1,"sub":7,"grade":4,"q":2,"lv":0,"meta_ok":true,"of":[[6,13999,13999,1]]},{"id":1000071,"n":"Arma de Força Prism","cat":1,"sub":7,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,60,339],[1,10,10,9],[2,10,10,2],[3,10,10,4],[4,10,10,3],[5,10,111,120],[6,10,15,18],[7,10,10,140],[8,29,31,5],[9,18,18,74],[10,14,17,23]]},{"id":1000073,"n":"Arma de Força Scalar","cat":1,"sub":7,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,71],[5,22,30,8],[6,35,35,1],[7,26,29,6],[8,70,73,5],[9,72,72,1]]},{"id":1000072,"n":"Arma de Força Weyl","cat":1,"sub":7,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,313],[1,888,888,1],[5,10,161,43],[6,10,99,2],[7,12,47,39],[8,12,12,4],[9,46,46,7],[10,78,84,7]]},{"id":1000123,"n":"Arma de Força de Combate Anathema","cat":1,"sub":7,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,300,643,18]]},{"id":1000606,"n":"Arma de Força de Combate Anathema","cat":1,"sub":7,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1199,1199,1],[4,2100,2100,1],[7,3500,3500,1]]},{"id":1000120,"n":"Arma de Força de Combate Eminência","cat":1,"sub":7,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,22,30,16],[5,35,57,7],[6,59,65,3],[7,90,97,3]]},{"id":1000603,"n":"Arma de Força de Combate Eminência","cat":1,"sub":7,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,191,281,37],[5,932,932,1],[6,165,199,4],[7,908,908,1]]},{"id":1000119,"n":"Arma de Força de Combate Retícula","cat":1,"sub":7,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,22,32,24],[5,52,74,7],[6,84,85,2],[7,59,62,4],[8,300,300,1]]},{"id":1000602,"n":"Arma de Força de Combate Retícula","cat":1,"sub":7,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,61,68,13],[5,459,468,5],[6,108,143,10],[7,932,932,3]]},{"id":1000121,"n":"Arma de Força de Combate Sigma","cat":1,"sub":7,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,17,23,4],[5,115,119,4],[6,85,90,2],[7,79,79,2],[8,185,228,4],[9,179,180,3]]},{"id":1000604,"n":"Arma de Força de Combate Sigma","cat":1,"sub":7,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,663,663,1],[9,900,900,1]]},{"id":1000118,"n":"Arma de Força de Combate Specter","cat":1,"sub":7,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,61,192],[5,10,298,54],[6,16,16,14],[7,10,67,56],[8,10,94,13],[9,53,61,2],[10,89,89,2]]},{"id":1000601,"n":"Arma de Força de Combate Specter","cat":1,"sub":7,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,19,99,162],[5,21,100,10],[6,43,375,46],[7,42,66,111],[8,39,50,52],[9,84,99,7],[10,133,133,5],[11,787,787,1]]},{"id":1000124,"n":"Arma de Força de Combate Void","cat":1,"sub":7,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,3799,3799,1]]},{"id":1000122,"n":"Arma de Força de Combate Xenon","cat":1,"sub":7,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,46,83,10],[5,175,175,1],[8,899,899,1]]},{"id":1000032,"n":"Arma de Força do Errante","cat":1,"sub":7,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,80],[1,10,10,4],[2,10,10,3],[3,10,10,3],[5,10,67,30],[6,17,17,4],[7,15,16,28],[8,129,197,29],[9,85,93,12],[10,455,464,12],[11,114,114,1]]},{"id":1000033,"n":"Arma de Força do Especialista","cat":1,"sub":7,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,1065,570],[1,10,10,5],[2,1178,1178,1],[3,10,10,1],[4,999,999,3],[5,10,64,99],[6,10,99,51],[7,10,15,304],[8,10,15,31],[9,10,15,347],[10,18,18,17],[11,144,144,2]]},{"id":1000035,"n":"Arma de Força do Executor","cat":1,"sub":7,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,14,7],[5,82,99,8],[7,76,104,12],[9,344,399,8]]},{"id":1000031,"n":"Arma de Força do Mercenário","cat":1,"sub":7,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,106],[3,999,999,2],[5,16,29,28],[6,999,999,1],[7,36,65,34],[8,64,66,6],[9,56,56,3],[10,26,26,3],[11,495,497,2]]},{"id":1000030,"n":"Arma de Força do Praticante","cat":1,"sub":7,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,702,46],[5,25,30,8],[6,399,399,1],[7,21,64,43],[8,169,169,8],[9,98,198,15],[10,86,86,1]]},{"id":1000034,"n":"Arma de Força do Sentinela","cat":1,"sub":7,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,94],[5,18,18,2],[6,35,35,3],[7,24,24,5],[8,98,98,1],[9,154,170,2]]},{"id":152049,"n":"Arma de Mineração","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.416,32,18]]},{"id":1002411,"n":"Arma de Raios Kilonova","cat":1,"sub":9,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,39,44,4],[7,222,222,1],[9,699,699,1]]},{"id":1002406,"n":"Arma de Raios Prismáticos","cat":1,"sub":9,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,262,516],[1,10,10,10],[2,200,200,4],[3,10,10,2],[4,10,10,5],[5,10,10,90],[6,10,10,6],[7,10,10,170],[8,10,15,11],[9,18,20,47],[10,14,15,61]]},{"id":1002400,"n":"Arma de Raios do Praticante","cat":1,"sub":9,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,14],[5,14,1616,20],[6,49,56,30],[7,30,54,43],[8,69,70,12],[9,84,88,11],[10,481,484,3]]},{"id":154058,"n":"Arma do Tanque Calliana Danificada","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,248,331,7]]},{"id":4003,"n":"Ativa - Habilidades de Combate [IV]","cat":6,"sub":27,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,38900,38900,2]]},{"id":1201,"n":"Bilhete de Entrada da Base Secreta Nemesis 3º Andar","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,105,1000,30]]},{"id":1202,"n":"Bilhete de Entrada do Campo de Mineração Público 3º Andar","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,118,125,13]]},{"id":152048,"n":"Bilhete de Vidente","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,62.5,177.6,12]]},{"id":154150,"n":"Bot de Pesquisa Biológica de Asteroides","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,41,73,32]]},{"id":154151,"n":"Bot de Pesquisa Geológica de Asteroides","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,50,89,11]]},{"id":154149,"n":"Bot de Pesquisa de Metal de Asteroide","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,23,48.4,27]]},{"id":1000432,"n":"Bracelete Brilhante","cat":3,"sub":19,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,995,63],[5,10,16,9],[6,10,10,3],[7,14,16,14],[8,15,99,24],[10,50,51,7]]},{"id":1000428,"n":"Bracelete Comum","cat":3,"sub":19,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,76],[1,999,999,3],[5,10,10,24],[6,10,25,14],[7,10,13,14],[8,15,20,11],[9,16,18,54],[10,17,29,29],[11,91,91,1]]},{"id":1000431,"n":"Bracelete Desbotado","cat":3,"sub":19,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,11,63],[6,29,38,15],[7,67,178,27],[8,45,49,9],[9,155,169,10],[10,550,550,1],[11,147,147,1]]},{"id":1000427,"n":"Bracelete Desgastado","cat":3,"sub":19,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,331],[2,999,999,1],[5,10,10,157],[6,10,15,6],[7,10,15,36],[8,10,15,7],[9,10,85,54],[10,19,19,79]]},{"id":1000430,"n":"Bracelete Enferrujado","cat":3,"sub":19,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,137],[5,10,10,66],[6,10,18,16],[7,10,10,28],[8,10,26,21],[9,21,121,10],[10,19,19,9],[11,105,123,2]]},{"id":1000436,"n":"Bracelete Perfeito","cat":3,"sub":19,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,16],[6,29,29,4],[8,178,179,4],[9,251,255,7],[10,57,77,11]]},{"id":1000433,"n":"Bracelete Refinado","cat":3,"sub":19,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,1830,130],[4,888,888,1],[5,10,10,137],[6,10,10,13],[7,10,10,35],[8,14,100,14],[9,10,10,36],[10,19,19,25],[11,199,199,1]]},{"id":1000429,"n":"Bracelete Rústico","cat":3,"sub":19,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,40],[5,18,19,6],[6,16,16,5],[7,27,29,6],[8,30,99,7],[9,45,56,9],[10,247,499,4]]},{"id":1000435,"n":"Bracelete Trabalhado","cat":3,"sub":19,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,99,38],[5,16,19,5],[6,37,37,1],[7,84,91,8],[8,148,199,7],[9,250,250,1]]},{"id":1000434,"n":"Bracelete de Alta Qualidade","cat":3,"sub":19,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,52],[5,23,25,6],[6,11,11,2],[7,27,30,17],[8,32,33,3],[9,37,50,7],[10,168,175,9]]},{"id":1000442,"n":"Bracelete de Bobina Solenoide","cat":3,"sub":19,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,183,203,15],[7,845,845,1],[8,550,750,2]]},{"id":1000925,"n":"Bracelete de Bobina Solenoide","cat":3,"sub":19,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[5,2400,2400,1]]},{"id":1000437,"n":"Bracelete de Circuito Flexível","cat":3,"sub":19,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,22,66],[2,110,110,1],[5,10,10,95],[7,10,19,122],[8,16,50,18],[9,111,124,10],[10,98,98,6],[11,200,200,1],[12,997,997,1]]},{"id":1000920,"n":"Bracelete de Circuito Flexível","cat":3,"sub":19,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,20,39,28],[1,70,70,1],[5,45,45,4],[6,47,50,9],[7,38,99,15],[8,72,74,8],[9,144,178,17],[10,660,660,4],[11,199,199,1],[12,700,750,4],[15,3000,3000,1]]},{"id":1000443,"n":"Bracelete de Célula Atômica","cat":3,"sub":19,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,3799,3799,1]]},{"id":1000438,"n":"Bracelete de Eletrodo Polimérico","cat":3,"sub":19,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,26,25],[5,28,30,5],[6,29,59,6],[7,34,116,22],[8,95,96,5],[9,159,160,2]]},{"id":1000921,"n":"Bracelete de Eletrodo Polimérico","cat":3,"sub":19,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,78,92,20],[5,279,291,5],[7,925,925,5],[9,894,894,1]]},{"id":1000440,"n":"Bracelete de Micromódulo","cat":3,"sub":19,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,18,95,26],[6,150,150,1],[7,170,179,6],[8,196,219,4]]},{"id":1000923,"n":"Bracelete de Micromódulo","cat":3,"sub":19,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,500,1986,4]]},{"id":1000439,"n":"Bracelete de Selo Helicoidal","cat":3,"sub":19,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,25,27],[5,50,50,2],[7,69,173,7],[8,74,77,5],[9,189,190,2],[10,349,349,2]]},{"id":1000922,"n":"Bracelete de Selo Helicoidal","cat":3,"sub":19,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,395,423,50]]},{"id":1000441,"n":"Bracelete de Wafer Fino","cat":3,"sub":19,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,46,60,20],[5,99,240,2],[6,300,300,1],[7,399,399,2],[8,490,490,1],[9,750,799,3],[10,499,499,2]]},{"id":1000376,"n":"Brincos Brilhantes","cat":3,"sub":17,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,77],[5,17,40,19],[7,10,10,34],[8,13,19,15],[9,49,65,14],[10,19,19,8]]},{"id":1000372,"n":"Brincos Comuns","cat":3,"sub":17,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,101],[5,10,10,40],[6,10,15,4],[7,17,28,20],[8,24,24,6],[9,24,29,38],[10,26,37,15]]},{"id":1000375,"n":"Brincos Desbotados","cat":3,"sub":17,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,36,36],[5,29,30,3],[6,43,44,7],[7,30,91,12],[8,11,11,5],[9,93,280,17],[10,279,280,2]]},{"id":1000371,"n":"Brincos Desgastados","cat":3,"sub":17,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,117],[1,97,98,2],[5,10,10,111],[6,10,15,12],[7,10,10,41],[8,10,498,4],[9,11,11,9],[10,19,19,20],[11,159,159,1]]},{"id":1000374,"n":"Brincos Enferrujados","cat":3,"sub":17,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,125],[5,10,10,94],[6,10,99,17],[7,10,10,43],[8,10,10,62],[9,19,27,18],[10,19,19,12]]},{"id":1000380,"n":"Brincos Perfeitos","cat":3,"sub":17,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,19,8],[5,11,16,6],[6,35,35,2],[7,30,59,25],[8,28,33,4],[9,61,65,18],[10,11,11,11]]},{"id":1000377,"n":"Brincos Refinados","cat":3,"sub":17,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,334],[1,888,888,1],[5,10,10,81],[6,10,10,10],[7,10,10,65],[8,10,999,83],[9,10,10,95],[10,14,14,13]]},{"id":1000373,"n":"Brincos Rústicos","cat":3,"sub":17,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,19,91],[3,10,10,1],[5,10,19,25],[6,10,10,1],[7,38,61,34],[8,41,53,32],[9,69,73,5],[10,19,19,35],[11,99,99,2]]},{"id":1000379,"n":"Brincos Trabalhados","cat":3,"sub":17,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,25,16],[7,111,129,30],[8,230,232,5],[9,499,499,1],[10,1199,1199,1]]},{"id":1000378,"n":"Brincos de Alta Qualidade","cat":3,"sub":17,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,25],[5,31,31,1],[6,45,45,3],[7,18,44,19],[8,46,46,2],[9,130,131,2],[10,277,277,1]]},{"id":1000388,"n":"Brincos de Armadilha Iônica","cat":3,"sub":17,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[5,14000,14000,1]]},{"id":1000386,"n":"Brincos de Bobina Solenoide","cat":3,"sub":17,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,367,395,4],[8,2000,2000,1]]},{"id":1000869,"n":"Brincos de Bobina Solenoide","cat":3,"sub":17,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,799,2000,3],[5,799,799,1],[9,8099,8099,1],[10,9999,9999,1]]},{"id":1000381,"n":"Brincos de Circuito Flexível","cat":3,"sub":17,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,30,64],[5,10,35,145],[7,10,637,106],[8,10,50,8],[9,25,100,11],[10,52,100,13],[11,949,949,1]]},{"id":1000864,"n":"Brincos de Circuito Flexível","cat":3,"sub":17,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,21,49,14],[1,46,46,1],[5,35,43,31],[6,41,50,20],[7,51,99,12],[8,74,77,11],[9,89,99,9],[10,95,119,8],[11,287,290,4],[12,390,390,1],[13,1100,1500,2]]},{"id":1000382,"n":"Brincos de Eletrodo Polimérico","cat":3,"sub":17,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,26,32],[5,49,49,1],[6,15,18,5],[7,13,18,5],[8,150,150,2],[9,140,149,4],[10,355,356,5]]},{"id":1000865,"n":"Brincos de Eletrodo Polimérico","cat":3,"sub":17,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,84,98,14],[1,960,960,1],[5,101,133,10],[6,77,99,9],[7,970,971,6],[8,960,960,2]]},{"id":1000384,"n":"Brincos de Micromódulo","cat":3,"sub":17,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,18,24,7],[3,99,99,1],[5,39,65,7],[6,57,57,1],[7,212,239,8],[8,199,250,3],[9,450,450,1]]},{"id":1000867,"n":"Brincos de Micromódulo","cat":3,"sub":17,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,498,500,3]]},{"id":1000383,"n":"Brincos de Selo Helicoidal","cat":3,"sub":17,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,1087,17],[3,99,99,1],[6,28,28,1],[7,42,51,7],[8,54,55,4],[9,140,149,4],[10,220,250,2]]},{"id":1000866,"n":"Brincos de Selo Helicoidal","cat":3,"sub":17,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,190,209,43],[5,909,980,2],[7,904,904,1]]},{"id":1000385,"n":"Brincos de Wafer Fino","cat":3,"sub":17,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,40,79,10]]},{"id":1000868,"n":"Brincos de Wafer Fino","cat":3,"sub":17,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1999,1999,1],[8,2000,2000,1]]},{"id":154038,"n":"Broche Metálico Novus","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,244,244,1]]},{"id":153028,"n":"Broche Metálico Redondo","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,30,53,10]]},{"id":154165,"n":"Cabo de Braço de Nether","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,98,114,9]]},{"id":154166,"n":"Cabo de Poder de Nether","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,84,1000,15]]},{"id":154167,"n":"Cabo do Corpo de Nether","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,169,250,11]]},{"id":154017,"n":"Caixa Portátil de Nanomáquinas","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,77,104,15]]},{"id":153017,"n":"Canivete Ensanguentado","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,8.5,10,41]]},{"id":151033,"n":"Canivete Multifuncional Antigo","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,30,30,1]]},{"id":151039,"n":"Cantil de Mercenário","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,35,79,9]]},{"id":152024,"n":"Capa Cerimonial","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,27.5,61.666,11]]},{"id":152037,"n":"Capacete Mecânico Integral","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,130,155,6]]},{"id":154153,"n":"Capacete de Combate Espacial","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,75,116,10]]},{"id":154152,"n":"Capacete de Expedição Espacial","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,41,45,2]]},{"id":154154,"n":"Capacete de Technician Espacial","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,94,99,3]]},{"id":1000060,"n":"Carregador de Força Eclipse","cat":1,"sub":5,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,32,23],[5,34,34,5],[6,69,69,1],[7,19,60,11],[8,78,80,3],[10,183,183,1]]},{"id":1000061,"n":"Carregador de Força Etendue","cat":1,"sub":5,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,26,30,3],[5,93,94,2],[8,100,145,2]]},{"id":1000062,"n":"Carregador de Força Kilonova","cat":1,"sub":5,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,15,14],[5,97,98,2]]},{"id":1000063,"n":"Carregador de Força Magnox","cat":1,"sub":5,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,20,13],[5,43,60,8],[6,65,70,2],[8,63,63,2],[10,198,199,2]]},{"id":1000627,"n":"Carregador de Força Pallacia do Executor","cat":1,"sub":5,"grade":4,"q":2,"lv":0,"meta_ok":true,"of":[[6,13999,13999,1]]},{"id":1000057,"n":"Carregador de Força Prism","cat":1,"sub":5,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,800,384],[1,10,10,2],[3,10,10,1],[5,10,970,111],[6,10,15,9],[7,10,10,80],[8,21,50,12],[9,10,10,61],[10,11,15,14]]},{"id":1000059,"n":"Carregador de Força Scalar","cat":1,"sub":5,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,22,106],[5,32,33,3],[6,34,36,2],[7,46,54,7],[8,54,118,10],[9,54,60,8],[10,90,90,2],[11,97,97,1]]},{"id":1000058,"n":"Carregador de Força Weyl","cat":1,"sub":5,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,25,421],[1,96,96,1],[4,999,999,1],[5,10,100,99],[6,81,95,15],[7,10,10,35],[8,10,10,4],[9,10,10,35],[10,66,98,24]]},{"id":1000107,"n":"Carregador de Força de Combate Anathema","cat":1,"sub":5,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,158,399,14]]},{"id":1000104,"n":"Carregador de Força de Combate Eminência","cat":1,"sub":5,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,64,12],[5,67,76,4],[6,54,62,4],[7,176,176,1],[8,380,400,2]]},{"id":1000587,"n":"Carregador de Força de Combate Eminência","cat":1,"sub":5,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,53,403,36],[6,265,266,2]]},{"id":1000103,"n":"Carregador de Força de Combate Retícula","cat":1,"sub":5,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,618,618,1],[5,37,99,12],[6,9980,9983,4],[7,134,175,6],[8,120,120,1],[9,146,147,2],[10,938,938,1]]},{"id":1000586,"n":"Carregador de Força de Combate Retícula","cat":1,"sub":5,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,93,138,60],[5,890,897,4],[6,166,188,4],[7,908,909,4],[8,893,893,2],[10,911,911,1]]},{"id":1000105,"n":"Carregador de Força de Combate Sigma","cat":1,"sub":5,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,19,30,16],[5,922,922,1],[7,119,210,4],[8,200,200,1]]},{"id":1000588,"n":"Carregador de Força de Combate Sigma","cat":1,"sub":5,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,666,666,2]]},{"id":1000102,"n":"Carregador de Força de Combate Specter","cat":1,"sub":5,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,210,109],[1,10,10,1],[5,10,22,38],[6,16,16,8],[7,10,15,38],[8,13,28,13],[9,92,150,4]]},{"id":1000585,"n":"Carregador de Força de Combate Specter","cat":1,"sub":5,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,22,100,48],[5,50,50,39],[6,46,50,48],[7,50,57,45],[8,53,250,43],[9,241,242,6],[10,65,70,2],[11,80,497,4]]},{"id":1000106,"n":"Carregador de Força de Combate Xenon","cat":1,"sub":5,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,51,58,7],[8,380,380,1],[10,800,800,1]]},{"id":1000020,"n":"Carregador de Força do Errante","cat":1,"sub":5,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,15],[5,33,65,27],[7,49,77,13],[8,77,85,12],[9,252,282,19],[10,10,140,14]]},{"id":1000021,"n":"Carregador de Força do Especialista","cat":1,"sub":5,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,660],[3,10,10,4],[4,10,10,1],[5,10,10,71],[6,10,15,36],[7,10,40,201],[8,10,15,33],[9,10,10,52],[10,10,12,42],[11,53,55,5]]},{"id":1000023,"n":"Carregador de Força do Executor","cat":1,"sub":5,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,38,24],[5,40,59,4],[6,26,26,3],[7,29,151,21],[9,470,477,7]]},{"id":1000019,"n":"Carregador de Força do Mercenário","cat":1,"sub":5,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,51],[5,17,17,1],[6,996,997,6],[7,24,34,41],[8,30,32,12],[9,73,77,8],[10,19,22,13]]},{"id":1000018,"n":"Carregador de Força do Praticante","cat":1,"sub":5,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,70,35],[5,23,39,32],[6,15,15,1],[7,38,48,13],[8,182,197,25],[9,46,54,15],[10,98,98,3]]},{"id":1000022,"n":"Carregador de Força do Sentinela","cat":1,"sub":5,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,101,89],[5,76,81,5],[6,26,26,1],[7,72,83,18],[8,88,88,1],[9,210,243,14],[10,107,107,1]]},{"id":2044,"n":"Cartão de Crédito 500k","cat":8,"sub":35,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,93,475,120]]},{"id":2040,"n":"Cartão de Crédito 50k","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,638,237]]},{"id":151059,"n":"Casaco do Pesquisador Danificado","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,123,137.5,5]]},{"id":153040,"n":"Caveira Rosa de Festival","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,65,70,3]]},{"id":153047,"n":"Certificado de Aposentadoria de Oficial","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,18,50,7]]},{"id":154015,"n":"Certificado de Cidadania de Bellato","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,9.5,18,41]]},{"id":270032,"n":"Chip de Controle","cat":7,"sub":31,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,14500,14999,4]]},{"id":154043,"n":"Chip de IA de 5ª Geração","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,17,12]]},{"id":153045,"n":"Chip de IA de 9ª Geração","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,150,176,7]]},{"id":2032,"n":"Chip de Memória Recuperado","cat":8,"sub":31,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,169,17]]},{"id":151056,"n":"Cilindro Quebrado","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,18,25,8]]},{"id":152034,"n":"Cinturão de Campeão","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,148,242,17]]},{"id":1000404,"n":"Colar Brilhante","cat":3,"sub":18,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,14,297],[5,57,100,12],[6,92,100,7],[7,86,99,16],[8,26,30,6],[9,65,71,11],[10,432,447,7]]},{"id":1000400,"n":"Colar Comum","cat":3,"sub":18,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,88],[2,99,99,2],[5,16,18,7],[6,196,197,2],[7,40,83,22],[8,68,71,15],[9,85,91,15]]},{"id":1000403,"n":"Colar Desbotado","cat":3,"sub":18,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,37,86],[5,30,33,2],[6,10,10,2],[7,10,16,15],[8,17,24,7],[11,149,149,2]]},{"id":1000399,"n":"Colar Desgastado","cat":3,"sub":18,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,1087,2006],[2,999,999,1],[3,999,999,1],[4,999,999,2],[5,10,10,130],[6,10,15,19],[7,10,17,20],[8,45,92,25],[9,10,12,14],[10,275,440,4],[12,499,499,1]]},{"id":1000402,"n":"Colar Enferrujado","cat":3,"sub":18,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,610],[2,10,10,1],[5,10,10,52],[6,10,10,16],[7,10,10,50],[8,10,10,10],[9,499,499,1],[10,218,894,11],[11,172,172,1]]},{"id":1000408,"n":"Colar Perfeito","cat":3,"sub":18,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,112],[7,26,35,10],[8,58,115,12],[9,83,87,12],[10,29,33,5]]},{"id":1000405,"n":"Colar Refinado","cat":3,"sub":18,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,108,1234],[1,95,95,1],[5,10,20,236],[6,10,26,17],[7,10,15,53],[8,10,1749,78],[9,10,10,27],[10,39,61,19]]},{"id":1000401,"n":"Colar Rústico","cat":3,"sub":18,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,365],[5,26,35,10],[6,59,59,2],[7,11,16,8],[8,60,250,19],[9,90,97,18]]},{"id":1000407,"n":"Colar Trabalhado","cat":3,"sub":18,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,49,26],[5,30,40,3],[7,77,85,6],[8,140,144,2],[9,174,3000,3]]},{"id":1000406,"n":"Colar de Alta Qualidade","cat":3,"sub":18,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,20],[5,13,16,16],[6,23,24,12],[7,18,21,12],[8,97,115,5],[9,35,255,6],[10,223,224,2]]},{"id":1000414,"n":"Colar de Bobina Solenoide","cat":3,"sub":18,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[6,856,856,1],[7,2000,2000,2]]},{"id":1000897,"n":"Colar de Bobina Solenoide","cat":3,"sub":18,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[5,1779,1779,1]]},{"id":1000409,"n":"Colar de Circuito Flexível","cat":3,"sub":18,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,146,956],[5,10,10,126],[6,16,30,43],[7,10,50,36],[8,44,110,9],[9,20,52,10],[10,64,80,11],[11,266,336,2],[12,700,700,1]]},{"id":1000892,"n":"Colar de Circuito Flexível","cat":3,"sub":18,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,39,550,9],[6,40,76,25],[7,76,109,22],[8,75,88,8],[9,108,154,9],[10,129,250,4],[11,298,298,1],[12,1099,1099,1]]},{"id":1000410,"n":"Colar de Eletrodo Polimérico","cat":3,"sub":18,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,16,30,38],[1,99,99,1],[6,26,41,8],[7,41,47,5],[8,25,39,4],[9,240,299,4],[10,60,60,1]]},{"id":1000893,"n":"Colar de Eletrodo Polimérico","cat":3,"sub":18,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,63,93,24],[6,88,119,12],[7,883,886,3],[8,511,798,2]]},{"id":1000412,"n":"Colar de Micromódulo","cat":3,"sub":18,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,20,34,32],[5,69,298,7],[7,121,129,5],[8,180,180,1],[9,215,800,3],[11,350,350,1]]},{"id":1000895,"n":"Colar de Micromódulo","cat":3,"sub":18,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,500,1999,2]]},{"id":151040,"n":"Colar de Ossos","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,61,63,5]]},{"id":1000411,"n":"Colar de Selo Helicoidal","cat":3,"sub":18,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,17,2174,32],[5,24,25,6],[6,58,90,6],[7,43,44,6],[8,50,129,5],[9,150,150,1],[10,249,250,2]]},{"id":1000894,"n":"Colar de Selo Helicoidal","cat":3,"sub":18,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,170,185,35]]},{"id":1000413,"n":"Colar de Wafer Fino","cat":3,"sub":18,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,120,150,4],[6,350,1200,3],[7,400,400,1]]},{"id":152040,"n":"Coleira com Espinhos","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,98,100,5]]},{"id":153049,"n":"Colher Dourada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,5.5,10,31]]},{"id":151031,"n":"Conta de Metal Azul","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,38.8,130,6]]},{"id":7066,"n":"Contrato de Missão de Raid Comum","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,31,250,22]]},{"id":153058,"n":"Cristal Calliana","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,67.5,79,6]]},{"id":154049,"n":"Cristal Negro","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,19,65,28]]},{"id":154020,"n":"Cristal Psíquico","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,99,195,4]]},{"id":154059,"n":"Cristal Psíquico Mutado","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,1000,1000,1]]},{"id":270031,"n":"Cristal de Pedra Sagrada","cat":7,"sub":31,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,98,456,23]]},{"id":153059,"n":"Cápsula Com Substância Especial","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,370,400,4]]},{"id":154014,"n":"Cápsula de Armazenamento de Entidade","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,20,30,21]]},{"id":154146,"n":"Cápsula de Energia de Colonização Espacial","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,25,12]]},{"id":154145,"n":"Cápsula de Hidratação para Colonização Espacial","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,8.888,14.444,6]]},{"id":153014,"n":"Cápsula de Larva","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,10,103]]},{"id":154144,"n":"Cápsula de Oxigênio para Colonização Espacial","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,10,2]]},{"id":154160,"n":"Célula de Energia Tipo A","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,6]]},{"id":154161,"n":"Célula de Energia Tipo B","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,37.5,73.166,16]]},{"id":154162,"n":"Célula de Energia Tipo C","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,148,197.5,9]]},{"id":151034,"n":"Dado Vermelho","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,17.333,5]]},{"id":5712,"n":"Dados Combate Com. C","cat":6,"sub":28,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.256,1508.666,138]]},{"id":5713,"n":"Dados Combate Com. INC","cat":6,"sub":28,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.833,1812,276]]},{"id":5714,"n":"Dados Combate Com. R","cat":6,"sub":28,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,310,30]]},{"id":5700,"n":"Dados Combate Excl. C","cat":6,"sub":28,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.636,1948,192]]},{"id":5701,"n":"Dados Combate Excl. INC","cat":6,"sub":28,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,2,76408,322]]},{"id":5702,"n":"Dados Combate Excl. R","cat":6,"sub":28,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,237,40]]},{"id":152043,"n":"Detector de Movimento","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,15,25]]},{"id":250012,"n":"Diagrama Lançador Basilisk","cat":7,"sub":32,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,40000,40000,1]]},{"id":270051,"n":"Diagrama de Acessório Raro II","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,3.25,1000,117]]},{"id":270054,"n":"Diagrama de Acessório Raro III","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,4,60,124]]},{"id":270057,"n":"Diagrama de Acessório Raro IV","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,8.4,141.666,70]]},{"id":270060,"n":"Diagrama de Acessório Raro V","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,7.333,106,28]]},{"id":270063,"n":"Diagrama de Acessório Raro VI","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,55,250,8]]},{"id":270024,"n":"Diagrama de Acessório Épico","cat":7,"sub":31,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,54,298,29]]},{"id":270049,"n":"Diagrama de Arma Rara II","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,4.666,4600,61]]},{"id":270052,"n":"Diagrama de Arma Rara III","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,110,22]]},{"id":270055,"n":"Diagrama de Arma Rara IV","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,20,93,15]]},{"id":270058,"n":"Diagrama de Arma Rara V","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,38,97,16]]},{"id":270061,"n":"Diagrama de Arma Rara VI","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,84,175,29]]},{"id":270022,"n":"Diagrama de Arma Épica","cat":7,"sub":31,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,140,380,25]]},{"id":270050,"n":"Diagrama de Armadura Rara II","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,3,3300,175]]},{"id":270053,"n":"Diagrama de Armadura Rara III","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,25,56]]},{"id":270056,"n":"Diagrama de Armadura Rara IV","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,40,36]]},{"id":270059,"n":"Diagrama de Armadura Rara V","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,314,53]]},{"id":270062,"n":"Diagrama de Armadura Rara VI","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,43,250,22]]},{"id":270023,"n":"Diagrama de Armadura Épica","cat":7,"sub":31,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,31.5,77,19]]},{"id":152030,"n":"Difusor de Partículas","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,64.5,192,9]]},{"id":152042,"n":"Dispositivo de Aceleração Androide","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,3,10,32]]},{"id":151045,"n":"Dispositivo de Desaceleração","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,35,112.5,37]]},{"id":151016,"n":"Dispositivo de Detecção Pequeno","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.5,647,21]]},{"id":151055,"n":"Dog Tag Antiga","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,1380,17]]},{"id":153033,"n":"Drive de Luz","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,60,141,2]]},{"id":153030,"n":"Drone Espião 2mo","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,27,34.333,15]]},{"id":151043,"n":"Drone Espião 5mo","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.833,93,55]]},{"id":152057,"n":"Emblema da Tribo Calliana","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,37.333,66.666,12]]},{"id":151015,"n":"Equipamento de Cabeça","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.5,10,31]]},{"id":153026,"n":"Escama de Silut","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,33,80,11]]},{"id":154039,"n":"Escaneamento Cerebral de S.T.","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,478,479,2]]},{"id":153054,"n":"Escritura Portátil","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,22]]},{"id":154023,"n":"Escritura Sombria de Cora","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,61.5,61.5,1]]},{"id":152027,"n":"Escritura de Cora Antiga","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,53,53,1]]},{"id":154019,"n":"Escultura de Rosto Horripilante","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,55,78,7]]},{"id":154016,"n":"Escultura de Sal","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,54,156,90]]},{"id":1000053,"n":"Espada e Escudo Eclipse","cat":1,"sub":4,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,21,61],[6,399,399,1],[7,29,29,1]]},{"id":1000054,"n":"Espada e Escudo Etendue","cat":1,"sub":4,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,38,47],[5,328,329,2],[7,115,145,2],[8,99,99,1]]},{"id":1000055,"n":"Espada e Escudo Kilonova","cat":1,"sub":4,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,22,37,17],[7,100,136,10]]},{"id":1000056,"n":"Espada e Escudo Magnox","cat":1,"sub":4,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,23,28],[5,65,71,9],[7,80,90,9],[8,91,96,2],[9,150,150,1]]},{"id":1000621,"n":"Espada e Escudo Pallacia do Executor","cat":1,"sub":4,"grade":4,"q":2,"lv":0,"meta_ok":true,"of":[[6,12500,12500,1]]},{"id":1000050,"n":"Espada e Escudo Prism","cat":1,"sub":4,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,25,376],[2,10,10,1],[5,10,10,65],[6,10,10,13],[7,10,15,75],[8,10,15,7],[9,10,80,54],[10,12,15,24]]},{"id":1000052,"n":"Espada e Escudo Scalar","cat":1,"sub":4,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,62,29],[5,34,42,6],[6,38,38,6],[7,64,70,14],[8,68,73,13],[9,77,77,3],[10,24,24,1]]},{"id":1000051,"n":"Espada e Escudo Weyl","cat":1,"sub":4,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,100,324],[5,10,10,82],[7,10,10,40],[8,138,185,13],[9,14,14,28],[10,18,19,11]]},{"id":1000099,"n":"Espada e Escudo de Combate Anathema","cat":1,"sub":4,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,155,349,11],[5,555,555,1],[7,600,600,1],[8,400,485,2]]},{"id":1000096,"n":"Espada e Escudo de Combate Eminência","cat":1,"sub":4,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,34,18],[5,372,373,2],[7,118,137,3],[8,250,350,4]]},{"id":1000579,"n":"Espada e Escudo de Combate Eminência","cat":1,"sub":4,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,90,138,37],[7,500,500,1]]},{"id":1000095,"n":"Espada e Escudo de Combate Retícula","cat":1,"sub":4,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,69,39],[5,47,70,3],[7,48,50,4],[8,350,350,1]]},{"id":1000578,"n":"Espada e Escudo de Combate Retícula","cat":1,"sub":4,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,70,78,14],[5,967,967,4],[6,198,199,3],[7,299,906,4],[8,894,897,4],[10,976,976,1]]},{"id":1000097,"n":"Espada e Escudo de Combate Sigma","cat":1,"sub":4,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,344,33],[8,200,200,1],[9,250,250,2]]},{"id":1000580,"n":"Espada e Escudo de Combate Sigma","cat":1,"sub":4,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,665,666,3],[6,588,588,1]]},{"id":1000094,"n":"Espada e Escudo de Combate Specter","cat":1,"sub":4,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,54,119],[5,10,170,43],[6,16,20,10],[7,17,37,78],[8,61,79,10],[9,69,198,8],[10,127,140,6],[11,200,200,1]]},{"id":1000577,"n":"Espada e Escudo de Combate Specter","cat":1,"sub":4,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,37,99,341],[5,38,42,21],[6,45,50,14],[7,50,58,95],[8,171,287,37],[9,77,99,6],[10,98,103,4],[12,500,500,1]]},{"id":1000098,"n":"Espada e Escudo de Combate Xenon","cat":1,"sub":4,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,66,68,6],[5,195,195,1],[6,150,150,1],[8,1666,2600,3],[10,599,599,1]]},{"id":1000014,"n":"Espada e Escudo do Errante","cat":1,"sub":4,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,11,70],[5,15,22,7],[6,45,67,13],[7,35,41,8],[8,90,183,25],[9,128,130,6],[11,180,180,1]]},{"id":1000015,"n":"Espada e Escudo do Especialista","cat":1,"sub":4,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,398],[2,10,10,1],[3,10,10,9],[5,10,20,81],[6,10,15,39],[7,10,10,193],[8,10,20,14],[9,10,15,213],[10,16,17,70],[11,111,111,3]]},{"id":1000017,"n":"Espada e Escudo do Executor","cat":1,"sub":4,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,20,25,34],[5,55,69,9],[7,49,80,10],[9,350,352,2]]},{"id":1000013,"n":"Espada e Escudo do Mercenário","cat":1,"sub":4,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,100,94],[5,10,10,18],[6,999,999,1],[7,22,24,8],[8,82,96,12],[9,76,76,2],[10,354,377,9],[11,698,698,1]]},{"id":1000012,"n":"Espada e Escudo do Praticante","cat":1,"sub":4,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,116,304],[5,10,10,54],[7,28,33,10],[8,56,58,17],[9,44,52,15],[10,56,66,7],[11,99,99,1]]},{"id":1900005,"n":"Espada e Escudo do Rastreador de Fogo","cat":1,"sub":4,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[8,1000,1000,1]]},{"id":1000016,"n":"Espada e Escudo do Sentinela","cat":1,"sub":4,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,50,27],[5,23,23,4],[6,50,55,5],[7,25,28,8],[8,92,92,1],[9,174,174,1],[10,125,135,4]]},{"id":154042,"n":"Esqueleto Mecha","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,17,137]]},{"id":152053,"n":"Estatueta Stinger","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,22]]},{"id":151053,"n":"Estojo de Cartucho Descartado","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.571,12,17]]},{"id":154036,"n":"Estátua Habur","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,169,169,1]]},{"id":154037,"n":"Estátua Kebelu","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,289,289,1]]},{"id":154040,"n":"Estátua Maketi","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,309,310,2]]},{"id":153037,"n":"Estátua Misteriosa","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,25,32.333,7]]},{"id":153022,"n":"Estátua com Rosto Gravado","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,48,37]]},{"id":154013,"n":"Estátua da Liberdade de Bellato","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,65,121]]},{"id":152050,"n":"Explosivo de Mineração com Falha","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,16.5,19,5]]},{"id":1002,"n":"Extensão de Permissão da Base Secreta Nemesis","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,79,250,57]]},{"id":1007,"n":"Extensão de Permissão da Cratera Albern","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1894,4200,16]]},{"id":1003,"n":"Extensão de Permissão do Campo de Mineração (Accretia)","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,80,200,13]]},{"id":1004,"n":"Extensão de Permissão do Campo de Mineração (Bellato)","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,328,448,15]]},{"id":1005,"n":"Extensão de Permissão do Campo de Mineração (Cora)","cat":8,"sub":35,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,83,109,22]]},{"id":270006,"n":"Feixe de Fibra Avançado","cat":7,"sub":31,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,7,15,342]]},{"id":270002,"n":"Feixe de Fibra Inferior","cat":7,"sub":31,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.192,1856.947,727]]},{"id":270010,"n":"Feixe de Fibra Superior","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,233.75,400,13]]},{"id":270007,"n":"Filamento Avançado","cat":7,"sub":31,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,8,1170,173]]},{"id":270003,"n":"Filamento Inferior","cat":7,"sub":31,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.16,14062.8,424]]},{"id":270011,"n":"Filamento Superior","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,192,278,15]]},{"id":1002201,"n":"Fio Cortante Eclipse","cat":1,"sub":8,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,28,37],[5,20,20,1],[6,75,79,3],[7,61,77,8],[8,187,196,7],[9,542,698,5],[10,1228,1230,2]]},{"id":1002202,"n":"Fio Cortante Etendue","cat":1,"sub":8,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,26,30,18],[5,78,84,4],[6,80,80,1],[8,146,147,2],[9,569,698,2],[10,1119,1119,1]]},{"id":1002203,"n":"Fio Cortante Kilonova","cat":1,"sub":8,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,76,80,11],[7,249,400,3],[8,547,555,2]]},{"id":1002204,"n":"Fio Cortante Magnox","cat":1,"sub":8,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,74,16],[5,41,41,2],[6,97,100,4],[7,120,137,12],[8,415,455,10],[9,567,592,8]]},{"id":1002198,"n":"Fio Cortante Prism","cat":1,"sub":8,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,16,517],[1,10,105,6],[2,10,10,4],[3,10,10,1],[4,10,10,1],[5,10,10,159],[6,10,10,11],[7,10,10,286],[8,23,25,6],[9,11,15,96],[10,39,85,46],[11,92,92,5],[12,555,555,1]]},{"id":1002200,"n":"Fio Cortante Scalar","cat":1,"sub":8,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,60,123],[5,15,36,12],[6,54,56,7],[7,15,24,14],[8,217,220,4],[9,52,52,1],[10,99,102,5]]},{"id":1002199,"n":"Fio Cortante Weyl","cat":1,"sub":8,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,25,353],[5,17,37,16],[6,35,87,14],[7,22,25,18],[8,55,58,4],[9,90,954,17],[10,126,127,5]]},{"id":1002210,"n":"Fio Cortante de Combate Anathema","cat":1,"sub":8,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,225,269,6],[6,580,600,2],[7,830,1000,2],[8,1000,1300,2]]},{"id":1002228,"n":"Fio Cortante de Combate Anathema","cat":1,"sub":8,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[6,1200,2000,2],[8,2999,2999,1]]},{"id":1002207,"n":"Fio Cortante de Combate Eminência","cat":1,"sub":8,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,30,34],[5,53,61,2],[6,97,145,6],[7,120,170,6],[8,175,215,5],[9,398,444,5],[10,490,490,1]]},{"id":1002225,"n":"Fio Cortante de Combate Eminência","cat":1,"sub":8,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,888,932,36],[5,355,447,7],[8,400,400,1]]},{"id":1002206,"n":"Fio Cortante de Combate Retícula","cat":1,"sub":8,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,38,27],[5,55,59,5],[6,82,87,4],[7,36,62,13],[8,125,163,6],[9,250,250,1],[10,150,150,1]]},{"id":1002224,"n":"Fio Cortante de Combate Retícula","cat":1,"sub":8,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,809,859,95],[5,499,499,5],[6,239,243,7],[7,922,922,5],[10,900,900,1]]},{"id":1002208,"n":"Fio Cortante de Combate Sigma","cat":1,"sub":8,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,16,70,20],[5,89,190,5],[6,98,109,4],[7,149,175,5],[9,460,460,1]]},{"id":1002226,"n":"Fio Cortante de Combate Sigma","cat":1,"sub":8,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,999,1000,2],[5,997,997,1],[8,1200,1200,1],[9,800,800,2]]},{"id":1002205,"n":"Fio Cortante de Combate Specter","cat":1,"sub":8,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,110,780],[5,10,15,87],[6,16,16,14],[7,10,39,41],[8,19,38,15],[9,48,60,5],[10,299,299,2]]},{"id":1002223,"n":"Fio Cortante de Combate Specter","cat":1,"sub":8,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,20,99,114],[5,32,38,45],[6,28,50,30],[7,85,450,107],[8,139,146,31],[9,95,99,7],[10,91,91,1],[11,995,995,1]]},{"id":1002209,"n":"Fio Cortante de Combate Xenon","cat":1,"sub":8,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,39,81,11],[5,189,198,3],[7,200,240,3]]},{"id":1002227,"n":"Fio Cortante de Combate Xenon","cat":1,"sub":8,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[7,1748,3500,2]]},{"id":1002194,"n":"Fio Cortante do Errante","cat":1,"sub":8,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,178],[1,10,10,5],[2,10,10,2],[3,10,10,4],[5,10,10,18],[6,25,26,3],[7,14,14,4],[8,84,94,11],[9,120,143,17],[11,116,116,2]]},{"id":1002195,"n":"Fio Cortante do Especialista","cat":1,"sub":8,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,222],[1,10,10,2],[2,10,10,1],[4,10,10,1],[5,10,10,14],[7,18,38,16],[8,22,32,12],[9,10,10,88],[10,92,97,6],[11,199,199,1]]},{"id":1002197,"n":"Fio Cortante do Executor","cat":1,"sub":8,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,18,29],[5,32,40,10],[7,90,105,4],[9,249,250,3]]},{"id":1002193,"n":"Fio Cortante do Mercenário","cat":1,"sub":8,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,31],[1,999,999,1],[4,999,999,1],[5,25,25,8],[6,62,70,60],[7,65,70,7],[8,77,99,8],[9,82,83,4],[11,968,999,2]]},{"id":1002192,"n":"Fio Cortante do Praticante","cat":1,"sub":8,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,63],[5,14,37,54],[6,30,33,9],[7,32,39,28],[8,52,53,7],[9,93,107,20],[11,493,493,1]]},{"id":1002196,"n":"Fio Cortante do Sentinela","cat":1,"sub":8,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,101],[5,31,38,8],[6,25,25,2],[7,61,66,16],[8,10,10,2],[9,29,29,1],[10,168,168,1]]},{"id":151051,"n":"Flor de Cinzas","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,24.9,47.333,4]]},{"id":154021,"n":"Flor do Oblívio","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,94,495,4]]},{"id":159007,"n":"Fragmento da Areia Cantante","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,40,40,1]]},{"id":159005,"n":"Fragmento da Fé Quebrada","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.166,5,4]]},{"id":159034,"n":"Fragmento da Onda Nobre","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,100,100,1]]},{"id":159011,"n":"Fragmento das Profundezas","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,3.35,10,7]]},{"id":151057,"n":"Fragmento de Cristal","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,18.5,21.875,7]]},{"id":154041,"n":"Fragmento de Estandarte Saura Vermelho","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,700,700,1]]},{"id":151052,"n":"Fragmento de Insígnia Vermelha","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,2,93,33]]},{"id":152055,"n":"Fragmento de Kit de Cerco","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,66,99,11]]},{"id":154050,"n":"Fragmento de Minério de Pedra Sagrada","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,162.5,260,19]]},{"id":159031,"n":"Fragmento de Névoa Dissipante","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,8.333,10.869,2]]},{"id":152016,"n":"Fragmento de Obernium","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.222,93,27]]},{"id":151049,"n":"Fragmento de Pedra Sagrada Desbotado","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.428,14,22]]},{"id":159030,"n":"Fragmento de Respiração Desvanecente","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,24.5,24.5,2]]},{"id":151020,"n":"Fragmento de Tábua com Dogmas","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.5,93,17]]},{"id":159009,"n":"Fragmento do Abandonado","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,2,9.983,22]]},{"id":159006,"n":"Fragmento do Aço Derretido","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,8.333,12.5,5]]},{"id":159012,"n":"Fragmento do Campo de Batalha Ardente","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.333,3,6]]},{"id":159004,"n":"Fragmento do Herege Errante","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.571,3.333,11]]},{"id":159010,"n":"Fragmento do Vingador Oculto","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.375,5,11]]},{"id":159003,"n":"Fragmento dos Gritos Corrompidos","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.277,2.166,18]]},{"id":151036,"n":"Gancho Ornamentado","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,29,67,27]]},{"id":152033,"n":"Gerador de Holograma","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,118,170,5]]},{"id":151048,"n":"Granada com Insígnia Imperial","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,18.5,20.266,5]]},{"id":151035,"n":"Injeção de Adrenalina","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,35,40,4]]},{"id":152021,"n":"Inseto Azul","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,34,7]]},{"id":152028,"n":"Inseto Carmesim","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,44,55,9]]},{"id":153018,"n":"Inseto Dourado","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,49,23]]},{"id":152058,"n":"Inseto de Gelo","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,99.666,148,11]]},{"id":151046,"n":"Insígnia Imperial Suja","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.55,2100,66]]},{"id":154047,"n":"Insígnia Nemesis","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,148,172,12]]},{"id":151027,"n":"Insígnia de Confiança Polida","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,16.5,16.5,1]]},{"id":154031,"n":"Insígnia de Patente Imperial","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,400,400,3]]},{"id":152029,"n":"Isqueiro","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,27,28,3]]},{"id":22100,"n":"Kit de Aprimoramento do Painel de Expansão de Armadura","cat":7,"sub":30,"grade":3,"q":0,"lv":0,"meta_ok":true,"of":[[0,3333,3333,1]]},{"id":151030,"n":"Kit de Ferramentas de Manutenção Corporal","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,9,10,10]]},{"id":151024,"n":"Kit de Jogo de Argolas","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,3.75,10,10]]},{"id":5202,"n":"Kit de Upgrade de Acessório","cat":7,"sub":30,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.75,1010.09,112]]},{"id":5302,"n":"Kit de Upgrade de Acessório Fino","cat":7,"sub":30,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,420,550,5]]},{"id":5200,"n":"Kit de Upgrade de Arma","cat":7,"sub":30,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.1,10909,267]]},{"id":5300,"n":"Kit de Upgrade de Arma Fino","cat":7,"sub":30,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,449,650,4]]},{"id":5201,"n":"Kit de Upgrade de Armadura","cat":7,"sub":30,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.478,11049.8,299]]},{"id":5301,"n":"Kit de Upgrade de Armadura Fino","cat":7,"sub":30,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,450,800,6]]},{"id":5208,"n":"Kit de Upgrade de Expansão","cat":7,"sub":30,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,7.407,12.5,14]]},{"id":153016,"n":"Lanterna de Mineração","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,4,12,21]]},{"id":151044,"n":"Lente Óptica","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,13,42]]},{"id":152022,"n":"Leque Ornamentado","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,19.5,20]]},{"id":270044,"n":"Liga Arcana","cat":7,"sub":31,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.2,5541,150]]},{"id":270012,"n":"Liga Rudimentar","cat":7,"sub":31,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.13,1623,532]]},{"id":270045,"n":"Liga de Pedra Sagrada","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,59,115,26]]},{"id":152047,"n":"Lista de Alvos de Assassinato","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,17,33,20]]},{"id":152019,"n":"Luvas Cerimoniais Danificadas","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,7.4,7.4,1]]},{"id":151014,"n":"Luvas Cobertas de Gosma Negra","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.611,10,33]]},{"id":153020,"n":"Luvas do Sumo Sacerdote","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,9,11,15]]},{"id":151050,"n":"Luz Cristalina","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,4,10,10]]},{"id":1000046,"n":"Lâmina Eclipse","cat":1,"sub":3,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,79,28],[7,54,66,5],[8,298,299,2]]},{"id":1000047,"n":"Lâmina Etendue","cat":1,"sub":3,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,39,28],[5,87,88,5],[9,300,315,2]]},{"id":1000048,"n":"Lâmina Kilonova","cat":1,"sub":3,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,46,67,26],[7,85,129,6]]},{"id":1000049,"n":"Lâmina Magnox","cat":1,"sub":3,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,197],[5,19,19,8],[6,28,38,13],[7,10,30,21],[8,48,53,10],[9,68,94,14]]},{"id":1000132,"n":"Lâmina Pallacia do Executor","cat":1,"sub":3,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[7,11500,11500,1]]},{"id":1000043,"n":"Lâmina Prism","cat":1,"sub":3,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,100,332],[4,10,10,1],[5,10,10,53],[6,997,998,2],[7,10,10,106],[8,10,14,8],[9,10,10,102],[10,14,16,27]]},{"id":1000045,"n":"Lâmina Scalar","cat":1,"sub":3,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,100,20],[5,47,97,10],[6,43,44,3],[7,76,82,8],[8,150,179,16],[10,113,113,3]]},{"id":1000044,"n":"Lâmina Weyl","cat":1,"sub":3,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,154],[5,10,10,19],[6,12,12,3],[7,46,58,13],[8,43,44,2],[10,137,157,10]]},{"id":1000091,"n":"Lâmina de Combate Anathema","cat":1,"sub":3,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,159,289,10]]},{"id":1000574,"n":"Lâmina de Combate Anathema","cat":1,"sub":3,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,2800,3150,2]]},{"id":1000088,"n":"Lâmina de Combate Eminência","cat":1,"sub":3,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,39,63,6],[5,97,98,2],[7,99,150,2],[8,150,193,2],[9,349,350,2]]},{"id":1000571,"n":"Lâmina de Combate Eminência","cat":1,"sub":3,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,121,147,27],[5,148,148,1]]},{"id":1000087,"n":"Lâmina de Combate Retícula","cat":1,"sub":3,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,44,20],[5,56,68,3],[6,66,86,3],[7,46,53,8],[8,56,59,4],[9,163,163,1],[11,649,649,1]]},{"id":1000570,"n":"Lâmina de Combate Retícula","cat":1,"sub":3,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,55,86,33],[6,198,266,3],[8,894,894,2]]},{"id":1000089,"n":"Lâmina de Combate Sigma","cat":1,"sub":3,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,25,17],[5,95,120,8],[6,160,160,1],[7,240,240,1],[8,190,199,2],[9,423,424,3]]},{"id":1000572,"n":"Lâmina de Combate Sigma","cat":1,"sub":3,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,649,660,6],[6,588,588,1]]},{"id":1000086,"n":"Lâmina de Combate Specter","cat":1,"sub":3,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,400,158],[1,10,10,2],[5,10,10,56],[6,16,33,17],[7,10,11,42],[8,39,72,7],[9,80,108,8],[10,246,250,3]]},{"id":1000569,"n":"Lâmina de Combate Specter","cat":1,"sub":3,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,21,99,288],[5,26,99,37],[6,44,50,27],[7,168,199,113],[8,56,57,37],[9,99,99,1],[10,86,86,4],[11,499,499,1],[12,259,259,1]]},{"id":1000090,"n":"Lâmina de Combate Xenon","cat":1,"sub":3,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,75,103,7],[5,265,279,4],[7,699,699,1],[8,899,899,1]]},{"id":1000008,"n":"Lâmina do Errante","cat":1,"sub":3,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,113],[5,30,45,27],[7,26,27,4],[8,59,199,13],[9,82,95,24],[10,41,41,1]]},{"id":1000009,"n":"Lâmina do Especialista","cat":1,"sub":3,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,60,453],[5,10,10,63],[6,10,15,22],[7,10,15,132],[8,10,15,9],[9,12,15,98],[10,18,18,62],[11,164,164,1]]},{"id":1000011,"n":"Lâmina do Executor","cat":1,"sub":3,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,18],[7,34,55,10],[8,130,132,4],[9,324,350,5]]},{"id":1000007,"n":"Lâmina do Mercenário","cat":1,"sub":3,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,160],[1,996,997,3],[3,999,999,1],[5,21,24,12],[6,998,998,1],[7,28,46,20],[8,61,63,11],[9,48,211,3],[10,62,66,5]]},{"id":1900003,"n":"Lâmina do Ninho Enferrujado","cat":1,"sub":3,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[9,1099,1099,1]]},{"id":1000006,"n":"Lâmina do Praticante","cat":1,"sub":3,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,1087,220],[5,10,20,24],[7,20,50,30],[8,92,92,3],[9,51,55,10],[10,49,67,11]]},{"id":1000010,"n":"Lâmina do Sentinela","cat":1,"sub":3,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,40,99],[5,62,65,14],[6,32,34,5],[7,29,94,4],[8,69,70,2],[9,177,188,6],[10,29,29,3]]},{"id":1000067,"n":"Machado Eclipse","cat":1,"sub":6,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,13,43],[7,28,28,4],[8,54,68,8],[9,240,299,8]]},{"id":1000068,"n":"Machado Etendue","cat":1,"sub":6,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,25,25],[5,64,65,2],[7,119,119,1],[9,299,299,1]]},{"id":1000069,"n":"Machado Kilonova","cat":1,"sub":6,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,17,67,31],[5,99,99,1],[8,288,288,1],[9,448,448,1]]},{"id":1000070,"n":"Machado Magnox","cat":1,"sub":6,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,16,15],[5,29,29,5],[7,60,69,4],[8,153,188,2]]},{"id":1000150,"n":"Machado Pallacia do Executor","cat":1,"sub":6,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,4995,4999,2],[6,7000,7000,1],[7,10000,12000,2]]},{"id":1000064,"n":"Machado Prism","cat":1,"sub":6,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,231],[4,10,10,1],[5,10,116,84],[6,10,10,22],[7,10,15,290],[8,24,120,17],[9,17,19,96],[10,14,14,32],[12,497,497,1]]},{"id":1000066,"n":"Machado Scalar","cat":1,"sub":6,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,51],[6,34,70,8],[7,23,28,12],[9,193,199,5]]},{"id":1000065,"n":"Machado Weyl","cat":1,"sub":6,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,346],[5,10,10,93],[7,10,10,61],[8,13,45,8],[9,20,20,16],[10,25,25,4]]},{"id":1000115,"n":"Machado de Combate Anathema","cat":1,"sub":6,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,192,195,6],[5,400,400,1]]},{"id":1000112,"n":"Machado de Combate Eminência","cat":1,"sub":6,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,26,27],[5,68,70,3],[7,85,499,4],[8,150,150,1],[9,86,86,1]]},{"id":1000595,"n":"Machado de Combate Eminência","cat":1,"sub":6,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,74,151,41],[6,50,50,1]]},{"id":1000111,"n":"Machado de Combate Retícula","cat":1,"sub":6,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,55,36],[5,65,70,2],[7,44,75,7],[9,230,235,2]]},{"id":1000594,"n":"Machado de Combate Retícula","cat":1,"sub":6,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,54,63,26],[5,925,925,8],[6,91,161,9],[7,912,912,8]]},{"id":1000113,"n":"Machado de Combate Sigma","cat":1,"sub":6,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,18,95,14],[5,250,500,2],[7,291,295,7],[8,490,495,2]]},{"id":1000596,"n":"Machado de Combate Sigma","cat":1,"sub":6,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,661,662,2],[6,599,599,1]]},{"id":1000110,"n":"Machado de Combate Specter","cat":1,"sub":6,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,50,295],[3,99,99,1],[5,10,10,76],[6,16,100,8],[7,10,40,96],[8,10,55,8],[9,59,59,2],[10,97,99,4],[11,50,90,2]]},{"id":1000593,"n":"Machado de Combate Specter","cat":1,"sub":6,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,21,97,13],[5,22,31,10],[6,21,53,82],[7,25,125,146],[8,490,511,46],[9,96,99,10],[10,200,200,4],[11,1539,1539,1]]},{"id":1000114,"n":"Machado de Combate Xenon","cat":1,"sub":6,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,48,76,6],[5,179,179,1],[7,299,1110,3]]},{"id":1900009,"n":"Machado do Caçador de Piratas","cat":1,"sub":6,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,4488,4488,1]]},{"id":1000026,"n":"Machado do Errante","cat":1,"sub":6,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,37,60],[5,17,20,2],[6,39,39,3],[7,74,79,19],[8,59,63,11],[9,210,211,3],[10,19,19,16],[11,167,167,1]]},{"id":1000027,"n":"Machado do Especialista","cat":1,"sub":6,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,247,682],[1,10,10,1],[2,10,10,1],[4,10,146,4],[5,10,10,162],[6,10,1086,74],[7,10,40,392],[8,10,15,69],[9,10,15,467],[10,11,13,122],[11,177,177,3]]},{"id":1000029,"n":"Machado do Executor","cat":1,"sub":6,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,29,11],[5,80,83,4],[7,27,188,12],[8,84,90,3],[9,348,499,7]]},{"id":1000025,"n":"Machado do Mercenário","cat":1,"sub":6,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,18,74],[5,15,15,6],[7,33,40,9],[8,53,59,12],[9,139,159,17],[10,70,84,5]]},{"id":1000024,"n":"Machado do Praticante","cat":1,"sub":6,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,1499,67],[1,10,10,1],[5,10,12,25],[6,10,10,1],[7,30,67,29],[8,16,16,1],[9,87,149,33],[10,88,89,2]]},{"id":1000028,"n":"Machado do Sentinela","cat":1,"sub":6,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,117,82],[5,88,117,11],[6,20,25,5],[7,27,27,2],[8,27,27,1],[9,116,116,3],[10,29,33,4]]},{"id":152032,"n":"Manoplas de Combate","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,50,151,4]]},{"id":151047,"n":"Marca Imperial Danificada","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.25,10,18]]},{"id":154053,"n":"Marca de Abate","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,82,82,1]]},{"id":151025,"n":"Marca do Peregrino","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,7.5,52,11]]},{"id":152025,"n":"Marca do Prospector de Relíquias","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,118,120,3]]},{"id":153050,"n":"Matriz de Cristal","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,30,32,4]]},{"id":153019,"n":"Matéria Negra Giratória","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,7.5,14,24]]},{"id":151019,"n":"Matéria Negra Gotejando","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.4,842,12]]},{"id":154022,"n":"Matéria da Morte","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,128,150,11]]},{"id":153046,"n":"Medalha Accretia Danificada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,530,59]]},{"id":153031,"n":"Medalha Alada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,39,56,6]]},{"id":153038,"n":"Medalha Cruzada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,21,6]]},{"id":154030,"n":"Medalha Desbotada","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,45,46,2]]},{"id":152020,"n":"Medalha da Força Brilhante","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,8.5,21,13]]},{"id":153052,"n":"Medalha de Honra Imperial","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,8.5,10,25]]},{"id":154046,"n":"Medalha do Imperador Danificada","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,9.5,126,39]]},{"id":270014,"n":"Metal Raro Avançado","cat":7,"sub":31,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,254,316,17]]},{"id":270013,"n":"Metal Raro Inferior","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,4.333,3333,440]]},{"id":153036,"n":"Micro Drone","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,31,31,1]]},{"id":152052,"n":"Miniatura Hector","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,4,93,33]]},{"id":151023,"n":"Minério Envolto em Matéria Negra","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.2,93,30]]},{"id":152015,"n":"Minério Sulfúrico","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,2,93,39]]},{"id":154048,"n":"Minério de Soberinium","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,539,555,4]]},{"id":151054,"n":"Mira Antiga","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.4,19,12]]},{"id":152013,"n":"Mira Holográfica","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.428,10,27]]},{"id":151032,"n":"Modelo de Cybercar","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,14.285,1050,3]]},{"id":153013,"n":"Munição Especial","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,2.285,10,47]]},{"id":154052,"n":"Munição de Pedra Sagrada","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,25,56,35]]},{"id":151022,"n":"Máscara da Morte","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.545,25,22]]},{"id":151058,"n":"Máscara de Inewtsha","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,21.8,34,7]]},{"id":152023,"n":"Máscara de Metal Negro","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,22.5,25,14]]},{"id":153015,"n":"Máscara de Oxigênio Danificada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,6,12,42]]},{"id":153042,"n":"Mão Mecânica","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,9,20,308]]},{"id":153048,"n":"Mão Mecânica Ornamentada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,112.5,200,10]]},{"id":151026,"n":"Mão da Perda","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,7,10,6]]},{"id":151017,"n":"Nota Eletrônica Danificada","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.2,12,25]]},{"id":270033,"n":"Núcleo Vital","cat":7,"sub":31,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,100000,100000,1]]},{"id":154044,"n":"Olho Mecha","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,113,145,5]]},{"id":154035,"n":"Orbe de Cristal Novus","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,169,172,2]]},{"id":151028,"n":"Orbe de Metal Sagrado","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,4.875,50,7]]},{"id":151037,"n":"Pacote de Energia Militar","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,20.333,24,3]]},{"id":154157,"n":"Painel Solar Tipo A","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,19,19,9]]},{"id":154158,"n":"Painel Solar Tipo B","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,29,20]]},{"id":154159,"n":"Painel Solar Tipo C","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,9,20,8]]},{"id":153055,"n":"Paraquedas de Fuga","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,96,200,13]]},{"id":4103,"n":"Passiva - Constante [III]","cat":6,"sub":27,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,60000,60000,1]]},{"id":4102,"n":"Passiva - Constante [II]","cat":6,"sub":27,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,94,1000,19]]},{"id":4209,"n":"Passiva - Otimização","cat":6,"sub":27,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,276,429,19]]},{"id":4207,"n":"Passiva - Reforço de Bloqueio","cat":6,"sub":27,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,108,320,23]]},{"id":154142,"n":"Pedra Albern Azul","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,4.384,8,12]]},{"id":154141,"n":"Pedra Albern Verde","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,3]]},{"id":154143,"n":"Pedra Albern Vermelha","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,4.965,5.166,4]]},{"id":152018,"n":"Pedra Divina Decem Desbotada","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,88,11]]},{"id":154024,"n":"Pedra Divina Decem Dourada","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,153,154.5,2]]},{"id":154026,"n":"Pedra Divina Decem Verde","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,90,99,3]]},{"id":154018,"n":"Pedra Divina Decem Vermelha","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,27,82,8]]},{"id":153023,"n":"Pedra Divina Negra","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,28,5]]},{"id":152026,"n":"Pedra de Prova Vermelha","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,38,38,3]]},{"id":152054,"n":"Pelúcia de Animus","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,69,42]]},{"id":153044,"n":"Peça de Bateria Enferrujada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,19,20,7]]},{"id":153021,"n":"Piroxênio de Cristal Azul","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,53,29]]},{"id":152045,"n":"Pistola Antiga","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,38,13]]},{"id":1002421,"n":"Pistola Blaster Pallacia do Executor","cat":1,"sub":9,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[8,14500,14500,1]]},{"id":1002434,"n":"Pistola Blaster Pallacia do Executor","cat":1,"sub":9,"grade":4,"q":2,"lv":0,"meta_ok":true,"of":[[6,12000,12000,1]]},{"id":1002408,"n":"Pistola Blaster Scalar","cat":1,"sub":9,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,160],[1,10,10,3],[2,10,10,1],[3,10,10,2],[4,10,10,1],[5,10,10,1],[6,15,80,9],[7,10,10,20],[8,67,69,12],[9,21,21,2],[10,37,48,7]]},{"id":1002429,"n":"Pistola Blaster de Combate Sigma","cat":1,"sub":9,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,888,888,1]]},{"id":1002413,"n":"Pistola Blaster de Combate Specter","cat":1,"sub":9,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,110,287],[5,10,250,70],[6,16,17,11],[7,10,40,88],[8,76,99,10],[9,38,43,3],[10,189,190,6],[11,165,165,1]]},{"id":1002426,"n":"Pistola Blaster de Combate Specter","cat":1,"sub":9,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,19,100,56],[5,24,25,12],[6,32,50,53],[7,53,58,131],[8,62,99,13],[9,99,99,3],[10,199,210,6],[11,249,249,1]]},{"id":1002430,"n":"Pistola Blaster de Combate Xenon","cat":1,"sub":9,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[6,999,1000,2],[9,2500,3450,2]]},{"id":1002405,"n":"Pistola Blaster do Executor","cat":1,"sub":9,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,22],[5,75,77,4],[6,188,188,1],[7,53,68,7],[8,109,130,5],[9,326,328,5]]},{"id":1002401,"n":"Pistola Blaster do Mercenário","cat":1,"sub":9,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,22,234],[1,999,999,6],[2,999,999,1],[4,999,999,1],[5,10,10,33],[6,36,43,18],[7,86,999,20],[8,49,52,5],[9,86,106,17],[10,493,536,5]]},{"id":1002404,"n":"Pistola Blaster do Sentinel","cat":1,"sub":9,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,60,102],[5,33,85,16],[6,18,18,5],[7,62,98,14],[8,31,31,1],[9,40,42,3],[10,137,141,4]]},{"id":1002402,"n":"Pistola Blaster do Vagante","cat":1,"sub":9,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,116,147],[1,10,10,8],[2,10,10,2],[3,10,10,1],[5,12,12,1],[6,131,131,1],[7,20,20,1],[8,78,80,8],[9,10,10,15],[10,17,17,29],[11,498,498,1]]},{"id":1002418,"n":"Pistola de Combate Anathema Blaster","cat":1,"sub":9,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,335,342,2],[7,850,1000,3]]},{"id":1002431,"n":"Pistola de Combate Anathema Blaster","cat":1,"sub":9,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[6,1900,2099,3],[7,2550,2600,2],[12,5000,5000,1]]},{"id":1002415,"n":"Pistola de Combate Eminence","cat":1,"sub":9,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,30,16],[5,42,56,5],[6,94,500,7],[7,69,79,3],[8,149,160,4],[9,210,210,1]]},{"id":1002428,"n":"Pistola de Combate Eminence Blaster","cat":1,"sub":9,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,128,169,34],[5,632,633,2],[6,410,410,1],[7,610,610,1]]},{"id":153041,"n":"Placa Metálica Gravada","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,148,168,5]]},{"id":154054,"n":"Placa de Armadura da Sorte","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,159,160,2]]},{"id":270004,"n":"Placa de Metal Avançado","cat":7,"sub":31,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,100,132]]},{"id":270000,"n":"Placa de Metal Fragmentada","cat":7,"sub":31,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.171,1828.96,390]]},{"id":270008,"n":"Placa de Metal Superior","cat":7,"sub":31,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,162,249.8,12]]},{"id":154168,"n":"Plano de Terraformação Capítulo 1","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,173.333,318,13]]},{"id":154169,"n":"Plano de Terraformação Capítulo 2","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,245,285,3]]},{"id":154170,"n":"Plano de Terraformação Capítulo 3","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,339,390,4]]},{"id":151021,"n":"Ponta de Arpão Equesian","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,4,93,57]]},{"id":151041,"n":"Ponta de Lança Obernium","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,68,69,2]]},{"id":152014,"n":"Projétil Coberto de Gosma Negra","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.571,5,12]]},{"id":1002011,"n":"Propulsor Antigravidade","cat":4,"sub":23,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,3188,3599,7],[4,3400,3999,3],[5,4599,4850,2]]},{"id":1002001,"n":"Propulsor de Foguete","cat":4,"sub":23,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,30,130],[2,99,99,1],[3,48,160,10],[4,100,320,8],[5,122,245,12],[6,190,280,5],[7,650,1099,5],[8,999,2300,4],[10,2000,2000,1]]},{"id":1002003,"n":"Propulsor de Foguete","cat":4,"sub":23,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1988,1989,2],[6,2600,2600,1]]},{"id":1000197,"n":"Protetor Cervical Adesivo","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,49,34],[5,48,60,8],[6,343,349,6],[7,19,31,6],[8,89,94,7],[9,220,249,2]]},{"id":1000191,"n":"Protetor Cervical Ajustado","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,15,26],[5,297,299,4],[7,28,59,18],[8,77,92,7],[9,150,499,4],[10,250,250,1],[11,599,599,1]]},{"id":1000194,"n":"Protetor Cervical Altamente Elástico","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,61],[1,10,10,4],[2,1306,1306,2],[3,999,999,3],[6,10,993,6],[7,18,27,23],[8,10,10,4],[9,31,44,12],[10,71,73,4]]},{"id":1000190,"n":"Protetor Cervical Aprimorado","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,22],[5,15,38,9],[7,48,70,15],[8,31,37,11],[9,30,37,9]]},{"id":1000192,"n":"Protetor Cervical Comprimido","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,23,57],[5,64,339,5],[7,88,88,3],[8,80,100,5],[9,200,283,6]]},{"id":1000188,"n":"Protetor Cervical Confortável","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,37],[1,10,10,6],[3,10,10,3],[4,10,10,1],[5,10,10,18],[6,10,10,2],[7,26,33,48],[8,41,52,11],[9,198,199,3],[10,95,101,7]]},{"id":1000189,"n":"Protetor Cervical Flexível","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,172],[1,10,10,2],[2,10,10,1],[3,10,10,1],[4,10,10,1],[5,10,10,173],[6,58,134,6],[7,17,17,22],[8,47,69,4],[9,29,29,1],[10,18,18,59],[11,165,165,2]]},{"id":1000196,"n":"Protetor Cervical Impermeável","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,52],[5,10,19,5],[7,10,10,12],[8,28,35,6],[9,32,40,6],[10,88,89,2]]},{"id":1000200,"n":"Protetor Cervical Isolante","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,18,24],[5,55,58,3],[6,156,162,3],[8,84,85,2]]},{"id":1000187,"n":"Protetor Cervical Leve","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,3],[5,19,19,17],[7,24,26,7],[8,24,24,2],[9,68,70,5],[10,169,175,6]]},{"id":1000212,"n":"Protetor Cervical Resistente a Cortes","cat":2,"sub":12,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,5988,7800,4],[5,7800,7800,1]]},{"id":1000198,"n":"Protetor Cervical Resistente ao Calor","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,15,21,44],[5,50,51,3],[7,66,66,3],[8,70,74,2],[9,99,199,5]]},{"id":1000186,"n":"Protetor Cervical Simples","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,22],[5,25,37,40],[6,10,10,1],[7,25,30,8],[8,55,64,23],[9,65,92,61],[10,82,83,2],[11,599,599,2]]},{"id":1000199,"n":"Protetor Cervical de Alta Densidade","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,87],[5,11,11,9],[6,10,15,7],[7,10,15,169],[8,10,85,12],[9,10,10,93],[10,130,142,9],[11,340,340,1]]},{"id":1000201,"n":"Protetor Cervical de Alta Resistência","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,19,29,16],[5,101,102,3],[6,80,80,1],[7,99,100,3],[9,150,150,1]]},{"id":1000193,"n":"Protetor Cervical de Alto Desempenho","cat":2,"sub":12,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,38],[5,50,59,9],[6,39,40,3],[7,32,36,3],[8,48,49,4],[9,94,98,5],[10,60,99,8]]},{"id":1000207,"n":"Protetor Cervical de Couro Aprimorado","cat":2,"sub":12,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,200,400,8],[6,450,450,1],[7,999,999,1],[9,3000,3000,1]]},{"id":1000690,"n":"Protetor Cervical de Couro Aprimorado","cat":2,"sub":12,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[6,1500,1500,1],[9,2500,2500,1]]},{"id":1000202,"n":"Protetor Cervical de Fibra de Aramida","cat":2,"sub":12,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,33,23],[5,10,10,134],[6,16,16,25],[7,10,10,86],[8,40,80,28],[9,52,200,19],[10,279,500,9]]},{"id":1000685,"n":"Protetor Cervical de Fibra de Aramida","cat":2,"sub":12,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,23,99,60],[5,54,54,10],[6,49,50,36],[7,56,995,29],[8,60,78,17],[9,96,99,4],[10,125,195,6],[12,1200,1200,3]]},{"id":1000205,"n":"Protetor Cervical de Nanocelulose","cat":2,"sub":12,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,28,150,29],[5,115,115,1],[7,89,100,2],[8,299,300,2],[9,390,444,4],[10,499,499,1]]},{"id":1000688,"n":"Protetor Cervical de Nanocelulose","cat":2,"sub":12,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,499,991,8],[5,1000,1000,1]]},{"id":1000204,"n":"Protetor Cervical de Nitrilo Aprimorado","cat":2,"sub":12,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,17,30,24],[5,24,38,8],[7,25,95,12],[8,64,95,5],[9,110,119,2],[11,250,250,2]]},{"id":1000687,"n":"Protetor Cervical de Nitrilo Aprimorado","cat":2,"sub":12,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,194,210,16],[5,95,95,2],[6,868,868,1]]},{"id":1000206,"n":"Protetor Cervical de Plástico Líquido","cat":2,"sub":12,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,59,10],[7,265,270,3],[10,600,600,2]]},{"id":1000689,"n":"Protetor Cervical de Plástico Líquido","cat":2,"sub":12,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,969,970,2]]},{"id":1000203,"n":"Protetor Cervical de Sílica Polimérica","cat":2,"sub":12,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,40,4],[6,22,26,5],[7,14,15,9],[8,40,59,6],[9,370,498,3],[10,297,298,2]]},{"id":1000686,"n":"Protetor Cervical de Sílica Polimérica","cat":2,"sub":12,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,82,107,88],[5,282,522,16],[6,135,209,13],[7,895,895,7],[8,989,991,3]]},{"id":1900036,"n":"Protetor Cervical do Vingador","cat":2,"sub":12,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,266,266,1]]},{"id":1000195,"n":"Protetor Cervical à Prova de Balas","cat":2,"sub":12,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,106],[3,10,10,2],[5,10,10,66],[6,10,10,22],[7,10,10,74],[8,10,10,51],[9,12,12,31],[10,22,22,6]]},{"id":1000271,"n":"Protetor Inferior Adesivo","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,34],[5,20,35,25],[7,27,38,8],[8,91,92,3],[9,165,199,2],[10,114,115,2]]},{"id":1000265,"n":"Protetor Inferior Ajustado","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,2174,32],[5,22,23,4],[6,39,39,1],[7,29,42,4],[8,58,66,4],[11,200,200,1]]},{"id":1000268,"n":"Protetor Inferior Altamente Elástico","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,14,37],[5,11,11,1],[6,13,13,3],[7,20,29,27],[8,22,22,2],[9,36,44,10],[10,135,182,26]]},{"id":1000264,"n":"Protetor Inferior Aprimorado","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,1087,51],[5,16,17,7],[6,32,33,8],[7,20,67,22],[8,33,34,4],[9,78,180,9]]},{"id":1000266,"n":"Protetor Inferior Comprimido","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,21,37],[7,110,140,4],[8,97,150,7],[9,299,314,6]]},{"id":1000262,"n":"Protetor Inferior Confortável","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,18,16],[5,15,23,13],[7,29,34,9],[8,34,35,2],[9,88,92,6],[10,19,19,23]]},{"id":1000263,"n":"Protetor Inferior Flexível","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,25,57],[5,10,10,24],[6,11,11,1],[7,25,29,12],[8,70,75,2],[9,28,29,14],[10,90,91,3]]},{"id":1000270,"n":"Protetor Inferior Impermeável","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,16],[5,15,121,11],[7,15,20,8],[8,53,53,2],[9,92,95,8],[10,244,279,5]]},{"id":1000274,"n":"Protetor Inferior Isolante","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,39,39],[5,58,60,3],[6,68,68,1],[7,85,85,2],[8,81,86,7]]},{"id":1000261,"n":"Protetor Inferior Leve","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,11,102],[5,10,10,133],[6,10,15,30],[7,10,15,264],[8,10,15,67],[9,10,15,238],[10,18,18,16],[11,132,132,1]]},{"id":1000286,"n":"Protetor Inferior Resistente a Cortes","cat":2,"sub":13,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,6999,6999,2]]},{"id":1000272,"n":"Protetor Inferior Resistente ao Calor","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,40,22],[5,27,28,2],[6,76,77,4],[7,80,89,3],[8,198,200,16],[9,246,246,2]]},{"id":1000260,"n":"Protetor Inferior Simples","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,35],[5,78,94,8],[7,41,42,8],[8,97,97,1],[9,85,87,7],[10,87,100,9],[11,433,435,2]]},{"id":1000273,"n":"Protetor Inferior de Alta Densidade","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,50],[5,66,96,16],[6,131,145,6],[7,10,10,241],[8,10,10,15],[9,28,29,51],[10,136,188,27]]},{"id":1000275,"n":"Protetor Inferior de Alta Resistência","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,139],[5,10,10,86],[6,10,10,14],[7,10,10,89],[8,10,15,44],[9,19,27,68],[10,14,95,36],[11,235,235,1]]},{"id":1000267,"n":"Protetor Inferior de Alto Desempenho","cat":2,"sub":13,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,36],[5,24,47,10],[7,34,48,9],[9,195,250,4],[10,291,296,4]]},{"id":1000281,"n":"Protetor Inferior de Couro Aprimorado","cat":2,"sub":13,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,142,274,5],[7,699,699,1],[8,800,800,1]]},{"id":1000764,"n":"Protetor Inferior de Couro Aprimorado","cat":2,"sub":13,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,996,998,2]]},{"id":1000276,"n":"Protetor Inferior de Fibra de Aramida","cat":2,"sub":13,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,110,20],[5,10,30,415],[6,309,350,36],[7,10,20,92],[8,10,80,9],[9,21,119,25],[10,79,260,8],[11,420,459,2]]},{"id":1000759,"n":"Protetor Inferior de Fibra de Aramida","cat":2,"sub":13,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,29,99,26],[5,41,41,17],[6,49,49,5],[7,97,161,259],[8,99,99,7],[9,98,99,7],[10,391,398,3],[11,235,249,3],[12,1400,1400,2]]},{"id":1000279,"n":"Protetor Inferior de Nanocelulose","cat":2,"sub":13,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,22,31,12],[5,54,98,6],[7,94,100,2],[8,175,220,3],[9,200,200,1],[10,300,1000,4],[11,500,500,1]]},{"id":1000762,"n":"Protetor Inferior de Nanocelulose","cat":2,"sub":13,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,919,925,4]]},{"id":1000278,"n":"Protetor Inferior de Nitrilo Aprimorado","cat":2,"sub":13,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,40,14],[5,107,194,13],[7,88,99,4],[8,77,85,5],[9,179,199,6],[12,649,649,1]]},{"id":1000761,"n":"Protetor Inferior de Nitrilo Aprimorado","cat":2,"sub":13,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,149,157,14],[5,288,288,1]]},{"id":1000280,"n":"Protetor Inferior de Plástico Líquido","cat":2,"sub":13,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,37,489,28],[7,450,450,1],[9,320,320,2],[10,500,500,2]]},{"id":1000763,"n":"Protetor Inferior de Plástico Líquido","cat":2,"sub":13,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1999,1999,1]]},{"id":1000277,"n":"Protetor Inferior de Sílica Polimérica","cat":2,"sub":13,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,35,35,1],[5,284,287,4],[6,481,487,6],[7,25,100,4],[8,47,59,4],[9,246,275,3],[10,384,449,3]]},{"id":1000760,"n":"Protetor Inferior de Sílica Polimérica","cat":2,"sub":13,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,74,94,28],[5,161,211,14],[6,156,252,11],[7,873,875,10],[8,293,300,7]]},{"id":1000269,"n":"Protetor Inferior à Prova de Balas","cat":2,"sub":13,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,70],[5,10,10,39],[6,10,40,4],[7,53,60,9],[8,25,29,5],[9,56,72,12],[10,50,53,5]]},{"id":1000234,"n":"Protetor Superior Adesivo","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,25,18],[5,27,28,3],[6,85,111,9],[7,40,59,14]]},{"id":1000228,"n":"Protetor Superior Ajustado","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,22],[1,20,20,2],[5,25,105,4],[7,48,69,20],[8,26,300,12],[9,181,199,3]]},{"id":1000231,"n":"Protetor Superior Altamente Elástico","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,91],[1,186,186,13],[2,10,10,4],[3,10,10,3],[4,10,10,1],[5,10,10,15],[6,10,10,3],[7,25,32,21],[8,22,37,12],[9,46,46,11],[10,43,65,29]]},{"id":1000227,"n":"Protetor Superior Aprimorado","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,14,53],[5,14,28,6],[6,21,22,3],[7,41,57,14],[8,64,77,16],[9,38,42,4],[10,250,250,3]]},{"id":1000229,"n":"Protetor Superior Comprimido","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,20,20,5],[7,70,70,2],[8,120,160,7],[9,390,400,2]]},{"id":1000225,"n":"Protetor Superior Confortável","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,44],[1,10,10,11],[2,10,10,6],[3,10,10,5],[4,10,10,4],[5,10,10,5],[6,10,10,2],[7,14,14,15],[8,32,79,28],[9,10,10,6],[10,21,22,12],[11,175,176,2]]},{"id":1000226,"n":"Protetor Superior Flexível","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,111],[1,10,10,3],[2,10,10,1],[3,10,10,1],[5,10,10,117],[6,10,10,14],[7,11,11,57],[8,10,15,17],[9,18,18,15],[10,54,55,4]]},{"id":1000233,"n":"Protetor Superior Impermeável","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,14],[5,66,67,3],[6,89,91,3],[7,22,59,37],[8,64,74,21],[9,28,28,1],[10,226,250,5]]},{"id":1000237,"n":"Protetor Superior Isolante","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,15,9],[6,114,137,4],[7,79,100,3],[8,105,120,3]]},{"id":1000224,"n":"Protetor Superior Leve","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,14,37],[5,18,195,35],[6,10,10,1],[7,48,50,8],[8,41,45,21],[9,96,97,4],[10,87,89,3]]},{"id":1000249,"n":"Protetor Superior Resistente a Cortes","cat":2,"sub":11,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,7009,7009,1],[6,10000,10000,1]]},{"id":1000235,"n":"Protetor Superior Resistente ao Calor","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,13,13,4],[5,30,125,5],[6,84,84,1],[7,45,45,1],[8,191,200,4],[9,190,195,3],[10,100,100,1]]},{"id":1000223,"n":"Protetor Superior Simples","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,30,77],[5,14,18,27],[7,20,42,12],[8,57,60,16],[9,49,211,8],[10,62,77,11]]},{"id":1000236,"n":"Protetor Superior de Alta Densidade","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,19,24],[5,18,19,5],[7,25,25,4],[9,81,93,12],[10,968,971,3]]},{"id":1000238,"n":"Protetor Superior de Alta Resistência","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,28,42,14]]},{"id":1000230,"n":"Protetor Superior de Alto Desempenho","cat":2,"sub":11,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,19],[5,30,44,16],[6,39,40,3],[7,41,57,10],[9,95,143,19]]},{"id":1000244,"n":"Protetor Superior de Couro Aprimorado","cat":2,"sub":11,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,180,198,9],[6,600,600,1],[7,500,500,1],[8,1370,1370,2]]},{"id":1000727,"n":"Protetor Superior de Couro Aprimorado","cat":2,"sub":11,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[5,1900,1950,2]]},{"id":1000239,"n":"Protetor Superior de Fibra de Aramida","cat":2,"sub":11,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,160,102],[5,10,15,202],[6,22,57,26],[7,10,10,86],[8,18,45,6],[9,30,1087,8],[10,98,440,8],[11,120,399,3],[12,2000,2000,1]]},{"id":1000722,"n":"Protetor Superior de Fibra de Aramida","cat":2,"sub":11,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,21,99,10],[5,50,50,17],[6,40,50,51],[7,76,138,85],[8,120,950,7],[9,95,150,9],[10,140,150,6],[12,440,500,3],[13,1200,1200,1]]},{"id":1000242,"n":"Protetor Superior de Nanocelulose","cat":2,"sub":11,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,55,50],[3,55,55,2],[5,66,71,4],[6,85,85,1],[7,72,72,1],[8,85,95,5],[10,275,285,2],[11,699,724,2]]},{"id":1000725,"n":"Protetor Superior de Nanocelulose","cat":2,"sub":11,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,579,580,3]]},{"id":1000241,"n":"Protetor Superior de Nitrilo Aprimorado","cat":2,"sub":11,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,95,25],[5,28,1351,10],[6,30,32,4],[7,24,55,7],[8,55,199,3],[10,200,200,2]]},{"id":1000724,"n":"Protetor Superior de Nitrilo Aprimorado","cat":2,"sub":11,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,152,169,16]]},{"id":1000243,"n":"Protetor Superior de Plástico Líquido","cat":2,"sub":11,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,25,56,14],[5,299,300,2],[6,310,310,1],[7,300,350,2],[8,398,399,3],[9,500,500,1],[10,699,880,3]]},{"id":1000726,"n":"Protetor Superior de Plástico Líquido","cat":2,"sub":11,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1999,1999,1]]},{"id":1000240,"n":"Protetor Superior de Sílica Polimérica","cat":2,"sub":11,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,21,11],[5,117,142,12],[6,28,31,6],[7,20,28,28],[8,50,52,2],[9,118,123,2],[10,920,920,1]]},{"id":1000723,"n":"Protetor Superior de Sílica Polimérica","cat":2,"sub":11,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,77,115,77],[5,425,425,12],[6,209,315,8],[7,525,541,22],[8,664,664,5],[9,942,942,1]]},{"id":1900038,"n":"Protetor Superior do Vingador","cat":2,"sub":11,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,200,200,1]]},{"id":1000232,"n":"Protetor Superior à Prova de Balas","cat":2,"sub":11,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,167],[1,10,10,1],[5,10,10,87],[6,10,10,28],[7,10,10,78],[8,11,14,6],[9,14,16,37],[10,29,30,9]]},{"id":1000308,"n":"Protetor de Braço Adesivo","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,16,22],[5,14,27,15],[7,38,64,17],[8,137,145,4],[9,699,699,1]]},{"id":1000302,"n":"Protetor de Braço Ajustado","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,15,47],[5,48,77,9],[7,25,27,6],[8,28,29,2],[9,110,112,2]]},{"id":1000305,"n":"Protetor de Braço Altamente Elástico","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,80],[1,10,10,5],[2,10,10,2],[5,10,10,5],[6,8000,8863,9],[7,22,30,9],[8,91,92,11],[9,47,47,5],[10,31,41,8]]},{"id":1000301,"n":"Protetor de Braço Aprimorado","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,26],[5,20,20,10],[6,23,23,8],[7,10,10,12],[8,25,56,11],[9,96,996,7],[10,71,72,2]]},{"id":1000303,"n":"Protetor de Braço Comprimido","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,18,27,22],[5,55,55,1],[7,150,150,1],[8,175,190,3],[9,275,300,4]]},{"id":1000299,"n":"Protetor de Braço Confortável","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,27],[1,10,10,2],[3,10,10,1],[4,10,10,2],[5,10,46,6],[6,10,10,1],[7,12,17,24],[8,134,137,8],[9,66,68,4],[10,93,104,12]]},{"id":1000300,"n":"Protetor de Braço Flexível","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,161],[1,10,10,1],[2,10,10,3],[5,10,10,50],[6,10,10,11],[7,10,40,22],[8,10,10,24],[9,10,10,17],[10,48,50,4]]},{"id":1000307,"n":"Protetor de Braço Impermeável","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,21,67],[5,44,44,3],[6,21,67,6],[7,16,16,1],[8,28,36,5],[12,80,80,1]]},{"id":1000311,"n":"Protetor de Braço Isolante","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,22,54],[5,80,92,5],[7,57,57,2],[8,117,120,3]]},{"id":1000298,"n":"Protetor de Braço Leve","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,11,78],[5,10,10,150],[6,10,15,24],[7,10,15,238],[8,10,15,51],[9,10,15,218],[10,10,14,144],[11,109,240,6]]},{"id":1000323,"n":"Protetor de Braço Resistente a Cortes","cat":2,"sub":14,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,5995,6998,3]]},{"id":1000309,"n":"Protetor de Braço Resistente ao Calor","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,26,35,27],[5,349,349,1],[6,70,70,2],[7,80,88,2],[8,150,220,7]]},{"id":1000297,"n":"Protetor de Braço Simples","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,40],[5,10,14,21],[6,10,10,1],[7,64,98,9],[9,93,211,12],[10,99,100,2]]},{"id":1000310,"n":"Protetor de Braço de Alta Densidade","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,14,30,21],[5,30,31,5],[6,128,150,5],[7,47,53,9],[8,121,134,7],[9,104,104,1],[10,193,194,4]]},{"id":1000312,"n":"Protetor de Braço de Alta Resistência","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,85],[5,10,10,34],[6,10,15,4],[7,10,146,18],[8,10,10,1],[9,19,22,30],[10,49,49,1]]},{"id":1000304,"n":"Protetor de Braço de Alto Desempenho","cat":2,"sub":14,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,28,38],[5,60,65,11],[7,35,48,10],[8,40,50,21],[9,91,106,8],[10,100,101,2]]},{"id":1000318,"n":"Protetor de Braço de Couro Aprimorado","cat":2,"sub":14,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,280,289,2]]},{"id":1000801,"n":"Protetor de Braço de Couro Aprimorado","cat":2,"sub":14,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[5,1550,1550,1],[8,4000,4000,1]]},{"id":1000313,"n":"Protetor de Braço de Fibra de Aramida","cat":2,"sub":14,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,16,30,24],[5,10,15,232],[6,16,16,36],[7,10,210,47],[8,13,29,7],[9,43,62,11],[10,123,142,10],[11,100,600,3]]},{"id":1000796,"n":"Protetor de Braço de Fibra de Aramida","cat":2,"sub":14,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,29,90,19],[1,99,99,1],[5,40,41,7],[6,46,46,5],[7,60,61,12],[8,68,68,4],[9,96,99,9],[10,250,599,4],[11,199,499,3],[12,780,799,2]]},{"id":1000316,"n":"Protetor de Braço de Nanocelulose","cat":2,"sub":14,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,23,34,15],[7,119,120,3],[8,199,199,2],[9,140,144,2],[10,399,399,1]]},{"id":1000799,"n":"Protetor de Braço de Nanocelulose","cat":2,"sub":14,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1999,1999,1],[6,600,600,1],[8,800,800,1]]},{"id":1000315,"n":"Protetor de Braço de Nitrilo Aprimorado","cat":2,"sub":14,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,50,40],[5,23,99,3],[6,66,66,1],[7,99,99,1],[8,70,199,7],[9,169,170,3],[10,166,200,5],[12,499,499,1]]},{"id":1000798,"n":"Protetor de Braço de Nitrilo Aprimorado","cat":2,"sub":14,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,170,175,6],[5,907,907,3]]},{"id":1000317,"n":"Protetor de Braço de Plástico Líquido","cat":2,"sub":14,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,67,83,9],[6,100,100,1],[7,300,300,1]]},{"id":1000800,"n":"Protetor de Braço de Plástico Líquido","cat":2,"sub":14,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1999,1999,1]]},{"id":1000314,"n":"Protetor de Braço de Sílica Polimérica","cat":2,"sub":14,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,33,27],[5,185,185,3],[6,17,19,4],[7,28,32,8],[8,46,47,3],[9,180,195,4],[10,108,399,6]]},{"id":1000797,"n":"Protetor de Braço de Sílica Polimérica","cat":2,"sub":14,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,969,994,79],[5,860,867,5],[6,151,188,13],[7,956,958,10],[8,889,889,4],[9,925,925,3]]},{"id":1000306,"n":"Protetor de Braço à Prova de Balas","cat":2,"sub":14,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,167],[1,10,10,1],[3,10,10,1],[5,10,10,60],[6,10,10,12],[7,10,10,13],[8,12,27,19],[9,10,100,35],[10,26,28,9]]},{"id":153024,"n":"Protetor de Cristal","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,20,3000,26]]},{"id":1000345,"n":"Protetor de Perna Adesivo","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,21,25],[5,22,53,8],[7,87,90,7],[8,250,250,2],[9,300,300,2]]},{"id":1000339,"n":"Protetor de Perna Ajustado","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,15],[5,31,32,2],[7,48,60,3]]},{"id":1000342,"n":"Protetor de Perna Altamente Elástico","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,87],[1,483,483,8],[2,1056,1056,4],[3,10,10,1],[4,10,10,2],[5,10,10,22],[6,13,13,5],[7,57,59,9],[8,58,63,21],[9,32,45,12]]},{"id":1000338,"n":"Protetor de Perna Aprimorado","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,52],[5,10,39,9],[6,10,90,8],[7,20,21,3],[8,51,86,11],[9,158,170,10],[10,283,290,5]]},{"id":1000340,"n":"Protetor de Perna Comprimido","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,27,38,4],[5,122,123,2],[7,85,140,8],[9,235,240,3]]},{"id":1000336,"n":"Protetor de Perna Confortável","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,41],[1,10,10,1],[2,10,10,1],[4,10,10,1],[5,12,13,9],[7,17,19,9],[8,30,33,9],[9,475,498,12],[10,27,28,9],[11,399,399,1]]},{"id":1000337,"n":"Protetor de Perna Flexível","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,60,199],[2,10,10,1],[3,10,10,1],[5,10,10,44],[6,10,10,23],[7,10,10,9],[8,10,14,45],[9,17,30,26],[10,35,51,12]]},{"id":1000344,"n":"Protetor de Perna Impermeável","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,36],[5,19,19,1],[6,23,47,9],[7,21,25,21],[8,52,52,1],[9,57,67,4],[10,141,141,1]]},{"id":1000348,"n":"Protetor de Perna Isolante","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,12,15,4],[5,31,61,9],[6,59,59,2],[7,50,53,3]]},{"id":1000335,"n":"Protetor de Perna Leve","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,51],[5,10,20,59],[6,10,15,16],[7,10,15,29],[8,10,15,20],[9,10,15,97],[10,16,16,3],[11,161,161,1]]},{"id":1000360,"n":"Protetor de Perna Resistente a Cortes","cat":2,"sub":15,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,5800,5999,3]]},{"id":1000346,"n":"Protetor de Perna Resistente ao Calor","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,28,67,11],[5,189,199,5],[7,101,101,1]]},{"id":1000334,"n":"Protetor de Perna Simples","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,51],[5,18,51,42],[6,17,17,1],[7,33,46,19],[8,58,63,16],[9,78,112,14],[10,58,77,11]]},{"id":1000347,"n":"Protetor de Perna de Alta Densidade","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,17,48],[4,888,888,1],[5,10,10,4],[7,10,10,10],[9,29,43,34],[10,65,75,13]]},{"id":1000349,"n":"Protetor de Perna de Alta Resistência","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,111,133],[5,10,10,47],[6,10,99,8],[7,10,15,33],[8,28,31,4],[9,10,16,27],[10,26,29,9]]},{"id":1000341,"n":"Protetor de Perna de Alto Desempenho","cat":2,"sub":15,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,18,37],[5,59,59,2],[7,43,64,6],[10,97,98,2]]},{"id":1000355,"n":"Protetor de Perna de Couro Aprimorado","cat":2,"sub":15,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,315,340,7],[6,750,750,1]]},{"id":1000838,"n":"Protetor de Perna de Couro Aprimorado","cat":2,"sub":15,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,950,950,1],[5,1500,1500,1]]},{"id":1000350,"n":"Protetor de Perna de Fibra de Aramida","cat":2,"sub":15,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,16,28,44],[5,10,382,19],[6,16,16,23],[7,11,14,8],[8,54,85,11],[9,117,120,4],[10,187,187,1]]},{"id":1000833,"n":"Protetor de Perna de Fibra de Aramida","cat":2,"sub":15,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,34,99,20],[5,60,66,14],[6,49,50,7],[7,53,53,7],[8,313,361,26],[9,325,330,3],[10,225,225,1],[12,2500,2500,1]]},{"id":1000353,"n":"Protetor de Perna de Nanocelulose","cat":2,"sub":15,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,24,40,14],[5,118,119,5],[8,169,199,6],[10,399,399,1]]},{"id":1000836,"n":"Protetor de Perna de Nanocelulose","cat":2,"sub":15,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,298,298,3]]},{"id":1000352,"n":"Protetor de Perna de Nitrilo Aprimorado","cat":2,"sub":15,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,39,30],[6,106,108,3],[7,32,199,4],[8,50,54,3],[9,98,118,9],[10,550,550,1]]},{"id":1000835,"n":"Protetor de Perna de Nitrilo Aprimorado","cat":2,"sub":15,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,227,265,31]]},{"id":1000354,"n":"Protetor de Perna de Plástico Líquido","cat":2,"sub":15,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,72,88,7],[6,265,450,5],[10,859,859,1]]},{"id":1000837,"n":"Protetor de Perna de Plástico Líquido","cat":2,"sub":15,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,1999,1999,1],[6,1499,1499,1]]},{"id":1000351,"n":"Protetor de Perna de Sílica Polimérica","cat":2,"sub":15,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,23,8],[5,31,32,2],[6,27,28,3],[7,38,41,7],[8,215,220,3],[9,280,280,1]]},{"id":1000834,"n":"Protetor de Perna de Sílica Polimérica","cat":2,"sub":15,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,694,758,106],[6,383,383,1],[7,933,938,5],[9,999,999,1]]},{"id":1000343,"n":"Protetor de Perna à Prova de Balas","cat":2,"sub":15,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,260],[1,10,10,1],[5,10,15,83],[6,10,10,3],[7,10,10,21],[8,10,10,39],[9,10,10,53],[10,71,90,11]]},{"id":153032,"n":"Pó Cintilante","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,179,179,1]]},{"id":153043,"n":"Reator Arc Compacto","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,87]]},{"id":152046,"n":"Registro de Contrabando","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,2,1810,40]]},{"id":151013,"n":"Registro de Pesquisa de Agente Infeccioso","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,0.526,647,92]]},{"id":154028,"n":"Registro de Pesquisa de Animus","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,265,599,8]]},{"id":152059,"n":"Registro de Pesquisa de Animus Descartado","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,193,216.5,5]]},{"id":1000039,"n":"Rifle Eclipse","cat":1,"sub":2,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,18,58],[5,24,99,4],[7,24,36,19],[8,91,125,11],[11,479,479,1]]},{"id":1000040,"n":"Rifle Etendue","cat":1,"sub":2,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,19,64,21],[5,348,349,2],[6,92,95,4],[7,145,300,2]]},{"id":1000041,"n":"Rifle Kilonova","cat":1,"sub":2,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,17,20,10],[5,31,39,2],[7,229,229,1]]},{"id":1000042,"n":"Rifle Magnox","cat":1,"sub":2,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,21,11],[5,26,28,7],[6,16,16,1],[7,24,27,9],[8,19,30,4],[9,83,88,7],[10,124,124,2]]},{"id":1000126,"n":"Rifle Pallacia do Executor","cat":1,"sub":2,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,5500,5850,2],[8,13500,13500,1]]},{"id":1000036,"n":"Rifle Prism","cat":1,"sub":2,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10999,329],[1,10,10,1],[5,10,21,48],[6,10,143,12],[7,10,12,95],[9,17,17,55],[10,16,16,33]]},{"id":1000038,"n":"Rifle Scalar","cat":1,"sub":2,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,38,23],[6,32,32,2],[7,52,55,4],[8,70,87,8],[9,261,263,3],[10,153,153,1]]},{"id":1000037,"n":"Rifle Weyl","cat":1,"sub":2,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,20,296],[5,10,10,61],[6,10,10,8],[7,10,10,42],[8,16,27,10],[9,43,46,9],[10,107,108,3]]},{"id":1000083,"n":"Rifle de Combate Anathema","cat":1,"sub":2,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,235,258,7],[5,330,330,1],[10,4900,4900,1]]},{"id":1000566,"n":"Rifle de Combate Anathema","cat":1,"sub":2,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[6,1500,1500,1]]},{"id":1000080,"n":"Rifle de Combate Eminência","cat":1,"sub":2,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,19,45,11],[5,37,65,7],[7,54,500,3],[8,95,183,8],[10,299,300,2]]},{"id":1000563,"n":"Rifle de Combate Eminência","cat":1,"sub":2,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,93,126,25],[5,260,263,4],[6,199,288,2],[7,810,810,1]]},{"id":1000079,"n":"Rifle de Combate Retícula","cat":1,"sub":2,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,21,63,16],[5,44,47,2],[6,41,41,3],[7,29,34,7],[8,250,300,4],[10,120,120,1]]},{"id":1000562,"n":"Rifle de Combate Retícula","cat":1,"sub":2,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,46,466,82],[5,900,900,4],[6,160,211,6],[7,933,933,2],[8,982,982,1],[10,549,549,1]]},{"id":1000081,"n":"Rifle de Combate Sigma","cat":1,"sub":2,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,80,105,14],[5,190,190,1],[8,225,270,4],[9,829,829,1]]},{"id":1000564,"n":"Rifle de Combate Sigma","cat":1,"sub":2,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,665,666,3],[5,650,650,1]]},{"id":1000078,"n":"Rifle de Combate Specter","cat":1,"sub":2,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,11,41,61],[5,18,30,21],[6,21,40,17],[7,20,21,13],[8,27,50,6],[10,75,149,9]]},{"id":1000561,"n":"Rifle de Combate Specter","cat":1,"sub":2,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[0,28,30,52],[5,50,99,155],[6,44,50,38],[7,43,50,70],[8,45,99,25],[9,204,209,3],[10,195,315,3],[11,447,447,1]]},{"id":1000082,"n":"Rifle de Combate Xenon","cat":1,"sub":2,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,99,150,8],[5,399,399,1],[7,440,600,4],[8,500,500,2]]},{"id":1000565,"n":"Rifle de Combate Xenon","cat":1,"sub":2,"grade":3,"q":2,"lv":0,"meta_ok":true,"of":[[7,2999,2999,1]]},{"id":1000002,"n":"Rifle do Errante","cat":1,"sub":2,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,12,29],[5,10,26,14],[7,56,75,18],[8,56,61,5]]},{"id":1000003,"n":"Rifle do Especialista","cat":1,"sub":2,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,447],[1,10,10,3],[2,10,10,2],[4,10,10,2],[5,10,10,52],[6,10,13,46],[7,10,40,139],[8,10,157,34],[9,10,15,200],[10,19,19,63],[11,154,154,3]]},{"id":1000005,"n":"Rifle do Executor","cat":1,"sub":2,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,34,56],[5,52,52,1],[7,27,99,28],[8,54,65,3],[9,198,499,12]]},{"id":1000001,"n":"Rifle do Mercenário","cat":1,"sub":2,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,10,99],[5,10,10,18],[6,998,998,5],[7,22,29,21],[8,31,38,20],[9,96,120,10],[10,30,52,14]]},{"id":1000000,"n":"Rifle do Praticante","cat":1,"sub":2,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,48,262],[3,10,10,1],[5,10,15,21],[7,23,25,21],[9,73,80,18],[10,74,74,1]]},{"id":1000004,"n":"Rifle do Sentinela","cat":1,"sub":2,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,11,111],[5,15,40,12],[6,15,15,1],[7,12,21,9],[8,46,51,9],[9,158,159,2],[10,102,102,2]]},{"id":152044,"n":"Scanner Médico","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,10,18,19]]},{"id":154045,"n":"Selo de Romanus","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,256,300,6]]},{"id":154025,"n":"Sensor de Força","cat":8,"sub":34,"grade":4,"q":1,"lv":0,"meta_ok":true,"of":[[0,80,89,3]]},{"id":151029,"n":"Spider-Bot de Brinquedo","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,9,13.75,20]]},{"id":151018,"n":"Tecido Cerimonial","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.444,14,20]]},{"id":152017,"n":"Teclado da Sala de Segurança","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,5,93,26]]},{"id":153053,"n":"Terminal Desatualizado","cat":8,"sub":34,"grade":3,"q":1,"lv":0,"meta_ok":true,"of":[[0,9,10,51]]},{"id":151038,"n":"Transceptor Quebrado","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,24,25,2]]},{"id":152035,"n":"Troféu Giratório","cat":8,"sub":34,"grade":2,"q":1,"lv":0,"meta_ok":true,"of":[[0,120,125,2]]},{"id":151042,"n":"Óleo de Máquina","cat":8,"sub":34,"grade":1,"q":1,"lv":0,"meta_ok":true,"of":[[0,1.375,305.5,32]]}]};
+
+  // ---------- helpers ----------
+  function normalize(s){
+    return (s || "").toString()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+  }
+
+  const priceFmt = new Intl.NumberFormat('pt-BR');
+  function fmtPrice(v){
+    if(v === null || v === undefined) return null;
+    return priceFmt.format(v);
+  }
+
+  function sortedEntries(obj){
+    return Object.keys(obj).map(k => [k, obj[k]]);
+  }
+
+  // ---------- precompute per-item derived data ----------
+  const items = DATA.items.map(function(it){
+    const variants = (it.of || []).map(function(v){
+      return { ench: v[0], min: v[1], max: v[2], qty: v[3] };
+    }).sort(function(a,b){ return a.ench - b.ench; });
+
+    let totalQty = 0;
+    let minPrice = null;
+    variants.forEach(function(v){
+      totalQty += (v.qty || 0);
+      if(v.min !== null && v.min !== undefined){
+        if(minPrice === null || v.min < minPrice) minPrice = v.min;
+      }
+    });
+
+    const isAccordion = variants.length >= 2 || (variants.length === 1 && variants[0].ench > 0);
+
+    return {
+      raw: it,
+      variants: variants,
+      totalQty: totalQty,
+      minPrice: minPrice,
+      isAccordion: isAccordion,
+      nameNorm: normalize(it.n)
+    };
+  });
+
+  // ---------- state ----------
+  const state = {
+    search: "",
+    cat: "",
+    sub: "",
+    grades: new Set(),
+    qual: "",
+    lvMin: null,
+    lvMax: null,
+    sort: "name"
+  };
+
+  // ---------- DOM refs ----------
+  const el = {
+    regionGroup: document.getElementById('regionGroup'),
+    snapshotLabel: document.getElementById('snapshotLabel'),
+    fSearch: document.getElementById('fSearch'),
+    fCat: document.getElementById('fCat'),
+    fSubWrap: document.getElementById('fSubWrap'),
+    fSub: document.getElementById('fSub'),
+    fGrade: document.getElementById('fGrade'),
+    fQual: document.getElementById('fQual'),
+    fLvMin: document.getElementById('fLvMin'),
+    fLvMax: document.getElementById('fLvMax'),
+    fSort: document.getElementById('fSort'),
+    btnClear: document.getElementById('btnClear'),
+    counter: document.getElementById('counter'),
+    btnExpandAll: document.getElementById('btnExpandAll'),
+    btnCollapseAll: document.getElementById('btnCollapseAll'),
+    list: document.getElementById('list'),
+    foot: document.getElementById('foot')
+  };
+
+  // ---------- static header/footer ----------
+  function renderHeader(){
+    el.snapshotLabel.textContent = DATA.meta.snapshot_label;
+
+    DATA.regions.forEach(function(r){
+      const btn = document.createElement('button');
+      btn.className = 'region-btn' + (r.id === DATA.meta.region ? ' active' : '');
+      btn.textContent = r.label;
+      if(!r.available){
+        btn.disabled = true;
+        const tip = document.createElement('span');
+        tip.className = 'tooltip';
+        tip.textContent = 'sem snapshot desta região — pendente de captura';
+        btn.appendChild(tip);
+      }
+      el.regionGroup.appendChild(btn);
+    });
+
+    el.foot.textContent = 'Dados: snapshot do mercado ' + DATA.meta.snapshot_label +
+      ' + rfnext-data.sqlite (cliente 1.28.5). Preços são menor/maior anunciado, não média.';
+  }
+
+  function renderCatOptions(){
+    const opts = sortedEntries(DATA.cats).sort(function(a,b){
+      return a[1].localeCompare(b[1], 'pt-BR');
+    });
+    el.fCat.innerHTML = '<option value="">Todas</option>' +
+      opts.map(function(o){ return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join('');
+  }
+
+  function subsForCat(catId){
+    // only subs actually present among items of that category
+    const present = new Set();
+    items.forEach(function(it){
+      if(String(it.raw.cat) === String(catId) && it.raw.sub !== undefined && it.raw.sub !== null){
+        present.add(String(it.raw.sub));
+      }
+    });
+    return sortedEntries(DATA.subs)
+      .filter(function(o){ return present.has(o[0]); })
+      .sort(function(a,b){ return a[1].localeCompare(b[1], 'pt-BR'); });
+  }
+
+  function renderSubOptions(){
+    if(!state.cat){
+      el.fSubWrap.style.display = 'none';
+      state.sub = '';
+      el.fSub.innerHTML = '';
+      return;
+    }
+    const opts = subsForCat(state.cat);
+    if(opts.length === 0){
+      el.fSubWrap.style.display = 'none';
+      state.sub = '';
+      el.fSub.innerHTML = '';
+      return;
+    }
+    el.fSubWrap.style.display = '';
+    const prevSub = state.sub;
+    el.fSub.innerHTML = '<option value="">Todas</option>' +
+      opts.map(function(o){ return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join('');
+    // keep selection if still valid
+    if(prevSub && opts.some(function(o){ return o[0] === prevSub; })){
+      el.fSub.value = prevSub;
+    } else {
+      state.sub = '';
+      el.fSub.value = '';
+    }
+  }
+
+  function renderGradeChips(){
+    const opts = sortedEntries(DATA.grades).sort(function(a,b){
+      return Number(a[0]) - Number(b[0]);
+    });
+    el.fGrade.innerHTML = '';
+    opts.forEach(function(o){
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.textContent = o[1];
+      chip.dataset.grade = o[0];
+      chip.addEventListener('click', function(){
+        if(state.grades.has(o[0])){
+          state.grades.delete(o[0]);
+          chip.classList.remove('active');
+        } else {
+          state.grades.add(o[0]);
+          chip.classList.add('active');
+        }
+        renderList();
+      });
+      el.fGrade.appendChild(chip);
+    });
+  }
+
+  // ---------- filtering / sorting ----------
+  function filterItems(){
+    const q = normalize(state.search);
+    return items.filter(function(it){
+      const raw = it.raw;
+      if(q && it.nameNorm.indexOf(q) === -1) return false;
+      if(state.cat && String(raw.cat) !== String(state.cat)) return false;
+      if(state.sub && String(raw.sub) !== String(state.sub)) return false;
+      if(state.grades.size > 0 && !state.grades.has(String(raw.grade))) return false;
+      if(state.qual && String(raw.q) !== String(state.qual)) return false;
+      if(state.lvMin !== null && !isNaN(state.lvMin) && (raw.lv || 0) < state.lvMin) return false;
+      if(state.lvMax !== null && !isNaN(state.lvMax) && (raw.lv || 0) > state.lvMax) return false;
+      return true;
+    });
+  }
+
+  function sortItems(list){
+    const arr = list.slice();
+    switch(state.sort){
+      case 'price_asc':
+        arr.sort(function(a,b){
+          const av = a.minPrice === null ? Infinity : a.minPrice;
+          const bv = b.minPrice === null ? Infinity : b.minPrice;
+          if(av !== bv) return av - bv;
+          return a.raw.n.localeCompare(b.raw.n, 'pt-BR');
+        });
+        break;
+      case 'price_desc':
+        arr.sort(function(a,b){
+          const aNull = a.minPrice === null, bNull = b.minPrice === null;
+          if(aNull && bNull) return a.raw.n.localeCompare(b.raw.n, 'pt-BR');
+          if(aNull) return 1;
+          if(bNull) return -1;
+          if(a.minPrice !== b.minPrice) return b.minPrice - a.minPrice;
+          return a.raw.n.localeCompare(b.raw.n, 'pt-BR');
+        });
+        break;
+      case 'offers':
+        arr.sort(function(a,b){
+          if(b.totalQty !== a.totalQty) return b.totalQty - a.totalQty;
+          return a.raw.n.localeCompare(b.raw.n, 'pt-BR');
+        });
+        break;
+      case 'level':
+        arr.sort(function(a,b){
+          const av = a.raw.lv || 0, bv = b.raw.lv || 0;
+          if(av !== bv) return av - bv;
+          return a.raw.n.localeCompare(b.raw.n, 'pt-BR');
+        });
+        break;
+      case 'name':
+      default:
+        arr.sort(function(a,b){ return a.raw.n.localeCompare(b.raw.n, 'pt-BR'); });
+        break;
+    }
+    return arr;
+  }
+
+  // ---------- rendering badges ----------
+  function badgeHtml(cls, text){
+    return '<span class="badge ' + cls + '">' + text + '</span>';
+  }
+
+  function priceOrAbsent(v){
+    if(v === null || v === undefined){
+      return badgeHtml('absent', 'preço ausente');
+    }
+    return '<span class="price">' + fmtPrice(v) + '</span>';
+  }
+
+  function commonBadges(it){
+    const raw = it.raw;
+    let html = '';
+    const gradeLabel = DATA.grades[String(raw.grade)];
+    if(gradeLabel) html += badgeHtml('grade', gradeLabel);
+    if(raw.q === 2) html += badgeHtml('prime', 'Prime');
+    const subLabel = DATA.subs[String(raw.sub)];
+    if(subLabel) html += badgeHtml('sub', subLabel);
+    if(raw.lv && raw.lv > 0) html += badgeHtml('lv', 'Nv ' + raw.lv);
+    if(raw.meta_ok === false) html += badgeHtml('nometa', 'sem metadados');
+    return html;
+  }
+
+  function renderSimpleRow(it){
+    const raw = it.raw;
+    const v = it.variants[0] || { min: null, max: null, qty: 0 };
+    const div = document.createElement('div');
+    div.className = 'item-card simple';
+    div.innerHTML =
+      '<div class="row">' +
+        '<div class="left-cluster">' +
+          '<span class="item-name">' + escapeHtml(raw.n) + '</span>' +
+          '<div class="badge-row">' + commonBadges(it) + '</div>' +
+        '</div>' +
+        '<div class="summary-right">' +
+          '<span>' + priceOrAbsent(v.min) + '</span>' +
+          '<span class="sep">·</span>' +
+          '<span>' + priceOrAbsent(v.max) + '</span>' +
+          '<span class="sep">·</span>' +
+          '<span>' + (v.qty || 0) + ((v.qty || 0) === 1 ? ' oferta' : ' ofertas') + '</span>' +
+        '</div>' +
+      '</div>';
+    return div;
+  }
+
+  function renderAccordion(it){
+    const raw = it.raw;
+    const details = document.createElement('details');
+    details.className = 'item-card';
+
+    const summary = document.createElement('summary');
+    summary.innerHTML =
+      '<div class="left-cluster">' +
+        '<span class="item-name">' + escapeHtml(raw.n) + '</span>' +
+        '<div class="badge-row">' + commonBadges(it) + '</div>' +
+      '</div>' +
+      '<div class="summary-right">' +
+        '<span>a partir de ' + (it.minPrice === null ? badgeHtml('absent','preço ausente') : ('<span class="price">' + fmtPrice(it.minPrice) + '</span>')) + '</span>' +
+        '<span class="sep">·</span>' +
+        '<span>' + it.totalQty + (it.totalQty === 1 ? ' oferta' : ' ofertas') + '</span>' +
+        '<span class="sep">·</span>' +
+        '<span>' + it.variants.length + (it.variants.length === 1 ? ' variante' : ' variantes') + '</span>' +
+      '</div>';
+    details.appendChild(summary);
+
+    const tableWrap = document.createElement('div');
+    let rows = '';
+    it.variants.forEach(function(v){
+      rows +=
+        '<tr>' +
+          '<td class="ench">+' + v.ench + '</td>' +
+          '<td class="price">' + priceOrAbsent(v.min) + '</td>' +
+          '<td class="price">' + priceOrAbsent(v.max) + '</td>' +
+          '<td>' + (v.qty || 0) + '</td>' +
+        '</tr>';
+    });
+    tableWrap.innerHTML =
+      '<table class="variants-table">' +
+        '<thead><tr><th>Encanto</th><th>Menor preço</th><th>Maior preço</th><th>Ofertas</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+    details.appendChild(tableWrap);
+    return details;
+  }
+
+  function escapeHtml(s){
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // ---------- main render ----------
+  function renderList(){
+    const filtered = filterItems();
+    const sorted = sortItems(filtered);
+
+    el.list.innerHTML = '';
+    if(sorted.length === 0){
+      const div = document.createElement('div');
+      div.className = 'no-results';
+      div.textContent = 'Nenhum item encontrado com os filtros atuais.';
+      el.list.appendChild(div);
+    } else {
+      const frag = document.createDocumentFragment();
+      sorted.forEach(function(it){
+        frag.appendChild(it.isAccordion ? renderAccordion(it) : renderSimpleRow(it));
+      });
+      el.list.appendChild(frag);
+    }
+
+    let totalOffers = 0;
+    sorted.forEach(function(it){ totalOffers += it.totalQty; });
+
+    el.counter.innerHTML =
+      '<b>' + sorted.length + '</b> itens · <b>' + totalOffers + '</b> ofertas ' +
+      '(de ' + DATA.meta.bases + ' itens · ' + DATA.meta.entries + ' ofertas)';
+  }
+
+  // ---------- events ----------
+  function bindEvents(){
+    el.fSearch.addEventListener('input', function(){
+      state.search = el.fSearch.value;
+      renderList();
+    });
+    el.fCat.addEventListener('change', function(){
+      state.cat = el.fCat.value;
+      renderSubOptions();
+      renderList();
+    });
+    el.fSub.addEventListener('change', function(){
+      state.sub = el.fSub.value;
+      renderList();
+    });
+    el.fQual.addEventListener('change', function(){
+      state.qual = el.fQual.value;
+      renderList();
+    });
+    el.fLvMin.addEventListener('input', function(){
+      state.lvMin = el.fLvMin.value === '' ? null : Number(el.fLvMin.value);
+      renderList();
+    });
+    el.fLvMax.addEventListener('input', function(){
+      state.lvMax = el.fLvMax.value === '' ? null : Number(el.fLvMax.value);
+      renderList();
+    });
+    el.fSort.addEventListener('change', function(){
+      state.sort = el.fSort.value;
+      renderList();
+    });
+    el.btnClear.addEventListener('click', function(){
+      state.search = '';
+      state.cat = '';
+      state.sub = '';
+      state.grades = new Set();
+      state.qual = '';
+      state.lvMin = null;
+      state.lvMax = null;
+      state.sort = 'name';
+
+      el.fSearch.value = '';
+      el.fCat.value = '';
+      el.fQual.value = '';
+      el.fLvMin.value = '';
+      el.fLvMax.value = '';
+      el.fSort.value = 'name';
+      renderSubOptions();
+      document.querySelectorAll('#fGrade .chip').forEach(function(c){ c.classList.remove('active'); });
+
+      renderList();
+    });
+    el.btnExpandAll.addEventListener('click', function(){
+      el.list.querySelectorAll('details.item-card').forEach(function(d){ d.open = true; });
+    });
+    el.btnCollapseAll.addEventListener('click', function(){
+      el.list.querySelectorAll('details.item-card').forEach(function(d){ d.open = false; });
+    });
+  }
+
+  // ---------- init ----------
+  function init(){
+    renderHeader();
+    renderCatOptions();
+    renderSubOptions();
+    renderGradeChips();
+    bindEvents();
+    renderList();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

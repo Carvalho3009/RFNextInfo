@@ -1,0 +1,77 @@
+schemaVersion: 1
+
+game:
+  name: Poke Idle World
+  url: https://poke.idleworld.online
+  playUrl: https://poke.idleworld.online/play
+  # Gate obrigatório. Mantenha false até obter confirmação oficial de que a automação é permitida.
+  rulesAcknowledged: false
+
+runtime:
+  executionMode: persistent_headless
+  dataDir: data
+
+browser:
+  headless: true
+  maxPages: 1
+  viewport:
+    width: 1024
+    height: 720
+  resources:
+    blockMedia: false
+    blockedUrlPatterns: []
+
+supervisor:
+  heartbeatSeconds: 15
+  staleAfterSeconds: 45
+  maxRestarts: 5
+  restartWindowMinutes: 30
+  circuitFailures: 5
+  circuitWindowMinutes: 15
+  circuitCooldownMinutes: 30
+  backoffBaseSeconds: 5
+  backoffMaxSeconds: 300
+
+dashboard:
+  host: 127.0.0.1
+  port: 8787
+
+logging:
+  level: info
+  rotateMegabytes: 10
+  retainFiles: 10
+
+metrics:
+  sampleSeconds: 30
+  historySamples: 2880
+
+instances:
+  - id: principal
+    enabled: false
+    accountLabel: "treinador•••"
+    environment: local
+    helpers:
+      autoPotion: true
+      autoRevive: true
+    # Preencha somente após Recon autenticado. String vazia = ação desabilitada.
+    selectors:
+      gameReady: ""
+      loginRequired: ""
+      characterRoot: ""
+      characterFainted: ""
+      characterHp: ""
+      huntActive: ""
+      huntStart: ""
+      huntResume: ""
+      suppliesMissing: ""
+      autoPotionToggle: ""
+      autoPotionEnabled: ""
+      autoReviveToggle: ""
+      autoReviveEnabled: ""
+    # Nome acessível computado e exato de cada botão. Deve acompanhar o seletor.
+    # Alvo sem nome ou com nome diferente causa SAFE_STOP antes do clique.
+    expectedAccessibleNames:
+      huntStart: ""
+      huntResume: ""
+      autoPotionToggle: ""
+      autoReviveToggle: ""

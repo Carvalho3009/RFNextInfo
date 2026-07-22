@@ -1,0 +1,321 @@
+/* Temporary topbar override loaded after App.css. */
+.app-header {
+  grid-template-columns: minmax(390px, 36%) minmax(360px, 30%) minmax(360px, 34%) !important;
+  align-items: center !important;
+}
+
+.app-header h1 {
+  color: #f7f3ff !important;
+}
+
+.header-left {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.profile-toolbar-group .toolbar-row {
+  display: grid !important;
+  grid-template-columns: minmax(130px, 1fr) repeat(5, 30px) !important;
+  gap: 7px !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+
+.profile-toolbar-group .profile-select-wide {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 30px !important;
+  min-height: 30px !important;
+}
+
+.header-left .profile-toolbar-group .toolbar-row button.profile-mini-btn {
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  font-size: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: static !important;
+  transform: none !important;
+}
+
+.header-left .profile-toolbar-group .toolbar-row button.profile-mini-btn::before {
+  font-size: 13px !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  position: static !important;
+}
+
+.build-alert {
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  padding: 0 !important;
+  border-radius: 5px !important;
+  line-height: 1 !important;
+}
+
+.toolbar-layout {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 0 18px !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.import-toolbar-group {
+  width: min(100%, 390px) !important;
+  min-width: 0 !important;
+}
+
+.import-toolbar-group .toolbar-row {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(68px, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.import-toolbar-group .import-btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 8px !important;
+  justify-content: center !important;
+}
+
+.top-global-search::before,
+.data-filter-field::after {
+  content: none !important;
+  display: none !important;
+}
+
+.column-panel-header {
+  display: grid !important;
+  grid-template-columns: 240px 1fr auto !important;
+  align-items: start !important;
+  gap: 14px !important;
+  margin-bottom: 10px !important;
+}
+
+.filters-heading-row {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  width: 240px !important;
+  grid-column: 1 !important;
+}
+
+.filters-heading-row .filters-title {
+  width: 100% !important;
+  line-height: 1.2 !important;
+}
+
+.filters-heading-row select,
+.filters-heading-row .hidden-column-select {
+  width: 210px !important;
+  max-width: 210px !important;
+  min-height: 30px !important;
+}
+
+.column-panel-toggle {
+  grid-column: 3 !important;
+  margin-left: auto !important;
+}
+
+.column-panel-body {
+  display: grid !important;
+  grid-template-columns: 240px 1fr !important;
+  gap: 14px !important;
+  clear: both !important;
+  margin-top: -2px !important;
+}
+
+.column-panel-body .column-list {
+  grid-column: 2 !important;
+  grid-row: 1 / span 2 !important;
+}
+
+.column-panel-header,
+.column-panel {
+  border-bottom: 0 !important;
+}
+
+.data-source-card {
+  display: grid !important;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(210px, 0.8fr) minmax(180px, 0.7fr) minmax(280px, 1.4fr) auto !important;
+  align-items: end !important;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  min-height: 0 !important;
+}
+
+.data-source-card .data-field {
+  min-width: 0 !important;
+  gap: 5px !important;
+}
+
+.quick-actions-row {
+  display: flex !important;
+  align-items: end !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  min-width: 178px !important;
+}
+
+.quick-actions-row button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 12px !important;
+  white-space: nowrap !important;
+}
+
+.quick-actions-row button:first-child {
+  min-width: 96px !important;
+}
+
+/* Table controls polish: pagination, quick search and table actions */
+.pagination-bar {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 7px !important;
+  justify-content: space-between !important;
+  padding: 8px !important;
+  border-radius: 8px !important;
+  overflow-x: auto !important;
+}
+
+.pagination-bar > button,
+.page-number-list button,
+.page-jump button,
+.pagination-search button {
+  width: auto !important;
+  min-width: 30px !important;
+  max-width: none !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+}
+
+.pagination-bar > button {
+  font-size: 12px !important;
+}
+
+.page-number-list {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.page-number-list span,
+.pagination-bar > span {
+  color: #aab3c7 !important;
+  font-size: 12px !important;
+  white-space: nowrap !important;
+}
+
+.page-number-list button.active {
+  background: var(--accent) !important;
+  border-color: var(--accent-border) !important;
+  box-shadow: 0 0 0 1px rgba(155, 92, 255, 0.22) !important;
+}
+
+.page-size-select {
+  display: grid !important;
+  grid-template-columns: auto 66px !important;
+  align-items: center !important;
+  gap: 8px !important;
+  white-space: nowrap !important;
+  flex: 0 0 124px !important;
+  min-width: 124px !important;
+}
+
+.page-size-select select {
+  width: 66px !important;
+  min-width: 66px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 6px !important;
+}
+
+.page-jump {
+  display: grid !important;
+  grid-template-columns: 76px 34px !important;
+  gap: 6px !important;
+  flex: 0 0 116px !important;
+  min-width: 116px !important;
+}
+
+.page-jump input {
+  width: 76px !important;
+  min-width: 76px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 7px !important;
+}
+
+.pagination-search {
+  flex: 1 1 360px !important;
+  display: grid !important;
+  grid-template-columns: minmax(140px, 1fr) 56px 30px 92px !important;
+  align-items: center !important;
+  gap: 5px !important;
+  margin: 0 !important;
+  position: relative !important;
+  min-width: 320px !important;
+}
+
+.pagination-search > button:first-child {
+  order: 4 !important;
+  justify-self: end !important;
+  max-width: 92px !important;
+  font-size: 11px !important;
+  padding: 0 6px !important;
+}
+
+.pagination-search input {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+}
+
+.pagination-search .mini-action-button {
+  min-width: 34px !important;
+}
+
+.pagination-search .mini-action-button:first-of-type {
+  min-width: 56px !important;
+}
+
+.table-info-strip {
+  min-height: 34px !important;
+  padding: 6px 8px !important;
+}
+
+.table-info-actions {
+  gap: 8px !important;
+}
+
+.table-info-actions button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 12px !important;
+  border-radius: 7px !important;
+}

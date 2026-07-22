@@ -1,0 +1,6 @@
+00066b62	FL2C_ans_wait_enter_map_Message
+00066bea	FL2C_sequence_wait_enter_map_Message
+00066c7c	FL2C_wait_end_enter_map_Message
+0006a3b0	FL2C_ans_wait_enter_map_Message
+0006a626	FL2C_ans_cancel_wait_enter_map_Message
+0006a688	FL2C_wait_end_enter_map_Message

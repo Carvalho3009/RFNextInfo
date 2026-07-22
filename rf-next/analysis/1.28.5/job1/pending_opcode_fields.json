@@ -1,0 +1,86 @@
+{
+ "boss_status_list (031b/031c)": {
+  "FC2L_ask_boss_spawn_item_probability_info_Message": [
+   "probability"
+  ],
+  "FG2C_notify_random_boss_status_Message": [
+   "boss"
+  ],
+  "FG2C_notify_random_boss_status_list_Message": [
+   "boss"
+  ],
+  "FL2C_ans_boss_spawn_item_probability_info_Message": [
+   "probability"
+  ]
+ },
+ "boss_position (031e/031f)": {},
+ "random_boss (0330/0331)": {
+  "FG2C_notify_random_boss_status_Message": [
+   "boss"
+  ],
+  "FG2C_notify_random_boss_status_list_Message": [
+   "boss"
+  ]
+ },
+ "quest (0a01-0a16)": {
+  "FC2L_request_to_purchase_item_on_exchange_Message": [
+   "on"
+  ]
+ },
+ "mapcontent_phase (0c01-0c04)": {},
+ "worldboss_hp_contrib_rank (0c05-0c0a)": {
+  "FC2G_ask_steel_battle_field_realm_contribution_info_Message": [
+   "contribution"
+  ],
+  "FC2L_ask_realm_contribution_season_reward_Message": [
+   "contribution"
+  ],
+  "FC2L_ask_realm_id_card_rank_list_Message": [
+   "id"
+  ],
+  "FC2L_ask_realm_id_card_rank_schedule_Message": [
+   "id"
+  ],
+  "FC2L_ask_realm_id_card_user_rank_Message": [
+   "id"
+  ],
+  "FG2C_ans_steel_battle_field_realm_contribution_info_Message": [
+   "contribution"
+  ],
+  "FL2C_ans_realm_contribution_season_reward_Message": [
+   "contribution"
+  ],
+  "FL2C_ans_realm_id_card_rank_list_Message": [
+   "id"
+  ],
+  "FL2C_ans_realm_id_card_rank_schedule_Message": [
+   "id"
+  ],
+  "FL2C_ans_realm_id_card_update_contribution_Message": [
+   "id"
+  ],
+  "FL2C_ans_realm_id_card_user_rank_Message": [
+   "id"
+  ],
+  "FL2C_notify_realm_contribution_levelup_reward_Message": [
+   "contribution"
+  ]
+ },
+ "guildraid_partydungeon (0c0b,0c11-0c16)": {},
+ "content_schedule (1702)": {
+  "FC2L_ask_realm_id_card_rank_schedule_Message": [
+   "id"
+  ],
+  "FL2C_ans_realm_id_card_rank_schedule_Message": [
+   "id"
+  ],
+  "FL2C_restore_schedule_list_Message": [
+   "Smithy"
+  ]
+ },
+ "dungeon_grade (1802/1803)": {},
+ "boss_schedule (1805/1806)": {},
+ "content_population (1809/180a)": {},
+ "mothership (1814)": {},
+ "map_explore (2301/2302)": {}
+}

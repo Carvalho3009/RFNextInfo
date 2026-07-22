@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP Control v2 — Mockup navegável</title>
+<style>
+/* ============================================================
+   MCP CONTROL v2 — Mockup navegável (SPEC-017 / F6 SPEC-014)
+   Tokens EXATOS da identidade Karvalho (rooc-americas/mockup/styles.css)
+   ============================================================ */
+:root{
+  --coal:#070909; --panel:#0e1211; --bone:#f4f2eb; --muted:#a7a6a0;
+  --gold:#d4a64d; --acid:#a8ff16; --coral:#ff6547; --water:#63b9f3; --violet:#8a6ed6;
+  --display:"Bahnschrift Condensed","Bahnschrift","Arial Narrow",sans-serif;
+  --body:"Segoe UI","Inter",sans-serif;
+  --mono:"Cascadia Mono","Cascadia Code","Consolas",ui-monospace,monospace;
+  --frame:color-mix(in srgb, var(--gold) 45%, transparent);   /* moldura padrão .45 */
+  --frame-i:color-mix(in srgb, var(--gold) 65%, transparent);  /* interativo .65 (contraste 3:1) */
+  --hoverline:color-mix(in srgb, var(--gold) 70%, transparent);
+  --thhover:color-mix(in srgb, var(--gold) 6%, transparent);
+  --trail:color-mix(in srgb, var(--bone) 8%, transparent);
+  --radius:2px;
+  --sidebar-w:216px;
+  /* escala de densidade — sobrescrita por [data-density=compact] */
+  --pad-lg:24px; --pad-md:16px; --pad-sm:12px; --pad-xs:8px;
+  --fs-body:14px; --fs-small:13px; --fs-label:11px; --fs-h1:28px; --fs-h2:16px;
+  --row-pad:12px;
+}
+[data-density="compact"]{
+  --pad-lg:16px; --pad-md:10px; --pad-sm:8px; --pad-xs:5px;
+  --fs-body:13px; --fs-small:12px; --fs-label:10px; --fs-h1:23px; --fs-h2:14px;
+  --row-pad:6px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{
+  background:var(--coal); color:var(--bone); font-family:var(--body);
+  font-size:var(--fs-body); line-height:1.55; overflow:hidden;
+}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;}
+a{color:inherit;text-decoration:none;}
+:focus-visible{outline:2px solid var(--water);outline-offset:2px;}  /* focus water 2px universal */
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.disp{font-family:var(--display);letter-spacing:.04em;}
+.uc{text-transform:uppercase;}
+[hidden]{display:none !important;}
+
+/* ---------- moldura ornamental 12×12 (só onde a spec permite) ---------- */
+.ornament{position:relative;border:1px solid var(--frame);}
+.ornament::before,.ornament::after{content:"";position:absolute;width:12px;height:12px;border:solid var(--gold);}
+.ornament::before{top:-1px;left:-1px;border-width:2px 0 0 2px;}
+.ornament::after{right:-1px;bottom:-1px;border-width:0 2px 2px 0;}
+
+/* ============================ LAYOUT ============================ */
+#app{display:grid;grid-template-rows:44px 1fr;height:100vh;}
+
+/* ---------- Barra de sistema global (44px) ---------- */
+#sysbar{
+  height:44px;display:flex;align-items:center;gap:18px;padding:0 16px;
+  border-bottom:1px solid var(--frame);background:rgba(14,18,17,.96);
+  position:relative;z-index:40;
+}
+#sysbar .brand{font-family:var(--display);font-weight:800;letter-spacing:.10em;font-size:15px;}
+#sysbar .brand b{color:var(--acid);}
+#sysbar .brand small{color:var(--muted);font-weight:400;font-size:10px;letter-spacing:.14em;}
+.sys-sep{width:1px;height:22px;background:var(--frame);}
+.vram-widget{display:flex;align-items:center;gap:9px;font-size:var(--fs-label);letter-spacing:.06em;color:var(--muted);}
+.vram-widget .mono{color:var(--bone);font-size:12px;}
+.vram-bar{width:120px;height:6px;background:var(--trail);border-radius:var(--radius);overflow:hidden;}
+.vram-bar > i{display:block;height:100%;border-radius:var(--radius);}
+.sys-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--frame-i);
+  border-radius:var(--radius);font-size:var(--fs-label);letter-spacing:.05em;color:var(--muted);
+}
+.sys-chip:hover{border-color:var(--hoverline);color:var(--bone);}
+.sys-chip b{color:var(--gold);font-family:var(--mono);}
+#sysbar .spacer{flex:1;}
+/* conexão 3 estados */
+.conn{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-label);letter-spacing:.06em;}
+.conn .dot{width:8px;height:8px;border-radius:50%;}
+.conn[data-state="live"]{color:var(--acid);} .conn[data-state="live"] .dot{background:var(--acid);box-shadow:0 0 6px var(--acid);}
+.conn[data-state="stale"]{color:var(--gold);} .conn[data-state="stale"] .dot{background:var(--gold);}
+.conn[data-state="offline"]{color:var(--coral);} .conn[data-state="offline"] .dot{background:var(--coral);}
+.conn .recon{border:1px solid var(--coral);color:var(--coral);padding:2px 7px;border-radius:var(--radius);font-size:10px;}
+.demo-btn{border:1px dashed var(--frame-i);color:var(--muted);padding:3px 8px;border-radius:var(--radius);font-size:10px;letter-spacing:.05em;}
+.demo-btn:hover{color:var(--water);border-color:var(--water);}
+.bell{position:relative;padding:5px;border-radius:var(--radius);color:var(--muted);}
+.bell:hover{color:var(--bone);}
+.bell .cnt{position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;
+  background:var(--coral);color:var(--coal);font-size:10px;font-weight:800;display:grid;place-items:center;font-family:var(--mono);}
+.icn{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;}
+
+/* ---------- corpo: sidebar + main ---------- */
+#body{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:0;transition:grid-template-columns .18s ease;}
+#app[data-collapsed="true"] #body{grid-template-columns:64px 1fr;}
+
+/* ---------- Sidebar ---------- */
+#sidebar{border-right:1px solid var(--frame);background:var(--panel);display:flex;flex-direction:column;min-height:0;}
+.side-top{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--frame);}
+.side-top .lbl{font-family:var(--display);font-size:11px;letter-spacing:.16em;color:var(--muted);}
+#app[data-collapsed="true"] .side-top .lbl{display:none;}
+.collapse-btn{color:var(--muted);padding:4px;border-radius:var(--radius);}
+.collapse-btn:hover{color:var(--acid);}
+nav.side-nav{flex:1;overflow-y:auto;padding:8px 0;}
+.nav-item{
+  position:relative;display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:10px 10px 10px 15px;font-family:var(--display);font-size:13px;letter-spacing:.05em;
+  color:var(--bone);text-transform:uppercase;border-left:3px solid transparent;
+}
+.nav-item:hover{background:color-mix(in srgb,var(--gold) 6%,transparent);}
+.nav-item[aria-current="page"]{color:var(--acid);border-left-color:var(--acid);background:color-mix(in srgb,var(--acid) 6%,transparent);}
+.nav-item .ni{flex-shrink:0;width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.nav-item .txt{flex:1;white-space:nowrap;overflow:hidden;}
+#app[data-collapsed="true"] .nav-item .txt{display:none;}
+#app[data-collapsed="true"] .nav-item{justify-content:center;padding:12px 0;gap:0;}
+.nav-badge{
+  min-width:18px;height:16px;padding:0 5px;border-radius:8px;font-size:10px;font-weight:800;font-family:var(--mono);
+  display:inline-grid;place-items:center;border:1px solid var(--gold);color:var(--gold);
+}
+#app[data-collapsed="true"] .nav-item .nav-badge{position:absolute;top:5px;right:6px;transform:scale(.8);}
+.side-foot{border-top:1px solid var(--frame);padding:10px 12px;}
+.side-foot .cap{font-size:10px;letter-spacing:.14em;color:var(--muted);margin-bottom:7px;font-family:var(--display);}
+#app[data-collapsed="true"] .side-foot .cap{display:none;}
+.density-switch{display:flex;border:1px solid var(--frame-i);border-radius:var(--radius);overflow:hidden;}
+.density-switch button{flex:1;padding:6px 4px;font-family:var(--display);font-size:10px;letter-spacing:.08em;color:var(--muted);}
+.density-switch button[aria-pressed="true"]{background:var(--acid);color:var(--coal);font-weight:700;}
+#app[data-collapsed="true"] .density-switch{flex-direction:column;}
+#app[data-collapsed="true"] .density-switch button{font-size:9px;padding:5px 2px;}
+
+/* ---------- main / views ---------- */
+main#view{overflow-y:auto;min-height:0;padding:0;position:relative;}
+.view-inner{padding:var(--pad-lg);max-width:1480px;margin:0 auto;}
+
+/* Cabeçalho de aba */
+.tab-head{margin-bottom:var(--pad-lg);}
+.tab-head .crumb{font-size:var(--fs-label);letter-spacing:.12em;color:var(--muted);margin-bottom:8px;font-family:var(--display);text-transform:uppercase;}
+.tab-head .crumb a:hover{color:var(--acid);}
+.tab-h1{
+  font-family:var(--display);font-size:var(--fs-h1);font-weight:800;letter-spacing:.02em;
+  text-transform:uppercase;margin:0;line-height:1;padding:12px 0 12px 16px;position:relative;
+}
+.tab-h1 span{color:var(--coral);}
+.tab-head-orn{border:1px solid var(--frame);position:relative;padding-left:0;}
+.tab-head-orn::before,.tab-head-orn::after{content:"";position:absolute;width:12px;height:12px;border:solid var(--gold);}
+.tab-head-orn::before{top:-1px;left:-1px;border-width:2px 0 0 2px;}
+.tab-head-orn::after{right:-1px;bottom:-1px;border-width:0 2px 2px 0;}
+.tab-head-orn .tab-h1{border:none;}
+.tab-sub{color:var(--muted);font-size:var(--fs-small);margin:8px 0 0 16px;}
+
+/* labels / th */
+.lbl{font-family:var(--display);font-size:var(--fs-label);letter-spacing:.10em;text-transform:uppercase;color:var(--muted);}
+
+/* cards */
+.card{border:1px solid var(--frame);border-radius:var(--radius);background:var(--panel);padding:var(--pad-md);}
+.card.plain{border-color:transparent;background:transparent;padding:0;}
+.card h2,.card-h2{font-family:var(--display);font-size:var(--fs-h2);letter-spacing:.05em;color:var(--gold);margin:0 0 10px;text-transform:uppercase;}
+.grid{display:grid;gap:var(--pad-md);}
+.g2{grid-template-columns:1fr 1fr;} .g3{grid-template-columns:repeat(3,1fr);} .g4{grid-template-columns:repeat(4,1fr);}
+
+/* stat tiles */
+.stat{border:1px solid var(--frame);border-radius:var(--radius);padding:var(--pad-md);background:var(--panel);}
+.stat .k{font-family:var(--display);font-size:var(--fs-label);letter-spacing:.10em;text-transform:uppercase;color:var(--muted);}
+.stat .v{font-family:var(--mono);font-size:24px;margin-top:6px;color:var(--bone);}
+[data-density="compact"] .stat .v{font-size:20px;}
+.stat .d{font-size:11px;color:var(--muted);margin-top:2px;}
+
+/* barras (acid→gold>75→coral>90) */
+.meter{height:6px;background:var(--trail);border-radius:var(--radius);overflow:hidden;}
+.meter > i{display:block;height:100%;border-radius:var(--radius);}
+
+/* semáforo — forma redunda cor */
+.sig{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-small);}
+.sig .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.sig.ok{color:var(--acid);} .sig.ok .dot{background:var(--acid);}
+.sig.warn{color:var(--gold);} .sig.err{color:var(--coral);}
+.sig.off{color:var(--muted);} .sig.off .dot{background:var(--muted);}
+
+/* badges (ponto+texto; preenchido só p/ crítico) */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.06em;padding:2px 7px;border-radius:var(--radius);border:1px solid var(--frame-i);font-family:var(--display);text-transform:uppercase;}
+.badge .dot{width:6px;height:6px;border-radius:50%;}
+.badge.ok{color:var(--acid);border-color:color-mix(in srgb,var(--acid) 40%,transparent);} .badge.ok .dot{background:var(--acid);}
+.badge.warn{color:var(--gold);border-color:color-mix(in srgb,var(--gold) 45%,transparent);} .badge.warn .dot{background:var(--gold);}
+.badge.info{color:var(--water);border-color:color-mix(in srgb,var(--water) 40%,transparent);} .badge.info .dot{background:var(--water);}
+.badge.batch{color:var(--violet);border-color:color-mix(in srgb,var(--violet) 45%,transparent);} .badge.batch .dot{background:var(--violet);}
+.badge.crit{background:var(--coral);color:var(--coal);border-color:var(--coral);font-weight:800;}
+.badge.crit-end{background:var(--coral);color:var(--coal);border-color:var(--coral);font-weight:800;}
+
+/* tabelas */
+table.dt{width:100%;border-collapse:collapse;font-size:var(--fs-small);}
+table.dt th{font-family:var(--display);font-size:var(--fs-label);letter-spacing:.08em;text-transform:uppercase;color:var(--gold);text-align:left;padding:var(--row-pad) 12px;border-bottom:1px solid var(--frame);white-space:nowrap;}
+table.dt td{padding:var(--row-pad) 12px;border-bottom:1px solid color-mix(in srgb,var(--gold) 12%,transparent);}
+table.dt tbody tr:hover{background:var(--thhover);}
+table.dt td.num,table.dt th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+table.dt tbody tr:last-child td{border-bottom:none;}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:1px solid var(--frame-i);border-radius:var(--radius);font-family:var(--display);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--bone);}
+.btn:hover{border-color:var(--hoverline);}
+.btn.acid{border-color:var(--acid);color:var(--acid);} .btn.acid:hover{background:var(--acid);color:var(--coal);}
+.btn.coral{border-color:var(--coral);color:var(--coral);} .btn.coral:hover{background:var(--coral);color:var(--coal);}
+.btn.gold{border-color:var(--gold);color:var(--gold);} .btn.gold:hover{background:var(--gold);color:var(--coal);}
+.btn.sm{padding:4px 9px;font-size:11px;}
+.text-link{color:var(--acid);border-bottom:1px solid var(--acid);display:inline-flex;gap:8px;align-items:center;font-family:var(--display);font-size:12px;letter-spacing:.05em;padding-bottom:2px;}
+
+/* toggle role=switch 40x20 */
+.toggle{width:40px;height:20px;border-radius:11px;border:1px solid var(--frame-i);background:var(--trail);position:relative;flex-shrink:0;padding:0;transition:background .15s;}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:.15s;}
+.toggle[aria-checked="true"]{background:color-mix(in srgb,var(--acid) 30%,transparent);border-color:var(--acid);}
+.toggle[aria-checked="true"]::after{left:22px;background:var(--acid);}
+
+/* role chips allow/block/herdado */
+.rchip{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:var(--radius);border:1px solid;font-family:var(--display);letter-spacing:.04em;}
+.rchip.allow{color:var(--acid);border-color:color-mix(in srgb,var(--acid) 50%,transparent);}
+.rchip.block{color:var(--coral);border-color:color-mix(in srgb,var(--coral) 50%,transparent);}
+.rchip.inherit{color:var(--muted);border-style:dashed;border-color:var(--frame);}
+.rchip button{opacity:.7;} .rchip button:hover{opacity:1;}
+
+/* inline input */
+.inl{background:var(--coal);border:1px solid var(--frame-i);border-radius:var(--radius);color:var(--bone);font-family:var(--mono);font-size:12px;padding:5px 8px;width:90px;}
+.inl:focus{border-color:var(--water);}
+input.txt,textarea.txt,select.sel{background:var(--coal);border:1px solid var(--frame-i);border-radius:var(--radius);color:var(--bone);font-family:var(--body);font-size:13px;padding:8px 10px;width:100%;}
+textarea.txt{resize:vertical;min-height:70px;}
+select.sel{font-family:var(--display);letter-spacing:.04em;}
+
+/* barra fixa de diff/alterações pendentes */
+.diffbar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  border:1px solid var(--gold);border-radius:var(--radius);background:color-mix(in srgb,var(--gold) 10%,var(--panel));
+  padding:10px 14px;margin-top:var(--pad-md);}
+.diffbar .n{font-family:var(--display);color:var(--gold);letter-spacing:.05em;}
+
+/* master-detail */
+.md{display:grid;grid-template-columns:300px 1fr;gap:var(--pad-md);align-items:start;}
+[data-density="compact"] .md{grid-template-columns:260px 1fr;}
+.md-list{border:1px solid var(--frame);border-radius:var(--radius);overflow:hidden;}
+.md-row{display:block;width:100%;text-align:left;padding:10px 12px;border-bottom:1px solid color-mix(in srgb,var(--gold) 12%,transparent);}
+.md-row:hover{background:var(--thhover);}
+.md-row[aria-current="true"]{background:color-mix(in srgb,var(--acid) 8%,transparent);border-left:3px solid var(--acid);padding-left:9px;}
+.md-row .nm{font-family:var(--display);letter-spacing:.04em;font-size:14px;}
+.md-row .mt{font-size:11px;color:var(--muted);display:flex;gap:8px;margin-top:3px;align-items:center;}
+
+/* sub-tabs */
+.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--frame);margin-bottom:var(--pad-md);}
+.subtab{padding:8px 14px;font-family:var(--display);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;}
+.subtab[aria-selected="true"]{color:var(--acid);border-bottom-color:var(--acid);}
+.subtab:hover{color:var(--bone);}
+
+/* matriz */
+.matrix-wrap{overflow:auto;border:1px solid var(--frame);border-radius:var(--radius);max-height:60vh;}
+table.matrix{border-collapse:collapse;font-size:12px;}
+table.matrix th,table.matrix td{border:1px solid color-mix(in srgb,var(--gold) 15%,transparent);padding:6px 8px;text-align:center;white-space:nowrap;}
+table.matrix thead th{position:sticky;top:0;background:var(--panel);z-index:2;color:var(--gold);font-family:var(--display);letter-spacing:.05em;}
+table.matrix tbody th{position:sticky;left:0;background:var(--panel);z-index:1;text-align:left;color:var(--bone);font-family:var(--display);}
+.mcell{width:100%;height:100%;min-width:46px;padding:6px 4px;font-size:14px;font-family:var(--mono);}
+.mcell.inherit{color:var(--muted);} .mcell.allow{color:var(--acid);} .mcell.block{color:var(--coral);}
+.mcell:hover{background:var(--thhover);}
+
+/* filtros */
+.filters{display:flex;gap:16px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--frame);padding-bottom:10px;margin-bottom:var(--pad-md);}
+.filters .fbtn{font-family:var(--display);font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent;padding:3px 2px;}
+.filters .fbtn[aria-pressed="true"]{color:var(--acid);border-bottom-color:var(--acid);}
+.filters .search{margin-left:auto;}
+.filters .search input{width:200px;}
+
+/* Grill cards */
+.grill-layout{display:grid;grid-template-columns:1fr 280px;gap:var(--pad-md);align-items:start;}
+[data-density="compact"] .grill-layout{grid-template-columns:1fr 250px;}
+.qcard{border:1px solid var(--frame);border-left-width:3px;border-radius:var(--radius);padding:var(--pad-md);margin-bottom:var(--pad-md);background:var(--panel);}
+.qcard.sev-alta{border-left-color:var(--coral);} .qcard.sev-media{border-left-color:var(--gold);} .qcard.sev-baixa{border-left-color:var(--water);}
+.qcard .qhead{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
+.qcard .qnum{font-family:var(--mono);color:var(--muted);font-size:12px;}
+.qcard .qtitle{font-size:15px;margin:4px 0 8px;}
+.qcard .evidence{border:1px solid var(--frame);border-radius:var(--radius);background:var(--coal);padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--muted);margin:8px 0;}
+.qcard .qactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.qcard.resolved{border-left-color:var(--muted);opacity:.75;}
+.qcard.collapsed .qbody{display:none;}
+.qcard .resolved-line{display:none;align-items:center;gap:10px;font-size:12px;color:var(--muted);}
+.qcard.collapsed .resolved-line{display:flex;}
+.grill-summary{border:1px solid var(--frame);border-radius:var(--radius);padding:var(--pad-md);position:sticky;top:0;background:var(--panel);}
+.grill-summary .sline{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid color-mix(in srgb,var(--gold) 12%,transparent);font-size:13px;}
+.grill-summary .sline .mono{color:var(--bone);}
+
+/* popover perfil */
+.popover{position:absolute;z-index:60;min-width:240px;border:1px solid var(--gold);border-radius:var(--radius);background:var(--panel);padding:14px;box-shadow:0 8px 28px rgba(0,0,0,.5);}
+.popover h4{font-family:var(--display);color:var(--gold);margin:0 0 8px;letter-spacing:.05em;font-size:14px;text-transform:uppercase;}
+
+/* drawers */
+.drawer{position:fixed;top:0;right:0;height:100vh;width:380px;background:var(--panel);border-left:1px solid var(--gold);z-index:70;
+  transform:translateX(100%);transition:transform .2s ease;display:flex;flex-direction:column;}
+.drawer.open{transform:none;}
+.drawer .dh{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--frame);}
+.drawer .dh h3{font-family:var(--display);text-transform:uppercase;letter-spacing:.06em;margin:0;color:var(--gold);font-size:15px;}
+.drawer .db{flex:1;overflow-y:auto;padding:14px 16px;}
+.drawer .close{color:var(--muted);padding:4px;} .drawer .close:hover{color:var(--coral);}
+.qitem{border:1px solid var(--frame);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px;}
+.qitem .qtop{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:6px;}
+.qitem .qmeta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;}
+.notif{border-left:2px solid var(--frame-i);padding:8px 12px;margin-bottom:8px;background:var(--coal);border-radius:var(--radius);}
+.notif.ok{border-left-color:var(--acid);} .notif.warn{border-left-color:var(--gold);} .notif.err{border-left-color:var(--coral);} .notif.info{border-left-color:var(--water);}
+.notif .nt{font-size:12px;} .notif .nm{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:3px;}
+
+/* modais */
+.scrim{position:fixed;inset:0;background:rgba(7,9,9,.7);z-index:80;display:none;align-items:center;justify-content:center;}
+.scrim.open{display:flex;}
+.modal{width:440px;max-width:calc(100vw - 32px);border:1px solid var(--gold);border-radius:var(--radius);background:var(--panel);}
+.modal.wide{width:560px;}
+.modal.danger{border-color:var(--coral);}
+.modal .mh{padding:14px 18px;border-bottom:1px solid var(--frame);font-family:var(--display);text-transform:uppercase;letter-spacing:.05em;font-size:16px;}
+.modal.danger .mh{color:var(--coral);}
+.modal .mb{padding:18px;font-size:13px;}
+.modal .mf{padding:14px 18px;border-top:1px solid var(--frame);display:flex;justify-content:flex-end;gap:10px;}
+.cmdline{font-family:var(--mono);font-size:12px;background:var(--coal);border:1px solid var(--coral);border-radius:var(--radius);padding:10px 12px;color:var(--coral);margin:10px 0;word-break:break-all;}
+
+/* toasts */
+#toasts{position:fixed;right:16px;bottom:16px;z-index:90;display:flex;flex-direction:column;gap:10px;width:320px;}
+.toast{border:1px solid var(--frame-i);border-left-width:3px;border-radius:var(--radius);background:var(--panel);padding:11px 13px;box-shadow:0 6px 20px rgba(0,0,0,.45);animation:slidein .2s ease;}
+.toast.ok{border-left-color:var(--acid);} .toast.warn{border-left-color:var(--gold);} .toast.err{border-left-color:var(--coral);} .toast.info{border-left-color:var(--water);}
+.toast .tt{font-size:13px;} .toast .tl{font-size:11px;color:var(--acid);margin-top:5px;font-family:var(--display);letter-spacing:.04em;}
+@keyframes slidein{from{transform:translateX(20px);opacity:0;}to{transform:none;opacity:1;}}
+
+/* tooltip temperatura */
+.temp-wrap{position:relative;display:inline-block;}
+.temp-tip{position:absolute;bottom:130%;left:50%;transform:translateX(-50%);width:230px;border:1px solid var(--gold);border-radius:var(--radius);background:var(--panel);padding:10px;z-index:65;display:none;box-shadow:0 6px 20px rgba(0,0,0,.5);}
+.temp-wrap:hover .temp-tip,.temp-wrap:focus-within .temp-tip{display:block;}
+.temp-ruler{height:8px;border-radius:var(--radius);margin:8px 0 6px;
+  background:linear-gradient(90deg,var(--water) 0 20%,var(--acid) 20% 50%,var(--gold) 50% 80%,var(--coral) 80% 100%);position:relative;}
+.temp-ruler .mk{position:absolute;top:-3px;width:2px;height:14px;background:var(--bone);}
+.temp-scale{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);font-family:var(--mono);}
+.temp-leg{font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;}
+
+/* banda invertida gold (1 por tela) */
+.goldband{background:var(--gold);color:var(--coal);border-radius:var(--radius);padding:12px 16px;font-family:var(--display);
+  text-transform:uppercase;letter-spacing:.08em;font-weight:700;display:flex;align-items:center;gap:12px;}
+.goldband .icn{stroke:var(--coal);}
+
+/* banner aguardando recurso */
+.wait-banner{border:1px solid var(--gold);border-radius:var(--radius);background:color-mix(in srgb,var(--gold) 10%,var(--panel));
+  padding:10px 14px;display:flex;align-items:center;gap:10px;color:var(--gold);font-size:13px;cursor:pointer;}
+.wait-banner:hover{background:color-mix(in srgb,var(--gold) 16%,var(--panel));}
+
+/* chat 3 colunas */
+.chat3{display:grid;grid-template-columns:230px 300px 1fr;gap:var(--pad-md);align-items:start;height:calc(100vh - 200px);}
+.chat-col{border:1px solid var(--frame);border-radius:var(--radius);overflow:hidden;height:100%;display:flex;flex-direction:column;}
+.chat-col .ch{padding:10px 12px;border-bottom:1px solid var(--frame);display:flex;justify-content:space-between;align-items:center;}
+.chat-col .cb{flex:1;overflow-y:auto;}
+.chat-item{padding:10px 12px;border-bottom:1px solid color-mix(in srgb,var(--gold) 12%,transparent);}
+.chat-item:hover{background:var(--thhover);}
+.chat-item[aria-current="true"]{background:color-mix(in srgb,var(--acid) 8%,transparent);border-left:3px solid var(--acid);padding-left:9px;}
+.msg{padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--gold) 10%,transparent);}
+.msg .who{font-family:var(--display);font-size:11px;letter-spacing:.06em;color:var(--gold);text-transform:uppercase;}
+.msg.user .who{color:var(--acid);}
+.msg .tx{font-size:13px;margin-top:4px;}
+
+/* sparkline */
+canvas.spark{display:block;}
+.sr{color:var(--muted);}
+
+/* misc */
+.row{display:flex;align-items:center;gap:10px;}
+.between{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.wrap{display:flex;flex-wrap:wrap;gap:8px;}
+.mt{margin-top:var(--pad-md);} .mt-sm{margin-top:var(--pad-sm);}
+.muted{color:var(--muted);} .small{font-size:11px;}
+.section-lbl{font-family:var(--display);font-size:var(--fs-label);letter-spacing:.10em;text-transform:uppercase;color:var(--gold);margin:0 0 8px;}
+.editor-split{display:grid;grid-template-columns:1fr 1fr;gap:var(--pad-md);}
+.editor-split textarea{min-height:400px;font-family:var(--mono);font-size:13px;}
+.preview{border:1px solid var(--frame);border-radius:var(--radius);padding:var(--pad-md);min-height:400px;overflow:auto;font-size:13px;}
+.preview h3{color:var(--gold);font-family:var(--display);}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition:none !important;animation:none !important;scroll-behavior:auto !important;}
+}
+</style>
+</head>
+<body data-density="balanced">
+<div id="app" data-collapsed="false">
+
+  <!-- ===================== BARRA DE SISTEMA GLOBAL ===================== -->
+  <header id="sysbar" role="banner">
+    <div class="brand">MCP <b>CONTROL</b> <small>v2</small></div>
+    <div class="sys-sep"></div>
+
+    <div class="vram-widget" title="VRAM da GPU NVIDIA">
+      <span>VRAM</span>
+      <div class="vram-bar"><i id="vramFill" style="width:68%;"></i></div>
+      <span class="mono" id="vramTxt">8.2 / 12 GB</span>
+    </div>
+
+    <button class="sys-chip" id="chipVram" title="Jobs aguardando VRAM">
+      aguardando_vram: <b>1</b>
+    </button>
+    <button class="sys-chip" id="chipFila" title="Fila de recursos §3.6">
+      fila: <b>2</b>
+    </button>
+
+    <div class="spacer"></div>
+
+    <button class="demo-btn" id="connDemo" title="Demo: cicla estados de conexão ao vivo → stale → offline">demo conexão</button>
+    <div class="conn" id="conn" data-state="live" title="Estado de conexão (GET /api/health)">
+      <span class="dot"></span><span class="lbl-txt">ao vivo</span>
+      <button class="recon" hidden>reconectar</button>
+    </div>
+
+    <div class="sys-sep"></div>
+
+    <button class="bell" id="bellBtn" aria-label="Histórico de notificações">
+      <svg class="icn" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="cnt" id="bellCnt">3</span>
+    </button>
+  </header>
+
+  <!-- ===================== SIDEBAR + MAIN ===================== -->
+  <div id="body">
+    <aside id="sidebar">
+      <div class="side-top">
+        <span class="lbl">Navegação</span>
+        <button class="collapse-btn" id="collapseBtn" aria-label="Colapsar sidebar" title="Colapsar/expandir">
+          <svg class="icn" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+      </div>
+      <nav class="side-nav" id="sideNav" aria-label="Abas principais"><!-- populado via JS --></nav>
+      <div class="side-foot">
+        <div class="cap">Densidade</div>
+        <div class="density-switch" role="group" aria-label="Densidade da interface">
+          <button id="dBal" aria-pressed="true">Equilibrada</button>
+          <button id="dCmp" aria-pressed="false">Compacta</button>
+        </div>
+      </div>
+    </aside>
+
+    <main id="view" tabindex="-1"><!-- populado via router --></main>
+  </div>
+</div>
+
+<!-- ===================== DRAWER: FILA DE RECURSOS ===================== -->
+<aside class="drawer" id="drawerFila" aria-hidden="true" aria-label="Fila de recursos">
+  <div class="dh">
+    <h3>Fila de recursos</h3>
+    <button class="close" data-close-drawer="drawerFila" aria-label="Fechar"><svg class="icn" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="db" id="filaBody"></div>
+</aside>
+
+<!-- ===================== DRAWER: NOTIFICAÇÕES ===================== -->
+<aside class="drawer" id="drawerNotif" aria-hidden="true" aria-label="Histórico de notificações">
+  <div class="dh">
+    <h3>Notificações</h3>
+    <button class="close" data-close-drawer="drawerNotif" aria-label="Fechar"><svg class="icn" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="db" id="notifBody"></div>
+</aside>
+
+<!-- ===================== DRAWER: AUDITORIA ===================== -->
+<aside class="drawer" id="drawerAudit" aria-hidden="true" aria-label="Auditoria de configuração">
+  <div class="dh">
+    <h3>Auditoria de config</h3>
+    <button class="close" data-close-drawer="drawerAudit" aria-label="Fechar"><svg class="icn" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="db" id="auditBody"></div>
+</aside>
+
+<!-- ===================== MODAL GENÉRICO ===================== -->
+<div class="scrim" id="scrim">
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="mh" id="modalTitle">Título</div>
+    <div class="mb" id="modalBody"></div>
+    <div class="mf" id="modalFoot"></div>
+  </div>
+</div>
+
+<!-- ===================== TOASTS ===================== -->
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   ESTADO EM MEMÓRIA (sem localStorage)
+   ============================================================ */
+const TABS = [
+  {id:"status",       label:"Status",       badge:0, icon:'<path d="M3 12h4l3 8 4-16 3 8h4"/>'},
+  {id:"workers",      label:"Workers",      badge:0, icon:'<rect x="3" y="4" width="7" height="7"/><rect x="14" y="4" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>'},
+  {id:"orquestrador", label:"Orquestrador", badge:2, icon:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'},
+  {id:"chat",         label:"Chat",         badge:0, icon:'<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'},
+  {id:"grill",        label:"Grill Me",     badge:4, icon:'<path d="M7 3v18M11 3v18M15 3v18M4 8h16M4 14h16"/>'},
+  {id:"tools",        label:"Tools",        badge:1, icon:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 3 3 6-6a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2z"/>'},
+  {id:"uso",          label:"Uso & Custos", badge:0, icon:'<path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 4-6"/>'},
+  {id:"instrucoes",   label:"Instruções",   badge:0, icon:'<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/>'},
+];
+
+const WORKERS = [
+  {id:"qwen3-coder",  name:"qwen3-coder:30b", provider:"ollama", on:true,  jobs:3, cfg:"v7", vram:"18 GB", ctx:"32k", allow:["executor_complexo","executor_simples","planejador"], block:["interrogador"], conc:2, tokJob:8192, tokDay:1200000, tokDayUsed:812340, keep:"30m", temp:0.4},
+  {id:"gpt-oss",      name:"gpt-oss:20b",     provider:"ollama", on:true,  jobs:1, cfg:"v4", vram:"13 GB", ctx:"16k", allow:["executor_simples","router"], block:[], conc:3, tokJob:4096, tokDay:800000, tokDayUsed:301220, keep:"15m", temp:0.5},
+  {id:"deepseek-r1",  name:"deepseek-r1:32b", provider:"ollama", on:true,  jobs:0, cfg:"v3", vram:"20 GB", ctx:"32k", allow:["comparador_juiz","critico","revisor_final"], block:["executor_simples"], conc:1, tokJob:12288, tokDay:600000, tokDayUsed:540120, keep:"20m", temp:0.2},
+  {id:"qwen3-8b",     name:"qwen3:8b",        provider:"ollama", on:true,  jobs:2, cfg:"v9", vram:"6 GB",  ctx:"32k", allow:["router","executor_simples","interrogador"], block:[], conc:4, tokJob:4096, tokDay:400000, tokDayUsed:98430, keep:"10m", temp:0.7},
+  {id:"mistral-small",name:"mistral-small:24b",provider:"ollama",on:false, jobs:0, cfg:"v2", vram:"15 GB", ctx:"32k", allow:["executor_complexo"], block:["comparador_juiz"], conc:2, tokJob:8192, tokDay:500000, tokDayUsed:0, keep:"15m", temp:0.5},
+  {id:"qwen3-vl",     name:"qwen3-vl:8b",     provider:"ollama", on:true,  jobs:0, cfg:"v1", vram:"9 GB",  ctx:"16k", allow:["executor_simples"], block:[], conc:2, tokJob:4096, tokDay:300000, tokDayUsed:12040, keep:"10m", temp:0.6},
+  {id:"cli-claude",   name:"cli:claude",      provider:"cli",    on:true,  jobs:2, cfg:"v11",vram:"—",    ctx:"200k",models:["claude-fable-5","claude-opus","claude-sonnet"], allow:["planejador","comparador_juiz","revisor_final","executor_complexo"], block:[], conc:3, tokJob:32000, tokDay:5000000, tokDayUsed:2140880, keep:"—", temp:0.3},
+  {id:"cli-codex",    name:"cli:codex",       provider:"cli",    on:true,  jobs:1, cfg:"v6", vram:"—",    ctx:"128k",models:["gpt-5.6-sol","gpt-5.6-terra","gpt-5.6-luna"], allow:["executor_complexo","critico"], block:[], conc:2, tokJob:24000, tokDay:3000000, tokDayUsed:1188200, keep:"—", temp:0.4},
+  {id:"cli-gemini",   name:"cli:gemini",      provider:"cli",    on:false, jobs:0, cfg:"v0", vram:"—",    ctx:"1M",  models:["gemini-2.5-pro"], allow:[], block:["*"], conc:0, tokJob:0, tokDay:0, tokDayUsed:0, keep:"—", temp:0.5, blocklist:true},
+];
+
+const ROLES = ["planejador","executor_complexo","executor_simples","comparador_juiz","revisor_final","critico","interrogador","router"];
+const PROJECTS = ["pokeidle","rooc-americas","painel-v2"];
+
+const QUEUE = [
+  {res:"GPU:0 / VRAM 4GB", owner:"job #237 · deepseek-r1", pos:1, prio:"interativa"},
+  {res:"cli:codex slot",   owner:"conv rooc-americas/brief", pos:2, prio:"normal"},
+  {res:"GPU:0 / VRAM 6GB", owner:"job #238 · matriz fanout", pos:3, prio:"batch"},
+];
+
+let NOTIFS = [
+  {kind:"ok",  txt:'Job #234 "design fanout" (codex/gpt-5.6-sol) concluído', when:"há 6 min"},
+  {kind:"ok",  txt:'Job #233 "design fanout" (claude/claude-fable-5) concluído', when:"há 7 min"},
+  {kind:"warn",txt:'▲ VRAM em 78% — job #237 aguardando recurso', when:"há 12 min"},
+  {kind:"info",txt:'cli:gemini movido para blocklist de revisão', when:"há 40 min"},
+  {kind:"err", txt:'⊘ mistral-small:24b desativado por operador', when:"há 1 h"},
+];
+
+const AGENT_PROFILES = {
+  planejador:{temp:0.35, desc:"Decompõe o brief em passos, define fanout e critérios de aceite.", model:"claude-fable-5"},
+  executor_complexo:{temp:0.4, desc:"Executa tarefas de código/design com contexto amplo.", model:"gpt-5.6-sol"},
+  executor_simples:{temp:0.5, desc:"Tarefas curtas e determinísticas, baixo custo.", model:"qwen3:8b"},
+  comparador_juiz:{temp:0.15, desc:"Compara respostas de múltiplos clientes e escolhe a final.", model:"deepseek-r1:32b"},
+  revisor_final:{temp:0.2, desc:"Revisão de qualidade e consistência antes de consolidar.", model:"claude-fable-5"},
+  critico:{temp:0.45, desc:"Levanta riscos e contra-argumentos (Grill Me).", model:"gpt-5.6-terra"},
+  interrogador:{temp:0.9, desc:"Faz perguntas incisivas para expor buracos.", model:"qwen3:8b"},
+  router:{temp:0.3, desc:"Roteia cada análise ao cliente/modelo adequado.", model:"qwen3:8b"},
+};
+
+const GRILL = [
+  {n:"G-01", cat:"design", sev:"alta", q:"Acid como preenchimento de área grande viola o §3 — onde ainda ocorre?", ev:'painel-v2/mockup: 0 ocorrências. Regra "acid escasso" respeitada; verificar hover de linha.', state:"open"},
+  {n:"G-02", cat:"acessibilidade", sev:"alta", q:"Moldura gold .45 reprova 3:1 em componente interativo. Todos os inputs migraram para .65?", ev:'--frame-i aplicado em toggles, inputs e células. Falta auditar scrollbar.', state:"open"},
+  {n:"G-03", cat:"arquitetura", sev:"media", q:"A fila global §3.6 duplica dados do Status. Fonte única no cliente?", ev:'QUEUE[] é a única fonte; Status e drawer leem o mesmo array.', state:"open"},
+  {n:"G-04", cat:"risco", sev:"media", q:"Gold acumula estrutura + warning. O ▲ é obrigatório em 100% dos warns?", ev:'warn sempre com ▲ nos badges e barras; conferir sparkline em threshold.', state:"open"},
+  {n:"G-05", cat:"escopo", sev:"baixa", q:"Bahnschrift é refém do Windows. O fallback Arial Narrow degrada aceitável?", ev:'Fallback declarado no token --display. Perda de condensação em Linux.', state:"open"},
+  {n:"G-06", cat:"design", sev:"baixa", q:"Cantos ornamentais 12×12 aparecem só nos 4 locais permitidos?", ev:'Cabeçalho de aba, painel prioritário, modal crítico e relatório do Grill. OK.', state:"open"},
+];
+
+const AGENTS_STATE = { density:"balanced" };
+
+let matrixState = {}; // key: role|worker -> inherit|allow|block
+let matrixPending = 0;
+let workerDrafts = {}; // pending inline edits per worker
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function barColor(pct){ return pct>90?"var(--coral)":pct>75?"var(--gold)":"var(--acid)"; }
+
+function toast(kind, txt, link){
+  const el=document.createElement("div");
+  el.className="toast "+kind;
+  el.innerHTML=`<div class="tt">${esc(txt)}</div>${link?`<div class="tl">${esc(link)} →</div>`:""}`;
+  $("#toasts").appendChild(el);
+  NOTIFS.unshift({kind, txt, when:"agora"});
+  updateBell();
+  setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .3s"; setTimeout(()=>el.remove(),300); }, 4000);
+}
+function updateBell(){ const c=$("#bellCnt"); c.textContent=NOTIFS.length; c.parentElement.querySelector(".cnt").hidden=false; }
+
+/* --------- sparkline em canvas --------- */
+function drawSpark(canvas, data, opts={}){
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.clientWidth||160, h=canvas.clientHeight||36;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  const ctx=canvas.getContext("2d"); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+  const min=Math.min(...data), max=Math.max(...data), rng=(max-min)||1;
+  const thr=opts.threshold; // valor absoluto p/ trocar cor
+  const pts=data.map((v,i)=>[ (i/(data.length-1))*(w-4)+2, h-4-((v-min)/rng)*(h-8) ]);
+  // cor por estado (D6): monocromática acid, vira gold/coral ao cruzar threshold
+  let col="var(--acid)";
+  const last=data[data.length-1];
+  if(thr){ if(last>thr.coral) col=getVar("--coral"); else if(last>thr.gold) col=getVar("--gold"); else col=getVar("--acid"); }
+  else col=getVar("--acid");
+  ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.lineJoin="round"; ctx.lineCap="round";
+  ctx.beginPath();
+  if(opts.stale){ // linha interrompida — nunca continuação falsa
+    ctx.setLineDash([3,3]);
+  }
+  pts.forEach((p,i)=> i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+function getVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function rndSeries(n, base, jit){ const a=[]; let v=base; for(let i=0;i<n;i++){ v=Math.max(1, v+(Math.sin(i*1.3)+Math.cos(i*0.7))*jit); a.push(Math.round(v)); } return a; }
+
+/* ============================================================
+   SIDEBAR NAV
+   ============================================================ */
+function renderNav(){
+  const cur = location.hash.replace("#/","").split("/")[0] || "status";
+  $("#sideNav").innerHTML = TABS.map(t=>`
+    <button class="nav-item" data-tab="${t.id}" ${cur===t.id?'aria-current="page"':""}>
+      <svg class="ni" viewBox="0 0 24 24">${t.icon}</svg>
+      <span class="txt">${t.label}</span>
+      ${t.badge?`<span class="nav-badge" title="${t.badge} pendências">${t.badge}</span>`:""}
+    </button>`).join("");
+  $$("#sideNav .nav-item").forEach(b=> b.onclick=()=> location.hash="#/"+b.dataset.tab );
+}
+
+/* ============================================================
+   HEAD helper
+   ============================================================ */
+function head(crumb, h1a, h1coral, h1b, sub){
+  return `<div class="tab-head">
+    ${crumb?`<div class="crumb">${crumb}</div>`:""}
+    <div class="tab-head-orn"><h1 class="tab-h1">${h1a} <span>${h1coral}</span>${h1b?" "+h1b:""}</h1></div>
+    ${sub?`<p class="tab-sub">${sub}</p>`:""}
+  </div>`;
+}
+
+/* ============================================================
+   VIEW: STATUS (100% observacional)
+   ============================================================ */
+function viewStatus(){
+  const cpuS=rndSeries(24,42,9), gpuS=rndSeries(24,61,8), vramS=rndSeries(24,68,6);
+  setTimeout(()=>{
+    drawSpark($("#spCpu"), cpuS);
+    drawSpark($("#spGpu"), gpuS);
+    drawSpark($("#spVram"), vramS, {threshold:{gold:70,coral:88}});
+    drawSpark($("#spDisk"), rndSeries(24,30,5));
+  },0);
+  const filaRows = QUEUE.length ? QUEUE.map(q=>`
+    <tr><td>${esc(q.res)}</td><td><a class="text-link" href="#/orquestrador">${esc(q.owner)}</a></td>
+    <td class="num">${q.pos}</td><td>${prioChip(q.prio)}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="muted">Nenhum recurso disputado</td></tr>`;
+  return head("Painel · saúde", "STATUS DO", "STACK", "", "Vista 100% observacional — ações destrutivas vivem em Tools › Runtime &amp; host.")+`
+  <div class="grid g4">
+    ${statTile("CPU","42%","8 núcleos","spCpu")}
+    ${statTile("GPU NVIDIA","61%","RTX · 4090","spGpu")}
+    ${statTile("VRAM","8.2 / 12 GB","aguardando_vram: 1","spVram")}
+    ${statTile("Disco workspace","30%","412 GB livres","spDisk")}
+  </div>
+
+  <div class="grid g2 mt">
+    <div class="card">
+      <h2 class="card-h2">Saúde do control-api &amp; serviços</h2>
+      <table class="dt">
+        <thead><tr><th>Serviço</th><th>Estado</th><th class="num">Latência</th><th class="num">Uptime</th></tr></thead>
+        <tbody>
+          <tr><td>control-api</td><td><span class="sig ok"><span class="dot"></span>saudável</span></td><td class="num">18 ms</td><td class="num">99.98%</td></tr>
+          <tr><td>ollama</td><td><span class="sig ok"><span class="dot"></span>saudável</span></td><td class="num">31 ms</td><td class="num">99.9%</td></tr>
+          <tr><td>GET /api/health</td><td><span class="sig ok"><span class="dot"></span>200 ao vivo</span></td><td class="num">12 ms</td><td class="num">—</td></tr>
+          <tr><td>cli:claude bridge</td><td><span class="sig ok"><span class="dot"></span>saudável</span></td><td class="num">120 ms</td><td class="num">99.5%</td></tr>
+          <tr><td>cli:codex bridge</td><td><span class="sig warn">▲ latência alta</span></td><td class="num">840 ms</td><td class="num">98.1%</td></tr>
+          <tr><td>cli:gemini bridge</td><td><span class="sig off"><span class="dot"></span>desativado</span></td><td class="num">—</td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2 class="card-h2">Incidentes recentes</h2>
+      <table class="dt">
+        <thead><tr><th>Quando</th><th>Evento</th><th>Sev.</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">14:02</td><td>VRAM cruzou 75% (job #237)</td><td><span class="badge warn"><span class="dot"></span>warn</span></td></tr>
+          <tr><td class="mono">13:20</td><td>mistral-small:24b desativado</td><td><span class="badge info"><span class="dot"></span>info</span></td></tr>
+          <tr><td class="mono">12:41</td><td>cli:codex bridge degradado</td><td><span class="badge warn"><span class="dot"></span>warn</span></td></tr>
+          <tr><td class="mono">09:15</td><td>Reinício limpo do ollama</td><td><span class="badge info"><span class="dot"></span>info</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card mt">
+    <div class="between"><h2 class="card-h2" style="margin:0">Fila global de recursos · §3.6</h2>
+      <button class="text-link" id="statusOpenFila">abrir drawer da fila →</button></div>
+    <table class="dt mt-sm">
+      <thead><tr><th>Recurso</th><th>Dono</th><th class="num">Posição</th><th>Prioridade</th></tr></thead>
+      <tbody>${filaRows}</tbody>
+    </table>
+  </div>`;
+}
+function statTile(k,v,d,cid){
+  return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div>
+    <canvas class="spark" id="${cid}" style="width:100%;height:30px;margin-top:8px"></canvas></div>`;
+}
+function prioChip(p){
+  if(p==="interativa") return '<span class="badge ok"><span class="dot"></span>interativa</span>';
+  if(p==="batch") return '<span class="badge batch"><span class="dot"></span>batch</span>';
+  return '<span class="badge" style="color:var(--bone)"><span class="dot" style="background:var(--bone)"></span>normal</span>';
+}
+
+/* ============================================================
+   VIEW: WORKERS (master-detail + matriz + auditoria)
+   ============================================================ */
+let workerSel = "qwen3-coder";
+let workerSub = "detail"; // detail | matriz
+
+function viewWorkers(){
+  const parts = location.hash.split("/");
+  if(parts[2]) workerSel = parts[2].split("?")[0];
+  const sub = new URLSearchParams(location.hash.split("?")[1]||"").get("v");
+  workerSub = sub==="matriz" ? "matriz" : "detail";
+
+  return head('<a href="#/workers">Workers</a>', "GESTÃO DE", "WORKERS", "", "Master-detail · papéis, limites e auditoria versionada por worker (§3.5).")+`
+  <div class="subtabs" role="tablist">
+    <button class="subtab" role="tab" aria-selected="${workerSub==='detail'}" data-wsub="detail">Detalhe</button>
+    <button class="subtab" role="tab" aria-selected="${workerSub==='matriz'}" data-wsub="matriz">Matriz papéis × worker</button>
+  </div>
+  <div id="wsubbody">${ workerSub==='matriz' ? workersMatrix() : workersDetail() }</div>`;
+}
+
+function workersDetail(){
+  const list = WORKERS.map(w=>`
+    <button class="md-row" data-wsel="${w.id}" ${w.id===workerSel?'aria-current="true"':""}>
+      <div class="nm">${esc(w.name)}</div>
+      <div class="mt">
+        ${w.on?'<span class="sig ok"><span class="dot"></span>ligado</span>':'<span class="sig off"><span class="dot"></span>desligado</span>'}
+        <span class="muted">· ${w.provider}</span>
+        <span class="muted">· ${w.jobs} jobs</span>
+        <span class="muted">· ${w.cfg}</span>
+      </div>
+    </button>`).join("");
+  return `<div class="md">
+    <div class="md-list">${list}</div>
+    <div id="wdetail">${workerDetailBody(WORKERS.find(w=>w.id===workerSel))}</div>
+  </div>`;
+}
+
+function workerDetailBody(w){
+  if(!w) return "";
+  const d = workerDrafts[w.id] || {};
+  const draftCount = Object.keys(d).length;
+  const tokPct = Math.round((w.tokDayUsed/w.tokDay)*100)||0;
+  const allowChips = w.allow.map(r=>`<span class="rchip allow">${r}<button data-role-rm="${r}" data-w="${w.id}" aria-label="remover">✕</button></span>`).join("");
+  const blockChips = w.block.map(r=>`<span class="rchip block">⊘ ${r}<button data-role-rm="${r}" data-w="${w.id}" aria-label="remover">✕</button></span>`).join("");
+  const inherited = ROLES.filter(r=>!w.allow.includes(r)&&!w.block.includes(r)).slice(0,3)
+    .map(r=>`<span class="rchip inherit">${r} · herdado</span>`).join("");
+  const modelsBlock = w.models ? `<div class="mt-sm"><span class="lbl">Modelos</span><div class="wrap mt-sm">${w.models.map(m=>`<span class="badge info"><span class="dot"></span>${m}</span>`).join("")}</div></div>` : "";
+  const blocklistWarn = w.blocklist ? `<div class="wait-banner mt" style="cursor:default;color:var(--coral);border-color:var(--coral)"><svg class="icn" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Em blocklist de revisão — todos os papéis proibidos (⊘ *)</div>` : "";
+  return `<div class="card">
+    <div class="between">
+      <div>
+        <h2 class="card-h2" style="margin:0">${esc(w.name)}</h2>
+        <div class="small muted mt-sm">provider ${w.provider} · vram ${w.vram} · ctx ${w.ctx} · config ${w.cfg}</div>
+      </div>
+      <div class="row">
+        <span class="lbl">${w.on?"ligado":"desligado"}</span>
+        <button class="toggle" role="switch" aria-checked="${w.on}" data-wtoggle="${w.id}" aria-label="Liga/desliga worker"></button>
+      </div>
+    </div>
+    ${blocklistWarn}
+    ${modelsBlock}
+
+    <div class="mt" style="border-top:1px solid var(--frame);padding-top:12px">
+      <div class="between"><span class="section-lbl">Papéis (allow / block / herdado)</span>
+        <input class="txt" style="width:180px" placeholder="/ buscar papel…" aria-label="Buscar papel"></div>
+      <div class="wrap mt-sm">${allowChips}${blockChips}${inherited || '<span class="muted small">sem herança adicional</span>'}</div>
+      <div class="small muted mt-sm">Efetivo: <b class="mono" style="color:var(--acid)">${w.allow.length}</b> permitidos · <b class="mono" style="color:var(--coral)">${w.block.length}</b> proibidos</div>
+    </div>
+
+    <div class="mt" style="border-top:1px solid var(--frame);padding-top:12px">
+      <span class="section-lbl">Limites</span>
+      <div class="grid g2 mt-sm">
+        <label class="small">Concorrência<br><input class="inl" type="number" value="${d.conc??w.conc}" data-wlim="conc" data-w="${w.id}"></label>
+        <label class="small">Tokens / job<br><input class="inl" type="number" value="${d.tokJob??w.tokJob}" data-wlim="tokJob" data-w="${w.id}"></label>
+        <label class="small">Keep-alive<br><input class="inl" value="${d.keep??w.keep}" data-wlim="keep" data-w="${w.id}" style="width:90px"></label>
+        <label class="small">Temperatura
+          <span class="temp-wrap">
+            <input class="inl" type="number" step="0.1" min="0" max="1" value="${d.temp??w.temp}" data-wlim="temp" data-w="${w.id}" style="width:70px" aria-describedby="tempTip">
+            ${tempTip(d.temp??w.temp)}
+          </span>
+        </label>
+      </div>
+      <div class="mt-sm">
+        <div class="between"><span class="small">Tokens / dia <span class="mono">${(w.tokDayUsed).toLocaleString("pt-BR")} / ${(w.tokDay).toLocaleString("pt-BR")}</span></span>
+          <span class="small ${tokPct>90?'':''}" style="color:${tokPct>90?'var(--coral)':tokPct>75?'var(--gold)':'var(--muted)'}">${tokPct}%${tokPct>75?' ▲':''}</span></div>
+        <div class="meter mt-sm"><i style="width:${tokPct}%;background:${barColor(tokPct)}"></i></div>
+      </div>
+    </div>
+
+    <div class="between mt" style="border-top:1px solid var(--frame);padding-top:12px">
+      <button class="text-link" data-audit="${w.id}">ver auditoria · histórico de versões →</button>
+      <span class="small muted">última alteração: fable · 18/07 13:12</span>
+    </div>
+  </div>
+
+  <div class="diffbar" ${draftCount?'':'hidden'} id="diffbar-${w.id}">
+    <span class="n">▲ ${draftCount} alteração(ões) pendente(s) neste worker</span>
+    <div class="row">
+      <button class="btn sm" data-wdiscard="${w.id}">Descartar</button>
+      <button class="btn sm acid" data-wsave="${w.id}">Salvar nova versão</button>
+    </div>
+  </div>`;
+}
+
+function tempTip(t){
+  const pct=Math.min(1,Math.max(0,parseFloat(t)||0))*100;
+  return `<span class="temp-tip" id="tempTip" role="tooltip">
+    <div class="lbl" style="color:var(--gold)">Temperatura ${(+t).toFixed(1)}</div>
+    <div class="temp-ruler"><span class="mk" style="left:${pct}%"></span></div>
+    <div class="temp-scale"><span>0</span><span>.25</span><span>.5</span><span>.75</span><span>1</span></div>
+    <div class="temp-leg">0–0.2 juiz · 0.3–0.5 executor<br>0.6–0.8 explorador · 0.9+ interrogador</div>
+  </span>`;
+}
+
+function workersMatrix(){
+  // init state
+  WORKERS.forEach(w=>ROLES.forEach(r=>{
+    const k=r+"|"+w.id;
+    if(!(k in matrixState)) matrixState[k] = w.allow.includes(r)?"allow": w.block.includes(r)?"block":"inherit";
+  }));
+  const head2 = `<tr><th style="min-width:150px">papel \\ worker</th>${WORKERS.map(w=>`<th title="${esc(w.name)}">${esc(w.name.replace(':',' '))}</th>`).join("")}</tr>`;
+  const rows = ROLES.map(r=>`<tr><th>${r}</th>${WORKERS.map(w=>{
+    const k=r+"|"+w.id; const st=matrixState[k];
+    const sym = st==="allow"?"✓":st==="block"?"⊘":"·";
+    return `<td style="padding:0"><button class="mcell ${st}" data-mcell="${k}" title="clique cicla herdado→permitido→proibido">${sym}</button></td>`;
+  }).join("")}</tr>`).join("");
+  return `<div class="between mb" style="margin-bottom:10px">
+      <label class="row small"><span class="lbl">Projeto</span>
+        <select class="sel" style="width:200px" id="matrixProj">${PROJECTS.map(p=>`<option ${p==='painel-v2'?'selected':''}>${p}</option>`).join("")}</select></label>
+      <span class="small muted">célula cicla <span style="color:var(--muted)">herdado</span> → <span style="color:var(--acid)">permitido</span> → <span style="color:var(--coral)">proibido</span></span>
+    </div>
+    <div class="matrix-wrap"><table class="matrix"><thead>${head2}</thead><tbody>${rows}</tbody></table></div>
+    <div class="diffbar" id="matrixDiff" ${matrixPending?'':'hidden'}>
+      <span class="n">▲ <span id="matrixPendN">${matrixPending}</span> alteração(ões) pendente(s) na matriz</span>
+      <div class="row">
+        <button class="btn sm" id="matrixDiscard">Descartar</button>
+        <button class="btn sm gold" id="matrixApply">Aplicar em lote</button>
+      </div>
+    </div>`;
+}
+
+/* ============================================================
+   VIEW: ORQUESTRADOR
+   ============================================================ */
+function viewOrquestrador(){
+  setTimeout(()=>{ if($("#spOrq")) drawSpark($("#spOrq"), rndSeries(30,12,4)); },0);
+  return head("Painel · execução", "SALA DO", "ORQUESTRADOR", "", "Lançador, jobs ativos e histórico. Uso &amp; custos saem daqui (vão para a aba própria).")+`
+  <div class="wait-banner" id="orqWait">
+    <svg class="icn" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    ▲ AGUARDANDO RECURSO · job #237 "matriz fanout" · posição 1 · dono deepseek-r1 — clique para ver a fila
+  </div>
+
+  <div class="grid g2 mt">
+    <div class="card">
+      <h2 class="card-h2">Lançar job</h2>
+      <label class="small">Perfil de agente<br>
+        <select class="sel mt-sm">${ROLES.map(r=>`<option>${r}</option>`).join("")}</select></label>
+      <label class="small mt-sm" style="display:block">Cliente / modelo (router decide se vazio)<br>
+        <select class="sel mt-sm"><option>auto (router)</option><option>cli:claude · claude-fable-5</option><option>cli:claude · claude-opus</option><option>cli:codex · gpt-5.6-sol</option><option>ollama · qwen3-coder:30b</option><option>ollama · deepseek-r1:32b</option></select></label>
+      <label class="small mt-sm" style="display:block">Prioridade<br>
+        <select class="sel mt-sm"><option>interativa</option><option>normal</option><option>batch</option></select></label>
+      <button class="btn acid mt" id="launchJob">▸ Lançar</button>
+    </div>
+    <div class="card">
+      <h2 class="card-h2">Throughput (30 dias)</h2>
+      <canvas class="spark" id="spOrq" style="width:100%;height:60px"></canvas>
+      <div class="grid g3 mt">
+        <div><div class="lbl">Ativos</div><div class="mono" style="font-size:20px">3</div></div>
+        <div><div class="lbl">Na fila</div><div class="mono" style="font-size:20px;color:var(--gold)">2</div></div>
+        <div><div class="lbl">Hoje</div><div class="mono" style="font-size:20px">41</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt">
+    <div class="between"><h2 class="card-h2" style="margin:0">Jobs</h2>
+      <div class="filters" style="border:none;margin:0;padding:0">
+        <button class="fbtn" aria-pressed="true">Todos</button>
+        <button class="fbtn" aria-pressed="false">Ativos</button>
+        <button class="fbtn" aria-pressed="false">Concluídos</button>
+      </div></div>
+    <table class="dt mt-sm">
+      <thead><tr><th>Job</th><th>Descrição</th><th>Perfil</th><th>Cliente/modelo</th><th>Estado</th><th class="num">Dur.</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">#233</td><td>design fanout</td><td>planejador</td><td>cli:claude · claude-fable-5</td><td><span class="badge ok"><span class="dot"></span>concluído</span></td><td class="num">4m12s</td></tr>
+        <tr><td class="mono">#234</td><td>design fanout</td><td>executor_complexo</td><td>cli:codex · gpt-5.6-sol</td><td><span class="badge ok"><span class="dot"></span>concluído</span></td><td class="num">5m03s</td></tr>
+        <tr><td class="mono">#235</td><td>consolidação F6</td><td>comparador_juiz</td><td>ollama · deepseek-r1:32b</td><td><span class="badge ok"><span class="dot"></span>concluído</span></td><td class="num">2m40s</td></tr>
+        <tr><td class="mono">#236</td><td>revisão final spec</td><td>revisor_final</td><td>cli:claude · claude-fable-5</td><td><span class="sig ok"><span class="dot"></span>executando</span></td><td class="num">1m08s</td></tr>
+        <tr><td class="mono">#237</td><td>matriz fanout</td><td>executor_complexo</td><td>ollama · deepseek-r1:32b</td><td><span class="badge warn"><span class="dot"></span>▲ aguardando</span></td><td class="num">—</td></tr>
+        <tr><td class="mono">#238</td><td>lote de crítica</td><td>critico</td><td>cli:codex · gpt-5.6-terra</td><td><span class="badge batch"><span class="dot"></span>batch</span></td><td class="num">—</td></tr>
+        <tr><td class="mono">#231</td><td>embed workspace</td><td>executor_simples</td><td>ollama · qwen3:8b</td><td><span class="badge crit-end"><span class="dot" style="background:var(--coal)"></span>ENCERRADO</span></td><td class="num">0m22s</td></tr>
+      </tbody>
+    </table>
+  </div>`;
+}
+
+/* ============================================================
+   VIEW: CHAT
+   ============================================================ */
+let chatConv = "brief";
+function viewChat(){
+  return head("Projetos · conversas", "CHAT DOS", "PROJETOS", "", "3 colunas · novo projeto com description · mover conversa via modal (sem prompt de slug).")+`
+  <div class="chat3">
+    <div class="chat-col">
+      <div class="ch"><span class="lbl">Projetos</span><button class="btn sm acid" id="newProj">+ novo</button></div>
+      <div class="cb">
+        ${PROJECTS.map((p,i)=>`<div class="chat-item" ${i===2?'aria-current="true"':""}>
+          <div class="disp">${p}</div><div class="small muted">${['12 conversas · idle','8 conversas','5 conversas · ativo'][i]}</div></div>`).join("")}
+      </div>
+    </div>
+    <div class="chat-col">
+      <div class="ch"><span class="lbl">painel-v2</span><button class="btn sm" id="convMove">mover…</button></div>
+      <div class="cb">
+        <div class="chat-item" aria-current="true"><div class="disp">brief único F6</div><div class="small muted">fanout #233 × #234</div></div>
+        <div class="chat-item"><div class="disp">consolidação spec-017</div><div class="small muted">revisor_final</div></div>
+        <div class="chat-item"><div class="disp">tokens karvalho</div><div class="small muted">design</div></div>
+        <div class="chat-item"><div class="disp">matriz papéis</div><div class="small muted">▲ aguardando_recurso</div></div>
+      </div>
+    </div>
+    <div class="chat-col">
+      <div class="ch"><span class="lbl">brief único F6</span><span class="badge ok"><span class="dot"></span>ao vivo</span></div>
+      <div class="cb" id="chatBody">
+        <div class="wait-banner" style="margin:12px;cursor:pointer" id="chatWait"><svg class="icn" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3H20a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> ▲ aguardando_recurso · cli:codex slot · posição 2</div>
+        <div class="msg user"><div class="who">operador</div><div class="tx">Brief: desenhem o painel v2 seguindo a identidade Karvalho. Fanout para claude-fable-5 e gpt-5.6-sol, comparar e consolidar.</div></div>
+        <div class="msg"><div class="who">planejador · claude-fable-5 (#233)</div><div class="tx">Proposta: "ornamento na casca, dado nu". Sidebar 216px, barra global, 8 abas. Acid escasso.</div></div>
+        <div class="msg"><div class="who">executor_complexo · gpt-5.6-sol (#234)</div><div class="tx">Console editorial operacional. Workers master-detail, Runtime &amp; host em Tools. Rótulos de custo REAL/ESTIMADO/SEM TARIFA.</div></div>
+        <div class="msg"><div class="who">comparador_juiz · deepseek-r1 (#235)</div><div class="tx">Convergência alta. Divergências D1–D10 resolvidas conforme revisor. Consolidar em SPEC-017.</div></div>
+      </div>
+      <div style="padding:10px;border-top:1px solid var(--frame)">
+        <input class="txt" placeholder="Mensagem… (polling nunca apaga o que está renderizado)" aria-label="Mensagem">
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   VIEW: GRILL ME
+   ============================================================ */
+function viewGrill(){
+  const open = GRILL.filter(g=>g.state==="open").length;
+  const cards = GRILL.map(g=>grillCard(g)).join("");
+  return head("Sessão de crítica", "PASSE NA", "GRELHA", "", "Coluna principal + resumo lateral. 4 ações: responder · defender · aceitar risco · descartar.")+`
+  <div class="filters">
+    <button class="fbtn" data-gf="cat" aria-pressed="true">Todas categorias</button>
+    <button class="fbtn" data-gf="sev-alta" aria-pressed="false">Severidade alta</button>
+    <button class="fbtn" data-gf="open" aria-pressed="false">Só abertas</button>
+    <span class="search"><input class="txt" placeholder="/ buscar…" aria-label="Buscar pergunta"></span>
+  </div>
+  <div class="grill-layout">
+    <div id="grillList">${cards}</div>
+    <div class="grill-summary" id="grillSummary">
+      <h2 class="card-h2">Resumo</h2>
+      <div class="sline"><span>Total de perguntas</span><span class="mono">${GRILL.length}</span></div>
+      <div class="sline"><span>Abertas</span><span class="mono" id="gsOpen" style="color:var(--gold)">${open}</span></div>
+      <div class="sline"><span>Resolvidas</span><span class="mono" id="gsDone" style="color:var(--acid)">${GRILL.length-open}</span></div>
+      <div class="sline"><span>Sev. alta</span><span class="mono" style="color:var(--coral)">${GRILL.filter(g=>g.sev==='alta').length}</span></div>
+      <div class="sline"><span>Riscos aceitos</span><span class="mono" id="gsRisk">0</span></div>
+      <button class="btn gold mt" id="grillFinish" style="width:100%;justify-content:center">Finalizar → relatório</button>
+      <p class="small muted mt-sm">Finalizar exige todas resolvidas ou risco aceito com justificativa.</p>
+    </div>
+  </div>
+  <div id="grillReport" class="mt" hidden></div>`;
+}
+function grillCard(g){
+  const sevBadge = g.sev==="alta"?'<span class="badge" style="color:var(--coral);border-color:var(--coral)"><span class="dot" style="background:var(--coral)"></span>alta</span>'
+    : g.sev==="media"?'<span class="badge warn"><span class="dot"></span>▲ média</span>'
+    : '<span class="badge info"><span class="dot"></span>baixa</span>';
+  return `<div class="qcard sev-${g.sev}" data-q="${g.n}" data-cat="${g.cat}" data-sev="${g.sev}" data-state="${g.state}">
+    <div class="resolved-line"><span class="qnum">${g.n}</span> <span class="sig ok"><span class="dot"></span>resolvida</span> <span class="muted">${esc(g.q)}</span> <button class="text-link" data-qexpand="${g.n}" style="margin-left:auto">reabrir</button></div>
+    <div class="qbody">
+      <div class="qhead"><span class="qnum">${g.n}</span><span class="badge batch"><span class="dot"></span>${g.cat}</span>${sevBadge}</div>
+      <div class="qtitle">${esc(g.q)}</div>
+      <div class="evidence">${esc(g.ev)}</div>
+      <div class="qactions">
+        <button class="btn sm acid" data-qact="responder" data-q="${g.n}">Responder</button>
+        <button class="btn sm gold" data-qact="defender" data-q="${g.n}">Defender com agente</button>
+        <button class="btn sm coral" data-qact="risco" data-q="${g.n}">Aceitar risco</button>
+        <button class="btn sm" data-qact="descartar" data-q="${g.n}">Descartar</button>
+      </div>
+      <div class="qslot mt-sm"></div>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   VIEW: TOOLS
+   ============================================================ */
+let toolsSub="servers";
+function viewTools(){
+  return head("Ferramentas · MCP", "FERRAMENTAS &", "RUNTIME", "", "Servidores MCP · catálogo · Runtime &amp; host (zona de operação — perigo demarcado).")+`
+  <div class="subtabs" role="tablist">
+    <button class="subtab" role="tab" data-tsub="servers" aria-selected="${toolsSub==='servers'}">Servidores MCP</button>
+    <button class="subtab" role="tab" data-tsub="catalog" aria-selected="${toolsSub==='catalog'}">Catálogo</button>
+    <button class="subtab" role="tab" data-tsub="runtime" aria-selected="${toolsSub==='runtime'}">Runtime &amp; host</button>
+  </div>
+  <div id="tsubbody">${toolsSub==='servers'?toolsServers():toolsSub==='catalog'?toolsCatalog():toolsRuntime()}</div>`;
+}
+function toolsServers(){
+  return `<div class="card"><h2 class="card-h2">Servidores MCP</h2>
+    <table class="dt">
+      <thead><tr><th>Servidor</th><th>URL</th><th>Auth (OAuth)</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>MCP_CASA</td><td class="mono small">http://localhost:8790</td><td><span class="sig ok"><span class="dot"></span>configurado</span></td><td><span class="badge ok"><span class="dot"></span>online</span></td><td><button class="btn sm" data-tauth="MCP_CASA">auth…</button></td></tr>
+        <tr><td>Google_Drive</td><td class="mono small">https://drive.mcp/…</td><td><span class="sig warn">▲ expirado</span></td><td><span class="badge warn"><span class="dot"></span>degradado</span></td><td><button class="btn sm gold" data-tauth="Google_Drive">reautenticar…</button></td></tr>
+        <tr><td>claude-in-chrome</td><td class="mono small">ws://localhost:9222</td><td><span class="sig off"><span class="dot"></span>ausente</span></td><td><span class="badge info"><span class="dot"></span>ocioso</span></td><td><button class="btn sm" data-tauth="chrome">auth…</button></td></tr>
+      </tbody>
+    </table>
+    <p class="small muted mt-sm">Editar URL via <span class="mono">PATCH</span> · auth OAuth via <span class="mono">PUT .../auth</span> · segredos mascarados.</p>
+  </div>`;
+}
+function toolsCatalog(){
+  return `<div class="grid g2">
+    <div class="card"><h2 class="card-h2">nvidia_gpu_status</h2>
+      <p class="small muted">Chamada sem parâmetros. Retorna VRAM, temperatura e processos.</p>
+      <button class="btn acid mt" id="runTool">▸ Executar</button>
+    </div>
+    <div class="card"><h2 class="card-h2">local_generate <span class="badge batch"><span class="dot"></span>JSON Schema</span></h2>
+      <label class="small">model *<br><select class="sel mt-sm"><option>qwen3-coder:30b</option><option>deepseek-r1:32b</option><option>qwen3:8b</option></select></label>
+      <label class="small mt-sm" style="display:block">prompt *<br><textarea class="txt mt-sm" placeholder="obrigatório"></textarea></label>
+      <details class="mt-sm"><summary class="small muted">avançados</summary>
+        <label class="small mt-sm" style="display:block">temperature<br><input class="inl" type="number" step="0.1" value="0.4"></label></details>
+      <button class="btn acid mt" id="runTool2">▸ Executar</button>
+      <div id="toolResult" class="mt-sm"></div>
+    </div>
+  </div>`;
+}
+function toolsRuntime(){
+  return `<div class="card" style="border-color:var(--coral)">
+    <h2 class="card-h2" style="color:var(--coral)">⊘ Zona de operação · Runtime &amp; host</h2>
+    <p class="small muted">Comandos que agem sobre containers e host. Ações destrutivas exigem modal de nível adequado.</p>
+    <table class="dt mt-sm">
+      <thead><tr><th>Container</th><th>Imagem</th><th>Estado</th><th class="num">CPU</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>ollama</td><td class="mono small">ollama/ollama:latest</td><td><span class="badge ok"><span class="dot"></span>up 6h</span></td><td class="num">61%</td><td><button class="btn sm coral" data-stop="ollama">parar…</button></td></tr>
+        <tr><td>control-api</td><td class="mono small">mcp/control-api:1.4</td><td><span class="badge ok"><span class="dot"></span>up 6h</span></td><td class="num">4%</td><td><button class="btn sm coral" data-stop="control-api">parar…</button></td></tr>
+        <tr><td><b>painel-web</b> (este painel)</td><td class="mono small">mcp/painel:v2-mock</td><td><span class="badge ok"><span class="dot"></span>up 2h</span></td><td class="num">2%</td><td><button class="btn sm coral" data-stop="painel-web">parar…</button></td></tr>
+      </tbody>
+    </table>
+    <p class="small muted mt-sm">Parar o container do painel = modal crítico (digitar o nome) + aviso de perda de conexão + comando literal antes do OK.</p>
+  </div>`;
+}
+
+/* ============================================================
+   VIEW: USO & CUSTOS
+   ============================================================ */
+function viewUso(){
+  setTimeout(()=>{ if($("#spUso")) drawSpark($("#spUso"), rndSeries(30,40,10), {threshold:{gold:60,coral:75}}); },0);
+  return head("Uso · custos", "USO &", "CUSTOS", "", "4 tiles + sparkline 30d + tabelas por modelo/projeto. Custo REAL / ESTIMADO / SEM TARIFA (sem tarifa nunca vira zero).")+`
+  <div class="filters">
+    <label class="row small"><span class="lbl">Período</span><select class="sel" style="width:130px"><option>30 dias</option><option>7 dias</option><option>Hoje</option></select></label>
+    <label class="row small"><span class="lbl">Projeto</span><select class="sel" style="width:150px"><option>Todos</option>${PROJECTS.map(p=>`<option>${p}</option>`).join("")}</select></label>
+    <label class="row small"><span class="lbl">Provider</span><select class="sel" style="width:120px"><option>Todos</option><option>ollama</option><option>cli</option></select></label>
+    <label class="row small"><span class="lbl">Worker</span><select class="sel" style="width:150px"><option>Todos</option>${WORKERS.map(w=>`<option>${w.name}</option>`).join("")}</select></label>
+  </div>
+  <div class="grid g4">
+    <div class="stat"><div class="k">Custo real (30d)</div><div class="v">US$ 84,20</div><div class="d">cli:claude + cli:codex</div></div>
+    <div class="stat"><div class="k">Custo estimado</div><div class="v" style="color:var(--gold)">US$ 12,40</div><div class="d">tarifas inferidas ▲</div></div>
+    <div class="stat"><div class="k">Tokens (30d)</div><div class="v">18,4 M</div><div class="d">in 11,2M · out 7,2M</div></div>
+    <div class="stat"><div class="k">Local (sem tarifa)</div><div class="v" style="color:var(--water)">SEM TARIFA</div><div class="d">6,1M tokens ollama</div></div>
+  </div>
+  <div class="card mt"><h2 class="card-h2">Gasto diário (30 dias)</h2>
+    <canvas class="spark" id="spUso" style="width:100%;height:70px"></canvas></div>
+  <div class="grid g2 mt">
+    <div class="card"><h2 class="card-h2">Por modelo</h2>
+      <table class="dt"><thead><tr><th>Modelo</th><th class="num">Tokens</th><th class="num">Custo</th><th>Rótulo</th></tr></thead><tbody>
+        <tr><td>claude-fable-5</td><td class="num">6,2 M</td><td class="num">US$ 48,10</td><td><span class="badge ok"><span class="dot"></span>REAL</span></td></tr>
+        <tr><td>gpt-5.6-sol</td><td class="num">4,1 M</td><td class="num">US$ 36,10</td><td><span class="badge ok"><span class="dot"></span>REAL</span></td></tr>
+        <tr><td>gpt-5.6-terra</td><td class="num">1,4 M</td><td class="num">US$ 9,80</td><td><span class="badge warn"><span class="dot"></span>▲ ESTIMADO</span></td></tr>
+        <tr><td>qwen3-coder:30b</td><td class="num">3,3 M</td><td class="num">—</td><td><span class="badge info"><span class="dot"></span>SEM TARIFA</span></td></tr>
+        <tr><td>deepseek-r1:32b</td><td class="num">1,8 M</td><td class="num">—</td><td><span class="badge info"><span class="dot"></span>SEM TARIFA</span></td></tr>
+        <tr><td>qwen3:8b</td><td class="num">1,0 M</td><td class="num">—</td><td><span class="badge info"><span class="dot"></span>SEM TARIFA</span></td></tr>
+      </tbody></table>
+    </div>
+    <div class="card"><h2 class="card-h2">Por projeto</h2>
+      <table class="dt"><thead><tr><th>Projeto</th><th class="num">Jobs</th><th class="num">Tokens</th><th class="num">Custo</th></tr></thead><tbody>
+        <tr><td>painel-v2</td><td class="num">41</td><td class="num">9,8 M</td><td class="num">US$ 52,30</td></tr>
+        <tr><td>rooc-americas</td><td class="num">28</td><td class="num">5,1 M</td><td class="num">US$ 24,60</td></tr>
+        <tr><td>pokeidle</td><td class="num">17</td><td class="num">3,5 M</td><td class="num">US$ 7,30</td></tr>
+      </tbody></table>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   VIEW: INSTRUÇÕES
+   ============================================================ */
+let instrDirty=false;
+const INSTR_TEXT = `# Instruções globais do stack
+
+- spec driven; programação por loop
+- diversos agentes simultâneos, modelos diferentes por necessidade
+- no planejamento, consultar clientes solicitados e comparar antes da final
+- decidir qual cliente/modelo roda cada análise, auditoria e processo
+
+## Roteamento
+router → escolhe worker por papel e custo.
+comparador_juiz → decide a resposta final no fanout.`;
+function viewInstrucoes(){
+  return head("Config · instruções", "INSTRUÇÕES DO", "STACK", "", "Editor + preview lado a lado · guard de alterações não salvas (documento único, sem lista de escopos — D8).")+`
+  <div class="between mb" style="margin-bottom:10px">
+    <span class="small muted"><span id="charCount">0</span> caracteres · última gravação 18/07 12:58</span>
+    <div class="row"><button class="btn sm" id="instrReset">Reverter</button><button class="btn sm acid" id="instrSave">Salvar</button></div>
+  </div>
+  <div class="editor-split">
+    <div><span class="section-lbl">Editor (Markdown)</span>
+      <textarea class="txt" id="instrEditor" style="margin-top:8px">${esc(INSTR_TEXT)}</textarea></div>
+    <div><span class="section-lbl">Preview</span>
+      <div class="preview" id="instrPreview" style="margin-top:8px"></div></div>
+  </div>`;
+}
+function renderMd(t){
+  return esc(t)
+    .replace(/^## (.*)$/gm,'<h3>$1</h3>')
+    .replace(/^# (.*)$/gm,'<h2 style="color:var(--acid);font-family:var(--display)">$1</h2>')
+    .replace(/^- (.*)$/gm,'<div style="padding-left:14px">• $1</div>')
+    .replace(/\n\n/g,'<br>');
+}
+
+/* ============================================================
+   ROUTER
+   ============================================================ */
+const VIEWS = {status:viewStatus, workers:viewWorkers, orquestrador:viewOrquestrador, chat:viewChat, grill:viewGrill, tools:viewTools, uso:viewUso, instrucoes:viewInstrucoes};
+function router(){
+  if(!location.hash) location.hash="#/status";
+  const tab = location.hash.replace("#/","").split("/")[0].split("?")[0] || "status";
+  const fn = VIEWS[tab] || viewStatus;
+  $("#view").innerHTML = `<div class="view-inner">${fn()}</div>`;
+  $("#view").scrollTop=0;
+  renderNav();
+  wireView(tab);
+}
+
+/* ============================================================
+   WIRING (event handlers pós-render)
+   ============================================================ */
+function wireView(tab){
+  if(tab==="status"){
+    $("#statusOpenFila")?.addEventListener("click", openFila);
+  }
+  if(tab==="workers") wireWorkers();
+  if(tab==="orquestrador"){
+    $("#orqWait")?.addEventListener("click", openFila);
+    $("#launchJob")?.addEventListener("click", ()=>toast("info","Job #239 enfileirado (auto/router)","Orquestrador · jobs"));
+    $$(".filters .fbtn").forEach(b=>b.onclick=()=>{ $$(".filters .fbtn").forEach(x=>x.setAttribute("aria-pressed","false")); b.setAttribute("aria-pressed","true"); });
+  }
+  if(tab==="chat") wireChat();
+  if(tab==="grill") wireGrill();
+  if(tab==="tools") wireTools();
+  if(tab==="instrucoes") wireInstr();
+}
+
+/* ---- Workers wiring ---- */
+function wireWorkers(){
+  $$('[data-wsub]').forEach(b=>b.onclick=()=>{
+    const v=b.dataset.wsub;
+    location.hash = v==="matriz" ? "#/workers/"+workerSel+"?v=matriz" : "#/workers/"+workerSel;
+  });
+  $$('[data-wsel]').forEach(b=>b.onclick=()=>{ location.hash="#/workers/"+b.dataset.wsel; });
+
+  // toggle liga/desliga
+  $$('[data-wtoggle]').forEach(b=>b.onclick=()=>{
+    const w=WORKERS.find(x=>x.id===b.dataset.wtoggle);
+    w.on=!w.on; b.setAttribute("aria-checked",w.on);
+    toast(w.on?"ok":"warn", `${w.name} ${w.on?"ligado":"desligado"}`);
+    $("#wdetail").innerHTML=workerDetailBody(w); wireWorkerDetail();
+  });
+  // remove role chip
+  $$('[data-role-rm]').forEach(b=>b.onclick=()=>{
+    const w=WORKERS.find(x=>x.id===b.dataset.w);
+    w.allow=w.allow.filter(r=>r!==b.dataset.roleRm); w.block=w.block.filter(r=>r!==b.dataset.roleRm);
+    (workerDrafts[w.id]=workerDrafts[w.id]||{})["papeis"]=true;
+    $("#wdetail").innerHTML=workerDetailBody(w); wireWorkerDetail();
+  });
+  wireWorkerDetail();
+
+  // matriz
+  $$('[data-mcell]').forEach(c=>c.onclick=()=>cycleMatrix(c));
+  $("#matrixApply")?.addEventListener("click", ()=>{ matrixPending=0; toast("gold",`Matriz aplicada em lote (${$("#matrixProj")?.value||"painel-v2"})`,"Workers · matriz"); router(); });
+  $("#matrixDiscard")?.addEventListener("click", ()=>{ matrixState={}; matrixPending=0; router(); });
+}
+function wireWorkerDetail(){
+  $$('[data-wtoggle]').forEach(b=>b.onclick=()=>{
+    const w=WORKERS.find(x=>x.id===b.dataset.wtoggle);
+    w.on=!w.on; b.setAttribute("aria-checked",w.on);
+    toast(w.on?"ok":"warn", `${w.name} ${w.on?"ligado":"desligado"}`);
+    $("#wdetail").innerHTML=workerDetailBody(w); wireWorkerDetail();
+  });
+  $$('[data-role-rm]').forEach(b=>b.onclick=()=>{
+    const w=WORKERS.find(x=>x.id===b.dataset.w);
+    w.allow=w.allow.filter(r=>r!==b.dataset.roleRm); w.block=w.block.filter(r=>r!==b.dataset.roleRm);
+    (workerDrafts[w.id]=workerDrafts[w.id]||{})["papeis"]=true;
+    $("#wdetail").innerHTML=workerDetailBody(w); wireWorkerDetail();
+  });
+  $$('[data-wlim]').forEach(inp=>inp.oninput=()=>{
+    const w=inp.dataset.w, k=inp.dataset.wlim;
+    (workerDrafts[w]=workerDrafts[w]||{})[k]=inp.value;
+    const bar=$("#diffbar-"+w);
+    if(bar){ bar.hidden=false; bar.querySelector(".n").textContent="▲ "+Object.keys(workerDrafts[w]).length+" alteração(ões) pendente(s) neste worker"; }
+  });
+  $$('[data-wsave]').forEach(b=>b.onclick=()=>{
+    const w=WORKERS.find(x=>x.id===b.dataset.wsave);
+    // aplica drafts
+    const d=workerDrafts[w.id]||{}; ["conc","tokJob","temp"].forEach(k=>{ if(d[k]!==undefined) w[k]=parseFloat(d[k]); }); if(d.keep!==undefined) w.keep=d.keep;
+    workerDrafts[w.id]={};
+    toast("ok",`${w.name} salvo — nova versão ${bumpCfg(w)}`,"Workers · auditoria");
+    $("#wdetail").innerHTML=workerDetailBody(w); wireWorkerDetail();
+  });
+  $$('[data-wdiscard]').forEach(b=>b.onclick=()=>{
+    const w=WORKERS.find(x=>x.id===b.dataset.wdiscard); workerDrafts[w.id]={};
+    $("#wdetail").innerHTML=workerDetailBody(w); wireWorkerDetail();
+  });
+  $$('[data-audit]').forEach(b=>b.onclick=()=>openAudit(b.dataset.audit));
+}
+function bumpCfg(w){ const n=parseInt(w.cfg.replace("v",""))+1; w.cfg="v"+n; return w.cfg; }
+
+function cycleMatrix(cell){
+  const k=cell.dataset.mcell;
+  const order=["inherit","allow","block"];
+  const cur=matrixState[k]||"inherit";
+  const next=order[(order.indexOf(cur)+1)%3];
+  matrixState[k]=next;
+  cell.className="mcell "+next;
+  cell.textContent = next==="allow"?"✓":next==="block"?"⊘":"·";
+  matrixPending++;
+  const bar=$("#matrixDiff"); if(bar){ bar.hidden=false; $("#matrixPendN").textContent=matrixPending; }
+}
+
+/* ---- Chat wiring ---- */
+function wireChat(){
+  $("#newProj")?.addEventListener("click", ()=>{
+    openModal("Novo projeto", `
+      <label class="small">Nome / slug<br><input class="txt mt-sm" id="npName" placeholder="ex.: novo-projeto"></label>
+      <label class="small mt" style="display:block">Description<br><textarea class="txt mt-sm" id="npDesc" placeholder="descrição do projeto (POST /api/projects)"></textarea></label>`,
+      [{t:"Cancelar",cls:"",fn:closeModal},{t:"Criar",cls:"acid",fn:()=>{closeModal();toast("ok","Projeto criado com description","Chat");}}]);
+  });
+  $("#convMove")?.addEventListener("click", ()=>{
+    openModal("Mover conversa", `
+      <p class="small muted">Selecione o projeto de destino (substitui o antigo prompt() de slug).</p>
+      <label class="small mt">Buscar / destino<br>
+        <input class="txt mt-sm" placeholder="/ buscar projeto…">
+        <select class="sel mt-sm" id="moveTo">${PROJECTS.map(p=>`<option>${p}</option>`).join("")}</select></label>`,
+      [{t:"Cancelar",cls:"",fn:closeModal},{t:"Mover",cls:"acid",fn:()=>{const to=$("#moveTo").value;closeModal();toast("ok",`Conversa movida para ${to}`,"Chat");}}]);
+  });
+  $("#chatWait")?.addEventListener("click", openFila);
+  $$(".chat-item").forEach(c=>c.onclick=()=>{ c.parentElement.querySelectorAll(".chat-item").forEach(x=>x.removeAttribute("aria-current")); c.setAttribute("aria-current","true"); });
+}
+
+/* ---- Grill wiring ---- */
+function wireGrill(){
+  $$('[data-qact]').forEach(b=>b.onclick=()=>grillAction(b.dataset.qact, b.dataset.q, b));
+  $$('[data-qexpand]').forEach(b=>b.onclick=()=>{
+    const g=GRILL.find(x=>x.n===b.dataset.qexpand); g.state="open";
+    const card=$(`.qcard[data-q="${g.n}"]`); card.classList.remove("collapsed","resolved"); card.dataset.state="open"; refreshGrillSummary();
+  });
+  $$('.filters .fbtn').forEach(b=>b.onclick=()=>{
+    b.setAttribute("aria-pressed", b.getAttribute("aria-pressed")==="true"?"false":"true");
+    const alta=$('[data-gf="sev-alta"]').getAttribute("aria-pressed")==="true";
+    const onlyOpen=$('[data-gf="open"]').getAttribute("aria-pressed")==="true";
+    $$('.qcard').forEach(c=>{
+      let show=true;
+      if(alta && c.dataset.sev!=="alta") show=false;
+      if(onlyOpen && c.dataset.state!=="open") show=false;
+      c.hidden=!show;
+    });
+  });
+  $("#grillFinish")?.addEventListener("click", ()=>{
+    const open=GRILL.filter(g=>g.state==="open").length;
+    if(open>0){ toast("warn",`▲ ${open} pergunta(s) ainda aberta(s) — resolva ou aceite risco`); return; }
+    showGrillReport();
+  });
+}
+function grillAction(act, n, btn){
+  const g=GRILL.find(x=>x.n===n);
+  const card=$(`.qcard[data-q="${n}"]`);
+  const slot=card.querySelector(".qslot");
+  if(act==="responder"){
+    slot.innerHTML=`<label class="small">Resposta<br><textarea class="txt mt-sm" placeholder="Escreva a resposta que resolve a pergunta…"></textarea></label>
+      <button class="btn sm acid mt-sm" data-qsubmit="${n}">Enviar resposta</button>`;
+    slot.querySelector('[data-qsubmit]').onclick=()=>resolveQ(g,card,"respondida");
+  } else if(act==="defender"){
+    openDefenderPopover(btn, g);
+  } else if(act==="risco"){
+    slot.innerHTML=`<div class="small" style="color:var(--coral)">⊘ Aceitar risco exige justificativa (obrigatória).</div>
+      <textarea class="txt mt-sm" id="riskJust-${n}" placeholder="Justificativa do risco aceito…"></textarea>
+      <button class="btn sm coral mt-sm" data-qrisk="${n}">Confirmar aceite de risco</button>`;
+    slot.querySelector('[data-qrisk]').onclick=()=>{
+      const v=$("#riskJust-"+n).value.trim();
+      if(!v){ toast("err","⊘ Justificativa obrigatória para aceitar risco"); return; }
+      window.__risk=(window.__risk||0)+1; const gr=$("#gsRisk"); if(gr) gr.textContent=window.__risk;
+      resolveQ(g,card,"risco aceito");
+    };
+  } else if(act==="descartar"){
+    slot.innerHTML=`<label class="small">Motivo curto<br><input class="txt mt-sm" placeholder="motivo do descarte…" id="disc-${n}"></label>
+      <button class="btn sm mt-sm" data-qdisc="${n}">Descartar</button>`;
+    slot.querySelector('[data-qdisc]').onclick=()=>resolveQ(g,card,"descartada");
+  }
+}
+function resolveQ(g,card,how){
+  g.state="resolved";
+  card.classList.add("collapsed","resolved"); card.dataset.state="resolved";
+  card.querySelector(".qslot").innerHTML="";
+  toast("ok",`${g.n} ${how} → colapsada em linha`);
+  refreshGrillSummary();
+}
+function refreshGrillSummary(){
+  const open=GRILL.filter(g=>g.state==="open").length;
+  if($("#gsOpen")) $("#gsOpen").textContent=open;
+  if($("#gsDone")) $("#gsDone").textContent=GRILL.length-open;
+}
+function openDefenderPopover(btn, g){
+  closePopover();
+  const prof=AGENT_PROFILES["critico"];
+  const pop=document.createElement("div"); pop.className="popover"; pop.id="defPop";
+  pop.innerHTML=`<h4>Defender ${g.n} com agente</h4>
+    <div class="small">Perfil: <b class="disp" style="color:var(--acid)">critico</b></div>
+    <div class="small muted mt-sm">${prof.desc}</div>
+    <div class="small mt-sm">Modelo sugerido: <span class="mono">${prof.model}</span> · temp ${prof.temp}</div>
+    <button class="btn sm gold mt" id="defRun">▸ Lançar defesa (job acompanhável)</button>`;
+  document.body.appendChild(pop);
+  const r=btn.getBoundingClientRect();
+  pop.style.top=(r.bottom+window.scrollY+6)+"px"; pop.style.left=(r.left+window.scrollX)+"px";
+  $("#defRun").onclick=()=>{ closePopover(); toast("info",`Defesa de ${g.n} lançada · critico/${prof.model}`,"Orquestrador · job #240"); };
+  setTimeout(()=>document.addEventListener("click",closePopoverOnce),0);
+}
+function closePopoverOnce(e){ if(!e.target.closest("#defPop")){ closePopover(); document.removeEventListener("click",closePopoverOnce); } }
+function closePopover(){ $("#defPop")?.remove(); }
+function showGrillReport(){
+  const rep=$("#grillReport"); if(!rep) return;
+  rep.hidden=false;
+  rep.innerHTML=`<div class="goldband"><svg class="icn" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> RELATÓRIO PRONTO</div>
+    <div class="ornament mt" style="padding:18px">
+      <h2 class="card-h2">Relatório da grelha · painel-v2</h2>
+      <p class="small">Todas as ${GRILL.length} perguntas resolvidas. Riscos aceitos: <b class="mono">${window.__risk||0}</b>.</p>
+      <table class="dt mt-sm"><thead><tr><th>Nº</th><th>Categoria</th><th>Severidade</th><th>Desfecho</th></tr></thead><tbody>
+        ${GRILL.map(g=>`<tr><td class="mono">${g.n}</td><td>${g.cat}</td><td>${g.sev}</td><td><span class="sig ok"><span class="dot"></span>resolvida</span></td></tr>`).join("")}
+      </tbody></table>
+    </div>`;
+  rep.scrollIntoView({behavior:"smooth"});
+  toast("ok","Relatório do Grill gerado","Grill Me");
+}
+
+/* ---- Tools wiring ---- */
+function wireTools(){
+  $$('[data-tsub]').forEach(b=>b.onclick=()=>{ toolsSub=b.dataset.tsub; $("#tsubbody").innerHTML= toolsSub==='servers'?toolsServers():toolsSub==='catalog'?toolsCatalog():toolsRuntime(); $$('[data-tsub]').forEach(x=>x.setAttribute("aria-selected", x.dataset.tsub===toolsSub)); wireToolsInner(); });
+  wireToolsInner();
+}
+function wireToolsInner(){
+  $$('[data-tauth]').forEach(b=>b.onclick=()=>{
+    openModal("Autenticação OAuth · "+b.dataset.tauth, `
+      <p class="small muted">Fluxo OAuth via <span class="mono">PUT .../auth</span>. Segredos mascarados.</p>
+      <label class="small mt">Client ID<br><input class="txt mt-sm" value="mcp-client-••••7f2a" readonly></label>
+      <label class="small mt" style="display:block">Client secret<br><input class="txt mt-sm" type="password" value="················"></label>`,
+      [{t:"Cancelar",cls:"",fn:closeModal},{t:"Autorizar",cls:"acid",fn:()=>{closeModal();toast("ok",b.dataset.tauth+" autenticado (OAuth)","Tools");}}]);
+  });
+  $("#runTool")?.addEventListener("click", ()=>toast("info","nvidia_gpu_status executado — VRAM 8.2/12 GB","Tools · catálogo"));
+  $("#runTool2")?.addEventListener("click", ()=>{
+    const r=$("#toolResult"); if(r) r.innerHTML=`<div class="card" style="padding:10px"><div class="lbl">Resultado</div><div class="small mt-sm">Geração concluída.</div><div class="lbl mt-sm">Raciocínio</div><div class="small muted">cadeia interna omitida.</div><pre class="mono small" style="background:var(--coal);padding:8px;border:1px solid var(--frame);margin-top:6px">{ "tokens": 812, "model": "qwen3-coder:30b" }</pre></div>`;
+  });
+  $$('[data-stop]').forEach(b=>b.onclick=()=>stopContainer(b.dataset.stop));
+}
+function stopContainer(name){
+  const critical = name==="painel-web";
+  if(!critical){
+    openModal("Parar container · "+name, `<p class="small">Isto interrompe <b>${name}</b>. Ação disruptiva, reversível ao reiniciar.</p>
+      <div class="cmdline" style="color:var(--gold);border-color:var(--gold)">docker stop ${name}</div>`,
+      [{t:"Cancelar",cls:"",fn:closeModal,focus:true},{t:"Parar",cls:"coral",fn:()=>{closeModal();toast("warn",`Container ${name} parado`,"Tools · runtime");}}], "danger");
+    return;
+  }
+  // crítico: digitar o nome
+  openModal("⊘ Parar o container DESTE painel", `
+    <p class="small" style="color:var(--coral)">Você vai parar <b>${name}</b> — o container que serve este painel. <b>A conexão será perdida.</b></p>
+    <p class="small muted">Comando literal executado ao confirmar:</p>
+    <div class="cmdline">docker stop ${name} &amp;&amp; echo "painel offline"</div>
+    <label class="small">Para confirmar, digite <b class="mono" style="color:var(--coral)">${name}</b>:<br>
+      <input class="txt mt-sm" id="critName" placeholder="${name}" autocomplete="off"></label>`,
+    [{t:"Cancelar",cls:"",fn:closeModal,focus:true},{t:"Parar painel",cls:"coral",id:"critOk",disabled:true,fn:()=>{closeModal();toast("err","painel-web parado — conexão encerrada (simulado)","Tools");}}], "danger");
+  const inp=$("#critName"), ok=$("#critOk");
+  inp.oninput=()=>{ const m=inp.value.trim()===name; ok.disabled=!m; ok.style.opacity=m?"1":".5"; };
+  ok.style.opacity=".5";
+}
+
+/* ---- Instruções wiring ---- */
+function wireInstr(){
+  const ed=$("#instrEditor"), pv=$("#instrPreview"), cc=$("#charCount");
+  const upd=()=>{ pv.innerHTML=renderMd(ed.value); cc.textContent=ed.value.length; };
+  upd();
+  ed.oninput=()=>{ instrDirty=true; upd(); };
+  $("#instrSave").onclick=()=>{ instrDirty=false; toast("ok","Instruções salvas (documento único)","Instruções"); };
+  $("#instrReset").onclick=()=>{
+    if(instrDirty){
+      openModal("Alterações não salvas", `<p class="small">Há alterações não salvas. Reverter descarta o que você editou.</p>`,
+        [{t:"Continuar editando",cls:"",fn:closeModal,focus:true},{t:"Reverter",cls:"coral",fn:()=>{ed.value=INSTR_TEXT;instrDirty=false;upd();closeModal();toast("warn","Instruções revertidas");}}],"danger");
+    } else { ed.value=INSTR_TEXT; upd(); }
+  };
+}
+
+/* ============================================================
+   DRAWERS
+   ============================================================ */
+function openDrawer(id){ const d=$("#"+id); d.classList.add("open"); d.setAttribute("aria-hidden","false"); }
+function closeDrawer(id){ const d=$("#"+id); d.classList.remove("open"); d.setAttribute("aria-hidden","true"); }
+$$('[data-close-drawer]').forEach(b=>b.onclick=()=>closeDrawer(b.dataset.closeDrawer));
+
+function openFila(){
+  const body=$("#filaBody");
+  body.innerHTML = QUEUE.length ? QUEUE.map(q=>`
+    <div class="qitem">
+      <div class="qtop"><span class="disp" style="color:var(--gold)">${esc(q.res)}</span> ${prioChip(q.prio)}</div>
+      <div class="small">Dono: <a class="text-link" href="#/orquestrador" data-fila-owner>${esc(q.owner)}</a></div>
+      <div class="qmeta"><span>posição na fila</span><span class="mono">#${q.pos}</span></div>
+    </div>`).join("") + `<p class="small muted mt">Fonte única (§3.6): mesma fila do Status e dos banners de "aguardando_recurso".</p>`
+    : '<p class="muted">Nenhum recurso disputado.</p>';
+  openDrawer("drawerFila");
+  $$('[data-fila-owner]').forEach(a=>a.onclick=()=>closeDrawer("drawerFila"));
+}
+$("#chipVram").onclick=openFila;
+$("#chipFila").onclick=openFila;
+
+function renderNotifs(){
+  $("#notifBody").innerHTML = NOTIFS.map(n=>`<div class="notif ${n.kind}"><div class="nt">${esc(n.txt)}</div><div class="nm">${esc(n.when)}</div></div>`).join("")
+    + `<p class="small muted mt">Histórico dos últimos 50 toasts.</p>`;
+}
+$("#bellBtn").onclick=()=>{ renderNotifs(); openDrawer("drawerNotif"); };
+
+function openAudit(wid){
+  const w=WORKERS.find(x=>x.id===wid);
+  $("#auditBody").innerHTML=`
+    <div class="small muted mb" style="margin-bottom:10px">Histórico de versões · ${esc(w.name)}</div>
+    ${[["v"+(parseInt(w.cfg.replace('v',''))),"fable","18/07 13:12","temp 0.5 → 0.4; tokens/job 6144 → 8192"],
+       ["v"+(parseInt(w.cfg.replace('v',''))-1),"gpt-5.6-sol","17/07 20:40","+ papel executor_complexo"],
+       ["v"+(parseInt(w.cfg.replace('v',''))-2),"operador","17/07 09:02","concorrência 1 → 2"]].map((v,i)=>`
+      <div class="qitem">
+        <div class="qtop"><span class="disp" style="color:var(--acid)">config ${v[0]}</span><span class="small muted">${v[2]}</span></div>
+        <div class="small">ator: <b class="disp">${v[1]}</b></div>
+        <div class="evidence" style="margin:8px 0">
+          <span style="color:var(--coral)">- ${esc(v[3].split(';')[0])}</span><br>
+          <span style="color:var(--acid)">+ ${esc(v[3].split(';').slice(-1)[0].trim())}</span>
+        </div>
+        ${i>0?`<button class="btn sm gold" data-restore="${v[0]}">Restaurar esta versão</button>`:'<span class="badge ok"><span class="dot"></span>versão atual</span>'}
+      </div>`).join("")}`;
+  openDrawer("drawerAudit");
+  $$('[data-restore]').forEach(b=>b.onclick=()=>{ closeDrawer("drawerAudit"); toast("gold",`Config ${b.dataset.restore} restaurada em ${w.name}`,"Workers · auditoria"); });
+}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+function openModal(title, bodyHtml, buttons, variant){
+  $("#modalTitle").textContent=title;
+  $("#modalBody").innerHTML=bodyHtml;
+  const m=$("#modal"); m.className="modal"+(variant==="danger"?" danger":"");
+  const foot=$("#modalFoot"); foot.innerHTML="";
+  buttons.forEach(b=>{
+    const btn=document.createElement("button");
+    btn.className="btn"+(b.cls?" "+b.cls:"");
+    btn.textContent=b.t; if(b.id) btn.id=b.id; if(b.disabled) btn.disabled=true;
+    btn.onclick=b.fn; foot.appendChild(btn);
+    if(b.focus) setTimeout(()=>btn.focus(),20); // foco inicial em Cancelar em danger
+  });
+  $("#scrim").classList.add("open");
+}
+function closeModal(){ $("#scrim").classList.remove("open"); }
+$("#scrim").addEventListener("click",e=>{ if(e.target.id==="scrim") closeModal(); });
+
+/* ============================================================
+   SYSBAR — conexão demo + VRAM live + collapse + densidade
+   ============================================================ */
+const connStates=[
+  {s:"live", txt:"ao vivo", recon:false},
+  {s:"stale", txt:"dados de 8s atrás", recon:false},
+  {s:"offline", txt:"offline", recon:true},
+];
+let connIdx=0;
+$("#connDemo").onclick=()=>{
+  connIdx=(connIdx+1)%3;
+  const c=connStates[connIdx], el=$("#conn");
+  el.dataset.state=c.s;
+  el.querySelector(".lbl-txt").textContent=c.txt;
+  el.querySelector(".recon").hidden=!c.recon;
+  if(c.s==="stale") toast("warn","▲ Conexão stale — dados envelhecendo (sparklines interrompem)");
+  if(c.s==="offline") toast("err","⊘ Offline — reconectando…");
+  if(c.s==="live") toast("ok","Conexão restabelecida · ao vivo");
+};
+$("#conn .recon").onclick=()=>{ connIdx=0; $("#connDemo").click(); connIdx=0; const c=connStates[0],el=$("#conn"); el.dataset.state="live"; el.querySelector(".lbl-txt").textContent="ao vivo"; el.querySelector(".recon").hidden=true; };
+
+// VRAM viva
+let vram=8.2;
+setInterval(()=>{
+  vram = Math.max(6.5, Math.min(11.2, vram + (Math.random()-0.5)*0.6));
+  const pct=Math.round(vram/12*100);
+  const f=$("#vramFill"), t=$("#vramTxt");
+  if(f){ f.style.width=pct+"%"; f.style.background=barColor(pct); }
+  if(t) t.textContent=vram.toFixed(1)+" / 12 GB";
+},2500);
+
+$("#collapseBtn").onclick=()=>{
+  const app=$("#app"); const c=app.dataset.collapsed==="true";
+  app.dataset.collapsed=(!c).toString();
+};
+
+$("#dBal").onclick=()=>setDensity("balanced");
+$("#dCmp").onclick=()=>setDensity("compact");
+function setDensity(d){
+  document.body.dataset.density=d;
+  $("#dBal").setAttribute("aria-pressed", d==="balanced");
+  $("#dCmp").setAttribute("aria-pressed", d==="compact");
+  // redesenha sparklines na densidade nova
+  router();
+}
+
+/* keyboard: Esc fecha, / foca filtro, ? ajuda */
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){ closeModal(); ["drawerFila","drawerNotif","drawerAudit"].forEach(closeDrawer); closePopover(); }
+  if(e.key==="/" && !/input|textarea/i.test(e.target.tagName)){ const f=$('input[placeholder^="/"]'); if(f){ e.preventDefault(); f.focus(); } }
+  if(e.key==="?" ){ if(!/input|textarea/i.test(e.target.tagName)){ openModal("Atalhos (v1)", `<div class="small" style="line-height:2"><span class="mono">/</span> focar filtro · <span class="mono">Ctrl+Enter</span> confirmar · <span class="mono">Esc</span> fechar · <span class="mono">?</span> esta ajuda</div>`,[{t:"Fechar",cls:"acid",fn:closeModal,focus:true}]); } }
+});
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+window.addEventListener("hashchange", router);
+updateBell();
+router();
+</script>
+</body>
+</html>

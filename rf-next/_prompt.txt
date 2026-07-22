@@ -1,0 +1,9 @@
+﻿[INSTRUÇÕES DO SISTEMA]
+Somente leitura. Não edite arquivos. Diagnostique causa raiz com patch mínimo.
+
+[TAREFA]
+
+
+Usuário: Leia integralmente Capturar-Trafego.ps1. Erro ao clicar em botão: RuntimeException 'Não é possível indexar em uma matriz nula', stack InvokeAsDelegateHelper -> Control.OnClick. Investigue especialmente Connect-EventButton aninhado, GetNewClosure e variáveis locais de Show-CaptureGui. Informe causa raiz, botões afetados, menor patch PowerShell 5.1 e teste de regressão. Não edite. Cite linhas.
+
+Assistente:

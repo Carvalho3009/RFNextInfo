@@ -1,0 +1,13 @@
+﻿Name,Value
+EqualSplitMembershipMinValue,1
+AuctionStoragePeriod,4320
+CountDownStateTimeSec,10
+BidStateTimeSec,20
+ResultStateTimeSec,10
+AuctionIncreaseRate,10
+ResetHistoryTimeHour,5
+ResetHistoryTimeWeekly,1
+ResetHistoryTime,8640
+RandomStateTimeSec,2
+FastBidStateTimeSec,10
+MaxAuctionRegisterCount,50

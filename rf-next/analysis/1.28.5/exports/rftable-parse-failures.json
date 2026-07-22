@@ -1,0 +1,12 @@
+[
+  {
+    "table": "RF_RewardTable.RFTable",
+    "layer": "base",
+    "error": "Cabecalho RFTable nao encontrado"
+  },
+  {
+    "table": "RF_SubGroupInfo.RFTable",
+    "layer": "base",
+    "error": "Cabecalho RFTable nao encontrado"
+  }
+]

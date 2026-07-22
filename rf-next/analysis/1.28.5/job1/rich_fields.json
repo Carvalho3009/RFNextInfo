@@ -1,0 +1,27 @@
+{
+"FL2C_ans_insert_matchmaking_Message": [
+"Ret",
+"DirectStart",
+"MapIndex",
+"Target"
+],
+"FL2C_ans_cancel_matchmaking_Message": [
+"Ret",
+"CancelPCID",
+"MapIndex"
+],
+"FL2C_ans_cancel_match_Message": [
+"CancelReason",
+"PCID",
+"MapIndex"
+],
+"FG2C_ans_exitroom_Message": [
+"Reason",
+"ExitUID",
+"ExitPCID"
+],
+"FL2C_complete_match_Message": [
+"MapContentType",
+"MapIndex"
+]
+}

@@ -1,0 +1,697 @@
+{
+"FA2C_ans_cash_shop_product_item_list_Message": [
+"list"
+],
+"FC2G_ask_coreworld_team_point_detail_Message": [
+"point"
+],
+"FC2G_ask_item_spawn_monster_info_Message": [
+"spawn"
+],
+"FC2G_ask_mine_war_realm_drill_hp_Message": [
+"drill"
+],
+"FC2G_ask_steel_battle_field_realm_contribution_info_Message": [
+"contribution"
+],
+"FC2G_ask_team_chat_Message": [
+"chat"
+],
+"FC2L_ask_alchemy_execute_Message": [
+"Smithy"
+],
+"FC2L_ask_alchemy_predict_Message": [
+"Smithy"
+],
+"FC2L_ask_alchemy_progress_info_Message": [
+"Smithy"
+],
+"FC2L_ask_alchemy_random_rate_info_Message": [
+"Smithy",
+"rate"
+],
+"FC2L_ask_alchemy_reset_Message": [
+"Smithy"
+],
+"FC2L_ask_attach_talic_to_equip_Message": [
+"Smithy"
+],
+"FC2L_ask_attached_item_mail_Message": [
+"mail"
+],
+"FC2L_ask_boss_spawn_item_probability_info_Message": [
+"probability"
+],
+"FC2L_ask_carditem_compose_Message": [
+"Smithy",
+"compose"
+],
+"FC2L_ask_carditem_confirm_Message": [
+"Smithy",
+"confirm"
+],
+"FC2L_ask_carditem_redraw_Message": [
+"Smithy",
+"redraw"
+],
+"FC2L_ask_carditem_select_slot_Message": [
+"Smithy",
+"select"
+],
+"FC2L_ask_carditem_tuning_Message": [
+"Smithy",
+"tuning"
+],
+"FC2L_ask_carditem_use_point_Message": [
+"Smithy",
+"use"
+],
+"FC2L_ask_change_equip_slot_Message": [
+"Smithy"
+],
+"FC2L_ask_change_option_equip_Message": [
+"Smithy"
+],
+"FC2L_ask_change_visibility_option_Message": [
+"Smithy"
+],
+"FC2L_ask_channel_chat_room_info_Message": [
+"info"
+],
+"FC2L_ask_combinefail_info_Message": [
+"Smithy"
+],
+"FC2L_ask_combinefail_preview_Message": [
+"Smithy"
+],
+"FC2L_ask_combinefail_use_Message": [
+"Smithy"
+],
+"FC2L_ask_compose_talic_Message": [
+"Smithy"
+],
+"FC2L_ask_compose_talic_prob_list_Message": [
+"Smithy"
+],
+"FC2L_ask_conversion_talic_Message": [
+"Smithy"
+],
+"FC2L_ask_conversion_talic_prob_list_Message": [
+"Smithy"
+],
+"FC2L_ask_craft_item_Message": [
+"Smithy"
+],
+"FC2L_ask_craft_item_bookmark_info_Message": [
+"Smithy",
+"bookmark"
+],
+"FC2L_ask_craft_item_period_info_Message": [
+"Smithy",
+"period"
+],
+"FC2L_ask_craft_item_period_info_all_Message": [
+"Smithy",
+"period"
+],
+"FC2L_ask_craft_item_prob_Message": [
+"Smithy",
+"prob"
+],
+"FC2L_ask_detach_talic_to_equip_Message": [
+"Smithy"
+],
+"FC2L_ask_enchant_equip_prob_Message": [
+"Smithy"
+],
+"FC2L_ask_enchantfail_list_Message": [
+"Smithy"
+],
+"FC2L_ask_enchantfail_preview_Message": [
+"Smithy"
+],
+"FC2L_ask_enchantfail_use_Message": [
+"Smithy"
+],
+"FC2L_ask_equipitem_remodel_Message": [
+"Smithy",
+"remodel"
+],
+"FC2L_ask_equipitem_remodel_prob_Message": [
+"Smithy",
+"remodel"
+],
+"FC2L_ask_event_item_exchange_Message": [
+"exchange"
+],
+"FC2L_ask_game_event_roulette_reward_select_slot_random_setting_Message": [
+"setting"
+],
+"FC2L_ask_guild_auction_set_item_fast_bidding_Message": [
+"fast"
+],
+"FC2L_ask_guild_auction_set_item_stop_when_arrived_Message": [
+"stop"
+],
+"FC2L_ask_item_collection_bookmark_info_Message": [
+"collection"
+],
+"FC2L_ask_multi_enchant_equip_result_Message": [
+"Smithy"
+],
+"FC2L_ask_npc_shop_registeration_item_list_Message": [
+"list"
+],
+"FC2L_ask_option_equip_lock_Message": [
+"Smithy"
+],
+"FC2L_ask_probability_draw_Message": [
+"Smithy"
+],
+"FC2L_ask_probability_draw_prime_Message": [
+"Smithy"
+],
+"FC2L_ask_probability_redraw_Message": [
+"Smithy"
+],
+"FC2L_ask_realm_contribution_season_reward_Message": [
+"contribution"
+],
+"FC2L_ask_realm_id_card_kit_change_bonus_line_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_kit_load_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_kit_modify_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_kit_reset_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_kit_save_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_kit_view_save_data_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_rank_list_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_rank_schedule_Message": [
+"id"
+],
+"FC2L_ask_realm_id_card_user_rank_Message": [
+"id"
+],
+"FC2L_ask_realm_idcard_change_Message": [
+"idcard"
+],
+"FC2L_ask_register_item_collection_Message": [
+"collection"
+],
+"FC2L_ask_repair_broken_equip_Message": [
+"Smithy"
+],
+"FC2L_ask_rover_costume_parts_item_set_lock_Message": [
+"set"
+],
+"FC2L_ask_runtime_change_item_craft_table_info_Message": [
+"Smithy",
+"craft"
+],
+"FC2L_ask_sell_item_batch_Message": [
+"batch"
+],
+"FC2L_ask_send_reserved_system_msg_Message": [
+"msg"
+],
+"FC2L_ask_set_channel_chat_representative_room_id_Message": [
+"id"
+],
+"FC2L_ask_set_lock_Message": [
+"Smithy"
+],
+"FC2L_ask_single_enchant_equip_result_Message": [
+"Smithy"
+],
+"FC2L_ask_talic_item_set_lock_Message": [
+"set"
+],
+"FC2L_ask_transferitem_check_Message": [
+"check"
+],
+"FC2L_ask_transform_weapon_Message": [
+"Smithy",
+"weapon"
+],
+"FC2L_ask_transform_weapon_costume_Message": [
+"weapon"
+],
+"FC2L_ask_unlock_guild_emblem_list_Message": [
+"list"
+],
+"FC2L_ask_update_craft_item_bookmark_Message": [
+"Smithy",
+"bookmark"
+],
+"FC2L_ask_update_item_collection_bookmark_Message": [
+"collection"
+],
+"FC2L_ask_upgrade_realm_id_card_Message": [
+"id"
+],
+"FC2L_ask_withdraw_from_guild_Message": [
+"guild"
+],
+"FC2L_request_to_purchase_item_on_exchange_Message": [
+"on"
+],
+"FG2C_ans_coreworld_team_point_detail_Message": [
+"point"
+],
+"FG2C_ans_exitroom_Message": [
+"Reason",
+"ExitUID",
+"ExitPCID"
+],
+"FG2C_ans_item_spawn_monster_info_Message": [
+"spawn"
+],
+"FG2C_ans_mine_war_realm_drill_hp_Message": [
+"drill"
+],
+"FG2C_ans_steel_battle_field_realm_contribution_info_Message": [
+"contribution"
+],
+"FG2C_ans_team_chat_Message": [
+"chat"
+],
+"FG2C_join_battle_for_paradise_room_info_Message": [
+"info"
+],
+"FG2C_mine_war_realm_drill_info_Message": [
+"drill"
+],
+"FG2C_noti_join_room_info_steel_battle_field_Message": [
+"info"
+],
+"FG2C_noti_steel_battle_field_realm_heart_Message": [
+"heart"
+],
+"FG2C_notify_appear_item_spawn_monster_Message": [
+"spawn"
+],
+"FG2C_notify_item_spawn_monster_result_Message": [
+"spawn"
+],
+"FG2C_notify_random_boss_status_Message": [
+"boss"
+],
+"FG2C_notify_random_boss_status_list_Message": [
+"boss"
+],
+"FG2C_play_spec_anim_npc_Message": [
+"npc"
+],
+"FG2C_system_msg_Message": [
+"msg"
+],
+"FG2C_update_realm_info_Message": [
+"info"
+],
+"FL2C_ans_alchemy_execute_Message": [
+"Smithy"
+],
+"FL2C_ans_alchemy_predict_Message": [
+"Smithy"
+],
+"FL2C_ans_alchemy_progress_info_Message": [
+"Smithy"
+],
+"FL2C_ans_alchemy_random_rate_info_Message": [
+"Smithy",
+"rate"
+],
+"FL2C_ans_alchemy_reset_Message": [
+"Smithy"
+],
+"FL2C_ans_attach_talic_to_equip_Message": [
+"Smithy"
+],
+"FL2C_ans_attached_item_mail_Message": [
+"mail"
+],
+"FL2C_ans_ban_item_list_on_exchange_Message": [
+"list"
+],
+"FL2C_ans_boss_spawn_item_probability_info_Message": [
+"probability"
+],
+"FL2C_ans_cancel_match_Message": [
+"CancelReason",
+"PCID",
+"MapIndex"
+],
+"FL2C_ans_cancel_matchmaking_Message": [
+"Ret",
+"CancelPCID",
+"MapIndex"
+],
+"FL2C_ans_carditem_confirm_Message": [
+"Smithy",
+"confirm"
+],
+"FL2C_ans_carditem_redraw_Message": [
+"Smithy",
+"redraw"
+],
+"FL2C_ans_carditem_result_Message": [
+"Smithy",
+"result"
+],
+"FL2C_ans_carditem_select_slot_Message": [
+"Smithy",
+"select"
+],
+"FL2C_ans_carditem_tuning_Message": [
+"Smithy",
+"tuning"
+],
+"FL2C_ans_cash_inven_item_list_Message": [
+"list"
+],
+"FL2C_ans_cash_shop_product_item_data_Message": [
+"data"
+],
+"FL2C_ans_change_equip_slot_Message": [
+"Smithy"
+],
+"FL2C_ans_change_option_equip_Message": [
+"Smithy"
+],
+"FL2C_ans_change_visibility_option_Message": [
+"Smithy"
+],
+"FL2C_ans_channel_chat_room_event_Message": [
+"event"
+],
+"FL2C_ans_channel_chat_room_info_Message": [
+"info"
+],
+"FL2C_ans_combinefail_info_Message": [
+"Smithy"
+],
+"FL2C_ans_combinefail_preview_Message": [
+"Smithy"
+],
+"FL2C_ans_combinefail_use_Message": [
+"Smithy"
+],
+"FL2C_ans_compose_talic_Message": [
+"Smithy"
+],
+"FL2C_ans_compose_talic_prob_list_Message": [
+"Smithy"
+],
+"FL2C_ans_conversion_talic_Message": [
+"Smithy"
+],
+"FL2C_ans_conversion_talic_prob_list_Message": [
+"Smithy"
+],
+"FL2C_ans_craft_item_Message": [
+"Smithy"
+],
+"FL2C_ans_craft_item_bookmark_info_Message": [
+"Smithy",
+"bookmark"
+],
+"FL2C_ans_craft_item_period_info_Message": [
+"Smithy",
+"period"
+],
+"FL2C_ans_craft_item_period_info_all_Message": [
+"Smithy",
+"period"
+],
+"FL2C_ans_craft_item_prob_Message": [
+"Smithy",
+"prob"
+],
+"FL2C_ans_detach_talic_to_equip_Message": [
+"Smithy"
+],
+"FL2C_ans_enchant_equip_prob_Message": [
+"Smithy"
+],
+"FL2C_ans_enchantfail_list_Message": [
+"Smithy"
+],
+"FL2C_ans_enchantfail_preview_Message": [
+"Smithy"
+],
+"FL2C_ans_enchantfail_use_Message": [
+"Smithy"
+],
+"FL2C_ans_equipitem_remodel_Message": [
+"Smithy",
+"remodel"
+],
+"FL2C_ans_equipitem_remodel_prob_Message": [
+"Smithy",
+"remodel"
+],
+"FL2C_ans_event_item_exchange_Message": [
+"exchange"
+],
+"FL2C_ans_game_event_roulette_reward_select_slot_random_setting_Message": [
+"setting"
+],
+"FL2C_ans_guild_auction_set_item_fast_bidding_Message": [
+"fast"
+],
+"FL2C_ans_guild_auction_set_item_stop_when_arrived_Message": [
+"stop"
+],
+"FL2C_ans_insert_matchmaking_Message": [
+"Ret",
+"DirectStart",
+"MapIndex",
+"Target"
+],
+"FL2C_ans_item_collection_bookmark_info_Message": [
+"collection"
+],
+"FL2C_ans_item_option_prob_Message": [
+"Smithy",
+"option"
+],
+"FL2C_ans_multi_enchant_equip_result_Message": [
+"Smithy"
+],
+"FL2C_ans_npc_shop_registeration_item_list_Message": [
+"list"
+],
+"FL2C_ans_option_equip_lock_Message": [
+"Smithy"
+],
+"FL2C_ans_preconfirm_list_Message": [
+"Smithy",
+"list"
+],
+"FL2C_ans_preconfirm_update_list_Message": [
+"Smithy",
+"update"
+],
+"FL2C_ans_probability_draw_Message": [
+"Smithy"
+],
+"FL2C_ans_probability_draw_prime_Message": [
+"Smithy"
+],
+"FL2C_ans_probability_redraw_Message": [
+"Smithy"
+],
+"FL2C_ans_realm_contribution_season_reward_Message": [
+"contribution"
+],
+"FL2C_ans_realm_id_card_infos_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_kit_change_bonus_line_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_kit_infos_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_kit_load_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_kit_modify_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_kit_reset_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_kit_save_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_kit_view_save_data_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_rank_list_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_rank_schedule_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_update_contribution_Message": [
+"id"
+],
+"FL2C_ans_realm_id_card_user_rank_Message": [
+"id"
+],
+"FL2C_ans_realm_idcard_change_Message": [
+"idcard"
+],
+"FL2C_ans_register_item_collection_Message": [
+"collection"
+],
+"FL2C_ans_repair_broken_equip_Message": [
+"Smithy"
+],
+"FL2C_ans_rover_costume_parts_item_lock_list_info_Message": [
+"lock"
+],
+"FL2C_ans_rover_costume_parts_item_set_lock_Message": [
+"set"
+],
+"FL2C_ans_runtime_change_item_craft_table_info_Message": [
+"Smithy",
+"craft"
+],
+"FL2C_ans_sell_item_batch_Message": [
+"batch"
+],
+"FL2C_ans_set_channel_chat_representative_room_id_Message": [
+"id"
+],
+"FL2C_ans_set_lock_Message": [
+"Smithy"
+],
+"FL2C_ans_single_enchant_equip_result_Message": [
+"Smithy"
+],
+"FL2C_ans_stackable_item_inventory_info_Message": [
+"inventory"
+],
+"FL2C_ans_stackable_item_warehouse_info_Message": [
+"warehouse"
+],
+"FL2C_ans_talic_item_lock_list_info_Message": [
+"lock"
+],
+"FL2C_ans_talic_item_set_lock_Message": [
+"set"
+],
+"FL2C_ans_transferitem_check_Message": [
+"check"
+],
+"FL2C_ans_transform_weapon_Message": [
+"Smithy",
+"weapon"
+],
+"FL2C_ans_transform_weapon_costume_Message": [
+"weapon"
+],
+"FL2C_ans_unlock_guild_emblem_list_Message": [
+"list"
+],
+"FL2C_ans_update_craft_item_bookmark_Message": [
+"Smithy",
+"bookmark"
+],
+"FL2C_ans_update_item_collection_bookmark_Message": [
+"collection"
+],
+"FL2C_ans_upgrade_realm_id_card_Message": [
+"id"
+],
+"FL2C_ans_withdraw_from_guild_Message": [
+"guild"
+],
+"FL2C_biosuit_item_update_Message": [
+"update"
+],
+"FL2C_channel_chat_representative_room_id_Message": [
+"id"
+],
+"FL2C_complete_match_Message": [
+"MapContentType",
+"MapIndex"
+],
+"FL2C_drop_item_field_Message": [
+"field"
+],
+"FL2C_equip_item_update_Message": [
+"update"
+],
+"FL2C_gain_item_info_Message": [
+"info"
+],
+"FL2C_item_collection_info_Message": [
+"collection"
+],
+"FL2C_item_cooltime_group_info_Message": [
+"cooltime"
+],
+"FL2C_notify_exchange_item_sell_Message": [
+"sell"
+],
+"FL2C_notify_realm_contribution_levelup_reward_Message": [
+"contribution"
+],
+"FL2C_recommended_item_on_exchange_Message": [
+"on"
+],
+"FL2C_respond_to_cancellation_of_sale_item_on_exchange_Message": [
+"on"
+],
+"FL2C_respond_to_purchase_item_on_exchange_Message": [
+"on"
+],
+"FL2C_respond_to_registration_of_sale_item_on_exchange_Message": [
+"on"
+],
+"FL2C_respond_to_reregistration_of_sale_item_on_exchange_Message": [
+"on"
+],
+"FL2C_restore_schedule_list_Message": [
+"Smithy"
+],
+"FL2C_rover_item_update_Message": [
+"update"
+],
+"FL2C_stackable_item_update_Message": [
+"update"
+],
+"FL2C_system_msg_Message": [
+"msg"
+],
+"FL2C_system_msg_list_Message": [
+"msg"
+],
+"FL2C_update_item_cooltime_group_info_Message": [
+"cooltime"
+],
+"FL2C_use_item_box_reward_list_Message": [
+"box"
+],
+"FL2C_warehouse_equip_item_update_Message": [
+"update"
+],
+"FL2C_warehouse_stackable_item_update_Message": [
+"update"
+]
+}

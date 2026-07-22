@@ -1,0 +1,14 @@
+{
+  "activeProfileId": "woods",
+  "profiles": [
+    {
+      "id": "default",
+      "name": "Perfil Padrão"
+    },
+    {
+      "id": "woods",
+      "name": "Woods"
+    }
+  ],
+  "pendingDeleteIds": []
+}

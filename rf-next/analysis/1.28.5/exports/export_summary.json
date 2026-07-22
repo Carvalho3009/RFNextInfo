@@ -1,0 +1,43 @@
+{
+  "version": "1.28.5",
+  "layer_precedence": [
+    "patch1",
+    "patch0",
+    "base"
+  ],
+  "sources": {
+    "strings": "patch1",
+    "enums": "patch1",
+    "items": "patch1",
+    "collections": "patch1",
+    "RF_Collection_PartReward.RFTable": "patch1",
+    "RF_Collection_CompleteReward.RFTable": "patch0",
+    "RF_Guild_Auction.RFTable": "patch0",
+    "npcs": "patch1",
+    "reward_database": "patch1",
+    "subgroup_database": "patch1"
+  },
+  "files": {
+    "stat_types.csv": 191,
+    "items.csv": 8231,
+    "auction_eligible_items.csv": 1688,
+    "collections.csv": 4503,
+    "collection_requirements.csv": 24998,
+    "collection_part_rewards.csv": 4383,
+    "collection_complete_rewards.csv": 423,
+    "guild_auction_settings.csv": 12,
+    "reward_groups.csv": 73107,
+    "reward_items.csv": 46066,
+    "mob_loot_candidates.csv": 169122,
+    "mob_exp_candidates.csv": 2566,
+    "mobs.csv": 10819,
+    "exp-nearest-16303.csv": 25
+  },
+  "limitations": [
+    "As tabelas cliente extraidas nao possuem coluna explicita de HP por NPC.",
+    "As tabelas cliente extraidas nao possuem coluna explicita de EXP por abate.",
+    "A EXP base foi relacionada pelo item interno 900 (EXP), mas bonus dinamicos podem alterar o ganho exibido.",
+    "MultiplicityShareCandidate nao e chance confirmada; precisa ser validada no codigo do jogo ou por amostragem.",
+    "Precos e itens listados atualmente no leilao sao dados dinamicos do servidor e nao aparecem nestas tabelas estaticas."
+  ]
+}

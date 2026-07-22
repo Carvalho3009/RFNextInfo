@@ -1,0 +1,13 @@
+bin/
+obj/
+.tmp/
+.vs/
+*.user
+*.suo
+*.log
+
+# Configuração criada em tempo de execução
+config.json
+
+# Mockup substituído pela identidade Ronaldinho
+design/mockup-ui-karvalho-v1.png

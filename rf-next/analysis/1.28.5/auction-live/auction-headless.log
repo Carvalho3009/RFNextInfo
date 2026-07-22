@@ -1,0 +1,63 @@
+INFO  Using log config file: jar:file:/K:/MCP/tools/ghidra_12.1.2_PUBLIC/Ghidra/Framework/Generic/lib/Generic.jar!/generic.log4j.xml (LoggingInitialization)  
+INFO  Using log file: C:\Users\celc3\AppData\Roaming\ghidra\ghidra_12.1.2_PUBLIC\application.log (LoggingInitialization)  
+INFO  Loading user preferences: C:\Users\celc3\AppData\Roaming\ghidra\ghidra_12.1.2_PUBLIC\preferences (Preferences)  
+INFO  Searching for classes... (ClassSearcher)  
+INFO  Class search complete (998 ms) (ClassSearcher)  
+INFO  Initializing SSL Context (DefaultSSLContextInitializer)  
+INFO  Initializing Random Number Generator... (SecureRandomFactory)  
+INFO  Random Number Generator initialization complete: SHA1PRNG (SecureRandomFactory)  
+INFO  Trust manager disabled, cacerts have not been set (DefaultTrustManagerFactory)  
+INFO  Headless startup complete (2727 ms) (AnalyzeHeadless)  
+INFO  Class searcher loaded 59 extension points (20 false positives) (ClassSearcher)  
+INFO  HEADLESS Script Paths:
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\PDB\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Processors\DATA\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\FunctionID\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\GnuDemangler\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Processors\JVM\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\PyGhidra\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\BytePatterns\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\DecompilerDependent\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\MicrosoftCodeAnalyzer\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\WildcardAssembler\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Processors\8051\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Debug\Debugger\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\Base\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\SystemEmulation\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\VersionTracking\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Processors\Atmel\ghidra_scripts
+    K:\MCP\projects\rf-next\tools\ghidra-auto
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Debug\Debugger-rmi-trace\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\Decompiler\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Processors\PIC\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\BSim\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\FileFormats\ghidra_scripts
+    K:\MCP\tools\ghidra_12.1.2_PUBLIC\Ghidra\Features\SwiftDemangler\ghidra_scripts (HeadlessAnalyzer)  
+INFO  HEADLESS: execution starts (HeadlessAnalyzer)  
+INFO  Opening existing project: K:\MCP\projects\rf-next\Ghidra\RF BOT (HeadlessAnalyzer)  
+INFO  Opening project: K:\MCP\projects\rf-next\Ghidra\RF BOT (HeadlessProject)  
+INFO  REPORT: Processing project file: /libUnreal.so (HeadlessAnalyzer)  
+INFO  REPORT: Execute script: RFNextOodleConfigAnalyzer.java 'K:\MCP\projects\rf-next\analysis\1.28.5\auction-live\RFNext-Auction-handlers.md' '180' 'K:\MCP\projects\rf-next\tools\ghidra-auto\auction-targets.txt'  (HeadlessAnalyzer)  
+INFO  SCRIPT: K:\MCP\projects\rf-next\tools\ghidra-auto\RFNextOodleConfigAnalyzer.java (HeadlessAnalyzer)  
+INFO  RFNextOodleConfigAnalyzer.java> [1] FUN_05bde4c8 @ 05bde4c8 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [2] FUN_05bde5a4 @ 05bde5a4 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [3] FUN_05bdfb44 @ 05bdfb44 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [4] FUN_05bdfc20 @ 05bdfc20 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [5] FUN_05be0c28 @ 05be0c28 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [6] FUN_05be0d04 @ 05be0d04 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [7] FUN_05be17b4 @ 05be17b4 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [8] FUN_05be1890 @ 05be1890 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [9] FUN_05be221c @ 05be221c (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [10] FUN_05cedb10 @ 05cedb10 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [11] FUN_05cedbec @ 05cedbec (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [12] FUN_064e6e88 @ 064e6e88 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [13] FUN_06796ec0 @ 06796ec0 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [14] FUN_06077dac @ 06077dac (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [15] FUN_06c0c370 @ 06c0c370 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [16] FUN_05bdfcec @ 05bdfcec (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [17] FUN_05be0dd0 @ 05be0dd0 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [18] FUN_05be195c @ 05be195c (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [19] FUN_05be21c8 @ 05be21c8 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> [20] FUN_05cedcb8 @ 05cedcb8 (GhidraScript)  
+INFO  RFNextOodleConfigAnalyzer.java> Report written to K:\MCP\projects\rf-next\analysis\1.28.5\auction-live\RFNext-Auction-handlers.md (GhidraScript)  
+INFO  REPORT: Save succeeded for processed file: /libUnreal.so (HeadlessAnalyzer)  

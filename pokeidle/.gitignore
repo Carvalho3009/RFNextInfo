@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+data/profile/
+data/locks/
+data/logs/
+data/runtime/
+data/errors/
+test-results/
+playwright-report/
+coverage/
+*.log

@@ -1,0 +1,33 @@
+{
+  "name": "poke-idle-supervisor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Supervisor headless, conservador e multi-instância para o cliente oficial Poke Idle World.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bootstrap": "playwright install chromium",
+    "build": "npm run build:server && npm run build:dashboard",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:dashboard": "tsc -p tsconfig.dashboard.json && node scripts/copy-dashboard.mjs",
+    "provision": "node dist/server/provision.js",
+    "start": "node dist/server/main.js",
+    "stop": "node dist/server/cli.js stop",
+    "restart": "node dist/server/cli.js restart",
+    "status": "node dist/server/cli.js status",
+    "logs": "node dist/server/cli.js logs",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:e2e": "npm run build:dashboard && node tests/e2e/dashboard.mjs",
+    "test:soak": "npm run build:server && node --test tests/soak.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.49.1",
+    "yaml": "2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "typescript": "5.7.2"
+  }
+}
