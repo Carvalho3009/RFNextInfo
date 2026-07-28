@@ -20,13 +20,20 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="RFNextInfo",
     console=False,
     debug=False,
     upx=False,
     icon=None,
     uac_admin=True,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="RFNextInfo",
 )

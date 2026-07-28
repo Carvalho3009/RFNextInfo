@@ -10,13 +10,19 @@ Contato: Discord `Carvalho` · `carvalho@tuta.com`
 - executável autônomo, interface Karvalho e instalador padrão;
 - seleção única do executável e detecção automática das conexões TCP atuais;
 - lista limitada aos executáveis `ProjectRF*`;
-- captura nativa Pktmon limitada às portas locais descobertas, segmentada em 512 MB;
+- captura nativa Pktmon limitada às portas conhecidas do RF NEXT e às portas
+  locais descobertas, segmentada em 512 MB;
 - SQLite WAL para recuperação e reprocessamento incremental;
 - Codex/coleção, personagem, level, EXP, mercado e eventos de farm quando o
   decoder canônico possui semântica confirmada;
 - kill exibida apenas como estimativa por evento de recompensa;
-- sessões independentes, Profile e até dois personagens identificados por UID;
+- sessões independentes, Profile e até dois personagens vinculados aos
+  respectivos processos do jogo;
 - JSON e CSV separados por personagem, com EXP bruta e percentual no level;
+- sem UID, a exportação pede a EXP atual (%) dos personagens e associa cada
+  conexão ao valor observado mais próximo;
+- identificação incompleta não bloqueia a exportação: o arquivo recebe
+  `requires_site_review` para validação na importação do site;
 - aba Informações por personagem e diagnóstico sanitizado separado para
   eventos ainda não decodificados;
 - log técnico local rotativo de até aproximadamente 4 MB, com remoção de
@@ -47,16 +53,18 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 ## Executar
 
-Use [RFNextInfo-Setup-1.0.5.exe](dist/RFNextInfo-Setup-1.0.5.exe)
-ou o portátil [RFNextInfo.exe](dist/RFNextInfo.exe). O Windows solicita
-elevação porque o Pktmon precisa de permissão administrativa.
+Use [RFNextInfo-Setup-1.0.6.exe](dist/RFNextInfo-Setup-1.0.6.exe). O Windows
+solicita elevação porque o Pktmon precisa de permissão administrativa. As
+dependências ficam instaladas junto ao programa, sem extração temporária
+`_MEI`.
 
 Na primeira abertura:
 
 1. escolha se fechar deve manter a captura visível na área de notificação;
 2. ative a instalação na aba **Licença**; a ativação será preservada;
 3. abra o jogo, atualize a lista e escolha o executável uma vez;
-4. informe o Profile e até dois personagens, inicie a captura e jogue normalmente;
+4. informe o Profile, vincule cada personagem ao respectivo processo
+   `ProjectRF`, inicie a captura e jogue normalmente;
 5. pare a captura, aguarde a leitura e exporte JSON + CSV.
 
 O instalador testa o executável instalado e registra o resultado em
@@ -69,7 +77,7 @@ programa pelo atalho.
 python -m unittest discover -s tests -v
 python -m PyInstaller --clean --noconfirm .\packaging\RFNextInfo.spec
 makensis.exe .\packaging\installer.nsi
-.\dist\RFNextInfo.exe --self-test
+.\dist\RFNextInfo\RFNextInfo.exe --self-test
 ```
 
 O instalador ainda não possui assinatura Authenticode. A autenticidade das

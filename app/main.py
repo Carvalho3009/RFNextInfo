@@ -9,7 +9,8 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, X, filedialog, messagebox, ttk
+from tkinter import BOTH, END, LEFT, X, filedialog, messagebox, simpledialog, ttk
+from typing import Any
 import tkinter as tk
 
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
@@ -20,10 +21,14 @@ from app.license import LicenseClient
 from app.support_log import configure as configure_log, recent_lines
 from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
-from core.connections import connected_processes, ports_for_executable
+from core.connections import (
+    clients_for_executable,
+    connected_processes,
+    ports_for_executable,
+)
 from core.store import CaptureStore
 
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -217,6 +222,7 @@ class App(tk.Tk):
         self._last_poll_error = ""
         self._last_game_signature = None
         self._game_choices: dict[str, str] = {}
+        self._client_choices: dict[str, int] = {}
         self._selected_game_path = ""
         self.prefs: dict = {}
         self._style()
@@ -405,23 +411,42 @@ class App(tk.Tk):
         self.character2.grid(
             row=1, column=2, sticky="ew", padx=(14, 0), pady=(8, 0)
         )
+        ttk.Label(
+            profile,
+            text="Vincule cada nome ao processo:",
+            style="Muted.TLabel",
+        ).grid(row=2, column=0, sticky="w", pady=(9, 0))
+        self.client1_choice = ttk.Combobox(profile, state="readonly")
+        self.client2_choice = ttk.Combobox(profile, state="readonly")
+        self.client1_choice.grid(
+            row=2, column=1, sticky="ew", padx=(14, 0), pady=(9, 0)
+        )
+        self.client2_choice.grid(
+            row=2, column=2, sticky="ew", padx=(14, 0), pady=(9, 0)
+        )
+        self.client1_choice.bind(
+            "<<ComboboxSelected>>", lambda _: self._save_preferences()
+        )
+        self.client2_choice.bind(
+            "<<ComboboxSelected>>", lambda _: self._save_preferences()
+        )
         for column in range(3):
             profile.columnconfigure(column, weight=1)
         ttk.Label(
             profile,
             text=(
-                "A identidade automática usa o UID confirmado do fluxo. "
-                "Os nomes acima são o fallback para o site."
+                "Cada processo selecionado mantém seus eventos separados; "
+                "o UID confirmado continua dentro dos dados decodificados."
             ),
             style="Muted.TLabel",
-        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(7, 0))
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(7, 0))
         self.auto_export = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             profile,
             text="Exportar automaticamente ao parar para Documentos\\Capturas\\Exportados",
             variable=self.auto_export,
             command=self._save_preferences,
-        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(9, 0))
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(9, 0))
 
         self.metrics = tk.Text(
             self.capture_tab,
@@ -560,11 +585,11 @@ class App(tk.Tk):
         text = (
             "1. Ative esta instalação na aba Licença. A ativação será lembrada nas próximas aberturas.\n\n"
             "2. Abra o RF NEXT e entre com o personagem. Em Captura, clique em Atualizar lista e escolha o executável do jogo; essa escolha será lembrada e as conexões serão detectadas automaticamente.\n\n"
-            "3. Informe o Profile do site e um ou dois personagens. Clique em Iniciar; o Windows pede permissão administrativa para o Pktmon nativo. Podem ser usados até dois clientes do mesmo executável.\n\n"
+            "3. Informe o Profile e um ou dois personagens. Vincule cada nome ao respectivo processo ProjectRF; os dois personagens devem usar processos diferentes. Clique em Iniciar.\n\n"
             "4. Pare a captura e aguarde a leitura. Cada parada cria uma sessão independente; capturas diferentes não são misturadas.\n\n"
             "5. Exporte. Cada personagem recebe JSON e CSV com nome Profile-Personagem-datahora-contador. Eventos não decodificados geram um diagnóstico separado e só são enviados com sua autorização. Para relatar um problema do programa, use Enviar log técnico na aba Licença.\n\n"
             "6. Confira o tamanho informado. Somente depois da exportação validada o programa oferece enviar os segmentos brutos à Lixeira.\n\n"
-            "Privacidade: captura passiva somente das conexões do executável selecionado, sem captura geral da rede, injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
+            "Privacidade: captura passiva limitada às portas conhecidas do RF NEXT e dos processos selecionados, sem captura geral da rede, injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
         )
         ttk.Label(
             self.tutorial_tab, text="Comece em seis passos", style="Title.TLabel"
@@ -695,6 +720,12 @@ class App(tk.Tk):
                 "channel": self.channel.get(),
                 "last_session": self.current_session,
                 "game_executable": self._selected_game_path,
+                "character1_pid": self._client_choices.get(
+                    self.client1_choice.get()
+                ),
+                "character2_pid": self._client_choices.get(
+                    self.client2_choice.get()
+                ),
             }
         )
         PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -778,12 +809,52 @@ class App(tk.Tk):
             self.game_status.configure(
                 text="Abra o jogo e escolha o executável na lista"
             )
+        self._refresh_client_choices()
+
+    def _refresh_client_choices(self) -> None:
+        current = (
+            self._client_choices.get(self.client1_choice.get()),
+            self._client_choices.get(self.client2_choice.get()),
+        )
+        clients = (
+            clients_for_executable(self._selected_game_path)
+            if self._selected_game_path
+            else {}
+        )
+        labels = {
+            (
+                f"{Path(self._selected_game_path).name} · PID {pid} · "
+                f"{len(ports)} conexão(ões)"
+            ): pid
+            for pid, ports in sorted(clients.items())
+        }
+        self._client_choices = labels
+        values = tuple(labels)
+        self.client1_choice.configure(values=values)
+        self.client2_choice.configure(values=values)
+        pids = tuple(labels.values())
+        selected = []
+        for index, previous in enumerate(current, 1):
+            saved = self.prefs.get(f"character{index}_pid")
+            pid = previous if previous in pids else saved if saved in pids else None
+            if pid is None and len(pids) >= index:
+                pid = pids[index - 1]
+            selected.append(
+                next((label for label, value in labels.items() if value == pid), "")
+            )
+        self.client1_choice.set(selected[0])
+        self.client2_choice.set(selected[1])
 
     def _game_selected(self, _event=None) -> None:
         self._selected_game_path = self._game_choices.get(
             self.game_choice.get(), ""
         )
         self._last_game_signature = None
+        self._client_choices = {}
+        self.client1_choice.set("")
+        self.client2_choice.set("")
+        self.prefs["character1_pid"] = None
+        self.prefs["character2_pid"] = None
         self._save_preferences()
         self.refresh_game_choices(False)
 
@@ -870,20 +941,34 @@ class App(tk.Tk):
                 "Conexão do jogo",
                 "Abra o jogo, clique em Atualizar lista e escolha o executável.",
             )
-        ports, clients = ports_for_executable(self._selected_game_path)
-        if not ports:
+        connected = clients_for_executable(self._selected_game_path)
+        selected_pids = [
+            self._client_choices.get(self.client1_choice.get()),
+            self._client_choices.get(self.client2_choice.get()),
+        ][: len(characters)]
+        if any(pid not in connected for pid in selected_pids):
             self.refresh_game_choices(False)
             return messagebox.showwarning(
                 "Conexão do jogo",
-                "Nenhuma conexão ativa foi encontrada. Entre com o personagem "
-                "no jogo e tente novamente.",
+                "Selecione o processo correspondente a cada personagem. "
+                "Se a lista mudou, clique em Atualizar lista.",
             )
-        if clients > 2:
+        if len(set(selected_pids)) != len(selected_pids):
             return messagebox.showwarning(
-                "Limite de clientes",
-                "Foram encontrados mais de dois clientes. Feche os excedentes "
-                "antes de iniciar.",
+                "Identificação",
+                "Personagem 1 e Personagem 2 precisam usar processos diferentes.",
             )
+        pid_uids = {
+            int(pid): f"client:{index}"
+            for index, pid in enumerate(selected_pids, 1)
+        }
+        port_uids = {
+            port: pid_uids[pid]
+            for pid in pid_uids
+            for port in connected[pid]
+        }
+        ports = tuple(sorted(port_uids))
+        clients = len(pid_uids)
         counter = int(self.prefs.get("session_counter", 0)) + 1
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         session_id = (
@@ -903,6 +988,16 @@ class App(tk.Tk):
             capture_prefix=capture_prefix,
             capture_pending=True,
             capture_ports=list(ports),
+            capture_pid_uids={
+                str(pid): uid for pid, uid in pid_uids.items()
+            },
+            capture_port_uids={
+                str(port): uid for port, uid in port_uids.items()
+            },
+            capture_character_names={
+                f"client:{index}": name
+                for index, name in enumerate(characters, 1)
+            },
         )
         try:
             self._save_preferences()
@@ -961,6 +1056,13 @@ class App(tk.Tk):
             self.log.exception("capture_stop_failed")
             return messagebox.showerror("Falha ao parar", str(error))
         session_id = self.current_session
+        port_uids = {
+            int(port): str(uid)
+            for port, uid in (
+                self.prefs.get("capture_port_uids") or {}
+            ).items()
+            if str(port).isdigit()
+        }
 
         def ingest():
             store = CaptureStore(DB_PATH)
@@ -969,7 +1071,11 @@ class App(tk.Tk):
                 failures = []
                 for path in self.last_files:
                     try:
-                        added += store.ingest(path, session_id=session_id)
+                        added += store.ingest(
+                            path,
+                            session_id=session_id,
+                            port_uids=port_uids,
+                        )
                     except Exception as error:
                         reason = _safe_error_code(error)
                         self.log.exception(
@@ -996,7 +1102,10 @@ class App(tk.Tk):
                 text = (
                     f"Captura encerrada · {added} eventos novos"
                     if added
-                    else "Captura encerrada sem dados · exportação bloqueada"
+                    else (
+                        "Captura encerrada sem eventos reconhecidos · "
+                        "exportação disponível com alerta"
+                    )
                 )
                 if failures:
                     text += (
@@ -1027,7 +1136,9 @@ class App(tk.Tk):
             self.prefs.get("session_counter", 0)
         )
 
-    def _character_exports(self) -> list[dict[str, str | bool | None]]:
+    def _character_exports(
+        self, *, prompt_exp: bool = False
+    ) -> list[dict[str, Any]]:
         if not self.current_session:
             return []
         detected = self.store.session_profiles(self.current_session)
@@ -1039,33 +1150,75 @@ class App(tk.Tk):
             )
             if name
         ]
-        if len(detected) > 2:
-            raise ValueError(
-                "Mais de dois personagens foram identificados nesta sessão."
-            )
-        stats = self.store.session_stats(self.current_session)
-        if len(detected) > 1 and int(stats["unassigned"] or 0):
-            raise ValueError(
-                "Há eventos reconhecidos sem UID nesta sessão; a exportação foi "
-                "bloqueada para não misturar os dois personagens."
-            )
-        if not detected:
-            if len(manual) > 1:
-                raise ValueError(
-                    "Dois personagens foram informados, mas a captura não trouxe "
-                    "UID suficiente para separar os eventos com segurança."
+        bound_names = {
+            str(uid): str(name)
+            for uid, name in (
+                self.prefs.get("capture_character_names") or {}
+            ).items()
+            if name
+        }
+        if prompt_exp and not detected and manual:
+            flows = self.store.unidentified_exp_flows(self.current_session)
+            if len(flows) >= len(manual):
+                targets = []
+                for name in manual:
+                    value = simpledialog.askfloat(
+                        "Identificar personagem pela EXP",
+                        f"Informe a EXP atual (%) de {name}:",
+                        parent=self,
+                        minvalue=0.0,
+                        maxvalue=100.0,
+                    )
+                    if value is None:
+                        targets = []
+                        break
+                    targets.append((name, value))
+                matches = (
+                    self.store.assign_unidentified_by_exp(
+                        self.current_session, targets
+                    )
+                    if targets
+                    else []
                 )
+                if matches:
+                    bound_names.update(
+                        {
+                            str(match["uid"]): str(match["name"])
+                            for match in matches
+                        }
+                    )
+                    self.prefs["capture_character_names"] = bound_names
+                    self._save_preferences()
+                    detected = self.store.session_profiles(
+                        self.current_session
+                    )
+        stats = self.store.session_stats(self.current_session)
+        if len(detected) > 2 or not detected:
+            name = (
+                "-e-".join(manual) + "-Nao-separado"
+                if len(manual) > 1
+                else manual[0]
+                if manual
+                else "Nao-identificado"
+            )
             return [
                 {
                     "uid": None,
-                    "name": manual[0] if manual else "Nao-identificado",
+                    "name": name,
                     "include_unassigned": True,
+                    "only_unassigned": False,
+                    "identification_status": "unresolved",
+                    "requested_characters": manual,
+                    "warning": (
+                        "A captura não separou todos os personagens. Um arquivo "
+                        "combinado será exportado e marcado para revisão pelo site."
+                    ),
                 }
             ]
         unused = manual.copy()
         result = []
         for index, item in enumerate(detected):
-            name = item["name"]
+            name = bound_names.get(item["uid"]) or item["name"]
             match = next(
                 (
                     candidate
@@ -1084,6 +1237,37 @@ class App(tk.Tk):
                     "uid": item["uid"],
                     "name": name or f"Personagem-{index + 1}",
                     "include_unassigned": len(detected) == 1,
+                    "only_unassigned": False,
+                    "identification_status": (
+                        "process_bound"
+                        if item["uid"].startswith("client:")
+                        else "exp_matched"
+                        if item["uid"].startswith("exp:")
+                        else "confirmed_uid"
+                    ),
+                    "requested_characters": manual,
+                    "warning": (
+                        "Alguns eventos não têm identificação individual; "
+                        "o arquivo será marcado para revisão pelo site."
+                        if len(detected) == 1 and int(stats["unassigned"] or 0)
+                        else None
+                    ),
+                }
+            )
+        if len(detected) > 1 and int(stats["unassigned"] or 0):
+            result.append(
+                {
+                    "uid": None,
+                    "name": "Nao-atribuido",
+                    "include_unassigned": False,
+                    "only_unassigned": True,
+                    "identification_status": "unresolved",
+                    "requested_characters": manual,
+                    "warning": (
+                        "Alguns eventos não puderam ser associados por UID ou "
+                        "EXP. Eles serão exportados em um arquivo separado para "
+                        "revisão pelo site."
+                    ),
                 }
             )
         return result
@@ -1103,10 +1287,10 @@ class App(tk.Tk):
                 "Parar, aguarde a leitura e tente exportar novamente.",
             )
         if not self._session_has_data():
-            return messagebox.showwarning(
-                "Sem dados para exportar",
-                "Esta sessão não contém eventos. Abra o jogo, selecione o "
-                "executável conectado e faça uma nova captura.",
+            messagebox.showwarning(
+                "Sessão sem eventos reconhecidos",
+                "O JSON e o CSV serão gerados mesmo assim e marcados para "
+                "revisão. O site poderá recusar a importação.",
             )
         target = filedialog.askdirectory(
             title="Escolha a pasta de exportação", initialdir=str(EXPORT_DIR)
@@ -1213,12 +1397,23 @@ class App(tk.Tk):
         )
 
     def _export_to(self, target: Path) -> None:
-        if not self.current_session or not self._session_has_data():
+        if not self.current_session:
             return
         profile = self.profile.get().strip() or "Profile"
         stamp, counter = self._session_parts()
         try:
-            characters = self._character_exports()
+            characters = self._character_exports(prompt_exp=True)
+            warnings = {
+                str(character["warning"])
+                for character in characters
+                if character.get("warning")
+            }
+            if warnings:
+                messagebox.showwarning(
+                    "Exportação com identificação incompleta",
+                    "\n\n".join(sorted(warnings))
+                    + "\n\nA exportação continuará normalmente.",
+                )
             results = []
             for character in characters:
                 name = str(character["name"])
@@ -1232,6 +1427,7 @@ class App(tk.Tk):
                     session_id=self.current_session,
                     character_uid=character["uid"],
                     include_unassigned=bool(character["include_unassigned"]),
+                    only_unassigned=bool(character["only_unassigned"]),
                     context={
                         "profile": profile,
                         "character_name": name,
@@ -1239,6 +1435,13 @@ class App(tk.Tk):
                         "license_lease": self.license.lease,
                         "app_version": VERSION,
                         "session_counter": counter,
+                        "identification_status": character[
+                            "identification_status"
+                        ],
+                        "requires_site_review": bool(character.get("warning")),
+                        "requested_characters": character[
+                            "requested_characters"
+                        ],
                     },
                 )
                 envelope = json.loads(
@@ -1358,6 +1561,7 @@ class App(tk.Tk):
                     self.current_session,
                     character["uid"],
                     bool(character["include_unassigned"]),
+                    bool(character["only_unassigned"]),
                 )
                 summary, _ = _capture_summary(envelope)
                 exp_percent = summary["exp_percent"]
@@ -1480,9 +1684,21 @@ class App(tk.Tk):
             "O RF NEXT INFO será fechado e o instalador será aberto. Continuar?",
         ):
             if getattr(sys, "frozen", False):
-                rollback = STATE_DIR / "rollback" / "RFNextInfo.exe"
-                rollback.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(sys.executable, rollback)
+                rollback_root = STATE_DIR / "rollback"
+                source = Path(sys.executable).parent
+                if (source / "_internal").is_dir():
+                    target = rollback_root / "RFNextInfo"
+                    shutil.rmtree(target, ignore_errors=True)
+                    shutil.copytree(
+                        source,
+                        target,
+                        ignore=shutil.ignore_patterns("Uninstall.exe"),
+                    )
+                else:
+                    rollback_root.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(
+                        sys.executable, rollback_root / "RFNextInfo.exe"
+                    )
             self._save_preferences()
             try:
                 os.startfile(installer)
@@ -1498,7 +1714,9 @@ class App(tk.Tk):
             self.destroy()
 
     def rollback(self) -> None:
-        previous = STATE_DIR / "rollback" / "RFNextInfo.exe"
+        previous = STATE_DIR / "rollback" / "RFNextInfo" / "RFNextInfo.exe"
+        if not previous.is_file():
+            previous = STATE_DIR / "rollback" / "RFNextInfo.exe"
         if not previous.is_file():
             return messagebox.showinfo(
                 "Versão anterior",
@@ -1514,18 +1732,28 @@ class App(tk.Tk):
     def _refresh_active_game_connections(self) -> None:
         if not self._selected_game_path:
             return
-        ports, clients = ports_for_executable(self._selected_game_path)
-        signature = (clients, ports)
+        connected = clients_for_executable(self._selected_game_path)
+        pid_uids = {
+            int(pid): str(uid)
+            for pid, uid in (
+                self.prefs.get("capture_pid_uids") or {}
+            ).items()
+            if str(pid).isdigit()
+        }
+        monitored = {
+            pid: connected[pid] for pid in pid_uids if pid in connected
+        }
+        ports = tuple(
+            sorted({port for values in monitored.values() for port in values})
+        )
+        signature = tuple(sorted(monitored.items()))
         if signature == self._last_game_signature:
             return
         self._last_game_signature = signature
-        if clients > 2:
+        if not monitored:
             self.game_status.configure(
-                text="Mais de dois clientes conectados · feche os excedentes"
+                text="Processo do personagem reiniciado · inicie uma nova captura"
             )
-            return
-        if not clients:
-            self.game_status.configure(text="Aguardando reconexão do jogo")
             return
         try:
             added = self.capture.add_ports(ports)
@@ -1542,11 +1770,16 @@ class App(tk.Tk):
             saved = set(self.prefs.get("capture_ports") or ())
             saved.update(ports)
             self.prefs["capture_ports"] = sorted(saved)
+            mapped = dict(self.prefs.get("capture_port_uids") or {})
+            for pid, values in monitored.items():
+                for port in values:
+                    mapped[str(port)] = pid_uids[pid]
+            self.prefs["capture_port_uids"] = mapped
             self._save_preferences()
             self.log.info("capture_connections_added count=%d", added)
         self.game_status.configure(
             text=(
-                f"{clients} cliente(s) conectado(s) · "
+                f"{len(monitored)} cliente(s) identificado(s) · "
                 f"{len(ports)} conexão(ões) monitorada(s)"
             )
         )

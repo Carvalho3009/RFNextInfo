@@ -6,7 +6,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.capture import PktmonCapture, _pktmon_running
-from core.connections import connected_processes, ports_for_executable
+from core.connections import (
+    clients_for_executable,
+    connected_processes,
+    ports_for_executable,
+)
 from core.ingest import _pcapng_to_pcap, _safe_parse
 from core.rfnext_frame_decode import pcap_tcp_streams
 from core.store import CaptureStore
@@ -75,10 +79,142 @@ class CoreTest(unittest.TestCase):
         ):
             processes = connected_processes()
             ports, clients = ports_for_executable(paths[10])
+            grouped = clients_for_executable(paths[10])
         self.assertEqual(len(processes), 1)
         self.assertEqual(ports, (50100, 50101, 50200))
         self.assertEqual(clients, 2)
+        self.assertEqual(grouped, {10: (50100, 50101), 11: (50200,)})
         self.assertEqual(ports_for_executable(paths[12]), ((), 0))
+
+    def test_two_clients_are_separated_by_captured_local_ports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "two-clients.etl"
+            raw.write_bytes(b"capture")
+            db = CaptureStore(root / "state.sqlite")
+            try:
+                events = [
+                    {
+                        "flow": f"10.0.0.1:{port} -> 10.0.0.2:12020",
+                        "stream_offset": index,
+                        "bundle_seq": 0,
+                        "ts_ns": index,
+                        "opcode": 0x040A,
+                        "type": "drop_item_field",
+                        "data": {"type": "drop_item_field"},
+                    }
+                    for index, port in enumerate((50100, 50200), 1)
+                ]
+                db.add_events(
+                    raw,
+                    events,
+                    "session-two",
+                    {50100: "client:1", 50200: "client:2"},
+                )
+                self.assertEqual(
+                    db.session_profiles("session-two"),
+                    [
+                        {"uid": "client:1", "name": ""},
+                        {"uid": "client:2", "name": ""},
+                    ],
+                )
+                self.assertEqual(
+                    len(
+                        db.session_envelope(
+                            "session-two", character_uid="client:1"
+                        )["events"]
+                    ),
+                    1,
+                )
+            finally:
+                db.close()
+
+    def test_unidentified_flows_are_matched_to_closest_exp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "exp.etl"
+            raw.write_bytes(b"capture")
+            db = CaptureStore(root / "state.sqlite")
+            try:
+                need = 3_908_016_337
+                events = []
+                for index, (flow, percent) in enumerate(
+                    (("flow-high", 80), ("flow-low", 10)), 1
+                ):
+                    events.extend(
+                        [
+                            {
+                                "flow": flow,
+                                "stream_offset": index,
+                                "bundle_seq": 0,
+                                "ts_ns": index,
+                                "opcode": 0x0417,
+                                "type": "update_exp",
+                                "data": {
+                                    "fields": {
+                                        "level": 68,
+                                        "exp": need * percent // 100,
+                                    }
+                                },
+                            },
+                            {
+                                "flow": flow,
+                                "stream_offset": index + 10,
+                                "bundle_seq": 0,
+                                "ts_ns": index + 10,
+                                "opcode": 0x040A,
+                                "type": "drop_item_field",
+                                "data": {"fields": {"item_id": index}},
+                            },
+                        ]
+                    )
+                events.append(
+                    {
+                        "flow": "flow-unknown",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "ts_ns": 100,
+                        "opcode": 0x040A,
+                        "type": "drop_item_field",
+                        "data": {"fields": {"item_id": 99}},
+                    }
+                )
+                db.add_events(raw, events, "session-exp")
+                matches = db.assign_unidentified_by_exp(
+                    "session-exp", [("Alice", 75.0), ("Bob", 12.0)]
+                )
+                self.assertEqual(
+                    [
+                        (item["name"], round(item["observed_percent"]))
+                        for item in matches
+                    ],
+                    [("Alice", 80), ("Bob", 10)],
+                )
+                self.assertEqual(
+                    [
+                        (item["uid"], item["name"])
+                        for item in db.session_profiles("session-exp")
+                    ],
+                    [("exp:1", ""), ("exp:2", "")],
+                )
+                self.assertEqual(
+                    len(
+                        db.session_envelope(
+                            "session-exp", character_uid="exp:1"
+                        )["events"]
+                    ),
+                    2,
+                )
+                self.assertEqual(
+                    len(
+                        db.session_envelope(
+                            "session-exp", only_unassigned=True
+                        )["events"]
+                    ),
+                    1,
+                )
+            finally:
+                db.close()
 
     def test_pktmon_uses_discovered_and_reconnected_ports(self):
         class Runner:
@@ -134,7 +270,19 @@ class CoreTest(unittest.TestCase):
         ]
         self.assertEqual(
             [call[-1] for call in filters],
-            ["50100", "50200", "50100", "50200", "50300"],
+            [
+                "12000",
+                "12020",
+                "12040",
+                "50100",
+                "50200",
+                "12000",
+                "12020",
+                "12040",
+                "50100",
+                "50200",
+                "50300",
+            ],
         )
         self.assertEqual(runner.start_attempts, 2)
 
@@ -259,7 +407,7 @@ class CoreTest(unittest.TestCase):
                                     "character_uid": 101,
                                     "character_name": "Alice",
                                     "level": 66,
-                                    "exp": 2_542_031_484,
+                                    "exp": 1_230_793_758,
                                 }
                             },
                         },
@@ -313,10 +461,9 @@ class CoreTest(unittest.TestCase):
                 )
                 envelope = json.loads(exported.json_path.read_text(encoding="utf-8"))
                 self.assertEqual(len(envelope["events"]), 1)
-                self.assertAlmostEqual(
+                self.assertEqual(
                     envelope["events"][0]["data"]["fields"]["exp_percent"],
-                    12.57,
-                    places=2,
+                    50.0,
                 )
                 diagnostic = db.export_diagnostics(
                     root, "Profile-diagnostico-20260728-001", "session-a"

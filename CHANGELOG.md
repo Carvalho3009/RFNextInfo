@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.6 — 2026-07-28
+
+- cada nome de personagem é vinculado explicitamente a um processo `ProjectRF`;
+- portas locais de cada processo identificam os eventos sem depender da
+  presença eventual do UID no protocolo;
+- filtros das portas conhecidas do jogo já ficam ativos antes do login e
+  continuam cobrindo reconexões;
+- exportações incompletas geram alerta e marca de revisão, sem bloquear os
+  arquivos JSON/CSV;
+- sem UID, a EXP atual (%) informada associa cada personagem à conexão mais
+  próxima; eventos restantes seguem em arquivo separado para revisão;
+- logs usam o horário local do computador com o deslocamento UTC explícito;
+- empacotamento alterado para diretório interno instalado, eliminando a
+  extração `_MEI` temporária que causava a falha de `python313.dll`;
+- autoteste do instalador continua obrigatório, agora usando as DLLs instaladas.
+
 ## 1.0.5 — 2026-07-28
 
 - licença persistida em arquivo DPAPI vinculado ao computador, com backup

@@ -127,7 +127,7 @@ class PktmonCapture:
 
     def start_for_ports(self, session_id: str, ports: tuple[int, ...]) -> Path:
         self._validate_session_id(session_id)
-        ports = tuple(dict.fromkeys(ports))
+        ports = tuple(dict.fromkeys((*self.ports, *ports)))
         if not ports or any(not 1 <= port <= 65535 for port in ports):
             raise ValueError("porta inválida")
         if len(ports) > 32:

@@ -1,7 +1,7 @@
 Unicode True
 RequestExecutionLevel admin
 Name "RF NEXT INFO"
-OutFile "..\dist\RFNextInfo-Setup-1.0.5.exe"
+OutFile "..\dist\RFNextInfo-Setup-1.0.6.exe"
 InstallDir "$PROGRAMFILES64\Karvalho\RF NEXT INFO"
 InstallDirRegKey HKLM "Software\Karvalho\RFNextInfo" "InstallDir"
 
@@ -34,8 +34,9 @@ FunctionEnd
 Section "RF NEXT INFO" SEC_APP
   Call EnsureAppClosed
   Sleep 1500
+  RMDir /r "$INSTDIR\_internal"
   SetOutPath "$INSTDIR"
-  File "..\dist\RFNextInfo.exe"
+  File /r "..\dist\RFNextInfo\*.*"
   SetShellVarContext all
   CreateDirectory "$APPDATA\Karvalho\RFNextInfo\logs"
   ClearErrors
@@ -47,7 +48,7 @@ self_test_exec_failed:
   StrCpy $0 -1
 self_test_log:
   FileOpen $1 "$APPDATA\Karvalho\RFNextInfo\logs\install.log" a
-  FileWrite $1 "version=1.0.5 self_test=$0$\r$\n"
+  FileWrite $1 "version=1.0.6 self_test=$0$\r$\n"
   FileClose $1
   SetShellVarContext current
   StrCmp $0 0 self_test_ok
@@ -66,8 +67,6 @@ Section "Uninstall"
   Delete "$DESKTOP\RF NEXT INFO.lnk"
   Delete "$SMPROGRAMS\Karvalho\RF NEXT INFO.lnk"
   RMDir "$SMPROGRAMS\Karvalho"
-  Delete "$INSTDIR\RFNextInfo.exe"
-  Delete "$INSTDIR\Uninstall.exe"
-  RMDir "$INSTDIR"
+  RMDir /r "$INSTDIR"
   DeleteRegKey HKLM "Software\Karvalho\RFNextInfo"
 SectionEnd
