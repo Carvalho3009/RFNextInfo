@@ -5,6 +5,7 @@ import json
 import tempfile
 import urllib.request
 from pathlib import Path
+from typing import Callable
 
 from .license import _b64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -39,11 +40,17 @@ def latest(channel: str = "stable") -> dict:
     return candidates[0]
 
 
-def download_verified(release: dict, public_key: str) -> Path:
+def download_verified(
+    release: dict,
+    public_key: str,
+    progress: Callable[[str, int, int | None], None] | None = None,
+) -> Path:
     assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
     manifest_url = assets.get("update-manifest.json")
     if not manifest_url:
         raise ValueError("Versão sem manifesto assinado")
+    if progress:
+        progress("manifest", 0, None)
     manifest_request = urllib.request.Request(manifest_url, headers=HEADERS)
     with urllib.request.urlopen(manifest_request, timeout=20) as response:
         manifest = verify_manifest(json.loads(response.read(64 * 1024)), public_key)
@@ -51,13 +58,34 @@ def download_verified(release: dict, public_key: str) -> Path:
     if not file_name or file_name not in assets:
         raise ValueError("Instalador não encontrado")
     target = Path(tempfile.gettempdir()) / Path(file_name).name
+    partial = target.with_suffix(target.suffix + ".part")
     installer_request = urllib.request.Request(
         assets[file_name], headers={"User-Agent": "RFNextInfo"}
     )
-    with urllib.request.urlopen(installer_request, timeout=120) as response, target.open("wb") as output:
-        while chunk := response.read(1024 * 1024):
-            output.write(chunk)
-    if hashlib.sha256(target.read_bytes()).hexdigest().lower() != str(manifest.get("sha256", "")).lower():
-        target.unlink(missing_ok=True)
-        raise ValueError("SHA-256 do instalador não confere")
+    try:
+        with urllib.request.urlopen(installer_request, timeout=120) as response, partial.open("wb") as output:
+            try:
+                total = int(response.headers.get("Content-Length", "0")) or None
+            except (TypeError, ValueError):
+                total = None
+            downloaded = 0
+            if progress:
+                progress("download", downloaded, total)
+            while chunk := response.read(1024 * 1024):
+                output.write(chunk)
+                downloaded += len(chunk)
+                if progress:
+                    progress("download", downloaded, total)
+        if progress:
+            progress("verify", downloaded, total)
+        digest = hashlib.sha256()
+        with partial.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                digest.update(chunk)
+        if digest.hexdigest().lower() != str(manifest.get("sha256", "")).lower():
+            raise ValueError("SHA-256 do instalador não confere")
+        partial.replace(target)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
     return target

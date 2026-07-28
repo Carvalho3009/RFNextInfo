@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3 — 2026-07-28
+
+- progresso visível durante consulta, download e verificação da atualização;
+- o aplicativo salva o estado e encerra antes de o instalador substituir os arquivos;
+- atualização bloqueada durante captura ativa para evitar perda de dados;
+- download parcial nunca é tratado como instalador verificado.
+
 ## 1.0.2 — 2026-07-28
 
 - licença e logs persistidos na pasta comum do computador, com migração do formato anterior;

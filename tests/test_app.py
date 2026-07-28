@@ -5,16 +5,17 @@ import tempfile
 import threading
 import unittest
 import urllib.error
+import urllib.request
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.license import LicenseClient, _activation_error, verify_lease
 from app.main import App, _capture_prefix, _capture_summary
 from app.support_log import LOGGER_NAME, configure, recent_lines
-from app.updater import UPDATE_SIGNATURE_CONTEXT, verify_manifest
+from app.updater import UPDATE_SIGNATURE_CONTEXT, download_verified, verify_manifest
 
 
 def b64(value: bytes) -> str:
@@ -22,6 +23,86 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_update_launch_closes_current_app(self):
+        app = Mock()
+        app.capture.attached = False
+        app.tray = None
+        with patch("app.main.messagebox.askyesno", return_value=True), patch(
+            "app.main.os.startfile"
+        ) as launch:
+            App._update_downloaded(app, Path("setup.exe"), None)
+        launch.assert_called_once_with(Path("setup.exe"))
+        app.store.close.assert_called_once()
+        app.destroy.assert_called_once()
+
+    def test_verified_download_reports_progress(self):
+        private = Ed25519PrivateKey.generate()
+        public = b64(private.public_key().public_bytes_raw())
+        installer = b"instalador-verificado" * 100
+        name = "RFNextInfo-Test-Progress.exe"
+        manifest = {
+            "version": "test",
+            "file": name,
+            "sha256": __import__("hashlib").sha256(installer).hexdigest(),
+        }
+        canonical = json.dumps(
+            manifest, separators=(",", ":"), sort_keys=True
+        ).encode()
+        manifest["signature"] = b64(
+            private.sign(UPDATE_SIGNATURE_CONTEXT + canonical)
+        )
+
+        class Response(BytesIO):
+            def __init__(self, body: bytes):
+                super().__init__(body)
+                self.headers = {"Content-Length": str(len(body))}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                self.close()
+
+        release = {
+            "assets": [
+                {
+                    "name": "update-manifest.json",
+                    "browser_download_url": "https://example/manifest",
+                },
+                {
+                    "name": name,
+                    "browser_download_url": "https://example/installer",
+                },
+            ]
+        }
+        progress = []
+        target = Path(tempfile.gettempdir()) / name
+        target.unlink(missing_ok=True)
+        try:
+            with patch.object(
+                urllib.request,
+                "urlopen",
+                side_effect=[
+                    Response(json.dumps(manifest).encode()),
+                    Response(installer),
+                ],
+            ):
+                self.assertEqual(
+                    download_verified(
+                        release,
+                        public,
+                        lambda phase, done, total: progress.append(
+                            (phase, done, total)
+                        ),
+                    ),
+                    target,
+                )
+            self.assertEqual(target.read_bytes(), installer)
+            self.assertEqual(progress[0][0], "manifest")
+            self.assertEqual(progress[-1], ("verify", len(installer), len(installer)))
+        finally:
+            target.unlink(missing_ok=True)
+
     def test_activation_diagnostics_and_local_format_check(self):
         error = urllib.error.HTTPError(
             "https://license", 403, "Forbidden", {"CF-Ray": "ray-test"}, BytesIO(
