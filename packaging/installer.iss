@@ -1,5 +1,5 @@
 #define AppName "RF NEXT INFO"
-#define AppVersion "1.0.2"
+#define AppVersion "1.0.3"
 #define AppPublisher "Karvalho"
 #define AppExeName "RFNextInfo.exe"
 
@@ -12,10 +12,13 @@ AppPublisherURL=https://karvalho.dev.br/
 DefaultDirName={autopf}\Karvalho\RF NEXT INFO
 DefaultGroupName=Karvalho
 OutputDir=..\dist
-OutputBaseFilename=RFNextInfo-Setup-1.0.2
+OutputBaseFilename=RFNextInfo-Setup-1.0.3
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
+CloseApplications=yes
+CloseApplicationsFilter=RFNextInfo.exe
+RestartApplications=no
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#AppExeName}
 ArchitecturesAllowed=x64compatible

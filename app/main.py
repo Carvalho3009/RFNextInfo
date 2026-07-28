@@ -22,7 +22,7 @@ from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.store import CaptureStore
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -250,6 +250,12 @@ class App(tk.Tk):
             foreground="#F4F2EB",
             insertcolor="#F4F2EB",
         )
+        style.configure(
+            "Horizontal.TProgressbar",
+            background="#D4A64D",
+            troughcolor="#111614",
+            bordercolor="#6d5428",
+        )
 
     def _build(self) -> None:
         header = ttk.Frame(self, padding=(22, 18))
@@ -472,12 +478,25 @@ class App(tk.Tk):
             variable=self.channel,
             command=self._save_preferences,
         ).pack(anchor="w")
-        ttk.Button(
+        self.update_button = ttk.Button(
             self.license_tab,
             text="Verificar atualização",
             style="Quiet.TButton",
             command=self.check_update,
-        ).pack(anchor="w", pady=12)
+        )
+        self.update_button.pack(anchor="w", pady=(12, 8))
+        self.update_progress = ttk.Progressbar(
+            self.license_tab,
+            mode="determinate",
+            maximum=100,
+        )
+        self.update_progress.pack(fill=X)
+        self.update_status = ttk.Label(
+            self.license_tab,
+            text="",
+            style="Muted.TLabel",
+        )
+        self.update_status.pack(anchor="w", pady=(4, 10))
         ttk.Button(
             self.license_tab,
             text="Abrir versão anterior",
@@ -1167,48 +1186,106 @@ class App(tk.Tk):
         self.info_text.configure(state="disabled")
 
     def check_update(self) -> None:
-        self.activation_status.configure(text="Consultando GitHub…")
+        self.update_button.configure(state="disabled")
+        self.update_progress.configure(value=0)
+        self.update_status.configure(text="Consultando atualizações…")
         self._run(lambda: latest(self.channel.get()), self._update_found)
 
     def _update_found(self, release, error) -> None:
         if error:
-            return self.activation_status.configure(
+            self.update_button.configure(state="normal")
+            return self.update_status.configure(
                 text=f"Atualização indisponível: {error}"
             )
         tag = str(release.get("tag_name", ""))
         notes = str(release.get("body", "")).strip()[:800]
         if tag.lstrip("v") == VERSION:
-            return self.activation_status.configure(
+            self.update_button.configure(state="normal")
+            self.update_progress.configure(value=100)
+            return self.update_status.configure(
                 text="Você já usa a versão mais recente."
             )
         if not messagebox.askyesno(
             "Atualização encontrada",
             f"{tag}\n\n{notes}\n\nBaixar e verificar agora?",
         ):
+            self.update_button.configure(state="normal")
+            self.update_status.configure(text="Atualização cancelada.")
             return
         public_key = self.license.state.get("public_key")
         if not public_key:
+            self.update_button.configure(state="normal")
+            self.update_status.configure(text="Ative a licença antes de atualizar.")
             return messagebox.showwarning(
                 "Atualização",
                 "Ative a licença para obter a chave pública de verificação.",
             )
+        def progress(phase: str, downloaded: int, total: int | None) -> None:
+            self.after(
+                0,
+                lambda: self._update_progress_changed(
+                    phase, downloaded, total
+                ),
+            )
+
         self._run(
-            lambda: download_verified(release, public_key),
+            lambda: download_verified(release, public_key, progress),
             self._update_downloaded,
         )
 
+    def _update_progress_changed(
+        self, phase: str, downloaded: int, total: int | None
+    ) -> None:
+        if phase == "manifest":
+            self.update_status.configure(text="Verificando manifesto assinado…")
+            return
+        if phase == "verify":
+            self.update_progress.configure(value=99)
+            self.update_status.configure(text="Verificando integridade do instalador…")
+            return
+        percent = min(100, downloaded * 100 / total) if total else 0
+        self.update_progress.configure(value=percent)
+        size = _format_bytes(downloaded)
+        suffix = f" de {_format_bytes(total)}" if total else ""
+        self.update_status.configure(
+            text=f"Baixando atualização: {percent:.0f}% · {size}{suffix}"
+        )
+
     def _update_downloaded(self, installer, error) -> None:
+        self.update_button.configure(state="normal")
         if error:
+            self.update_progress.configure(value=0)
+            self.update_status.configure(text=f"Falha na atualização: {error}")
             return messagebox.showerror("Atualização rejeitada", str(error))
+        self.update_progress.configure(value=100)
+        self.update_status.configure(text="Download concluído e verificado.")
+        if self.capture.attached and self.capture.status().active:
+            return messagebox.showwarning(
+                "Captura ativa",
+                "Pare a captura e aguarde a leitura terminar antes de atualizar.",
+            )
         if messagebox.askyesno(
             "Atualização verificada",
-            "Assinatura e SHA-256 conferem. Abrir o instalador visível agora?",
+            "Assinatura e SHA-256 conferem.\n\n"
+            "O RF NEXT INFO será fechado e o instalador será aberto. Continuar?",
         ):
             if getattr(sys, "frozen", False):
                 rollback = STATE_DIR / "rollback" / "RFNextInfo.exe"
                 rollback.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(sys.executable, rollback)
-            os.startfile(installer)
+            self._save_preferences()
+            try:
+                os.startfile(installer)
+            except OSError as launch_error:
+                self.log.exception("update_installer_launch_failed")
+                return messagebox.showerror(
+                    "Não foi possível abrir o instalador", str(launch_error)
+                )
+            if self.tray:
+                self.tray.stop()
+            self.store.close()
+            self.log.info("app_closed_for_update")
+            self.destroy()
 
     def rollback(self) -> None:
         previous = STATE_DIR / "rollback" / "RFNextInfo.exe"
