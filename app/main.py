@@ -20,7 +20,7 @@ from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.store import CaptureStore
 
-VERSION = "0.1.1-pilot"
+VERSION = "0.1.2-pilot"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 CAPTURE_DIR = Path.home() / "Documents" / "Capturas"
 ASSETS = ROOT / "assets"
@@ -86,7 +86,7 @@ class App(tk.Tk):
         self.configure(bg="#070909")
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
-        self.license = LicenseClient(STATE_DIR)
+        self.license = LicenseClient(STATE_DIR, version=VERSION)
         self.capture = PktmonCapture(CAPTURE_DIR)
         self.store = CaptureStore(DB_PATH)
         self.last_files: list[Path] = []

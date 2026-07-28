@@ -4,12 +4,13 @@ import tempfile
 import threading
 import unittest
 import urllib.error
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from app.license import LicenseClient, verify_lease
+from app.license import LicenseClient, _activation_error, verify_lease
 from app.main import App, _capture_summary
 from app.updater import UPDATE_SIGNATURE_CONTEXT, verify_manifest
 
@@ -19,6 +20,22 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_activation_diagnostics_and_local_format_check(self):
+        error = urllib.error.HTTPError(
+            "https://license", 403, "Forbidden", {"CF-Ray": "ray-test"}, BytesIO(
+                b'{"detail":"licenca invalida"}'
+            )
+        )
+        self.assertEqual(
+            _activation_error(error), "licenca invalida (HTTP 403, CF-Ray ray-test)"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            client = LicenseClient(Path(directory), version="test")
+            client._json = Mock()
+            with self.assertRaisesRegex(ValueError, "Formato inválido"):
+                client.activate("sem-hifens", "test")
+            client._json.assert_not_called()
+
     def test_async_error_reaches_callback(self):
         completed = threading.Event()
         observed = []

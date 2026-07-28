@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 import uuid
@@ -11,6 +12,8 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+KEY_RE = re.compile(r"^KRV(?:-[A-Z2-7]{5}){6}$")
+
 
 def _utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
@@ -18,6 +21,16 @@ def _utc(value: str) -> datetime:
 
 def _b64(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def _activation_error(error: urllib.error.HTTPError) -> str:
+    try:
+        detail = json.loads(error.read(32 * 1024)).get("detail", "")
+    except (OSError, ValueError, AttributeError):
+        detail = ""
+    ray = error.headers.get("CF-Ray", "") if error.headers else ""
+    reference = f", CF-Ray {ray}" if ray else ""
+    return f"{detail or 'servidor recusou a ativação'} (HTTP {error.code}{reference})"
 
 
 def verify_lease(lease: str, public_key: str) -> dict:
@@ -36,10 +49,16 @@ def verify_lease(lease: str, public_key: str) -> dict:
 
 
 class LicenseClient:
-    def __init__(self, state_dir: Path, server: str = "https://rflicenca.karvalho.dev.br") -> None:
+    def __init__(
+        self,
+        state_dir: Path,
+        server: str = "https://rflicenca.karvalho.dev.br",
+        version: str = "unknown",
+    ) -> None:
         self.state_dir = Path(state_dir)
         self.path = self.state_dir / "license.json"
         self.server = server.rstrip("/")
+        self.user_agent = f"RFNextInfo/{version}"
         self.state = self._load()
 
     def _load(self) -> dict:
@@ -63,19 +82,29 @@ class LicenseClient:
         request = urllib.request.Request(
             self.server + path,
             data=body,
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": self.user_agent,
+            },
             method="GET" if body is None else "POST",
         )
         with urllib.request.urlopen(request, timeout=12) as response:
             return json.loads(response.read(32 * 1024))
 
     def activate(self, key: str, version: str) -> dict:
-        public = self._json("/api/v1/public-key")
-        response = self._json("/api/v1/activate", {
-            "license_key": key.strip(),
-            "installation_id": self.state["installation_id"],
-            "app_version": version,
-        })
+        key = key.strip().upper()
+        if not KEY_RE.fullmatch(key):
+            raise ValueError("Formato inválido. Use KRV-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX.")
+        try:
+            public = self._json("/api/v1/public-key")
+            response = self._json("/api/v1/activate", {
+                "license_key": key,
+                "installation_id": self.state["installation_id"],
+                "app_version": version,
+            })
+        except urllib.error.HTTPError as error:
+            raise ValueError(_activation_error(error)) from None
         claims = verify_lease(response["lease"], public["public_key"])
         if claims["installation_id"] != self.state["installation_id"]:
             raise ValueError("Servidor vinculou outra instalação")
