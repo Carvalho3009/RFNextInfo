@@ -7,3 +7,10 @@ build/
 dist/
 *.sqlite3
 diagnostics/
+*.etl
+*.pcap
+*.pcapng
+.env
+.env.*
+!.env.example
+license.json
