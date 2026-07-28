@@ -13,6 +13,14 @@ from typing import Callable
 GIB = 1024**3
 
 
+def _pktmon_running(status: str) -> bool:
+    status = " ".join(status.lower().split())
+    stopped = ("not running", "não está em execução", "nao esta em execucao")
+    return not any(marker in status for marker in stopped) and (
+        "running" in status or "em execução" in status or "em execucao" in status
+    )
+
+
 @dataclass(frozen=True)
 class CaptureStatus:
     active: bool
@@ -72,8 +80,7 @@ class PktmonCapture:
                 raise RuntimeError("captura já está ativa")
             if shutil.disk_usage(self.output_dir.parent if not self.output_dir.exists() else self.output_dir).free < self.stop_free_bytes:
                 raise RuntimeError("espaço livre abaixo do limite de segurança")
-            status = self._command("status").stdout.lower()
-            if "running" in status or "em execução" in status:
+            if _pktmon_running(self._command("status").stdout):
                 raise RuntimeError("já existe outra captura Pktmon ativa")
             self.output_dir.mkdir(parents=True, exist_ok=True)
             self._prefix = self.output_dir / f"{session_id}.etl"

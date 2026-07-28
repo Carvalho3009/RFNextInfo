@@ -4,12 +4,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.capture import PktmonCapture
+from core.capture import PktmonCapture, _pktmon_running
 from core.ingest import _pcapng_to_pcap
 from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_pktmon_status_does_not_confuse_not_running(self):
+        self.assertFalse(_pktmon_running("Packet Monitor is not running."))
+        self.assertFalse(_pktmon_running("O Monitor de Pacotes não está em execução."))
+        self.assertTrue(_pktmon_running("Packet Monitor is running."))
+
     def test_pktmon_arguments_and_safe_export(self):
         calls = []
 
