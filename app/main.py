@@ -24,7 +24,7 @@ from core.capture import GIB, PktmonCapture
 from core.connections import connected_processes, ports_for_executable
 from core.store import CaptureStore
 
-VERSION = "1.0.7"
+VERSION = "1.0.8"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -1071,6 +1071,27 @@ class App(tk.Tk):
             ).items()
             if name and str(uid).startswith("exp:")
         }
+        if (
+            prompt_exp
+            and len(detected) == 1
+            and len(manual) == 1
+            and not process_assigned
+        ):
+            flows = self.store.unidentified_exp_flows(self.current_session)
+            if flows:
+                value = simpledialog.askfloat(
+                    "Identificar eventos pela EXP",
+                    f"Informe a EXP atual (%) de {manual[0]}:",
+                    parent=self,
+                    minvalue=0.0,
+                    maxvalue=100.0,
+                )
+                if value is not None:
+                    self.store.assign_unidentified_to_uid_by_exp(
+                        self.current_session,
+                        str(detected[0]["uid"]),
+                        value,
+                    )
         if prompt_exp and not detected and manual and not process_assigned:
             flows = self.store.unidentified_exp_flows(self.current_session)
             if len(flows) >= len(manual):
@@ -1333,6 +1354,13 @@ class App(tk.Tk):
                     f"{_safe_name(profile, 'Profile')}-"
                     f"{_safe_name(name, 'Personagem')}-{stamp}-{counter:03d}"
                 )
+                preview = self.store.session_envelope(
+                    self.current_session,
+                    character["uid"],
+                    bool(character["include_unassigned"]),
+                    bool(character["only_unassigned"]),
+                )
+                detected_summary, marks = _capture_summary(preview)
                 result = self.store.export(
                     target,
                     capture_id,
@@ -1354,13 +1382,13 @@ class App(tk.Tk):
                         "requested_characters": character[
                             "requested_characters"
                         ],
+                        "codex_marks": marks,
                     },
                 )
                 envelope = json.loads(
                     result.json_path.read_text(encoding="utf-8")
                 )
-                detected, marks = _capture_summary(envelope)
-                envelope["capture"] = detected
+                envelope["capture"] = detected_summary
                 envelope["profiles"] = [
                     {
                         "profile": profile,

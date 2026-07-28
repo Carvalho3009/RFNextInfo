@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.8 — 2026-07-28
+
+- a exportação pergunta a EXP atual quando há um UID confirmado e eventos
+  restantes sem identificação;
+- o fluxo de EXP mais próximo é associado ao personagem confirmado;
+- o CSV de captura inclui licença, instalação e marcações de Codex para
+  importação segura no site;
+- o site distingue CSV de captura de CSV de Mercado pelo cabeçalho.
+
 ## 1.0.7 — 2026-07-28
 
 - removida a seleção manual de processo por personagem introduzida na 1.0.6;

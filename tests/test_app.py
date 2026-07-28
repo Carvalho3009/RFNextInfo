@@ -135,6 +135,26 @@ class AppLogicTest(unittest.TestCase):
             [("Alice", "exp_matched"), ("Bob", "exp_matched")],
         )
 
+    def test_export_prompts_exp_for_unassigned_events_with_one_uid(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = ""
+        app.prefs = {}
+        app.store.session_profiles.return_value = [
+            {"uid": "101", "name": "Alice"}
+        ]
+        app.store.unidentified_exp_flows.return_value = [
+            {"flow": "missing", "exp_percent": 61.0}
+        ]
+        app.store.session_stats.return_value = {"unassigned": 0}
+        with patch("app.main.simpledialog.askfloat", return_value=60.5):
+            exports = App._character_exports(app, prompt_exp=True)
+        app.store.assign_unidentified_to_uid_by_exp.assert_called_once_with(
+            "session-1", "101", 60.5
+        )
+        self.assertIsNone(exports[0]["warning"])
+
     def test_update_launch_closes_current_app(self):
         app = Mock()
         app.capture.attached = False

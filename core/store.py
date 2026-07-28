@@ -305,6 +305,29 @@ class CaptureStore:
                 )
         return matches
 
+    def assign_unidentified_to_uid_by_exp(
+        self, session_id: str, uid: str, target: float
+    ) -> dict[str, str | float] | None:
+        flows = self.unidentified_exp_flows(session_id)
+        if not uid or not flows:
+            return None
+        flow = min(
+            flows,
+            key=lambda item: abs(float(item["exp_percent"]) - target),
+        )
+        with self.conn:
+            self.conn.execute(
+                """UPDATE events SET character_uid=?
+                   WHERE session_id=? AND flow=?
+                   AND character_uid IS NULL AND type!='unparsed'""",
+                (uid, session_id, flow["flow"]),
+            )
+        return {
+            "uid": uid,
+            "target_percent": target,
+            "observed_percent": float(flow["exp_percent"]),
+        }
+
     def session_stats(self, session_id: str) -> dict[str, int | None]:
         recognized, unknown, unassigned, started, ended = self.conn.execute(
             """SELECT SUM(type!='unparsed'), SUM(type='unparsed'),
@@ -455,6 +478,9 @@ class CaptureStore:
                     "character_name",
                     "identification_status",
                     "requires_site_review",
+                    "installation_id",
+                    "license_lease",
+                    "codex_marks",
                     "session_id",
                     "ts_ns",
                     "character_uid",
@@ -467,8 +493,8 @@ class CaptureStore:
                 ),
             )
             writer.writeheader()
-            for event in envelope["events"]:
-                data = event["data"]
+            for index, event in enumerate(envelope["events"] or [None]):
+                data = event["data"] if event else {}
                 fields = data.get("fields") or data
                 writer.writerow(
                     {
@@ -482,10 +508,30 @@ class CaptureStore:
                         "requires_site_review": envelope["metadata"].get(
                             "requires_site_review", False
                         ),
+                        "installation_id": (
+                            envelope["metadata"].get("installation_id")
+                            if index == 0
+                            else None
+                        ),
+                        "license_lease": (
+                            envelope["metadata"].get("license_lease")
+                            if index == 0
+                            else None
+                        ),
+                        "codex_marks": (
+                            json.dumps(
+                                envelope["metadata"].get("codex_marks") or {},
+                                separators=(",", ":"),
+                            )
+                            if index == 0
+                            else None
+                        ),
                         "session_id": session_id,
-                        "ts_ns": event["ts_ns"],
-                        "character_uid": event["character_uid"],
-                        "type": event["type"],
+                        "ts_ns": event["ts_ns"] if event else None,
+                        "character_uid": (
+                            event["character_uid"] if event else character_uid
+                        ),
+                        "type": event["type"] if event else None,
                         "level": fields.get("level"),
                         "exp": fields.get("exp"),
                         "gain_exp": fields.get("gain_exp"),
