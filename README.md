@@ -18,7 +18,9 @@ Contato: Discord `Carvalho` · `carvalho@tuta.com`
 - aba Informações por personagem e diagnóstico sanitizado separado para
   eventos ainda não decodificados;
 - log técnico local rotativo de até aproximadamente 4 MB, com remoção de
-  dados sensíveis e envio manual pela aba Licença;
+  dados sensíveis, envio manual e salvamento de cópia pela aba Licença;
+- recuperação de captura PktMon pendente após fechamento inesperado, sem
+  apagar os segmentos ETL;
 - curva de EXP 1–200 e catálogo local de 1.322 itens de loot conhecidos;
 - chave enviada somente na ativação; depois, lease Ed25519 renovada a cada
   24 horas, com tolerância offline de até 72 horas;
@@ -41,7 +43,7 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 ## Executar
 
-Use [RFNextInfo-Setup-1.0.1.exe](dist/RFNextInfo-Setup-1.0.1.exe)
+Use [RFNextInfo-Setup-1.0.2.exe](dist/RFNextInfo-Setup-1.0.2.exe)
 ou o portátil [RFNextInfo.exe](dist/RFNextInfo.exe). O Windows solicita
 elevação porque o Pktmon precisa de permissão administrativa.
 

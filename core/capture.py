@@ -58,6 +58,15 @@ class PktmonCapture:
         self._watcher: threading.Thread | None = None
         self._lock = threading.Lock()
 
+    @staticmethod
+    def _validate_session_id(session_id: str) -> None:
+        if not session_id or any(
+            char
+            not in "-_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            for char in session_id
+        ):
+            raise ValueError("session_id contém caractere inválido")
+
     def _command(self, *args: str) -> subprocess.CompletedProcess[str]:
         result = self._run(
             ["pktmon", *args],
@@ -70,9 +79,23 @@ class PktmonCapture:
             raise RuntimeError((result.stderr or result.stdout).strip())
         return result
 
+    def system_running(self) -> bool:
+        return _pktmon_running(self._command("status").stdout)
+
+    def attach(self, session_id: str) -> CaptureStatus:
+        self._validate_session_id(session_id)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._prefix = self.output_dir / f"{session_id}.etl"
+        self._active = self.system_running()
+        if self._active and (
+            self._watcher is None or not self._watcher.is_alive()
+        ):
+            self._watcher = threading.Thread(target=self._watch_disk, daemon=True)
+            self._watcher.start()
+        return self.status()
+
     def start(self, session_id: str) -> Path:
-        if not session_id or any(char not in "-_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" for char in session_id):
-            raise ValueError("session_id contém caractere inválido")
+        self._validate_session_id(session_id)
         if shutil.which("pktmon") is None:
             raise RuntimeError("Pktmon não está disponível neste Windows")
         with self._lock:
@@ -80,7 +103,7 @@ class PktmonCapture:
                 raise RuntimeError("captura já está ativa")
             if shutil.disk_usage(self.output_dir.parent if not self.output_dir.exists() else self.output_dir).free < self.stop_free_bytes:
                 raise RuntimeError("espaço livre abaixo do limite de segurança")
-            if _pktmon_running(self._command("status").stdout):
+            if self.system_running():
                 raise RuntimeError("já existe outra captura Pktmon ativa")
             self.output_dir.mkdir(parents=True, exist_ok=True)
             self._prefix = self.output_dir / f"{session_id}.etl"
@@ -103,7 +126,11 @@ class PktmonCapture:
 
     def _watch_disk(self) -> None:
         while self._active:
-            if self.status().safe_stop:
+            status = self.status()
+            if not status.active:
+                self._active = False
+                return
+            if status.safe_stop:
                 self.stop()
                 return
             time.sleep(self.poll_seconds)
@@ -113,15 +140,25 @@ class PktmonCapture:
             return ()
         return tuple(sorted(self.output_dir.glob(f"{self._prefix.stem}*.etl")))
 
+    @property
+    def attached(self) -> bool:
+        return self._prefix is not None
+
     def status(self) -> CaptureStatus:
         files = self.segment_files()
         size = sum(path.stat().st_size for path in files if path.exists())
         free = shutil.disk_usage(self.output_dir).free if self.output_dir.exists() else 0
-        return CaptureStatus(self._active, size, free, free < self.stop_free_bytes, files)
+        return CaptureStatus(
+            self.system_running(),
+            size,
+            free,
+            free < self.stop_free_bytes,
+            files,
+        )
 
     def stop(self) -> CaptureStatus:
         with self._lock:
-            if self._active:
+            if self.system_running():
                 try:
                     self._command("stop")
                 finally:

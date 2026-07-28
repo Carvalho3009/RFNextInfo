@@ -56,6 +56,44 @@ class CoreTest(unittest.TestCase):
         self.assertFalse(_pktmon_running("O Monitor de Pacotes não está em execução."))
         self.assertTrue(_pktmon_running("Packet Monitor is running."))
 
+    def test_pktmon_orphan_is_attached_stopped_and_preserved(self):
+        class Runner:
+            def __init__(self):
+                self.running = True
+                self.calls = []
+
+            def __call__(self, args, **_kwargs):
+                self.calls.append(args)
+                command = args[1]
+                if command == "stop":
+                    self.running = False
+
+                class Result:
+                    returncode = 0
+                    stderr = ""
+                    stdout = (
+                        "Packet Monitor is running."
+                        if self.running
+                        else "Packet Monitor is not running."
+                    )
+
+                return Result()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "rfnext-20260728-010203-0011.etl"
+            raw.write_bytes(b"captura preservada")
+            runner = Runner()
+            capture = PktmonCapture(root, runner=runner, poll_seconds=0.01)
+            attached = capture.attach("rfnext-20260728-010203-001")
+            self.assertTrue(attached.active)
+            self.assertEqual(attached.files, (raw,))
+            stopped = capture.stop()
+            self.assertFalse(stopped.active)
+            self.assertEqual(stopped.files, (raw,))
+            self.assertTrue(raw.is_file())
+            self.assertIn(["pktmon", "stop"], runner.calls)
+
     def test_pktmon_arguments_and_safe_export(self):
         calls = []
 
