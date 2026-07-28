@@ -5,11 +5,22 @@ import unittest
 from pathlib import Path
 
 from core.capture import PktmonCapture, _pktmon_running
-from core.ingest import _pcapng_to_pcap
+from core.ingest import _pcapng_to_pcap, _safe_parse
 from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_malformed_payload_does_not_abort_capture(self):
+        class Decoder:
+            class DecodeError(Exception):
+                pass
+
+            @staticmethod
+            def parse_exchange_payload(_decoded):
+                raise struct.error("quadro vazio")
+
+        self.assertIsNone(_safe_parse(Decoder, b"", 12020))
+
     def test_pktmon_status_does_not_confuse_not_running(self):
         self.assertFalse(_pktmon_running("Packet Monitor is not running."))
         self.assertFalse(_pktmon_running("O Monitor de Pacotes não está em execução."))

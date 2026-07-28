@@ -109,6 +109,18 @@ def _to_pcap(source: Path, work_dir: Path) -> Path:
     return target
 
 
+def _safe_parse(decoder: ModuleType, decoded: bytes, port: int) -> dict[str, Any] | None:
+    try:
+        return (
+            decoder.parse_exchange_payload(decoded)
+            or decoder.parse_collection_payload(decoded)
+            or decoder.parse_observation_payload(decoded)
+            or decoder.parse_marked_gameplay_payload(decoded, port)
+        )
+    except (decoder.DecodeError, struct.error, ValueError, IndexError):
+        return None
+
+
 def decoded_events(
     source: Path,
     *,
@@ -135,12 +147,7 @@ def decoded_events(
                         opcode = int(info["opcode"])
                         if opcode == SENSITIVE_OPCODE:
                             continue
-                        parsed = (
-                            decoder.parse_exchange_payload(decoded)
-                            or decoder.parse_collection_payload(decoded)
-                            or decoder.parse_observation_payload(decoded)
-                            or decoder.parse_marked_gameplay_payload(decoded, port)
-                        )
+                        parsed = _safe_parse(decoder, decoded, port)
                         if parsed is None:
                             continue
                         yield {
