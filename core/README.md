@@ -6,14 +6,15 @@ do aplicativo preencher; chave de licença nunca pertence ao arquivo.
 
 ## Fluxo
 
-1. `PktmonCapture` configura TCP/12020 e inicia `pktmon` com pacote inteiro,
+1. `connections` descobre as portas TCP locais do executável selecionado;
+2. `PktmonCapture` configura somente essas portas e inicia `pktmon` com pacote inteiro,
    arquivo de 512 MiB e modo `multi-file`.
-2. O observador encerra com segurança abaixo de 2 GiB livres.
-3. ETL é convertido por `pktmon etl2pcap`; PCAPNG padrão é reduzido a PCAP
+3. O observador encerra com segurança abaixo de 2 GiB livres.
+4. ETL é convertido por `pktmon etl2pcap`; PCAPNG padrão é reduzido a PCAP
    temporário para o decoder canônico.
-4. Apenas eventos reconhecidos são persistidos em SQLite/WAL. `0x0101` é
+5. Apenas eventos reconhecidos são persistidos em SQLite/WAL. `0x0101` é
    descartado antes de qualquer persistência.
-5. JSON e CSV são gravados localmente; o JSON é reaberto e validado antes de
+6. JSON e CSV são gravados localmente; o JSON é reaberto e validado antes de
    ser considerado exportado.
 
 ## Decoder

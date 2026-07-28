@@ -1,7 +1,7 @@
 Unicode True
 RequestExecutionLevel admin
 Name "RF NEXT INFO"
-OutFile "..\dist\RFNextInfo-Setup-1.0.3.exe"
+OutFile "..\dist\RFNextInfo-Setup-1.0.4.exe"
 InstallDir "$PROGRAMFILES64\Karvalho\RF NEXT INFO"
 InstallDirRegKey HKLM "Software\Karvalho\RFNextInfo" "InstallDir"
 

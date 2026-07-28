@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.4 — 2026-07-28
+
+- o usuário escolhe o executável do jogo uma vez e a escolha fica salva;
+- as portas TCP locais são descobertas automaticamente por processo, inclusive
+  em reconexões, sem capturar toda a rede;
+- suporte a até dois processos do jogo conectados ao mesmo tempo;
+- capturas sem pacotes terminam normalmente e não geram exportações vazias;
+- logs registram códigos sanitizados para falhas de captura e descoberta.
+
 ## 1.0.3 — 2026-07-28
 
 - progresso visível durante consulta, download e verificação da atualização;

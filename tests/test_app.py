@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.license import LicenseClient, _activation_error, verify_lease
-from app.main import App, _capture_prefix, _capture_summary
+from app.main import App, _capture_prefix, _capture_summary, _safe_error_code
 from app.support_log import LOGGER_NAME, configure, recent_lines
 from app.updater import UPDATE_SIGNATURE_CONTEXT, download_verified, verify_manifest
 
@@ -23,6 +23,21 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_empty_capture_is_safe_and_not_exportable(self):
+        self.assertEqual(
+            _safe_error_code(ValueError("PCAPNG sem pacotes utilizáveis")),
+            "empty_capture",
+        )
+        app = Mock()
+        app.current_session = "session-1"
+        app.store.session_stats.return_value = {
+            "recognized": 0,
+            "unknown": 0,
+        }
+        self.assertFalse(App._session_has_data(app))
+        app.store.session_stats.return_value["unknown"] = 1
+        self.assertTrue(App._session_has_data(app))
+
     def test_update_launch_closes_current_app(self):
         app = Mock()
         app.capture.attached = False

@@ -3,8 +3,10 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.capture import PktmonCapture, _pktmon_running
+from core.connections import connected_processes, ports_for_executable
 from core.ingest import _pcapng_to_pcap, _safe_parse
 from core.rfnext_frame_decode import pcap_tcp_streams
 from core.store import CaptureStore
@@ -55,6 +57,74 @@ class CoreTest(unittest.TestCase):
         self.assertFalse(_pktmon_running("Packet Monitor is not running."))
         self.assertFalse(_pktmon_running("O Monitor de Pacotes não está em execução."))
         self.assertTrue(_pktmon_running("Packet Monitor is running."))
+
+    def test_connections_are_grouped_by_executable(self):
+        paths = {
+            10: r"C:\Games\RFNext.exe",
+            11: r"C:\Games\RFNext.exe",
+            12: r"C:\Browser\browser.exe",
+        }
+        rows = [
+            (10, 50100, 9000),
+            (10, 50101, 9001),
+            (11, 50200, 9000),
+            (12, 50300, 443),
+        ]
+        with patch("core.connections._tcp_rows", return_value=rows), patch(
+            "core.connections._process_path", side_effect=paths.get
+        ):
+            processes = connected_processes()
+            ports, clients = ports_for_executable(paths[10])
+        self.assertEqual(len(processes), 2)
+        self.assertEqual(ports, (50100, 50101, 50200))
+        self.assertEqual(clients, 2)
+
+    def test_pktmon_uses_discovered_and_reconnected_ports(self):
+        class Runner:
+            running = False
+
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, args, **_kwargs):
+                self.calls.append(args)
+                if args[1] == "start":
+                    self.running = True
+                elif args[1] == "stop":
+                    self.running = False
+
+                class Result:
+                    returncode = 0
+                    stderr = ""
+                    stdout = ""
+
+                result = Result()
+                if args[1] == "status":
+                    result.stdout = (
+                        "Packet Monitor is running."
+                        if self.running
+                        else "Packet Monitor is not running."
+                    )
+                return result
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "core.capture.shutil.which", return_value="pktmon"
+        ):
+            runner = Runner()
+            capture = PktmonCapture(
+                Path(tmp), runner=runner, poll_seconds=60
+            )
+            capture.start_for_ports("session-001", (50100, 50200))
+            self.assertEqual(capture.add_ports((50200, 50300)), 1)
+            capture.stop()
+        filters = [
+            call
+            for call in runner.calls
+            if call[1:3] == ["filter", "add"]
+        ]
+        self.assertEqual(
+            [call[-1] for call in filters], ["50100", "50200", "50300"]
+        )
 
     def test_pktmon_orphan_is_attached_stopped_and_preserved(self):
         class Runner:

@@ -57,6 +57,7 @@ class PktmonCapture:
         self._prefix: Path | None = None
         self._watcher: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._active_ports: set[int] = set()
 
     @staticmethod
     def _validate_session_id(session_id: str) -> None:
@@ -82,11 +83,16 @@ class PktmonCapture:
     def system_running(self) -> bool:
         return _pktmon_running(self._command("status").stdout)
 
-    def attach(self, session_id: str) -> CaptureStatus:
+    def attach(
+        self, session_id: str, ports: tuple[int, ...] = ()
+    ) -> CaptureStatus:
         self._validate_session_id(session_id)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self._prefix = self.output_dir / f"{session_id}.etl"
         self._active = self.system_running()
+        self._active_ports = {
+            port for port in ports if 1 <= port <= 65535
+        }
         if self._active and (
             self._watcher is None or not self._watcher.is_alive()
         ):
@@ -95,7 +101,15 @@ class PktmonCapture:
         return self.status()
 
     def start(self, session_id: str) -> Path:
+        return self.start_for_ports(session_id, self.ports)
+
+    def start_for_ports(self, session_id: str, ports: tuple[int, ...]) -> Path:
         self._validate_session_id(session_id)
+        ports = tuple(dict.fromkeys(ports))
+        if not ports or any(not 1 <= port <= 65535 for port in ports):
+            raise ValueError("porta inválida")
+        if len(ports) > 32:
+            raise ValueError("limite de 32 conexões simultâneas excedido")
         if shutil.which("pktmon") is None:
             raise RuntimeError("Pktmon não está disponível neste Windows")
         with self._lock:
@@ -109,7 +123,7 @@ class PktmonCapture:
             self._prefix = self.output_dir / f"{session_id}.etl"
             self._command("filter", "remove")
             try:
-                for index, port in enumerate(self.ports, 1):
+                for index, port in enumerate(ports, 1):
                     self._command("filter", "add", f"RFNextInfo{index}", "-t", "TCP", "-p", str(port))
                 self._command(
                     "start", "--capture", "--comp", "nics", "--pkt-size", "0",
@@ -119,10 +133,41 @@ class PktmonCapture:
             except Exception:
                 self._command("filter", "remove")
                 raise
+            self._active_ports = set(ports)
             self._active = True
             self._watcher = threading.Thread(target=self._watch_disk, daemon=True)
             self._watcher.start()
             return self._prefix
+
+    def add_ports(self, ports: tuple[int, ...]) -> int:
+        """Inclui portas descobertas em reconexões sem reiniciar a sessão."""
+        with self._lock:
+            if not self._active:
+                return 0
+            ports = tuple(
+                port
+                for port in dict.fromkeys(ports)
+                if 1 <= port <= 65535 and port not in self._active_ports
+            )
+            if not ports:
+                return 0
+            if len(self._active_ports) + len(ports) > 32:
+                raise RuntimeError(
+                    "limite de conexões atingido; pare e inicie uma nova captura"
+                )
+            for port in ports:
+                index = len(self._active_ports) + 1
+                self._command(
+                    "filter",
+                    "add",
+                    f"RFNextInfo{index}",
+                    "-t",
+                    "TCP",
+                    "-p",
+                    str(port),
+                )
+                self._active_ports.add(port)
+            return len(ports)
 
     def _watch_disk(self) -> None:
         while self._active:
@@ -163,5 +208,6 @@ class PktmonCapture:
                     self._command("stop")
                 finally:
                     self._active = False
+                    self._active_ports.clear()
                     self._command("filter", "remove")
         return self.status()

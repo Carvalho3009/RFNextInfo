@@ -20,9 +20,10 @@ from app.license import LicenseClient
 from app.support_log import configure as configure_log, recent_lines
 from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
+from core.connections import connected_processes, ports_for_executable
 from core.store import CaptureStore
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -67,6 +68,21 @@ def _safe_name(value: str, fallback: str) -> str:
 def _capture_prefix(session_id: str) -> str | None:
     match = re.search(r"-(\d{8}-\d{6})-(\d+)$", session_id)
     return f"rfnext-{match.group(1)}-{int(match.group(2)):03d}" if match else None
+
+
+def _safe_error_code(error: Exception) -> str:
+    text = str(error).casefold()
+    for marker, code in (
+        ("pcapng sem pacotes", "empty_capture"),
+        ("captura já está ativa", "already_active"),
+        ("outra captura pktmon", "external_pktmon"),
+        ("acesso negado", "access_denied"),
+        ("access is denied", "access_denied"),
+        ("espaço livre", "low_disk_space"),
+    ):
+        if marker in text:
+            return code
+    return type(error).__name__
 
 
 def _capture_summary(envelope: dict) -> tuple[dict, dict[str, list[int]]]:
@@ -193,6 +209,9 @@ class App(tk.Tk):
         self.current_session = self.store.latest_session()
         self.tray = None
         self._last_poll_error = ""
+        self._last_game_signature = None
+        self._game_choices: dict[str, str] = {}
+        self._selected_game_path = ""
         self.prefs: dict = {}
         self._style()
         self._build()
@@ -331,6 +350,33 @@ class App(tk.Tk):
             style="Quiet.TButton",
             command=self.export,
         ).pack(side=LEFT)
+
+        game = ttk.Frame(self.capture_tab, style="Panel.TFrame", padding=18)
+        game.pack(fill=X, pady=(0, 18))
+        ttk.Label(game, text="Conexão do jogo", style="Gold.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(
+            game,
+            text="Abra o jogo, atualize a lista e escolha o executável uma vez.",
+            style="Muted.TLabel",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 8))
+        self.game_choice = ttk.Combobox(game, state="readonly")
+        self.game_choice.grid(row=2, column=0, sticky="ew")
+        self.game_choice.bind("<<ComboboxSelected>>", self._game_selected)
+        ttk.Button(
+            game,
+            text="Atualizar lista",
+            style="Quiet.TButton",
+            command=self.refresh_game_choices,
+        ).grid(row=2, column=1, padx=(10, 0))
+        self.game_status = ttk.Label(
+            game, text="Aguardando seleção", style="Muted.TLabel"
+        )
+        self.game_status.grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(7, 0)
+        )
+        game.columnconfigure(0, weight=1)
 
         profile = ttk.Frame(self.capture_tab, style="Panel.TFrame", padding=18)
         profile.pack(fill=X)
@@ -507,12 +553,12 @@ class App(tk.Tk):
     def _tutorial_ui(self) -> None:
         text = (
             "1. Ative esta instalação na aba Licença. A ativação será lembrada nas próximas aberturas.\n\n"
-            "2. Em Captura, informe o Profile do site e um ou dois personagens. Clique em Iniciar; o Windows pede permissão administrativa para o Pktmon nativo.\n\n"
-            "3. Abra até dois clientes do RF NEXT. A identificação usa o UID confirmado de cada fluxo e a aba Informações mostra os dados separados.\n\n"
+            "2. Abra o RF NEXT e entre com o personagem. Em Captura, clique em Atualizar lista e escolha o executável do jogo; essa escolha será lembrada e as conexões serão detectadas automaticamente.\n\n"
+            "3. Informe o Profile do site e um ou dois personagens. Clique em Iniciar; o Windows pede permissão administrativa para o Pktmon nativo. Podem ser usados até dois clientes do mesmo executável.\n\n"
             "4. Pare a captura e aguarde a leitura. Cada parada cria uma sessão independente; capturas diferentes não são misturadas.\n\n"
             "5. Exporte. Cada personagem recebe JSON e CSV com nome Profile-Personagem-datahora-contador. Eventos não decodificados geram um diagnóstico separado e só são enviados com sua autorização. Para relatar um problema do programa, use Enviar log técnico na aba Licença.\n\n"
             "6. Confira o tamanho informado. Somente depois da exportação validada o programa oferece enviar os segmentos brutos à Lixeira.\n\n"
-            "Privacidade: captura passiva local, sem injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
+            "Privacidade: captura passiva somente das conexões do executável selecionado, sem captura geral da rede, injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
         )
         ttk.Label(
             self.tutorial_tab, text="Comece em seis passos", style="Title.TLabel"
@@ -546,6 +592,15 @@ class App(tk.Tk):
             if self.prefs.get("channel") in {"stable", "beta"}
             else "stable"
         )
+        self._selected_game_path = str(
+            self.prefs.get("game_executable") or ""
+        )
+        if self._selected_game_path:
+            display = f"{Path(self._selected_game_path).name} · salvo"
+            self._game_choices = {display: self._selected_game_path}
+            self.game_choice.configure(values=(display,))
+            self.game_choice.set(display)
+            self.game_status.configure(text="Aguardando conexão do jogo")
         last_session = str(self.prefs.get("last_session") or "")
         if _capture_prefix(last_session):
             self.current_session = last_session
@@ -600,7 +655,9 @@ class App(tk.Tk):
                         self.current_session = (
                             f"{profile}-{legacy.group(1)}-{counter:03d}"
                         )
-                status = self.capture.attach(prefix)
+                status = self.capture.attach(
+                    prefix, tuple(self.prefs.get("capture_ports") or ())
+                )
                 self.last_files = list(status.files)
                 self.prefs.update(
                     capture_prefix=prefix,
@@ -620,6 +677,7 @@ class App(tk.Tk):
         except Exception:
             self.log.exception("capture_recovery_failed")
         self._save_preferences()
+        self.after(250, lambda: self.refresh_game_choices(False))
 
     def _save_preferences(self) -> None:
         self.prefs.update(
@@ -630,6 +688,7 @@ class App(tk.Tk):
                 "auto_export": self.auto_export.get(),
                 "channel": self.channel.get(),
                 "last_session": self.current_session,
+                "game_executable": self._selected_game_path,
             }
         )
         PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -654,6 +713,73 @@ class App(tk.Tk):
                 self.after(0, lambda error=error: done(None, error))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def refresh_game_choices(self, notify: bool = True) -> None:
+        try:
+            processes = connected_processes()
+        except Exception as error:
+            self.log.exception(
+                "game_connection_discovery_failed reason=%s",
+                _safe_error_code(error),
+            )
+            if notify:
+                messagebox.showerror(
+                    "Conexão do jogo",
+                    "Não foi possível consultar as conexões abertas.",
+                )
+            return
+        choices: dict[str, str] = {}
+        for path, (pids, ports) in sorted(
+            processes.items(), key=lambda item: Path(item[0]).name.casefold()
+        ):
+            name = Path(path).name
+            if any(label.casefold().startswith(f"{name.casefold()} ·") for label in choices):
+                name = f"{name} ({Path(path).parent.name})"
+            label = (
+                f"{name} · {len(pids)} cliente(s) · "
+                f"{len(ports)} conexão(ões)"
+            )
+            choices[label] = path
+        if (
+            self._selected_game_path
+            and self._selected_game_path not in choices.values()
+        ):
+            choices[
+                f"{Path(self._selected_game_path).name} · salvo · desconectado"
+            ] = self._selected_game_path
+        self._game_choices = choices
+        self.game_choice.configure(values=tuple(choices))
+        selected = next(
+            (
+                label
+                for label, path in choices.items()
+                if path == self._selected_game_path
+            ),
+            "",
+        )
+        self.game_choice.set(selected)
+        if selected:
+            ports, clients = ports_for_executable(self._selected_game_path)
+            self.game_status.configure(
+                text=(
+                    f"{clients} cliente(s) conectado(s) · "
+                    f"{len(ports)} conexão(ões) encontrada(s)"
+                    if ports
+                    else "Aguardando conexão do jogo"
+                )
+            )
+        elif notify:
+            self.game_status.configure(
+                text="Abra o jogo e escolha o executável na lista"
+            )
+
+    def _game_selected(self, _event=None) -> None:
+        self._selected_game_path = self._game_choices.get(
+            self.game_choice.get(), ""
+        )
+        self._last_game_signature = None
+        self._save_preferences()
+        self.refresh_game_choices(False)
 
     def activate(self) -> None:
         key = self.key_entry.get().strip()
@@ -712,6 +838,25 @@ class App(tk.Tk):
                 "Identificação",
                 "Informe o Profile do site e pelo menos um personagem.",
             )
+        if not self._selected_game_path:
+            return messagebox.showwarning(
+                "Conexão do jogo",
+                "Abra o jogo, clique em Atualizar lista e escolha o executável.",
+            )
+        ports, clients = ports_for_executable(self._selected_game_path)
+        if not ports:
+            self.refresh_game_choices(False)
+            return messagebox.showwarning(
+                "Conexão do jogo",
+                "Nenhuma conexão ativa foi encontrada. Entre com o personagem "
+                "no jogo e tente novamente.",
+            )
+        if clients > 2:
+            return messagebox.showwarning(
+                "Limite de clientes",
+                "Foram encontrados mais de dois clientes. Feche os excedentes "
+                "antes de iniciar.",
+            )
         counter = int(self.prefs.get("session_counter", 0)) + 1
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         session_id = (
@@ -719,23 +864,31 @@ class App(tk.Tk):
         )
         capture_prefix = f"rfnext-{stamp}-{counter:03d}"
         try:
-            self.capture.start(capture_prefix)
+            self.capture.start_for_ports(capture_prefix, ports)
         except Exception as error:
-            self.log.exception("capture_start_failed")
+            self.log.exception(
+                "capture_start_failed reason=%s", _safe_error_code(error)
+            )
             return messagebox.showerror("Não foi possível iniciar", str(error))
         self.current_session = session_id
         self.prefs.update(
             session_counter=counter,
             capture_prefix=capture_prefix,
             capture_pending=True,
+            capture_ports=list(ports),
         )
         try:
             self._save_preferences()
         except OSError:
             self.log.exception("capture_state_save_failed")
-        self.log.info("capture_started ports=12000,12020,12040")
+        self.log.info(
+            "capture_started clients=%d connections=%d", clients, len(ports)
+        )
         self.capture_state.configure(
-            text="Capturando até dois clientes em TCP/12000, 12020 e 12040"
+            text=(
+                f"Capturando {clients} cliente(s) · "
+                f"{len(ports)} conexão(ões) monitorada(s)"
+            )
         )
 
     def stop_capture(self) -> None:
@@ -769,7 +922,9 @@ class App(tk.Tk):
                 or ""
             )
             if prefix and tuple(CAPTURE_DIR.glob(f"{prefix}*.etl")):
-                self.capture.attach(prefix)
+                self.capture.attach(
+                    prefix, tuple(self.prefs.get("capture_ports") or ())
+                )
         try:
             status = self.capture.stop()
             self.last_files = list(status.files)
@@ -789,7 +944,12 @@ class App(tk.Tk):
                     try:
                         added += store.ingest(path, session_id=session_id)
                     except Exception as error:
-                        self.log.exception("capture_segment_ingest_failed")
+                        reason = _safe_error_code(error)
+                        self.log.exception(
+                            "capture_segment_ingest_failed reason=%s", reason
+                        )
+                        if reason == "empty_capture":
+                            continue
                         failures.append(f"{path.name}: {error}")
                 return added, failures
             finally:
@@ -805,7 +965,11 @@ class App(tk.Tk):
                     added,
                     len(failures),
                 )
-                text = f"Captura encerrada · {added} eventos novos"
+                text = (
+                    f"Captura encerrada · {added} eventos novos"
+                    if added
+                    else "Captura encerrada sem dados · exportação bloqueada"
+                )
                 if failures:
                     text += (
                         f" · {len(failures)} segmento(s) ignorado(s): "
@@ -816,7 +980,12 @@ class App(tk.Tk):
                     self._save_preferences()
             self.capture_state.configure(text=text)
             self._refresh_info()
-            if not error and self.auto_export.get():
+            if (
+                not error
+                and result[0] > 0
+                and not result[1]
+                and self.auto_export.get()
+            ):
                 self._export_to(EXPORT_DIR)
 
         self._run(ingest, ingest_done)
@@ -904,11 +1073,23 @@ class App(tk.Tk):
                 "Os arquivos capturados ainda não foram analisados. Clique em "
                 "Parar, aguarde a leitura e tente exportar novamente.",
             )
+        if not self._session_has_data():
+            return messagebox.showwarning(
+                "Sem dados para exportar",
+                "Esta sessão não contém eventos. Abra o jogo, selecione o "
+                "executável conectado e faça uma nova captura.",
+            )
         target = filedialog.askdirectory(
             title="Escolha a pasta de exportação", initialdir=str(EXPORT_DIR)
         )
         if target:
             self._export_to(Path(target))
+
+    def _session_has_data(self) -> bool:
+        if not self.current_session:
+            return False
+        stats = self.store.session_stats(self.current_session)
+        return bool(int(stats["recognized"] or 0) + int(stats["unknown"] or 0))
 
     def _diagnostic_file(
         self,
@@ -1003,7 +1184,7 @@ class App(tk.Tk):
         )
 
     def _export_to(self, target: Path) -> None:
-        if not self.current_session:
+        if not self.current_session or not self._session_has_data():
             return
         profile = self.profile.get().strip() or "Profile"
         stamp, counter = self._session_parts()
@@ -1301,9 +1482,51 @@ class App(tk.Tk):
         ):
             os.startfile(previous)
 
+    def _refresh_active_game_connections(self) -> None:
+        if not self._selected_game_path:
+            return
+        ports, clients = ports_for_executable(self._selected_game_path)
+        signature = (clients, ports)
+        if signature == self._last_game_signature:
+            return
+        self._last_game_signature = signature
+        if clients > 2:
+            self.game_status.configure(
+                text="Mais de dois clientes conectados · feche os excedentes"
+            )
+            return
+        if not clients:
+            self.game_status.configure(text="Aguardando reconexão do jogo")
+            return
+        try:
+            added = self.capture.add_ports(ports)
+        except Exception as error:
+            self.log.exception(
+                "capture_connection_update_failed reason=%s",
+                _safe_error_code(error),
+            )
+            self.game_status.configure(
+                text="Reconexão não monitorada · pare e inicie outra captura"
+            )
+            return
+        if added:
+            saved = set(self.prefs.get("capture_ports") or ())
+            saved.update(ports)
+            self.prefs["capture_ports"] = sorted(saved)
+            self._save_preferences()
+            self.log.info("capture_connections_added count=%d", added)
+        self.game_status.configure(
+            text=(
+                f"{clients} cliente(s) conectado(s) · "
+                f"{len(ports)} conexão(ões) monitorada(s)"
+            )
+        )
+
     def _poll(self) -> None:
         try:
             status = self.capture.status()
+            if status.active:
+                self._refresh_active_game_connections()
             total = sum(path.stat().st_size for path in CAPTURE_DIR.glob("*.etl"))
             usage = shutil.disk_usage(CAPTURE_DIR)
             percent_free = usage.free / usage.total if usage.total else 0
