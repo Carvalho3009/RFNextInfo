@@ -7,7 +7,6 @@ import hashlib
 import itertools
 import json
 import os
-import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -82,19 +81,6 @@ def _character_uid(event: dict[str, Any]) -> str | None:
     return str(uid) if uid is not None else None
 
 
-def _flow_character_uid(
-    flow: str, port_uids: dict[int, str] | None
-) -> str | None:
-    if not port_uids:
-        return None
-    matches = {
-        port_uids[int(port)]
-        for port in re.findall(r":(\d+)(?=\s|$)", flow)
-        if int(port) in port_uids
-    }
-    return next(iter(matches)) if len(matches) == 1 else None
-
-
 def _add_exp_percent(data: dict[str, Any]) -> dict[str, Any]:
     fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
     level, exp = fields.get("level"), fields.get("exp")
@@ -143,7 +129,6 @@ class CaptureStore:
         source: Path,
         events: Iterable[dict[str, Any]],
         session_id: str = "legacy",
-        port_uids: dict[int, str] | None = None,
     ) -> int:
         if not session_id or len(session_id) > 128:
             raise ValueError("session_id inválido")
@@ -188,9 +173,7 @@ class CaptureStore:
                         event.get("ts_ns"),
                         event["opcode"],
                         event["type"],
-                        _flow_character_uid(event["flow"], port_uids)
-                        or uid
-                        or stable_flow_uid.get(event["flow"]),
+                        uid or stable_flow_uid.get(event["flow"]),
                         json.dumps(clean, ensure_ascii=False, sort_keys=True),
                         session_id,
                     ),
@@ -221,13 +204,11 @@ class CaptureStore:
         *,
         session_id: str = "legacy",
         decoder_path: Path | None = None,
-        port_uids: dict[int, str] | None = None,
     ) -> int:
         return self.add_events(
             source,
             decoded_events(source, decoder_path=decoder_path),
             session_id,
-            port_uids,
         )
 
     def clear_exported(self, session_id: str | None = None) -> None:

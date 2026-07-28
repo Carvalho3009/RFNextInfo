@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.7 — 2026-07-28
+
+- removida a seleção manual de processo por personagem introduzida na 1.0.6;
+- todas as conexões dos clientes `ProjectRF` são capturadas automaticamente;
+- PID, porta e ordem dos processos não são usados como identidade de personagem;
+- a separação usa somente UID confirmado ou a EXP (%) informada na exportação.
+
 ## 1.0.6 — 2026-07-28
 
 - cada nome de personagem é vinculado explicitamente a um processo `ProjectRF`;

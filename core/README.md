@@ -36,10 +36,9 @@ standalone deve incluir uma cópia byte a byte desse arquivo como
   SLL (113). Blocos de metadados do Pktmon são ignorados.
 - Kills são **proxy**: contagem dos eventos de recompensa `0x040A`, nunca morte
   confirmada.
-- Porta cliente não é identidade durável entre sessões. Durante uma sessão,
-  cada porta é vinculada ao PID escolhido pelo usuário; isso separa com
-  segurança até dois processos. Quando `0x0106` aparece, o `character_uid`
-  confirmado continua preservado dentro do evento decodificado.
+- PID, porta e ordem dos processos não identificam personagens. A separação
+  usa o `character_uid` confirmado; sem UID, a exportação solicita a EXP (%)
+  atual dos personagens e associa os fluxos pelo valor mais próximo.
 - PCAP/PCAPNG fornecidos diretamente funcionam offline. ETL exige Windows com
   `pktmon`.
 

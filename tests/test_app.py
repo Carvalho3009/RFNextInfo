@@ -23,6 +23,32 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_capture_uses_all_detected_ports_without_character_process_choice(self):
+        app = Mock()
+        app._refresh_license.return_value = (True, "Licença válida")
+        app._ingesting = False
+        app.capture.status.return_value.active = False
+        app.profile.get.return_value = "Profile"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app._selected_game_path = r"C:\Games\ProjectRF.exe"
+        app.prefs = {
+            "session_counter": 2,
+            "capture_pid_uids": {"10": "client:1"},
+            "capture_port_uids": {"50100": "client:1"},
+            "capture_character_names": {"client:1": "Alice"},
+        }
+        with patch(
+            "app.main.ports_for_executable",
+            return_value=((50100, 50200), 2),
+        ):
+            App.start_capture(app)
+        started_ports = app.capture.start_for_ports.call_args.args[1]
+        self.assertEqual(started_ports, (50100, 50200))
+        self.assertNotIn("capture_pid_uids", app.prefs)
+        self.assertNotIn("capture_port_uids", app.prefs)
+        self.assertNotIn("capture_character_names", app.prefs)
+
     def test_empty_capture_is_safe_and_not_exportable(self):
         self.assertEqual(
             _safe_error_code(ValueError("PCAPNG sem pacotes utilizáveis")),
@@ -52,6 +78,28 @@ class AppLogicTest(unittest.TestCase):
         self.assertEqual(exports[0]["identification_status"], "unresolved")
         self.assertIn("Nao-separado", exports[0]["name"])
         self.assertTrue(exports[0]["warning"])
+
+    def test_old_process_ids_are_not_used_as_character_identity(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app.prefs = {
+            "capture_character_names": {
+                "client:1": "Alice",
+                "client:2": "Bob",
+            }
+        }
+        app.store.session_profiles.return_value = [
+            {"uid": "client:1", "name": ""},
+            {"uid": "client:2", "name": ""},
+        ]
+        app.store.session_stats.return_value = {"unassigned": 0}
+        exports = App._character_exports(app, prompt_exp=True)
+        self.assertEqual(len(exports), 1)
+        self.assertEqual(exports[0]["identification_status"], "unresolved")
+        self.assertIsNone(exports[0]["uid"])
+        app.store.unidentified_exp_flows.assert_not_called()
 
     def test_export_matches_two_names_to_closest_exp(self):
         app = Mock()
