@@ -10,6 +10,7 @@ a = Analysis(
     datas=[
         (str(root / "assets" / "karvalho-primary-gold.png"), "assets"),
         (str(root / "core" / "rfnext_frame_decode.py"), "core"),
+        (str(root / "core" / "collection_requirements.csv"), "core"),
     ],
     hiddenimports=["PIL._tkinter_finder", "pystray._win32"],
 )

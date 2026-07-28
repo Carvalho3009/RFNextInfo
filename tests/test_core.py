@@ -11,6 +11,35 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_collection_catalog_is_applied_during_parse(self):
+        class Decoder:
+            class DecodeError(Exception):
+                pass
+
+            @staticmethod
+            def parse_exchange_payload(_decoded):
+                return None
+
+            @staticmethod
+            def parse_collection_payload(_decoded):
+                return {
+                    "type": "collection_snapshot_chunk",
+                    "records": [{"collection_index": 1001, "slot_values": [1]}],
+                }
+
+            @staticmethod
+            def add_collection_catalog(collection, slots):
+                collection["records"][0]["completed_slots"] = [0] if slots else []
+
+        parsed = _safe_parse(Decoder, b"snapshot", 12020, {(1001, 0): {}})
+        self.assertEqual(parsed["records"][0]["completed_slots"], [0])
+
+        def fail_catalog(_collection, _slots):
+            raise ValueError("catálogo")
+
+        Decoder.add_collection_catalog = staticmethod(fail_catalog)
+        self.assertIsNotNone(_safe_parse(Decoder, b"snapshot", 12020, {(1001, 0): {}}))
+
     def test_malformed_payload_does_not_abort_capture(self):
         class Decoder:
             class DecodeError(Exception):

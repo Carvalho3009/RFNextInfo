@@ -109,9 +109,14 @@ def _to_pcap(source: Path, work_dir: Path) -> Path:
     return target
 
 
-def _safe_parse(decoder: ModuleType, decoded: bytes, port: int) -> dict[str, Any] | None:
+def _safe_parse(
+    decoder: ModuleType,
+    decoded: bytes,
+    port: int,
+    collection_slots: dict | None = None,
+) -> dict[str, Any] | None:
     try:
-        return (
+        parsed = (
             decoder.parse_exchange_payload(decoded)
             or decoder.parse_collection_payload(decoded)
             or decoder.parse_observation_payload(decoded)
@@ -119,6 +124,16 @@ def _safe_parse(decoder: ModuleType, decoded: bytes, port: int) -> dict[str, Any
         )
     except (decoder.DecodeError, struct.error, ValueError, IndexError):
         return None
+    if (
+        parsed
+        and collection_slots
+        and str(parsed.get("type", "")).startswith("collection_")
+    ):
+        try:
+            decoder.add_collection_catalog(parsed, collection_slots)
+        except (decoder.DecodeError, struct.error, ValueError, IndexError):
+            pass
+    return parsed
 
 
 def decoded_events(
@@ -128,6 +143,10 @@ def decoded_events(
     ports: tuple[int, ...] = (12000, 12020),
 ) -> Iterator[dict[str, Any]]:
     decoder = load_decoder(decoder_path)
+    catalog_path = Path(__file__).with_name("collection_requirements.csv")
+    collection_slots = decoder.load_collection_slots(
+        catalog_path if catalog_path.is_file() else None
+    )
     with tempfile.TemporaryDirectory(prefix="rf-next-info-") as temp:
         pcap = _to_pcap(Path(source), Path(temp))
         for port in ports:
@@ -147,7 +166,7 @@ def decoded_events(
                         opcode = int(info["opcode"])
                         if opcode == SENSITIVE_OPCODE:
                             continue
-                        parsed = _safe_parse(decoder, decoded, port)
+                        parsed = _safe_parse(decoder, decoded, port, collection_slots)
                         if parsed is None:
                             continue
                         yield {

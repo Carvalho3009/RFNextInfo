@@ -34,7 +34,7 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 ## Executar
 
-Use [RFNextInfo-Setup-0.1.5-pilot.exe](dist/RFNextInfo-Setup-0.1.5-pilot.exe)
+Use [RFNextInfo-Setup-0.1.6-pilot.exe](dist/RFNextInfo-Setup-0.1.6-pilot.exe)
 ou o portátil [RFNextInfo.exe](dist/RFNextInfo.exe). O Windows solicita
 elevação porque o Pktmon precisa de permissão administrativa.
 
