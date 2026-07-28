@@ -17,7 +17,11 @@ def _pktmon_running(status: str) -> bool:
     status = " ".join(status.lower().split())
     stopped = ("not running", "não está em execução", "nao esta em execucao")
     return not any(marker in status for marker in stopped) and (
-        "running" in status or "em execução" in status or "em execucao" in status
+        "running" in status
+        or "em execução" in status
+        or "em execucao" in status
+        or "already started" in status
+        or "já foi iniciado" in status
     )
 
 
@@ -83,6 +87,24 @@ class PktmonCapture:
     def system_running(self) -> bool:
         return _pktmon_running(self._command("status").stdout)
 
+    def _stop_pktmon(self) -> None:
+        try:
+            self._command("stop")
+        except RuntimeError as error:
+            stopped = (
+                "not running",
+                "não está em execução",
+                "nao esta em execucao",
+            )
+            if not any(marker in str(error).casefold() for marker in stopped):
+                raise
+
+    def _reset_pktmon(self) -> None:
+        self._stop_pktmon()
+        self._command("filter", "remove")
+        self._active = False
+        self._active_ports.clear()
+
     def attach(
         self, session_id: str, ports: tuple[int, ...] = ()
     ) -> CaptureStatus:
@@ -117,19 +139,57 @@ class PktmonCapture:
                 raise RuntimeError("captura já está ativa")
             if shutil.disk_usage(self.output_dir.parent if not self.output_dir.exists() else self.output_dir).free < self.stop_free_bytes:
                 raise RuntimeError("espaço livre abaixo do limite de segurança")
-            if self.system_running():
-                raise RuntimeError("já existe outra captura Pktmon ativa")
             self.output_dir.mkdir(parents=True, exist_ok=True)
             self._prefix = self.output_dir / f"{session_id}.etl"
-            self._command("filter", "remove")
-            try:
+            self._reset_pktmon()
+
+            def begin() -> None:
                 for index, port in enumerate(ports, 1):
-                    self._command("filter", "add", f"RFNextInfo{index}", "-t", "TCP", "-p", str(port))
+                    self._command(
+                        "filter",
+                        "add",
+                        f"RFNextInfo{index}",
+                        "-t",
+                        "TCP",
+                        "-p",
+                        str(port),
+                    )
                 self._command(
-                    "start", "--capture", "--comp", "nics", "--pkt-size", "0",
-                    "--file-name", str(self._prefix), "--file-size", str(self.segment_mb),
-                    "--log-mode", "multi-file",
+                    "start",
+                    "--capture",
+                    "--comp",
+                    "nics",
+                    "--pkt-size",
+                    "0",
+                    "--file-name",
+                    str(self._prefix),
+                    "--file-size",
+                    str(self.segment_mb),
+                    "--log-mode",
+                    "multi-file",
                 )
+
+            try:
+                begin()
+            except RuntimeError as error:
+                already_started = (
+                    "already started",
+                    "já foi iniciado",
+                    "ja foi iniciado",
+                )
+                if not any(
+                    marker in str(error).casefold()
+                    for marker in already_started
+                ):
+                    self._command("filter", "remove")
+                    raise
+                self._reset_pktmon()
+                time.sleep(0.25)
+                try:
+                    begin()
+                except Exception:
+                    self._command("filter", "remove")
+                    raise
             except Exception:
                 self._command("filter", "remove")
                 raise
@@ -203,11 +263,10 @@ class PktmonCapture:
 
     def stop(self) -> CaptureStatus:
         with self._lock:
-            if self.system_running():
-                try:
-                    self._command("stop")
-                finally:
-                    self._active = False
-                    self._active_ports.clear()
-                    self._command("filter", "remove")
+            try:
+                self._stop_pktmon()
+            finally:
+                self._active = False
+                self._active_ports.clear()
+                self._command("filter", "remove")
         return self.status()

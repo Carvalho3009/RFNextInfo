@@ -12,6 +12,8 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from .protected_state import protect, unprotect
+
 KEY_RE = re.compile(r"^KRV(?:-[A-Z2-7]{5}){6}$")
 
 
@@ -57,28 +59,58 @@ class LicenseClient:
         legacy_paths: tuple[Path, ...] = (),
     ) -> None:
         self.state_dir = Path(state_dir)
-        self.path = self.state_dir / "license.json"
-        self.backup_path = self.state_dir / "license.backup.json"
+        self.path = self.state_dir / "license.dat"
+        self.backup_path = self.state_dir / "license.backup.dat"
         self.server = server.rstrip("/")
         self.user_agent = f"RFNextInfo/{version}"
-        primary = self._read(self.path)
-        self.state = (
-            primary
-            or self._read(self.backup_path)
-            or {"installation_id": str(uuid.uuid4())}
+        primary = self._read_protected(self.path)
+        backup = self._read_protected(self.backup_path)
+        self.load_status = (
+            "primary"
+            if primary
+            else "backup"
+            if backup
+            else "corrupt"
+            if self.path.exists() or self.backup_path.exists()
+            else "none"
         )
-        if primary is None and self.lease:
-            self._save()
+        self.state = primary or backup or {"installation_id": str(uuid.uuid4())}
+        legacy_candidates = [
+            self.state_dir / "license.json",
+            self.state_dir / "license.backup.json",
+        ]
+        for legacy_path in map(Path, legacy_paths):
+            legacy_candidates.extend(
+                (legacy_path, legacy_path.with_name("license.backup.json"))
+            )
+        migrated = False
         if not self.lease:
-            for legacy_path in legacy_paths:
-                migrated = self._read(Path(legacy_path))
-                if migrated:
-                    self.state = migrated
-                    self._save()
+            for legacy_path in dict.fromkeys(legacy_candidates):
+                legacy_state = self._read_json(legacy_path)
+                if legacy_state and legacy_state.get("lease"):
+                    self.state = legacy_state
+                    migrated = True
+                    self.load_status = "migrated"
                     break
+        if self.lease:
+            try:
+                self._sync_dates(self.claims())
+            except Exception:
+                self.load_status = "invalid"
+        if primary is None and (self.lease or not self.path.exists()):
+            self._save()
+        if migrated:
+            for legacy_path in dict.fromkeys(legacy_candidates):
+                legacy_state = self._read_json(legacy_path)
+                if (
+                    legacy_state
+                    and legacy_state.get("installation_id")
+                    == self.installation_id
+                ):
+                    legacy_path.unlink(missing_ok=True)
 
     @staticmethod
-    def _read(path: Path) -> dict | None:
+    def _read_json(path: Path) -> dict | None:
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(value, dict) and value.get("installation_id"):
@@ -87,15 +119,43 @@ class LicenseClient:
             pass
         return None
 
+    @classmethod
+    def _read_protected(cls, path: Path) -> dict | None:
+        try:
+            value = json.loads(unprotect(path.read_bytes()))
+            if isinstance(value, dict) and value.get("installation_id"):
+                return value
+        except (OSError, ValueError):
+            pass
+        return None
+
+    def _sync_dates(self, claims: dict) -> None:
+        self.state.update(
+            license_started_at=claims.get(
+                "license_starts_at", claims.get("issued_at")
+            ),
+            license_expires_at=claims.get(
+                "license_expires_at", claims.get("valid_until")
+            ),
+            next_check_at=claims.get("next_check_at"),
+            offline_valid_until=claims.get("valid_until"),
+        )
+
     def _save(self) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(self.state, ensure_ascii=False, indent=2)
+        payload = protect(
+            json.dumps(
+                self.state, ensure_ascii=False, separators=(",", ":")
+            ).encode()
+        )
         temporary = self.path.with_name(f"{self.path.name}.tmp")
-        temporary.write_text(payload, encoding="utf-8")
+        temporary.write_bytes(payload)
         os.replace(temporary, self.path)
+        if self._read_protected(self.path) != self.state:
+            raise OSError("estado protegido da licença não foi confirmado")
         try:
             backup = self.backup_path.with_name(f"{self.backup_path.name}.tmp")
-            backup.write_text(payload, encoding="utf-8")
+            backup.write_bytes(payload)
             os.replace(backup, self.backup_path)
         except OSError:
             pass
@@ -132,6 +192,7 @@ class LicenseClient:
         if claims["installation_id"] != self.state["installation_id"]:
             raise ValueError("Servidor vinculou outra instalação")
         self.state.update(lease=response["lease"], public_key=public["public_key"])
+        self._sync_dates(claims)
         self._save()
         return claims
 
@@ -148,7 +209,10 @@ class LicenseClient:
                 "lease": self.state["lease"], "app_version": version
             })
             claims = verify_lease(response["lease"], self.state["public_key"])
+            if claims["installation_id"] != self.installation_id:
+                raise ValueError("Servidor vinculou outra instalação")
             self.state["lease"] = response["lease"]
+            self._sync_dates(claims)
             self._save()
             return True, "Licença validada agora."
         except urllib.error.HTTPError:

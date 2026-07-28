@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.5 — 2026-07-28
+
+- licença persistida em arquivo DPAPI vinculado ao computador, com backup
+  criptografado e migração do JSON anterior;
+- datas reais de início e vencimento incluídas na lease assinada pelo servidor;
+- lista de processos limitada a executáveis cujo nome começa com `ProjectRF`;
+- uma captura PktMon anterior é encerrada e seus filtros são removidos antes
+  do novo início, com uma repetição controlada para o erro “já foi iniciado”;
+- instalador executa o autoteste do programa instalado, salva `install.log` e
+  não abre o aplicativo automaticamente ao finalizar.
+
 ## 1.0.4 — 2026-07-28
 
 - o usuário escolhe o executável do jogo uma vez e a escolha fica salva;

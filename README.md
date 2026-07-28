@@ -9,6 +9,7 @@ Contato: Discord `Carvalho` · `carvalho@tuta.com`
 
 - executável autônomo, interface Karvalho e instalador padrão;
 - seleção única do executável e detecção automática das conexões TCP atuais;
+- lista limitada aos executáveis `ProjectRF*`;
 - captura nativa Pktmon limitada às portas locais descobertas, segmentada em 512 MB;
 - SQLite WAL para recuperação e reprocessamento incremental;
 - Codex/coleção, personagem, level, EXP, mercado e eventos de farm quando o
@@ -25,6 +26,8 @@ Contato: Discord `Carvalho` · `carvalho@tuta.com`
 - curva de EXP 1–200 e catálogo local de 1.322 itens de loot conhecidos;
 - chave enviada somente na ativação; depois, lease Ed25519 renovada a cada
   24 horas, com tolerância offline de até 72 horas;
+- estado da licença protegido pelo DPAPI do Windows e recuperável por backup
+  criptografado após reinício ou atualização;
 - exportação com lease e `installation_id`, nunca com a chave da licença;
 - atualização GitHub sempre visível, com changelog, confirmação, assinatura
   Ed25519 e SHA-256; sem atualização silenciosa;
@@ -44,7 +47,7 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 ## Executar
 
-Use [RFNextInfo-Setup-1.0.4.exe](dist/RFNextInfo-Setup-1.0.4.exe)
+Use [RFNextInfo-Setup-1.0.5.exe](dist/RFNextInfo-Setup-1.0.5.exe)
 ou o portátil [RFNextInfo.exe](dist/RFNextInfo.exe). O Windows solicita
 elevação porque o Pktmon precisa de permissão administrativa.
 
@@ -55,6 +58,10 @@ Na primeira abertura:
 3. abra o jogo, atualize a lista e escolha o executável uma vez;
 4. informe o Profile e até dois personagens, inicie a captura e jogue normalmente;
 5. pare a captura, aguarde a leitura e exporte JSON + CSV.
+
+O instalador testa o executável instalado e registra o resultado em
+`C:\ProgramData\Karvalho\RFNextInfo\logs\install.log`. Ao concluir, abra o
+programa pelo atalho.
 
 ## Testes e build
 
