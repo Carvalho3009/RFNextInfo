@@ -1,6 +1,7 @@
 import base64
 import json
 import tempfile
+import threading
 import unittest
 import urllib.error
 from pathlib import Path
@@ -9,7 +10,7 @@ from unittest.mock import Mock
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.license import LicenseClient, verify_lease
-from app.main import _capture_summary
+from app.main import App, _capture_summary
 from app.updater import UPDATE_SIGNATURE_CONTEXT, verify_manifest
 
 
@@ -18,6 +19,23 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_async_error_reaches_callback(self):
+        completed = threading.Event()
+        observed = []
+
+        class Scheduler:
+            def after(self, _delay, callback):
+                callback()
+
+        def fail():
+            raise RuntimeError("falhou")
+
+        App._run(Scheduler(), fail, lambda result, error: (
+            observed.append((result, str(error))), completed.set()
+        ))
+        self.assertTrue(completed.wait(1))
+        self.assertEqual(observed, [(None, "falhou")])
+
     def test_signed_lease_and_site_profile(self):
         private = Ed25519PrivateKey.generate()
         claims = {

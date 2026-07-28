@@ -231,7 +231,7 @@ class App(tk.Tk):
                 result = job()
                 self.after(0, lambda: done(result, None))
             except Exception as error:
-                self.after(0, lambda: done(None, error))
+                self.after(0, lambda error=error: done(None, error))
         threading.Thread(target=worker, daemon=True).start()
 
     def activate(self) -> None:
