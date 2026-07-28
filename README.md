@@ -8,7 +8,8 @@ Contato: Discord `Carvalho` · `carvalho@tuta.com`
 ## Versão 1.0
 
 - executável autônomo, interface Karvalho e instalador padrão;
-- captura nativa Pktmon em TCP/12000, TCP/12020 e TCP/12040, segmentada em 512 MB;
+- seleção única do executável e detecção automática das conexões TCP atuais;
+- captura nativa Pktmon limitada às portas locais descobertas, segmentada em 512 MB;
 - SQLite WAL para recuperação e reprocessamento incremental;
 - Codex/coleção, personagem, level, EXP, mercado e eventos de farm quando o
   decoder canônico possui semântica confirmada;
@@ -43,7 +44,7 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 ## Executar
 
-Use [RFNextInfo-Setup-1.0.3.exe](dist/RFNextInfo-Setup-1.0.3.exe)
+Use [RFNextInfo-Setup-1.0.4.exe](dist/RFNextInfo-Setup-1.0.4.exe)
 ou o portátil [RFNextInfo.exe](dist/RFNextInfo.exe). O Windows solicita
 elevação porque o Pktmon precisa de permissão administrativa.
 
@@ -51,8 +52,9 @@ Na primeira abertura:
 
 1. escolha se fechar deve manter a captura visível na área de notificação;
 2. ative a instalação na aba **Licença**; a ativação será preservada;
-3. informe o Profile e até dois personagens, inicie a captura e jogue normalmente;
-4. pare a captura, aguarde a leitura e exporte JSON + CSV.
+3. abra o jogo, atualize a lista e escolha o executável uma vez;
+4. informe o Profile e até dois personagens, inicie a captura e jogue normalmente;
+5. pare a captura, aguarde a leitura e exporte JSON + CSV.
 
 ## Testes e build
 
@@ -63,6 +65,5 @@ makensis.exe .\packaging\installer.nsi
 .\dist\RFNextInfo.exe --self-test
 ```
 
-Esta distribuição privada ainda exige a validação visual e funcional operada pelo proprietário
-em uma máquina limpa com Windows Defender e Kaspersky. A versão pública final
-permanece bloqueada até assinatura de código confiável.
+O instalador ainda não possui assinatura Authenticode. A autenticidade das
+atualizações é validada internamente por Ed25519 e SHA-256.
