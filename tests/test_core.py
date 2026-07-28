@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 from core.capture import PktmonCapture, _pktmon_running
 from core.connections import (
-    clients_for_executable,
     connected_processes,
     ports_for_executable,
 )
@@ -79,55 +78,10 @@ class CoreTest(unittest.TestCase):
         ):
             processes = connected_processes()
             ports, clients = ports_for_executable(paths[10])
-            grouped = clients_for_executable(paths[10])
         self.assertEqual(len(processes), 1)
         self.assertEqual(ports, (50100, 50101, 50200))
         self.assertEqual(clients, 2)
-        self.assertEqual(grouped, {10: (50100, 50101), 11: (50200,)})
         self.assertEqual(ports_for_executable(paths[12]), ((), 0))
-
-    def test_two_clients_are_separated_by_captured_local_ports(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            raw = root / "two-clients.etl"
-            raw.write_bytes(b"capture")
-            db = CaptureStore(root / "state.sqlite")
-            try:
-                events = [
-                    {
-                        "flow": f"10.0.0.1:{port} -> 10.0.0.2:12020",
-                        "stream_offset": index,
-                        "bundle_seq": 0,
-                        "ts_ns": index,
-                        "opcode": 0x040A,
-                        "type": "drop_item_field",
-                        "data": {"type": "drop_item_field"},
-                    }
-                    for index, port in enumerate((50100, 50200), 1)
-                ]
-                db.add_events(
-                    raw,
-                    events,
-                    "session-two",
-                    {50100: "client:1", 50200: "client:2"},
-                )
-                self.assertEqual(
-                    db.session_profiles("session-two"),
-                    [
-                        {"uid": "client:1", "name": ""},
-                        {"uid": "client:2", "name": ""},
-                    ],
-                )
-                self.assertEqual(
-                    len(
-                        db.session_envelope(
-                            "session-two", character_uid="client:1"
-                        )["events"]
-                    ),
-                    1,
-                )
-            finally:
-                db.close()
 
     def test_unidentified_flows_are_matched_to_closest_exp(self):
         with tempfile.TemporaryDirectory() as tmp:

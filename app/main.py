@@ -21,14 +21,10 @@ from app.license import LicenseClient
 from app.support_log import configure as configure_log, recent_lines
 from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
-from core.connections import (
-    clients_for_executable,
-    connected_processes,
-    ports_for_executable,
-)
+from core.connections import connected_processes, ports_for_executable
 from core.store import CaptureStore
 
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -222,7 +218,6 @@ class App(tk.Tk):
         self._last_poll_error = ""
         self._last_game_signature = None
         self._game_choices: dict[str, str] = {}
-        self._client_choices: dict[str, int] = {}
         self._selected_game_path = ""
         self.prefs: dict = {}
         self._style()
@@ -411,42 +406,23 @@ class App(tk.Tk):
         self.character2.grid(
             row=1, column=2, sticky="ew", padx=(14, 0), pady=(8, 0)
         )
-        ttk.Label(
-            profile,
-            text="Vincule cada nome ao processo:",
-            style="Muted.TLabel",
-        ).grid(row=2, column=0, sticky="w", pady=(9, 0))
-        self.client1_choice = ttk.Combobox(profile, state="readonly")
-        self.client2_choice = ttk.Combobox(profile, state="readonly")
-        self.client1_choice.grid(
-            row=2, column=1, sticky="ew", padx=(14, 0), pady=(9, 0)
-        )
-        self.client2_choice.grid(
-            row=2, column=2, sticky="ew", padx=(14, 0), pady=(9, 0)
-        )
-        self.client1_choice.bind(
-            "<<ComboboxSelected>>", lambda _: self._save_preferences()
-        )
-        self.client2_choice.bind(
-            "<<ComboboxSelected>>", lambda _: self._save_preferences()
-        )
         for column in range(3):
             profile.columnconfigure(column, weight=1)
         ttk.Label(
             profile,
             text=(
-                "Cada processo selecionado mantém seus eventos separados; "
-                "o UID confirmado continua dentro dos dados decodificados."
+                "A identificação usa o UID confirmado. Sem UID, a exportação "
+                "solicita a EXP atual (%) dos personagens."
             ),
             style="Muted.TLabel",
-        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(7, 0))
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(7, 0))
         self.auto_export = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             profile,
             text="Exportar automaticamente ao parar para Documentos\\Capturas\\Exportados",
             variable=self.auto_export,
             command=self._save_preferences,
-        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(9, 0))
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(9, 0))
 
         self.metrics = tk.Text(
             self.capture_tab,
@@ -585,11 +561,11 @@ class App(tk.Tk):
         text = (
             "1. Ative esta instalação na aba Licença. A ativação será lembrada nas próximas aberturas.\n\n"
             "2. Abra o RF NEXT e entre com o personagem. Em Captura, clique em Atualizar lista e escolha o executável do jogo; essa escolha será lembrada e as conexões serão detectadas automaticamente.\n\n"
-            "3. Informe o Profile e um ou dois personagens. Vincule cada nome ao respectivo processo ProjectRF; os dois personagens devem usar processos diferentes. Clique em Iniciar.\n\n"
+            "3. Informe o Profile e um ou dois personagens e clique em Iniciar. As conexões do jogo são capturadas automaticamente.\n\n"
             "4. Pare a captura e aguarde a leitura. Cada parada cria uma sessão independente; capturas diferentes não são misturadas.\n\n"
             "5. Exporte. Cada personagem recebe JSON e CSV com nome Profile-Personagem-datahora-contador. Eventos não decodificados geram um diagnóstico separado e só são enviados com sua autorização. Para relatar um problema do programa, use Enviar log técnico na aba Licença.\n\n"
             "6. Confira o tamanho informado. Somente depois da exportação validada o programa oferece enviar os segmentos brutos à Lixeira.\n\n"
-            "Privacidade: captura passiva limitada às portas conhecidas do RF NEXT e dos processos selecionados, sem captura geral da rede, injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
+            "Privacidade: captura passiva limitada às portas conhecidas do RF NEXT e às conexões do executável escolhido, sem captura geral da rede, injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
         )
         ttk.Label(
             self.tutorial_tab, text="Comece em seis passos", style="Title.TLabel"
@@ -607,6 +583,13 @@ class App(tk.Tk):
             self.prefs = json.loads(PREFERENCES_PATH.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             self.prefs = {}
+        for obsolete in (
+            "character1_pid",
+            "character2_pid",
+            "capture_pid_uids",
+            "capture_port_uids",
+        ):
+            self.prefs.pop(obsolete, None)
         if "minimize_to_tray" not in self.prefs:
             self.prefs["minimize_to_tray"] = messagebox.askyesno(
                 "Comportamento ao fechar",
@@ -720,12 +703,6 @@ class App(tk.Tk):
                 "channel": self.channel.get(),
                 "last_session": self.current_session,
                 "game_executable": self._selected_game_path,
-                "character1_pid": self._client_choices.get(
-                    self.client1_choice.get()
-                ),
-                "character2_pid": self._client_choices.get(
-                    self.client2_choice.get()
-                ),
             }
         )
         PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -809,52 +786,11 @@ class App(tk.Tk):
             self.game_status.configure(
                 text="Abra o jogo e escolha o executável na lista"
             )
-        self._refresh_client_choices()
-
-    def _refresh_client_choices(self) -> None:
-        current = (
-            self._client_choices.get(self.client1_choice.get()),
-            self._client_choices.get(self.client2_choice.get()),
-        )
-        clients = (
-            clients_for_executable(self._selected_game_path)
-            if self._selected_game_path
-            else {}
-        )
-        labels = {
-            (
-                f"{Path(self._selected_game_path).name} · PID {pid} · "
-                f"{len(ports)} conexão(ões)"
-            ): pid
-            for pid, ports in sorted(clients.items())
-        }
-        self._client_choices = labels
-        values = tuple(labels)
-        self.client1_choice.configure(values=values)
-        self.client2_choice.configure(values=values)
-        pids = tuple(labels.values())
-        selected = []
-        for index, previous in enumerate(current, 1):
-            saved = self.prefs.get(f"character{index}_pid")
-            pid = previous if previous in pids else saved if saved in pids else None
-            if pid is None and len(pids) >= index:
-                pid = pids[index - 1]
-            selected.append(
-                next((label for label, value in labels.items() if value == pid), "")
-            )
-        self.client1_choice.set(selected[0])
-        self.client2_choice.set(selected[1])
-
     def _game_selected(self, _event=None) -> None:
         self._selected_game_path = self._game_choices.get(
             self.game_choice.get(), ""
         )
         self._last_game_signature = None
-        self._client_choices = {}
-        self.client1_choice.set("")
-        self.client2_choice.set("")
-        self.prefs["character1_pid"] = None
-        self.prefs["character2_pid"] = None
         self._save_preferences()
         self.refresh_game_choices(False)
 
@@ -941,34 +877,20 @@ class App(tk.Tk):
                 "Conexão do jogo",
                 "Abra o jogo, clique em Atualizar lista e escolha o executável.",
             )
-        connected = clients_for_executable(self._selected_game_path)
-        selected_pids = [
-            self._client_choices.get(self.client1_choice.get()),
-            self._client_choices.get(self.client2_choice.get()),
-        ][: len(characters)]
-        if any(pid not in connected for pid in selected_pids):
+        ports, clients = ports_for_executable(self._selected_game_path)
+        if not ports:
             self.refresh_game_choices(False)
             return messagebox.showwarning(
                 "Conexão do jogo",
-                "Selecione o processo correspondente a cada personagem. "
-                "Se a lista mudou, clique em Atualizar lista.",
+                "Nenhuma conexão ativa foi encontrada. Entre com o personagem "
+                "no jogo e tente novamente.",
             )
-        if len(set(selected_pids)) != len(selected_pids):
+        if clients > 2:
             return messagebox.showwarning(
-                "Identificação",
-                "Personagem 1 e Personagem 2 precisam usar processos diferentes.",
+                "Limite de clientes",
+                "Foram encontrados mais de dois clientes. Feche os excedentes "
+                "antes de iniciar.",
             )
-        pid_uids = {
-            int(pid): f"client:{index}"
-            for index, pid in enumerate(selected_pids, 1)
-        }
-        port_uids = {
-            port: pid_uids[pid]
-            for pid in pid_uids
-            for port in connected[pid]
-        }
-        ports = tuple(sorted(port_uids))
-        clients = len(pid_uids)
         counter = int(self.prefs.get("session_counter", 0)) + 1
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         session_id = (
@@ -988,17 +910,15 @@ class App(tk.Tk):
             capture_prefix=capture_prefix,
             capture_pending=True,
             capture_ports=list(ports),
-            capture_pid_uids={
-                str(pid): uid for pid, uid in pid_uids.items()
-            },
-            capture_port_uids={
-                str(port): uid for port, uid in port_uids.items()
-            },
-            capture_character_names={
-                f"client:{index}": name
-                for index, name in enumerate(characters, 1)
-            },
         )
+        for obsolete in (
+            "character1_pid",
+            "character2_pid",
+            "capture_pid_uids",
+            "capture_port_uids",
+            "capture_character_names",
+        ):
+            self.prefs.pop(obsolete, None)
         try:
             self._save_preferences()
         except OSError:
@@ -1056,13 +976,6 @@ class App(tk.Tk):
             self.log.exception("capture_stop_failed")
             return messagebox.showerror("Falha ao parar", str(error))
         session_id = self.current_session
-        port_uids = {
-            int(port): str(uid)
-            for port, uid in (
-                self.prefs.get("capture_port_uids") or {}
-            ).items()
-            if str(port).isdigit()
-        }
 
         def ingest():
             store = CaptureStore(DB_PATH)
@@ -1071,11 +984,7 @@ class App(tk.Tk):
                 failures = []
                 for path in self.last_files:
                     try:
-                        added += store.ingest(
-                            path,
-                            session_id=session_id,
-                            port_uids=port_uids,
-                        )
+                        added += store.ingest(path, session_id=session_id)
                     except Exception as error:
                         reason = _safe_error_code(error)
                         self.log.exception(
@@ -1142,6 +1051,11 @@ class App(tk.Tk):
         if not self.current_session:
             return []
         detected = self.store.session_profiles(self.current_session)
+        process_assigned = any(
+            str(item["uid"]).startswith("client:") for item in detected
+        )
+        if process_assigned:
+            detected = []
         manual = [
             name
             for name in (
@@ -1155,9 +1069,9 @@ class App(tk.Tk):
             for uid, name in (
                 self.prefs.get("capture_character_names") or {}
             ).items()
-            if name
+            if name and str(uid).startswith("exp:")
         }
-        if prompt_exp and not detected and manual:
+        if prompt_exp and not detected and manual and not process_assigned:
             flows = self.store.unidentified_exp_flows(self.current_session)
             if len(flows) >= len(manual):
                 targets = []
@@ -1230,7 +1144,7 @@ class App(tk.Tk):
             if match:
                 unused.remove(match)
                 name = match
-            elif not name and unused:
+            elif not name and len(detected) == 1 and len(unused) == 1:
                 name = unused.pop(0)
             result.append(
                 {
@@ -1239,9 +1153,7 @@ class App(tk.Tk):
                     "include_unassigned": len(detected) == 1,
                     "only_unassigned": False,
                     "identification_status": (
-                        "process_bound"
-                        if item["uid"].startswith("client:")
-                        else "exp_matched"
+                        "exp_matched"
                         if item["uid"].startswith("exp:")
                         else "confirmed_uid"
                     ),
@@ -1732,28 +1644,18 @@ class App(tk.Tk):
     def _refresh_active_game_connections(self) -> None:
         if not self._selected_game_path:
             return
-        connected = clients_for_executable(self._selected_game_path)
-        pid_uids = {
-            int(pid): str(uid)
-            for pid, uid in (
-                self.prefs.get("capture_pid_uids") or {}
-            ).items()
-            if str(pid).isdigit()
-        }
-        monitored = {
-            pid: connected[pid] for pid in pid_uids if pid in connected
-        }
-        ports = tuple(
-            sorted({port for values in monitored.values() for port in values})
-        )
-        signature = tuple(sorted(monitored.items()))
+        ports, clients = ports_for_executable(self._selected_game_path)
+        signature = (clients, ports)
         if signature == self._last_game_signature:
             return
         self._last_game_signature = signature
-        if not monitored:
+        if clients > 2:
             self.game_status.configure(
-                text="Processo do personagem reiniciado · inicie uma nova captura"
+                text="Mais de dois clientes conectados · feche os excedentes"
             )
+            return
+        if not clients:
+            self.game_status.configure(text="Aguardando reconexão do jogo")
             return
         try:
             added = self.capture.add_ports(ports)
@@ -1770,16 +1672,11 @@ class App(tk.Tk):
             saved = set(self.prefs.get("capture_ports") or ())
             saved.update(ports)
             self.prefs["capture_ports"] = sorted(saved)
-            mapped = dict(self.prefs.get("capture_port_uids") or {})
-            for pid, values in monitored.items():
-                for port in values:
-                    mapped[str(port)] = pid_uids[pid]
-            self.prefs["capture_port_uids"] = mapped
             self._save_preferences()
             self.log.info("capture_connections_added count=%d", added)
         self.game_status.configure(
             text=(
-                f"{len(monitored)} cliente(s) identificado(s) · "
+                f"{clients} cliente(s) conectado(s) · "
                 f"{len(ports)} conexão(ões) monitorada(s)"
             )
         )

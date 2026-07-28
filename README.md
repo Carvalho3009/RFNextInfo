@@ -16,8 +16,8 @@ Contato: Discord `Carvalho` · `carvalho@tuta.com`
 - Codex/coleção, personagem, level, EXP, mercado e eventos de farm quando o
   decoder canônico possui semântica confirmada;
 - kill exibida apenas como estimativa por evento de recompensa;
-- sessões independentes, Profile e até dois personagens vinculados aos
-  respectivos processos do jogo;
+- sessões independentes, Profile e até dois personagens capturados
+  automaticamente, sem seleção manual de processo;
 - JSON e CSV separados por personagem, com EXP bruta e percentual no level;
 - sem UID, a exportação pede a EXP atual (%) dos personagens e associa cada
   conexão ao valor observado mais próximo;
@@ -53,7 +53,7 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 ## Executar
 
-Use [RFNextInfo-Setup-1.0.6.exe](dist/RFNextInfo-Setup-1.0.6.exe). O Windows
+Use [RFNextInfo-Setup-1.0.7.exe](dist/RFNextInfo-Setup-1.0.7.exe). O Windows
 solicita elevação porque o Pktmon precisa de permissão administrativa. As
 dependências ficam instaladas junto ao programa, sem extração temporária
 `_MEI`.
@@ -63,8 +63,7 @@ Na primeira abertura:
 1. escolha se fechar deve manter a captura visível na área de notificação;
 2. ative a instalação na aba **Licença**; a ativação será preservada;
 3. abra o jogo, atualize a lista e escolha o executável uma vez;
-4. informe o Profile, vincule cada personagem ao respectivo processo
-   `ProjectRF`, inicie a captura e jogue normalmente;
+4. informe o Profile e os personagens, inicie a captura e jogue normalmente;
 5. pare a captura, aguarde a leitura e exporte JSON + CSV.
 
 O instalador testa o executável instalado e registra o resultado em

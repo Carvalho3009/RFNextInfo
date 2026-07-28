@@ -117,9 +117,9 @@ def _process_path(pid: int) -> str | None:
         kernel.CloseHandle(handle)
 
 
-def connected_clients() -> dict[str, dict[int, set[int]]]:
-    """Retorna caminho -> PID -> portas locais, sem IPs ou payloads."""
-    result: dict[str, dict[int, set[int]]] = {}
+def connected_processes() -> dict[str, tuple[set[int], set[int]]]:
+    """Retorna caminho -> (PIDs, portas locais), sem IPs ou payloads."""
+    result: dict[str, tuple[set[int], set[int]]] = {}
     paths: dict[int, str | None] = {}
     for pid, local_port, _remote_port in _tcp_rows():
         if pid not in paths:
@@ -130,27 +130,13 @@ def connected_clients() -> dict[str, dict[int, set[int]]]:
         if not os.path.basename(path).casefold().startswith("projectrf"):
             continue
         key = os.path.normcase(os.path.abspath(path))
-        result.setdefault(key, {}).setdefault(pid, set()).add(local_port)
+        pids, ports = result.setdefault(key, (set(), set()))
+        pids.add(pid)
+        ports.add(local_port)
     return result
 
 
-def connected_processes() -> dict[str, tuple[set[int], set[int]]]:
-    """Retorna caminho -> (PIDs, portas locais), sem IPs ou payloads."""
-    return {
-        path: (set(clients), set().union(*clients.values()))
-        for path, clients in connected_clients().items()
-    }
-
-
-def clients_for_executable(executable: str) -> dict[int, tuple[int, ...]]:
-    selected = os.path.normcase(os.path.abspath(executable))
-    return {
-        pid: tuple(sorted(ports))
-        for pid, ports in connected_clients().get(selected, {}).items()
-    }
-
-
 def ports_for_executable(executable: str) -> tuple[tuple[int, ...], int]:
-    clients = clients_for_executable(executable)
-    ports = sorted({port for values in clients.values() for port in values})
-    return tuple(ports), len(clients)
+    selected = os.path.normcase(os.path.abspath(executable))
+    pids, ports = connected_processes().get(selected, (set(), set()))
+    return tuple(sorted(ports)), len(pids)
