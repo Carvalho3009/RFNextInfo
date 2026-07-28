@@ -1,0 +1,3 @@
+cryptography>=45,<47
+Pillow>=11,<13
+pystray>=0.19,<1
