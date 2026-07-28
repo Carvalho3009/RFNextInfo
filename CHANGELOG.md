@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 — 2026-07-28
+
+- log técnico local com rotação automática e limite aproximado de 4 MB;
+- remoção defensiva de licença, token, e-mail, IP, UUID e usuário do Windows;
+- botão independente **Enviar log técnico** na aba Licença;
+- upload somente após confirmação, pelo canal de diagnóstico já autenticado.
+
 ## 1.0.0 — 2026-07-28
 
 - ativação e preferências preservadas durante atualizações;
