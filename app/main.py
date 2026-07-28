@@ -20,7 +20,7 @@ from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.store import CaptureStore
 
-VERSION = "0.1.4-pilot"
+VERSION = "0.1.5-pilot"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 CAPTURE_DIR = Path.home() / "Documents" / "Capturas"
 ASSETS = ROOT / "assets"
@@ -280,13 +280,28 @@ class App(tk.Tk):
         def ingest():
             store = CaptureStore(DB_PATH)
             try:
-                return sum(store.ingest(path) for path in self.last_files)
+                added = 0
+                failures = []
+                for path in self.last_files:
+                    try:
+                        added += store.ingest(path)
+                    except Exception as error:
+                        failures.append(f"{path.name}: {error}")
+                return added, failures
             finally:
                 store.close()
 
-        self._run(ingest, lambda result, error: self.capture_state.configure(
-            text=f"Captura encerrada · {result or 0} eventos novos" if not error else f"Captura encerrada · leitura falhou: {error}"
-        ))
+        def ingest_done(result, error):
+            if error:
+                text = f"Captura encerrada · leitura falhou: {error}"
+            else:
+                added, failures = result
+                text = f"Captura encerrada · {added} eventos novos"
+                if failures:
+                    text += f" · {len(failures)} segmento(s) ignorado(s): " + "; ".join(failures)
+            self.capture_state.configure(text=text)
+
+        self._run(ingest, ingest_done)
 
     def export(self) -> None:
         if not self.license.lease:

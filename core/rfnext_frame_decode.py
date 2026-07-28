@@ -1484,7 +1484,7 @@ def pcap_tcp_streams(
             continue
         ihl = (network[0] & 0x0F) * 4
         total_length = struct.unpack_from("!H", network, 2)[0]
-        if network[9] != 6 or len(network) < ihl + 20:
+        if network[9] != 6 or len(network) < ihl + 20 or total_length < ihl + 20:
             continue
         tcp = network[ihl : min(total_length, len(network))]
         source_port, destination_port, sequence, _, offset_flags = struct.unpack_from(

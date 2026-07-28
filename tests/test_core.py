@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core.capture import PktmonCapture, _pktmon_running
 from core.ingest import _pcapng_to_pcap, _safe_parse
+from core.rfnext_frame_decode import pcap_tcp_streams
 from core.store import CaptureStore
 
 
@@ -81,6 +82,31 @@ class CoreTest(unittest.TestCase):
             source.write_bytes(shb + idb + epb)
             _pcapng_to_pcap(source, target)
             self.assertEqual(target.read_bytes()[:4], b"\x4d\x3c\xb2\xa1")
+
+    def test_invalid_ipv4_total_length_does_not_abort_following_packet(self):
+        ethernet = b"\0" * 12 + b"\x08\x00"
+
+        def ipv4_tcp(total_length, payload=b""):
+            ip = bytearray(20)
+            ip[0] = 0x45
+            struct.pack_into("!H", ip, 2, total_length)
+            ip[9] = 6
+            ip[12:20] = b"\x0a\x00\x00\x01\x0a\x00\x00\x02"
+            tcp = struct.pack("!HHIIH", 50000, 12020, 1, 0, 0x5000) + b"\0" * 6
+            return ethernet + bytes(ip) + tcp + payload
+
+        malformed = ipv4_tcp(0)
+        valid = ipv4_tcp(20 + 20 + 3, b"abc")
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "offload.pcap"
+            header = struct.pack("<IHHIIII", 0xA1B23C4D, 2, 4, 0, 0, 65535, 1)
+            records = b"".join(
+                struct.pack("<IIII", 1, index, len(packet), len(packet)) + packet
+                for index, packet in enumerate((malformed, valid))
+            )
+            source.write_bytes(header + records)
+            streams = pcap_tcp_streams(source, 12020)
+            self.assertEqual([stream for _, stream, _ in streams], [b"abc"])
 
 
 if __name__ == "__main__":
