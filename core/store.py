@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import itertools
 import json
 import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -80,14 +82,27 @@ def _character_uid(event: dict[str, Any]) -> str | None:
     return str(uid) if uid is not None else None
 
 
+def _flow_character_uid(
+    flow: str, port_uids: dict[int, str] | None
+) -> str | None:
+    if not port_uids:
+        return None
+    matches = {
+        port_uids[int(port)]
+        for port in re.findall(r":(\d+)(?=\s|$)", flow)
+        if int(port) in port_uids
+    }
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
 def _add_exp_percent(data: dict[str, Any]) -> dict[str, Any]:
     fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
     level, exp = fields.get("level"), fields.get("exp")
     if isinstance(level, int) and isinstance(exp, (int, float)):
-        start, end = LEVEL_CURVE.get(level), LEVEL_CURVE.get(level + 1)
-        if start is not None and end is not None and end > start:
+        required = LEVEL_CURVE.get(level)
+        if required:
             fields["exp_percent"] = round(
-                max(0.0, min(100.0, (float(exp) - start) * 100 / (end - start))),
+                max(0.0, min(100.0, float(exp) * 100 / required)),
                 2,
             )
     return data
@@ -128,6 +143,7 @@ class CaptureStore:
         source: Path,
         events: Iterable[dict[str, Any]],
         session_id: str = "legacy",
+        port_uids: dict[int, str] | None = None,
     ) -> int:
         if not session_id or len(session_id) > 128:
             raise ValueError("session_id inválido")
@@ -172,7 +188,9 @@ class CaptureStore:
                         event.get("ts_ns"),
                         event["opcode"],
                         event["type"],
-                        uid or stable_flow_uid.get(event["flow"]),
+                        _flow_character_uid(event["flow"], port_uids)
+                        or uid
+                        or stable_flow_uid.get(event["flow"]),
                         json.dumps(clean, ensure_ascii=False, sort_keys=True),
                         session_id,
                     ),
@@ -203,11 +221,13 @@ class CaptureStore:
         *,
         session_id: str = "legacy",
         decoder_path: Path | None = None,
+        port_uids: dict[int, str] | None = None,
     ) -> int:
         return self.add_events(
             source,
             decoded_events(source, decoder_path=decoder_path),
             session_id,
+            port_uids,
         )
 
     def clear_exported(self, session_id: str | None = None) -> None:
@@ -248,6 +268,62 @@ class CaptureStore:
                 profiles[uid] = name
         return [{"uid": uid, "name": name} for uid, name in profiles.items()]
 
+    def unidentified_exp_flows(
+        self, session_id: str
+    ) -> list[dict[str, str | float]]:
+        rows = self.conn.execute(
+            """SELECT flow,data_json FROM events
+               WHERE session_id=? AND character_uid IS NULL
+               AND type='update_exp' ORDER BY id""",
+            (session_id,),
+        ).fetchall()
+        latest: dict[str, float] = {}
+        for flow, raw in rows:
+            data = _add_exp_percent(json.loads(raw))
+            fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
+            value = fields.get("exp_percent")
+            if isinstance(value, (int, float)):
+                latest[flow] = float(value)
+        return [
+            {"flow": flow, "exp_percent": value}
+            for flow, value in latest.items()
+        ]
+
+    def assign_unidentified_by_exp(
+        self, session_id: str, targets: list[tuple[str, float]]
+    ) -> list[dict[str, str | float]]:
+        flows = self.unidentified_exp_flows(session_id)
+        if not targets or len(flows) < len(targets) or len(targets) > 2:
+            return []
+        best = min(
+            itertools.permutations(flows, len(targets)),
+            key=lambda ordered: sum(
+                abs(float(flow["exp_percent"]) - target)
+                for flow, (_, target) in zip(ordered, targets)
+            ),
+        )
+        matches = []
+        with self.conn:
+            for index, ((name, target), flow) in enumerate(
+                zip(targets, best), 1
+            ):
+                uid = f"exp:{index}"
+                self.conn.execute(
+                    """UPDATE events SET character_uid=?
+                       WHERE session_id=? AND flow=?
+                       AND character_uid IS NULL AND type!='unparsed'""",
+                    (uid, session_id, flow["flow"]),
+                )
+                matches.append(
+                    {
+                        "uid": uid,
+                        "name": name,
+                        "target_percent": target,
+                        "observed_percent": float(flow["exp_percent"]),
+                    }
+                )
+        return matches
+
     def session_stats(self, session_id: str) -> dict[str, int | None]:
         recognized, unknown, unassigned, started, ended = self.conn.execute(
             """SELECT SUM(type!='unparsed'), SUM(type='unparsed'),
@@ -281,12 +357,14 @@ class CaptureStore:
         session_id: str,
         character_uid: str | None = None,
         include_unassigned: bool = False,
+        only_unassigned: bool = False,
     ) -> dict[str, Any]:
         return self._envelope(
             session_id,
             session_id,
             character_uid,
             include_unassigned,
+            only_unassigned,
         )
 
     def _envelope(
@@ -295,10 +373,13 @@ class CaptureStore:
         session_id: str,
         character_uid: str | None = None,
         include_unassigned: bool = False,
+        only_unassigned: bool = False,
     ) -> dict[str, Any]:
         where = ["session_id=?", "type!='unparsed'"]
         values: list[Any] = [session_id]
-        if character_uid is not None:
+        if only_unassigned:
+            where.append("character_uid IS NULL")
+        elif character_uid is not None:
             where.append(
                 "(character_uid=? OR character_uid IS NULL)"
                 if include_unassigned
@@ -356,12 +437,17 @@ class CaptureStore:
         session_id: str = "legacy",
         character_uid: str | None = None,
         include_unassigned: bool = False,
+        only_unassigned: bool = False,
         context: dict[str, Any] | None = None,
     ) -> ExportResult:
         if not capture_id or len(capture_id) > 128:
             raise ValueError("capture_id inválido")
         envelope = self._envelope(
-            capture_id, session_id, character_uid, include_unassigned
+            capture_id,
+            session_id,
+            character_uid,
+            include_unassigned,
+            only_unassigned,
         )
         if context:
             envelope["metadata"].update(_sanitize(context))
@@ -386,6 +472,8 @@ class CaptureStore:
                 fieldnames=(
                     "profile",
                     "character_name",
+                    "identification_status",
+                    "requires_site_review",
                     "session_id",
                     "ts_ns",
                     "character_uid",
@@ -406,6 +494,12 @@ class CaptureStore:
                         "profile": envelope["metadata"].get("profile"),
                         "character_name": envelope["metadata"].get(
                             "character_name"
+                        ),
+                        "identification_status": envelope["metadata"].get(
+                            "identification_status"
+                        ),
+                        "requires_site_review": envelope["metadata"].get(
+                            "requires_site_review", False
                         ),
                         "session_id": session_id,
                         "ts_ns": event["ts_ns"],

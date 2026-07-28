@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 import traceback
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -41,9 +40,7 @@ def redact(value: object) -> str:
     return text
 
 
-class _UtcRedactingFormatter(logging.Formatter):
-    converter = time.gmtime
-
+class _LocalRedactingFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         return redact(super().format(record))
 
@@ -73,9 +70,9 @@ def configure(path: Path, version: str) -> logging.Logger:
     )
     handler._rfnext_handler = True
     handler.setFormatter(
-        _UtcRedactingFormatter(
-            "%(asctime)sZ %(levelname)s %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S",
+        _LocalRedactingFormatter(
+            "%(asctime)s %(levelname)s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S%z",
         )
     )
     logger.addHandler(handler)

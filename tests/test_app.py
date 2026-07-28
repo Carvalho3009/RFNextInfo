@@ -38,6 +38,55 @@ class AppLogicTest(unittest.TestCase):
         app.store.session_stats.return_value["unknown"] = 1
         self.assertTrue(App._session_has_data(app))
 
+    def test_two_names_without_uid_export_as_reviewable_combined_file(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app.prefs = {}
+        app.store.session_profiles.return_value = []
+        app.store.session_stats.return_value = {"unassigned": 10}
+        exports = App._character_exports(app)
+        self.assertEqual(len(exports), 1)
+        self.assertEqual(exports[0]["uid"], None)
+        self.assertEqual(exports[0]["identification_status"], "unresolved")
+        self.assertIn("Nao-separado", exports[0]["name"])
+        self.assertTrue(exports[0]["warning"])
+
+    def test_export_matches_two_names_to_closest_exp(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app.prefs = {}
+        app.store.session_profiles.side_effect = [
+            [],
+            [
+                {"uid": "exp:1", "name": ""},
+                {"uid": "exp:2", "name": ""},
+            ],
+        ]
+        app.store.unidentified_exp_flows.return_value = [
+            {"flow": "a", "exp_percent": 80.0},
+            {"flow": "b", "exp_percent": 10.0},
+        ]
+        app.store.assign_unidentified_by_exp.return_value = [
+            {"uid": "exp:1", "name": "Alice"},
+            {"uid": "exp:2", "name": "Bob"},
+        ]
+        app.store.session_stats.return_value = {"unassigned": 0}
+        with patch(
+            "app.main.simpledialog.askfloat", side_effect=[75.0, 12.0]
+        ):
+            exports = App._character_exports(app, prompt_exp=True)
+        app.store.assign_unidentified_by_exp.assert_called_once_with(
+            "session-1", [("Alice", 75.0), ("Bob", 12.0)]
+        )
+        self.assertEqual(
+            [(item["name"], item["identification_status"]) for item in exports],
+            [("Alice", "exp_matched"), ("Bob", "exp_matched")],
+        )
+
     def test_update_launch_closes_current_app(self):
         app = Mock()
         app.capture.attached = False
@@ -171,6 +220,10 @@ class AppLogicTest(unittest.TestCase):
                 except RuntimeError:
                     logger.exception("operation_failed")
                 lines = "\n".join(recent_lines(path))
+                self.assertRegex(
+                    lines.splitlines()[0],
+                    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4} ",
+                )
                 self.assertNotIn("KRV-AAAAA", lines)
                 self.assertNotIn("carvalho@tuta.com", lines)
                 self.assertNotIn("192.168.0.10", lines)

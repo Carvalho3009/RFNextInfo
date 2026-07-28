@@ -7,8 +7,9 @@ do aplicativo preencher; chave de licença nunca pertence ao arquivo.
 ## Fluxo
 
 1. `connections` descobre as portas TCP locais do executável selecionado;
-2. `PktmonCapture` configura somente essas portas e inicia `pktmon` com pacote inteiro,
-   arquivo de 512 MiB e modo `multi-file`.
+2. `PktmonCapture` configura essas portas e as portas conhecidas do jogo
+   (`12000`, `12020`, `12040`), cobrindo login e reconexão, e inicia `pktmon`
+   com pacote inteiro, arquivo de 512 MiB e modo `multi-file`.
 3. O observador encerra com segurança abaixo de 2 GiB livres.
 4. ETL é convertido por `pktmon etl2pcap`; PCAPNG padrão é reduzido a PCAP
    temporário para o decoder canônico.
@@ -35,10 +36,10 @@ standalone deve incluir uma cópia byte a byte desse arquivo como
   SLL (113). Blocos de metadados do Pktmon são ignorados.
 - Kills são **proxy**: contagem dos eventos de recompensa `0x040A`, nunca morte
   confirmada.
-- Porta cliente não é identidade durável. Quando `0x0106` aparece, o
-  `character_uid` confirmado é persistido no próprio evento; a correlação
-  automática desse UID com todos os eventos da sessão ainda depende de
-  evidência/protocolo adicional.
+- Porta cliente não é identidade durável entre sessões. Durante uma sessão,
+  cada porta é vinculada ao PID escolhido pelo usuário; isso separa com
+  segurança até dois processos. Quando `0x0106` aparece, o `character_uid`
+  confirmado continua preservado dentro do evento decodificado.
 - PCAP/PCAPNG fornecidos diretamente funcionam offline. ETL exige Windows com
   `pktmon`.
 
