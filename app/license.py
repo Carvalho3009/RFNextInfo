@@ -141,6 +141,22 @@ class LicenseClient:
             raise ValueError("Comprovante pertence a outra instalação")
         return claims
 
+    def upload_diagnostic(self, path: Path, version: str) -> dict:
+        if not self.lease:
+            raise ValueError("Ative a licença antes de enviar o diagnóstico")
+        raw = Path(path).read_bytes()
+        if len(raw) > 5 * 1024 * 1024:
+            raise ValueError("Diagnóstico excede o limite de 5 MiB")
+        diagnostic = json.loads(raw)
+        return self._json(
+            "/api/v1/diagnostics",
+            {
+                "lease": self.lease,
+                "app_version": version,
+                "diagnostic": diagnostic,
+            },
+        )
+
     @property
     def lease(self) -> str | None:
         return self.state.get("lease")

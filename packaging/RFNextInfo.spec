@@ -11,6 +11,8 @@ a = Analysis(
         (str(root / "assets" / "karvalho-primary-gold.png"), "assets"),
         (str(root / "core" / "rfnext_frame_decode.py"), "core"),
         (str(root / "core" / "collection_requirements.csv"), "core"),
+        (str(root / "core" / "level_curve.json"), "core"),
+        (str(root / "core" / "item_names.json"), "core"),
     ],
     hiddenimports=["PIL._tkinter_finder", "pystray._win32"],
 )

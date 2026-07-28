@@ -67,7 +67,7 @@ class CoreTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture = PktmonCapture(root, segment_mb=64, runner=lambda args, **kwargs: calls.append(args) or Result())
-            self.assertEqual(capture.ports, (12000, 12020))
+            self.assertEqual(capture.ports, (12000, 12020, 12040))
             capture._command("start", "--capture")
             self.assertEqual(calls[0][:2], ["pktmon", "start"])
 
@@ -114,6 +114,102 @@ class CoreTest(unittest.TestCase):
             source.write_bytes(shb + idb + epb)
             _pcapng_to_pcap(source, target)
             self.assertEqual(target.read_bytes()[:4], b"\x4d\x3c\xb2\xa1")
+
+    def test_sessions_characters_diagnostics_and_exp_percent_are_separate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first.etl"
+            second = root / "second.etl"
+            first.write_bytes(b"first")
+            second.write_bytes(b"second")
+            db = CaptureStore(root / "state.sqlite")
+            try:
+                db.add_events(
+                    first,
+                    [
+                        {
+                            "flow": "private-flow-a",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "ts_ns": 1,
+                            "opcode": 0x0400,
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": 101,
+                                    "character_name": "Alice",
+                                    "level": 66,
+                                    "exp": 2_542_031_484,
+                                }
+                            },
+                        },
+                        {
+                            "flow": "private-flow-a",
+                            "stream_offset": 2,
+                            "bundle_seq": 0,
+                            "ts_ns": 2,
+                            "opcode": 0x7777,
+                            "type": "unparsed",
+                            "data": {
+                                "port": 12020,
+                                "decoded_size": 40,
+                                "confidence": "unparsed_no_payload",
+                            },
+                        },
+                    ],
+                    "session-a",
+                )
+                db.add_events(
+                    second,
+                    [
+                        {
+                            "flow": "private-flow-b",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "ts_ns": 3,
+                            "opcode": 0x0400,
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": 202,
+                                    "character_name": "Bob",
+                                }
+                            },
+                        }
+                    ],
+                    "session-b",
+                )
+                self.assertEqual(
+                    db.session_profiles("session-a"),
+                    [{"uid": "101", "name": "Alice"}],
+                )
+                exported = db.export(
+                    root,
+                    "Profile-Alice-20260728-001",
+                    session_id="session-a",
+                    character_uid="101",
+                    include_unassigned=True,
+                    context={"profile": "Profile", "character_name": "Alice"},
+                )
+                envelope = json.loads(exported.json_path.read_text(encoding="utf-8"))
+                self.assertEqual(len(envelope["events"]), 1)
+                self.assertAlmostEqual(
+                    envelope["events"][0]["data"]["fields"]["exp_percent"],
+                    12.57,
+                    places=2,
+                )
+                diagnostic = db.export_diagnostics(
+                    root, "Profile-diagnostico-20260728-001", "session-a"
+                )
+                self.assertIsNotNone(diagnostic)
+                raw = diagnostic.read_text(encoding="utf-8")
+                self.assertNotIn("private-flow", raw)
+                self.assertNotIn("Alice", raw)
+                db.clear_exported("session-a")
+                self.assertEqual(db.latest_session(), "session-b")
+                self.assertEqual(db.session_stats("session-b")["recognized"], 1)
+            finally:
+                db.close()
 
     def test_invalid_ipv4_total_length_does_not_abort_following_packet(self):
         ethernet = b"\0" * 12 + b"\x08\x00"

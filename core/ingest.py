@@ -140,7 +140,7 @@ def decoded_events(
     source: Path,
     *,
     decoder_path: Path | None = None,
-    ports: tuple[int, ...] = (12000, 12020),
+    ports: tuple[int, ...] = (12000, 12020, 12040),
 ) -> Iterator[dict[str, Any]]:
     decoder = load_decoder(decoder_path)
     catalog_path = Path(__file__).with_name("collection_requirements.csv")
@@ -168,6 +168,21 @@ def decoded_events(
                             continue
                         parsed = _safe_parse(decoder, decoded, port, collection_slots)
                         if parsed is None:
+                            if port != 12000:
+                                yield {
+                                    "source": str(source),
+                                    "flow": flow,
+                                    "stream_offset": int(info["stream_offset"]),
+                                    "bundle_seq": bundle_seq,
+                                    "ts_ns": info.get("pcap_time_ns"),
+                                    "opcode": opcode,
+                                    "type": "unparsed",
+                                    "data": {
+                                        "port": port,
+                                        "decoded_size": len(decoded),
+                                        "confidence": "unparsed_no_payload",
+                                    },
+                                }
                             continue
                         yield {
                             "source": str(source),
