@@ -14,7 +14,8 @@
 - Após exportar: mostrar tamanhos, validar o arquivo e oferecer envio dos brutos à Lixeira.
 - Licença online a cada 24h, tolerância de 72h; depois bloquear novas capturas e preservar exportação.
 - Atualização GitHub stable/beta, visível e confirmada, com manifesto assinado, SHA-256 e rollback de uma versão.
-- Sem telemetria; diagnósticos sem payload ou identidade só são enviados após consentimento.
+- Sem telemetria; diagnósticos e logs sanitizados só são enviados após consentimento.
+- Log técnico local rotativo de até aproximadamente 4 MB; envio manual separado na aba Licença.
 
 ## Marca
 

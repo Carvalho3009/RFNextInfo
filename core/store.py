@@ -432,6 +432,7 @@ class CaptureStore:
         target_dir: Path,
         capture_id: str,
         session_id: str,
+        logs: list[str] | None = None,
     ) -> Path | None:
         rows = self.conn.execute(
             """SELECT ts_ns,opcode,data_json FROM events
@@ -439,10 +440,11 @@ class CaptureStore:
                ORDER BY COALESCE(ts_ns,0),id""",
             (session_id,),
         ).fetchall()
-        if not rows:
+        logs = logs or []
+        if not rows and not logs:
             return None
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "session_ref": hashlib.sha256(session_id.encode()).hexdigest()[:16],
             "privacy": (
                 "sem payload, IP, flow, personagem, UID, licença, chave, "
@@ -456,6 +458,7 @@ class CaptureStore:
                 }
                 for ts_ns, opcode, data in rows
             ],
+            "logs": logs,
         }
         target_dir = Path(target_dir)
         target_dir.mkdir(parents=True, exist_ok=True)

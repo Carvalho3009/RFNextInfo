@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import tempfile
 import threading
 import unittest
@@ -12,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.license import LicenseClient, _activation_error, verify_lease
 from app.main import App, _capture_summary
+from app.support_log import LOGGER_NAME, configure, recent_lines
 from app.updater import UPDATE_SIGNATURE_CONTEXT, verify_manifest
 
 
@@ -52,6 +54,34 @@ class AppLogicTest(unittest.TestCase):
         ))
         self.assertTrue(completed.wait(1))
         self.assertEqual(observed, [(None, "falhou")])
+
+    def test_support_log_is_sanitized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rfnext-info.log"
+            logger = configure(path, "test")
+            try:
+                logger.error(
+                    "KRV-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA "
+                    "carvalho@tuta.com 192.168.0.10 "
+                    r"C:\Users\Carlos\Documents "
+                    "123e4567-e89b-12d3-a456-426614174000"
+                )
+                try:
+                    raise RuntimeError("PersonagemSecreto")
+                except RuntimeError:
+                    logger.exception("operation_failed")
+                lines = "\n".join(recent_lines(path))
+                self.assertNotIn("KRV-AAAAA", lines)
+                self.assertNotIn("carvalho@tuta.com", lines)
+                self.assertNotIn("192.168.0.10", lines)
+                self.assertNotIn(r"C:\Users\Carlos", lines)
+                self.assertNotIn("123e4567-e89b-12d3-a456-426614174000", lines)
+                self.assertNotIn("PersonagemSecreto", lines)
+                self.assertIn("<LICENCA>", lines)
+            finally:
+                for handler in list(logging.getLogger(LOGGER_NAME).handlers):
+                    logging.getLogger(LOGGER_NAME).removeHandler(handler)
+                    handler.close()
 
     def test_signed_lease_and_site_profile(self):
         private = Ed25519PrivateKey.generate()

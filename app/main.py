@@ -17,17 +17,19 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.license import LicenseClient
+from app.support_log import configure as configure_log, recent_lines
 from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.store import CaptureStore
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 CAPTURE_DIR = Path.home() / "Documents" / "Capturas"
 EXPORT_DIR = CAPTURE_DIR / "Exportados"
 ASSETS = ROOT / "assets"
 DB_PATH = STATE_DIR / "capture.sqlite3"
 PREFERENCES_PATH = STATE_DIR / "preferences.json"
+LOG_PATH = STATE_DIR / "logs" / "rfnext-info.log"
 
 
 def _item_names() -> dict[str, str]:
@@ -167,6 +169,7 @@ class App(tk.Tk):
         self.configure(bg="#070909")
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+        self.log = configure_log(LOG_PATH, VERSION)
         self.license = LicenseClient(STATE_DIR, version=VERSION)
         self.capture = PktmonCapture(CAPTURE_DIR)
         self.store = CaptureStore(DB_PATH)
@@ -174,6 +177,7 @@ class App(tk.Tk):
         self.capture_allowed = False
         self.current_session = self.store.latest_session()
         self.tray = None
+        self._last_poll_error = ""
         self.prefs: dict = {}
         self._style()
         self._build()
@@ -440,6 +444,25 @@ class App(tk.Tk):
             style="Quiet.TButton",
             command=self.rollback,
         ).pack(anchor="w")
+        ttk.Separator(self.license_tab).pack(fill=X, pady=24)
+        ttk.Label(
+            self.license_tab, text="Suporte e aprimoramento", style="Gold.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            self.license_tab,
+            text=(
+                "Se encontrar um problema, envie o log técnico sanitizado. "
+                "O envio acontece somente após sua confirmação."
+            ),
+            style="Muted.TLabel",
+            wraplength=820,
+        ).pack(anchor="w", pady=(5, 10))
+        ttk.Button(
+            self.license_tab,
+            text="Enviar log técnico",
+            style="Quiet.TButton",
+            command=self.send_diagnostic,
+        ).pack(anchor="w")
 
     def _tutorial_ui(self) -> None:
         text = (
@@ -447,7 +470,7 @@ class App(tk.Tk):
             "2. Em Captura, informe o Profile do site e um ou dois personagens. Clique em Iniciar; o Windows pede permissão administrativa para o Pktmon nativo.\n\n"
             "3. Abra até dois clientes do RF NEXT. A identificação usa o UID confirmado de cada fluxo e a aba Informações mostra os dados separados.\n\n"
             "4. Pare a captura e aguarde a leitura. Cada parada cria uma sessão independente; capturas diferentes não são misturadas.\n\n"
-            "5. Exporte. Cada personagem recebe JSON e CSV com nome Profile-Personagem-datahora-contador. Eventos não decodificados geram diagnóstico separado, sem payload, IP, UID ou licença, e só são enviados com sua autorização.\n\n"
+            "5. Exporte. Cada personagem recebe JSON e CSV com nome Profile-Personagem-datahora-contador. Eventos não decodificados geram um diagnóstico separado e só são enviados com sua autorização. Para relatar um problema do programa, use Enviar log técnico na aba Licença.\n\n"
             "6. Confira o tamanho informado. Somente depois da exportação validada o programa oferece enviar os segmentos brutos à Lixeira.\n\n"
             "Privacidade: captura passiva local, sem injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
         )
@@ -510,6 +533,11 @@ class App(tk.Tk):
                 result = job()
                 self.after(0, lambda: done(result, None))
             except Exception as error:
+                if hasattr(self, "log"):
+                    self.log.exception(
+                        "background_job_failed job=%s",
+                        getattr(job, "__name__", type(job).__name__),
+                    )
                 self.after(0, lambda error=error: done(None, error))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -576,10 +604,12 @@ class App(tk.Tk):
         self._save_preferences()
         try:
             self.capture.start(f"rfnext-{stamp}-{counter:03d}")
+            self.log.info("capture_started ports=12000,12020,12040")
             self.capture_state.configure(
                 text="Capturando até dois clientes em TCP/12000, 12020 e 12040"
             )
         except Exception as error:
+            self.log.exception("capture_start_failed")
             messagebox.showerror("Não foi possível iniciar", str(error))
 
     def stop_capture(self) -> None:
@@ -590,8 +620,10 @@ class App(tk.Tk):
         try:
             status = self.capture.stop()
             self.last_files = list(status.files)
+            self.log.info("capture_stopped segments=%d", len(self.last_files))
             self.capture_state.configure(text="Lendo segmentos capturados…")
         except Exception as error:
+            self.log.exception("capture_stop_failed")
             return messagebox.showerror("Falha ao parar", str(error))
         session_id = self.current_session
 
@@ -604,6 +636,7 @@ class App(tk.Tk):
                     try:
                         added += store.ingest(path, session_id=session_id)
                     except Exception as error:
+                        self.log.exception("capture_segment_ingest_failed")
                         failures.append(f"{path.name}: {error}")
                 return added, failures
             finally:
@@ -614,6 +647,11 @@ class App(tk.Tk):
                 text = f"Captura encerrada · leitura falhou: {error}"
             else:
                 added, failures = result
+                self.log.info(
+                    "capture_ingested events=%d failures=%d",
+                    added,
+                    len(failures),
+                )
                 text = f"Captura encerrada · {added} eventos novos"
                 if failures:
                     text += (
@@ -713,6 +751,67 @@ class App(tk.Tk):
         if target:
             self._export_to(Path(target))
 
+    def _diagnostic_file(
+        self,
+        target: Path,
+        capture_id: str,
+        session_id: str,
+        *,
+        include_logs: bool = False,
+    ) -> Path | None:
+        return self.store.export_diagnostics(
+            target,
+            capture_id,
+            session_id,
+            logs=recent_lines(LOG_PATH) if include_logs else None,
+        )
+
+    def send_diagnostic(self) -> None:
+        if not self.license.lease:
+            return messagebox.showwarning(
+                "Diagnóstico", "Ative a licença antes de enviar."
+            )
+        if not messagebox.askyesno(
+            "Enviar log técnico",
+            "Autoriza enviar o log técnico sanitizado?\n\n"
+            "Não são incluídos payload, IP, UID, personagem, licença, chave ou token.",
+        ):
+            return
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        session_id = f"suporte-{stamp}"
+        try:
+            diagnostic = self._diagnostic_file(
+                EXPORT_DIR,
+                f"diagnostico-tecnico-{stamp}",
+                session_id,
+                include_logs=True,
+            )
+        except Exception as error:
+            self.log.exception("diagnostic_export_failed")
+            return messagebox.showerror("Diagnóstico", str(error))
+        if not diagnostic:
+            return messagebox.showinfo(
+                "Diagnóstico", "Ainda não há informações técnicas para enviar."
+            )
+        self._run(
+            lambda: self.license.upload_diagnostic(diagnostic, VERSION),
+            self._diagnostic_done,
+        )
+
+    def _diagnostic_done(self, result, error) -> None:
+        if error:
+            self.log.error(
+                "diagnostic_upload_failed error=%s", type(error).__name__
+            )
+            return messagebox.showinfo(
+                "Diagnóstico",
+                f"Não foi possível enviar. O arquivo foi preservado:\n{error}",
+            )
+        self.log.info("diagnostic_uploaded")
+        messagebox.showinfo(
+            "Diagnóstico", f"Enviado com protocolo {result.get('receipt')}."
+        )
+
     def _export_to(self, target: Path) -> None:
         if not self.current_session:
             return
@@ -763,7 +862,7 @@ class App(tk.Tk):
                 json.loads(temporary.read_text(encoding="utf-8"))
                 os.replace(temporary, result.json_path)
                 results.append(result)
-            diagnostic = self.store.export_diagnostics(
+            diagnostic = self._diagnostic_file(
                 target,
                 (
                     f"{_safe_name(profile, 'Profile')}-diagnostico-"
@@ -781,6 +880,7 @@ class App(tk.Tk):
                 self.store.session_stats(self.current_session)["raw_bytes"] or 0
             )
         except Exception as error:
+            self.log.exception("export_failed")
             return messagebox.showerror("Exportação falhou", str(error))
 
         if diagnostic and messagebox.askyesno(
@@ -791,15 +891,9 @@ class App(tk.Tk):
         ):
             self._run(
                 lambda: self.license.upload_diagnostic(diagnostic, VERSION),
-                lambda result, error: messagebox.showinfo(
-                    "Diagnóstico",
-                    (
-                        f"Enviado com protocolo {result.get('receipt')}."
-                        if not error
-                        else f"Não foi possível enviar. O arquivo foi preservado:\n{error}"
-                    ),
-                ),
+                self._diagnostic_done,
             )
+        self.log.info("export_completed characters=%d bytes=%d", len(results), total)
 
         erase = messagebox.askyesno(
             "Exportação concluída",
@@ -1013,9 +1107,20 @@ class App(tk.Tk):
             self.metrics.delete("1.0", END)
             self.metrics.insert("1.0", "\n".join(lines))
             self.metrics.configure(state="disabled")
-        except Exception:
-            pass
+            self._last_poll_error = ""
+        except Exception as error:
+            if str(error) != self._last_poll_error:
+                self._last_poll_error = str(error)
+                self.log.exception("status_poll_failed")
         self.after(1000, self._poll)
+
+    def report_callback_exception(self, exc, value, tb) -> None:
+        self.log.error("tk_callback_failed", exc_info=(exc, value, tb))
+        messagebox.showerror(
+            "Falha inesperada",
+            "O problema foi registrado. Use “Enviar log técnico” "
+            "na aba Licença para ajudar na correção.",
+        )
 
     def _close(self) -> None:
         self._save_preferences()
@@ -1058,6 +1163,7 @@ class App(tk.Tk):
         if self.tray:
             self.tray.stop()
         self.store.close()
+        self.log.info("app_closed")
         self.destroy()
 
 
