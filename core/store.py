@@ -111,6 +111,11 @@ class CaptureStore:
     def ingest(self, source: Path, *, decoder_path: Path | None = None) -> int:
         return self.add_events(source, decoded_events(source, decoder_path=decoder_path))
 
+    def clear_exported(self) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM events")
+            self.conn.execute("DELETE FROM captures")
+
     def _envelope(self, capture_id: str) -> dict[str, Any]:
         rows = self.conn.execute(
             "SELECT ts_ns,opcode,type,character_uid,data_json FROM events ORDER BY COALESCE(ts_ns,0),id"

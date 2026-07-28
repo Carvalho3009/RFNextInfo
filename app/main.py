@@ -20,7 +20,7 @@ from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.store import CaptureStore
 
-VERSION = "0.1.6-pilot"
+VERSION = "0.1.7-pilot"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 CAPTURE_DIR = Path.home() / "Documents" / "Capturas"
 ASSETS = ROOT / "assets"
@@ -327,14 +327,35 @@ class App(tk.Tk):
             json.loads(temporary.read_text(encoding="utf-8"))
             os.replace(temporary, result.json_path)
             total = result.json_path.stat().st_size + result.csv_path.stat().st_size
+            raw_files = [
+                Path(row[0])
+                for row in self.store.conn.execute("SELECT source FROM captures")
+            ]
         except Exception as error:
             return messagebox.showerror("Exportação falhou", str(error))
         erase = messagebox.askyesno(
             "Exportação concluída",
-            f"Arquivos validados: {_format_bytes(total)}.\n\nEnviar {_format_bytes(result.raw_bytes)} de segmentos brutos para a Lixeira?",
+            f"Arquivos validados: {_format_bytes(total)}.\n\n"
+            f"Enviar {_format_bytes(result.raw_bytes)} de segmentos brutos para a Lixeira "
+            "e remover do histórico local os eventos já exportados?",
         )
-        if erase and not _recycle(self.last_files):
-            messagebox.showwarning("Lixeira", "Alguns segmentos não puderam ser movidos. Nenhum apagamento permanente foi usado.")
+        if erase:
+            if not _recycle(raw_files):
+                return messagebox.showwarning(
+                    "Lixeira",
+                    "Alguns segmentos não puderam ser movidos. O histórico local foi preservado.",
+                )
+            try:
+                self.store.clear_exported()
+                self.last_files = []
+                self.capture_state.configure(
+                    text="Exportação concluída · segmentos na Lixeira · histórico local limpo"
+                )
+            except Exception as error:
+                messagebox.showerror(
+                    "Limpeza incompleta",
+                    f"Os arquivos exportados permanecem válidos, mas o histórico local não foi limpo: {error}",
+                )
 
     def check_update(self) -> None:
         self.activation_status.configure(text="Consultando GitHub…")

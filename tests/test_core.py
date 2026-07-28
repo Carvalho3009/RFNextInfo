@@ -95,6 +95,9 @@ class CoreTest(unittest.TestCase):
                 self.assertIsNone(envelope["metadata"]["license_lease"])
                 self.assertNotIn("ticket", envelope["events"][0]["data"])
                 self.assertNotIn("0x0101", [event["opcode"] for event in envelope["events"]])
+                db.clear_exported()
+                self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM events").fetchone()[0], 0)
+                self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM captures").fetchone()[0], 0)
             finally:
                 db.close()
 
