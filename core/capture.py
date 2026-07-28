@@ -37,7 +37,7 @@ class PktmonCapture:
         self,
         output_dir: Path,
         *,
-        ports: tuple[int, ...] = (12000, 12020),
+        ports: tuple[int, ...] = (12000, 12020, 12040),
         segment_mb: int = 512,
         stop_free_bytes: int = 2 * GIB,
         poll_seconds: float = 2,

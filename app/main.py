@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -20,40 +21,107 @@ from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.store import CaptureStore
 
-VERSION = "0.1.7-pilot"
+VERSION = "1.0.0"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 CAPTURE_DIR = Path.home() / "Documents" / "Capturas"
+EXPORT_DIR = CAPTURE_DIR / "Exportados"
 ASSETS = ROOT / "assets"
 DB_PATH = STATE_DIR / "capture.sqlite3"
+PREFERENCES_PATH = STATE_DIR / "preferences.json"
+
+
+def _item_names() -> dict[str, str]:
+    try:
+        return json.loads(
+            (ROOT / "core" / "item_names.json").read_text(encoding="utf-8-sig")
+        )
+    except (OSError, ValueError):
+        return {}
+
+
+ITEM_NAMES = _item_names()
 
 
 def _format_bytes(value: int) -> str:
+    number = float(value)
     for unit in ("B", "KB", "MB", "GB", "TB"):
-        if value < 1024 or unit == "TB":
-            return f"{value:.1f} {unit}" if unit != "B" else f"{value} B"
-        value /= 1024
+        if number < 1024 or unit == "TB":
+            return f"{number:.1f} {unit}" if unit != "B" else f"{int(number)} B"
+        number /= 1024
+    return f"{number:.1f} TB"
+
+
+def _safe_name(value: str, fallback: str) -> str:
+    value = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "-", value.strip())
+    value = re.sub(r"\s+", "-", value).strip(".- ")
+    return (value or fallback)[:50]
 
 
 def _capture_summary(envelope: dict) -> tuple[dict, dict[str, list[int]]]:
-    summary = {"character": "", "level": None, "exp": None, "market_events": 0}
+    summary = {
+        "character": "",
+        "level": None,
+        "exp": None,
+        "exp_percent": None,
+        "exp_gained": 0,
+        "credits": 0,
+        "contribution": None,
+        "market_events": 0,
+        "kills": 0,
+        "loot": [],
+    }
     marks: dict[str, list[int]] = {}
     for event in envelope.get("events", []):
         data = event.get("data") or {}
         fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
         summary["character"] = str(
-            fields.get("character_name") or fields.get("character") or summary["character"]
+            fields.get("character_name")
+            or fields.get("character")
+            or summary["character"]
         )
         summary["level"] = fields.get("level", summary["level"])
-        summary["exp"] = fields.get("exp", fields.get("gain_exp", summary["exp"]))
-        if "exchange" in event.get("type", "").lower() or "market" in event.get("type", "").lower():
+        summary["exp"] = fields.get("exp", summary["exp"])
+        summary["exp_percent"] = fields.get(
+            "exp_percent", summary["exp_percent"]
+        )
+        if isinstance(fields.get("gain_exp"), (int, float)):
+            summary["exp_gained"] += fields["gain_exp"]
+        for credit_key in ("gain_credit", "credit_gain", "credits"):
+            if isinstance(fields.get(credit_key), (int, float)):
+                summary["credits"] += fields[credit_key]
+                break
+        if isinstance(fields.get("contribution_total"), (int, float)):
+            summary["contribution"] = fields["contribution_total"]
+        kind = str(event.get("type", "")).lower()
+        if "exchange" in kind or "market" in kind:
             summary["market_events"] += 1
-        for record in data.get("records", []) if isinstance(data.get("records"), list) else []:
+        if event.get("type") == "drop_item_field":
+            summary["kills"] += 1
+            for item in data.get("results", []):
+                summary["loot"].append(
+                    {
+                        "item": (
+                            item.get("item_name")
+                            or ITEM_NAMES.get(str(item.get("item_index")))
+                            or item.get("item_index")
+                        ),
+                        "count": item.get("count"),
+                        "gain_total": item.get("gain_total"),
+                    }
+                )
+        for record in (
+            data.get("records", []) if isinstance(data.get("records"), list) else []
+        ):
             collection_id = record.get("collection_index")
             slots = record.get("completed_slots")
             if collection_id is not None and isinstance(slots, list):
-                marks[str(collection_id)] = sorted({
-                    int(slot) + 1 for slot in slots if isinstance(slot, int) and 0 <= slot < 10
-                })
+                marks[str(collection_id)] = sorted(
+                    {
+                        int(slot) + 1
+                        for slot in slots
+                        if isinstance(slot, int) and 0 <= slot < 10
+                    }
+                )
     return summary, marks
 
 
@@ -64,25 +132,38 @@ def _recycle(paths: list[Path]) -> bool:
 
     class SHFILEOPSTRUCTW(ctypes.Structure):
         _fields_ = [
-            ("hwnd", ctypes.c_void_p), ("wFunc", ctypes.c_uint),
-            ("pFrom", ctypes.c_wchar_p), ("pTo", ctypes.c_wchar_p),
-            ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", ctypes.c_bool),
-            ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", ctypes.c_wchar_p),
+            ("hwnd", ctypes.c_void_p),
+            ("wFunc", ctypes.c_uint),
+            ("pFrom", ctypes.c_wchar_p),
+            ("pTo", ctypes.c_wchar_p),
+            ("fFlags", ctypes.c_ushort),
+            ("fAnyOperationsAborted", ctypes.c_bool),
+            ("hNameMappings", ctypes.c_void_p),
+            ("lpszProgressTitle", ctypes.c_wchar_p),
         ]
 
     operation = SHFILEOPSTRUCTW(
-        None, 3, "\0".join(existing) + "\0\0", None,
-        0x0040 | 0x0010 | 0x0400, False, None, None,
+        None,
+        3,
+        "\0".join(existing) + "\0\0",
+        None,
+        0x0040 | 0x0010 | 0x0400,
+        False,
+        None,
+        None,
     )
-    return ctypes.windll.shell32.SHFileOperationW(ctypes.byref(operation)) == 0 and not operation.fAnyOperationsAborted
+    return (
+        ctypes.windll.shell32.SHFileOperationW(ctypes.byref(operation)) == 0
+        and not operation.fAnyOperationsAborted
+    )
 
 
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title(f"RF NEXT INFO · Karvalho · {VERSION}")
-        self.geometry("980x680")
-        self.minsize(820, 610)
+        self.geometry("1020x740")
+        self.minsize(860, 650)
         self.configure(bg="#070909")
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
@@ -91,10 +172,13 @@ class App(tk.Tk):
         self.store = CaptureStore(DB_PATH)
         self.last_files: list[Path] = []
         self.capture_allowed = False
+        self.current_session = self.store.latest_session()
         self.tray = None
+        self.prefs: dict = {}
         self._style()
         self._build()
         self._load_preferences()
+        self._refresh_info()
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.bind("<Control-F8>", lambda _: self.start_capture())
         self.bind("<Control-F9>", lambda _: self.stop_capture())
@@ -103,20 +187,50 @@ class App(tk.Tk):
     def _style(self) -> None:
         style = ttk.Style(self)
         style.theme_use("clam")
-        style.configure(".", background="#070909", foreground="#F4F2EB", font=("Segoe UI", 10))
+        style.configure(
+            ".", background="#070909", foreground="#F4F2EB", font=("Segoe UI", 10)
+        )
         style.configure("TFrame", background="#070909")
-        style.configure("Panel.TFrame", background="#0d1110", bordercolor="#6d5428", relief="solid")
+        style.configure(
+            "Panel.TFrame",
+            background="#0d1110",
+            bordercolor="#6d5428",
+            relief="solid",
+        )
         style.configure("TLabel", background="#070909", foreground="#F4F2EB")
         style.configure("Muted.TLabel", foreground="#b9b5aa")
-        style.configure("Gold.TLabel", foreground="#D4A64D", font=("Segoe UI Semibold", 12))
-        style.configure("Title.TLabel", foreground="#F4F2EB", font=("Segoe UI Semibold", 23))
-        style.configure("TButton", background="#D4A64D", foreground="#070909", padding=(13, 9))
-        style.map("TButton", background=[("active", "#e1b75f"), ("disabled", "#6d5428")])
+        style.configure(
+            "Gold.TLabel", foreground="#D4A64D", font=("Segoe UI Semibold", 12)
+        )
+        style.configure(
+            "Title.TLabel", foreground="#F4F2EB", font=("Segoe UI Semibold", 23)
+        )
+        style.configure(
+            "TButton", background="#D4A64D", foreground="#070909", padding=(13, 9)
+        )
+        style.map(
+            "TButton",
+            background=[("active", "#e1b75f"), ("disabled", "#6d5428")],
+        )
         style.configure("Quiet.TButton", background="#111614", foreground="#F4F2EB")
         style.configure("TNotebook", background="#070909", borderwidth=0)
-        style.configure("TNotebook.Tab", background="#111614", foreground="#b9b5aa", padding=(14, 9))
-        style.map("TNotebook.Tab", background=[("selected", "#D4A64D")], foreground=[("selected", "#070909")])
-        style.configure("TEntry", fieldbackground="#050707", foreground="#F4F2EB", insertcolor="#F4F2EB")
+        style.configure(
+            "TNotebook.Tab",
+            background="#111614",
+            foreground="#b9b5aa",
+            padding=(14, 9),
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", "#D4A64D")],
+            foreground=[("selected", "#070909")],
+        )
+        style.configure(
+            "TEntry",
+            fieldbackground="#050707",
+            foreground="#F4F2EB",
+            insertcolor="#F4F2EB",
+        )
 
     def _build(self) -> None:
         header = ttk.Frame(self, padding=(22, 18))
@@ -128,25 +242,35 @@ class App(tk.Tk):
                 self.logo = self.logo.subsample(ratio, ratio)
             ttk.Label(header, image=self.logo).pack(side=LEFT, padx=(0, 22))
         except tk.TclError:
-            ttk.Label(header, text="KARVALHO", style="Gold.TLabel").pack(side=LEFT, padx=(0, 22))
+            ttk.Label(header, text="KARVALHO", style="Gold.TLabel").pack(
+                side=LEFT, padx=(0, 22)
+            )
         title = ttk.Frame(header)
         title.pack(side=LEFT)
         ttk.Label(title, text="RF NEXT INFO", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(title, text="Captura passiva, leitura local e exportação controlada.", style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(
+            title,
+            text="Captura passiva, leitura local e exportação controlada.",
+            style="Muted.TLabel",
+        ).pack(anchor="w")
 
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill=BOTH, expand=True, padx=22, pady=(0, 12))
         self.capture_tab = ttk.Frame(self.tabs, padding=18)
+        self.info_tab = ttk.Frame(self.tabs, padding=18)
         self.license_tab = ttk.Frame(self.tabs, padding=18)
         self.tutorial_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.capture_tab, text="Captura")
+        self.tabs.add(self.info_tab, text="Informações")
         self.tabs.add(self.license_tab, text="Licença")
         self.tabs.add(self.tutorial_tab, text="Tutorial")
         self._capture_ui()
+        self._info_ui()
         self._license_ui()
         self._tutorial_ui()
         ttk.Label(
-            self, text=f"Discord: Carvalho  ·  carvalho@tuta.com  ·  {VERSION}",
+            self,
+            text=f"Discord: Carvalho  ·  carvalho@tuta.com  ·  {VERSION}",
             style="Muted.TLabel",
         ).pack(pady=(0, 15))
 
@@ -155,75 +279,230 @@ class App(tk.Tk):
         status.pack(fill=X)
         self.capture_state = ttk.Label(status, text="Pronto", style="Gold.TLabel")
         self.capture_state.grid(row=0, column=0, sticky="w")
-        self.license_state = ttk.Label(status, text="Licença: verificando", style="Muted.TLabel")
+        self.license_state = ttk.Label(
+            status, text="Licença: verificando", style="Muted.TLabel"
+        )
         self.license_state.grid(row=1, column=0, sticky="w", pady=(5, 0))
-        self.storage_state = ttk.Label(status, text="Armazenamento: calculando", style="Muted.TLabel")
+        self.storage_state = ttk.Label(
+            status, text="Armazenamento: calculando", style="Muted.TLabel"
+        )
         self.storage_state.grid(row=2, column=0, sticky="w", pady=(5, 0))
         buttons = ttk.Frame(self.capture_tab, padding=(0, 18))
         buttons.pack(fill=X)
-        self.start_button = ttk.Button(buttons, text="Iniciar captura  Ctrl+F8", command=self.start_capture)
+        self.start_button = ttk.Button(
+            buttons, text="Iniciar captura  Ctrl+F8", command=self.start_capture
+        )
         self.start_button.pack(side=LEFT)
-        self.stop_button = ttk.Button(buttons, text="Parar  Ctrl+F9", style="Quiet.TButton", command=self.stop_capture)
+        self.stop_button = ttk.Button(
+            buttons,
+            text="Parar  Ctrl+F9",
+            style="Quiet.TButton",
+            command=self.stop_capture,
+        )
         self.stop_button.pack(side=LEFT, padx=10)
-        ttk.Button(buttons, text="Exportar JSON + CSV", style="Quiet.TButton", command=self.export).pack(side=LEFT)
+        ttk.Button(
+            buttons,
+            text="Exportar JSON + CSV",
+            style="Quiet.TButton",
+            command=self.export,
+        ).pack(side=LEFT)
+
         profile = ttk.Frame(self.capture_tab, style="Panel.TFrame", padding=18)
         profile.pack(fill=X)
-        ttk.Label(profile, text="Personagem para o site", style="Gold.TLabel").pack(anchor="w")
-        self.character = ttk.Entry(profile)
-        self.character.pack(fill=X, pady=(8, 0))
-        ttk.Label(profile, text="Use o nome exatamente como está cadastrado no site.", style="Muted.TLabel").pack(anchor="w", pady=(5, 0))
+        ttk.Label(profile, text="Profile do site", style="Gold.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(profile, text="Personagem 1", style="Gold.TLabel").grid(
+            row=0, column=1, sticky="w", padx=(14, 0)
+        )
+        ttk.Label(profile, text="Personagem 2 (opcional)", style="Gold.TLabel").grid(
+            row=0, column=2, sticky="w", padx=(14, 0)
+        )
+        self.profile = ttk.Entry(profile)
+        self.character1 = ttk.Entry(profile)
+        self.character2 = ttk.Entry(profile)
+        self.profile.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        self.character1.grid(
+            row=1, column=1, sticky="ew", padx=(14, 0), pady=(8, 0)
+        )
+        self.character2.grid(
+            row=1, column=2, sticky="ew", padx=(14, 0), pady=(8, 0)
+        )
+        for column in range(3):
+            profile.columnconfigure(column, weight=1)
+        ttk.Label(
+            profile,
+            text=(
+                "A identidade automática usa o UID confirmado do fluxo. "
+                "Os nomes acima são o fallback para o site."
+            ),
+            style="Muted.TLabel",
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(7, 0))
+        self.auto_export = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            profile,
+            text="Exportar automaticamente ao parar para Documentos\\Capturas\\Exportados",
+            variable=self.auto_export,
+            command=self._save_preferences,
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(9, 0))
+
         self.metrics = tk.Text(
-            self.capture_tab, height=12, bg="#050707", fg="#F4F2EB", insertbackground="#F4F2EB",
-            relief="solid", borderwidth=1, highlightthickness=1, highlightbackground="#6d5428",
-            font=("Consolas", 10), state="disabled",
+            self.capture_tab,
+            height=10,
+            bg="#050707",
+            fg="#F4F2EB",
+            insertbackground="#F4F2EB",
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground="#6d5428",
+            font=("Consolas", 10),
+            state="disabled",
         )
         self.metrics.pack(fill=BOTH, expand=True, pady=(18, 0))
 
+    def _info_ui(self) -> None:
+        ttk.Label(
+            self.info_tab, text="Informações da sessão", style="Title.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            self.info_tab,
+            text=(
+                "Valores são separados pela identidade confirmada do personagem. "
+                "Campos ainda não decodificados permanecem como —."
+            ),
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(5, 12))
+        self.info_text = tk.Text(
+            self.info_tab,
+            bg="#050707",
+            fg="#F4F2EB",
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground="#6d5428",
+            font=("Consolas", 10),
+            state="disabled",
+        )
+        self.info_text.pack(fill=BOTH, expand=True)
+
     def _license_ui(self) -> None:
-        ttk.Label(self.license_tab, text="Ativar instalação", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(
+            self.license_tab, text="Ativar instalação", style="Title.TLabel"
+        ).pack(anchor="w")
         ttk.Label(
             self.license_tab,
-            text="A chave é enviada uma vez e não fica salva neste computador. A instalação valida a cada 24 horas e possui até 72 horas offline.",
-            style="Muted.TLabel", wraplength=760,
+            text=(
+                "A ativação fica lembrada neste computador e é preservada nas "
+                "atualizações. A chave é enviada uma vez e não fica salva; "
+                "a licença valida a cada 24 horas e possui até 72 horas offline."
+            ),
+            style="Muted.TLabel",
+            wraplength=820,
         ).pack(anchor="w", pady=(6, 16))
         self.key_entry = ttk.Entry(self.license_tab, show="•")
         self.key_entry.pack(fill=X)
-        ttk.Button(self.license_tab, text="Ativar licença", command=self.activate).pack(anchor="w", pady=12)
-        self.activation_status = ttk.Label(self.license_tab, text="", style="Muted.TLabel", wraplength=760)
+        ttk.Button(
+            self.license_tab, text="Ativar licença", command=self.activate
+        ).pack(anchor="w", pady=12)
+        self.activation_status = ttk.Label(
+            self.license_tab, text="", style="Muted.TLabel", wraplength=820
+        )
         self.activation_status.pack(anchor="w")
         ttk.Separator(self.license_tab).pack(fill=X, pady=24)
-        ttk.Label(self.license_tab, text="Atualizações", style="Gold.TLabel").pack(anchor="w")
+        ttk.Label(
+            self.license_tab, text="Atualizações", style="Gold.TLabel"
+        ).pack(anchor="w")
         self.channel = tk.StringVar(value="stable")
-        ttk.Radiobutton(self.license_tab, text="Estável", value="stable", variable=self.channel).pack(anchor="w")
-        ttk.Radiobutton(self.license_tab, text="Beta", value="beta", variable=self.channel).pack(anchor="w")
-        ttk.Button(self.license_tab, text="Verificar atualização", style="Quiet.TButton", command=self.check_update).pack(anchor="w", pady=12)
-        ttk.Button(self.license_tab, text="Abrir versão anterior", style="Quiet.TButton", command=self.rollback).pack(anchor="w")
+        ttk.Radiobutton(
+            self.license_tab,
+            text="Estável",
+            value="stable",
+            variable=self.channel,
+            command=self._save_preferences,
+        ).pack(anchor="w")
+        ttk.Radiobutton(
+            self.license_tab,
+            text="Beta",
+            value="beta",
+            variable=self.channel,
+            command=self._save_preferences,
+        ).pack(anchor="w")
+        ttk.Button(
+            self.license_tab,
+            text="Verificar atualização",
+            style="Quiet.TButton",
+            command=self.check_update,
+        ).pack(anchor="w", pady=12)
+        ttk.Button(
+            self.license_tab,
+            text="Abrir versão anterior",
+            style="Quiet.TButton",
+            command=self.rollback,
+        ).pack(anchor="w")
 
     def _tutorial_ui(self) -> None:
         text = (
-            "1. Abra a aba Licença e ative esta instalação.\n\n"
-            "2. Em Captura, informe o personagem e clique em Iniciar. O Windows pode pedir permissão de administrador porque o Pktmon é uma ferramenta nativa de rede.\n\n"
-            "3. Deixe o jogo rodar normalmente. A tela mostra volume capturado, espaço livre e eventos reconhecidos. Amarelo: 5 GB. Vermelho: 10 GB ou menos de 10% livre. A captura para com segurança abaixo de 2 GB livres.\n\n"
-            "4. Clique em Parar e aguarde a leitura dos segmentos. Kills são estimadas por eventos de recompensa; dados não confirmados não são exibidos como fatos.\n\n"
-            "5. Clique em Exportar JSON + CSV. O tamanho será mostrado e você poderá enviar os segmentos brutos para a Lixeira somente depois da validação dos arquivos.\n\n"
-            "Privacidade: captura passiva local, sem injeção no jogo, sem token de sessão, sem atualização silenciosa e sem telemetria."
+            "1. Ative esta instalação na aba Licença. A ativação será lembrada nas próximas aberturas.\n\n"
+            "2. Em Captura, informe o Profile do site e um ou dois personagens. Clique em Iniciar; o Windows pede permissão administrativa para o Pktmon nativo.\n\n"
+            "3. Abra até dois clientes do RF NEXT. A identificação usa o UID confirmado de cada fluxo e a aba Informações mostra os dados separados.\n\n"
+            "4. Pare a captura e aguarde a leitura. Cada parada cria uma sessão independente; capturas diferentes não são misturadas.\n\n"
+            "5. Exporte. Cada personagem recebe JSON e CSV com nome Profile-Personagem-datahora-contador. Eventos não decodificados geram diagnóstico separado, sem payload, IP, UID ou licença, e só são enviados com sua autorização.\n\n"
+            "6. Confira o tamanho informado. Somente depois da exportação validada o programa oferece enviar os segmentos brutos à Lixeira.\n\n"
+            "Privacidade: captura passiva local, sem injeção no jogo, token de sessão, atualização silenciosa ou telemetria."
         )
-        ttk.Label(self.tutorial_tab, text="Comece em cinco passos", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(self.tutorial_tab, text=text, wraplength=820, justify=LEFT, style="Muted.TLabel").pack(anchor="w", pady=15)
+        ttk.Label(
+            self.tutorial_tab, text="Comece em seis passos", style="Title.TLabel"
+        ).pack(anchor="w")
+        ttk.Label(
+            self.tutorial_tab,
+            text=text,
+            wraplength=850,
+            justify=LEFT,
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=15)
 
     def _load_preferences(self) -> None:
-        path = STATE_DIR / "preferences.json"
         try:
-            prefs = json.loads(path.read_text(encoding="utf-8"))
+            self.prefs = json.loads(PREFERENCES_PATH.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            prefs = {}
-        if "minimize_to_tray" not in prefs:
-            prefs["minimize_to_tray"] = messagebox.askyesno(
+            self.prefs = {}
+        if "minimize_to_tray" not in self.prefs:
+            self.prefs["minimize_to_tray"] = messagebox.askyesno(
                 "Comportamento ao fechar",
-                "Ao fechar a janela, manter a captura visível na área de notificação?\n\nVocê poderá encerrar pelo ícone Karvalho.",
+                "Ao fechar a janela, manter a captura visível na área de notificação?\n\n"
+                "Você poderá encerrar pelo ícone Karvalho.",
             )
-            path.write_text(json.dumps(prefs), encoding="utf-8")
-        self.minimize_to_tray = bool(prefs["minimize_to_tray"])
+        self.minimize_to_tray = bool(self.prefs["minimize_to_tray"])
+        self.profile.insert(0, str(self.prefs.get("profile", "")))
+        self.character1.insert(0, str(self.prefs.get("character1", "")))
+        self.character2.insert(0, str(self.prefs.get("character2", "")))
+        self.auto_export.set(bool(self.prefs.get("auto_export", False)))
+        self.channel.set(
+            self.prefs.get("channel")
+            if self.prefs.get("channel") in {"stable", "beta"}
+            else "stable"
+        )
+        self._save_preferences()
+
+    def _save_preferences(self) -> None:
+        self.prefs.update(
+            {
+                "profile": self.profile.get().strip(),
+                "character1": self.character1.get().strip(),
+                "character2": self.character2.get().strip(),
+                "auto_export": self.auto_export.get(),
+                "channel": self.channel.get(),
+                "last_session": self.current_session,
+            }
+        )
+        PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temporary = PREFERENCES_PATH.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(self.prefs, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(temporary, PREFERENCES_PATH)
 
     def _run(self, job, done) -> None:
         def worker():
@@ -232,6 +511,7 @@ class App(tk.Tk):
                 self.after(0, lambda: done(result, None))
             except Exception as error:
                 self.after(0, lambda error=error: done(None, error))
+
         threading.Thread(target=worker, daemon=True).start()
 
     def activate(self) -> None:
@@ -247,35 +527,73 @@ class App(tk.Tk):
     def _activation_done(self, claims, error) -> None:
         self.key_entry.delete(0, END)
         if error:
-            self.activation_status.configure(text=f"Não foi possível ativar: {error}")
+            self.activation_status.configure(
+                text=f"Não foi possível ativar: {error}"
+            )
             return
-        self.activation_status.configure(text=f"Instalação ativa até {claims['valid_until']}.")
+        self.activation_status.configure(
+            text=f"Instalação ativa até {claims['valid_until']}."
+        )
         self._refresh_license()
 
     def _refresh_license(self) -> tuple[bool, str]:
         allowed, message = self.license.refresh_if_due(VERSION)
         self.capture_allowed = allowed
         self.license_state.configure(text=f"Licença: {message}")
-        self.start_button.configure(state="normal" if allowed and not self.capture.status().active else "disabled")
+        self.start_button.configure(
+            state="normal"
+            if allowed and not self.capture.status().active
+            else "disabled"
+        )
         return allowed, message
 
     def start_capture(self) -> None:
         allowed, message = self._refresh_license()
         if not allowed:
             return messagebox.showwarning("Captura bloqueada", message)
+        profile = self.profile.get().strip()
+        characters = [
+            name
+            for name in (
+                self.character1.get().strip(),
+                self.character2.get().strip(),
+            )
+            if name
+        ]
+        if not profile or not characters:
+            return messagebox.showwarning(
+                "Identificação",
+                "Informe o Profile do site e pelo menos um personagem.",
+            )
+        self.prefs["session_counter"] = int(
+            self.prefs.get("session_counter", 0)
+        ) + 1
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        counter = int(self.prefs["session_counter"])
+        self.current_session = (
+            f"{_safe_name(profile, 'Profile')}-{stamp}-{counter:03d}"
+        )
+        self._save_preferences()
         try:
-            self.capture.start(datetime.now().strftime("rfnext-%Y%m%d-%H%M%S"))
-            self.capture_state.configure(text="Capturando TCP/12000 e TCP/12020")
+            self.capture.start(f"rfnext-{stamp}-{counter:03d}")
+            self.capture_state.configure(
+                text="Capturando até dois clientes em TCP/12000, 12020 e 12040"
+            )
         except Exception as error:
             messagebox.showerror("Não foi possível iniciar", str(error))
 
     def stop_capture(self) -> None:
+        if not self.current_session:
+            return messagebox.showwarning(
+                "Sessão", "Não existe sessão atual para encerrar."
+            )
         try:
             status = self.capture.stop()
             self.last_files = list(status.files)
             self.capture_state.configure(text="Lendo segmentos capturados…")
         except Exception as error:
             return messagebox.showerror("Falha ao parar", str(error))
+        session_id = self.current_session
 
         def ingest():
             store = CaptureStore(DB_PATH)
@@ -284,7 +602,7 @@ class App(tk.Tk):
                 failures = []
                 for path in self.last_files:
                     try:
-                        added += store.ingest(path)
+                        added += store.ingest(path, session_id=session_id)
                     except Exception as error:
                         failures.append(f"{path.name}: {error}")
                 return added, failures
@@ -298,64 +616,290 @@ class App(tk.Tk):
                 added, failures = result
                 text = f"Captura encerrada · {added} eventos novos"
                 if failures:
-                    text += f" · {len(failures)} segmento(s) ignorado(s): " + "; ".join(failures)
+                    text += (
+                        f" · {len(failures)} segmento(s) ignorado(s): "
+                        + "; ".join(failures)
+                    )
             self.capture_state.configure(text=text)
+            self._refresh_info()
+            if not error and self.auto_export.get():
+                self._export_to(EXPORT_DIR)
 
         self._run(ingest, ingest_done)
 
+    def _session_parts(self) -> tuple[str, int]:
+        match = re.search(r"-(\d{8}-\d{6})-(\d+)$", self.current_session or "")
+        if match:
+            return match.group(1), int(match.group(2))
+        return datetime.now().strftime("%Y%m%d-%H%M%S"), int(
+            self.prefs.get("session_counter", 0)
+        )
+
+    def _character_exports(self) -> list[dict[str, str | bool | None]]:
+        if not self.current_session:
+            return []
+        detected = self.store.session_profiles(self.current_session)
+        manual = [
+            name
+            for name in (
+                self.character1.get().strip(),
+                self.character2.get().strip(),
+            )
+            if name
+        ]
+        if len(detected) > 2:
+            raise ValueError(
+                "Mais de dois personagens foram identificados nesta sessão."
+            )
+        stats = self.store.session_stats(self.current_session)
+        if len(detected) > 1 and int(stats["unassigned"] or 0):
+            raise ValueError(
+                "Há eventos reconhecidos sem UID nesta sessão; a exportação foi "
+                "bloqueada para não misturar os dois personagens."
+            )
+        if not detected:
+            if len(manual) > 1:
+                raise ValueError(
+                    "Dois personagens foram informados, mas a captura não trouxe "
+                    "UID suficiente para separar os eventos com segurança."
+                )
+            return [
+                {
+                    "uid": None,
+                    "name": manual[0] if manual else "Nao-identificado",
+                    "include_unassigned": True,
+                }
+            ]
+        unused = manual.copy()
+        result = []
+        for index, item in enumerate(detected):
+            name = item["name"]
+            match = next(
+                (
+                    candidate
+                    for candidate in unused
+                    if candidate.casefold() == name.casefold()
+                ),
+                None,
+            )
+            if match:
+                unused.remove(match)
+                name = match
+            elif not name and unused:
+                name = unused.pop(0)
+            result.append(
+                {
+                    "uid": item["uid"],
+                    "name": name or f"Personagem-{index + 1}",
+                    "include_unassigned": len(detected) == 1,
+                }
+            )
+        return result
+
     def export(self) -> None:
         if not self.license.lease:
-            return messagebox.showwarning("Exportação", "Ative a licença antes de exportar.")
-        target = filedialog.askdirectory(title="Escolha a pasta de exportação", initialdir=str(CAPTURE_DIR))
-        if not target:
-            return
-        capture_id = datetime.now().strftime("rfnext-info-%Y%m%d-%H%M%S")
-        try:
-            result = self.store.export(Path(target), capture_id)
-            envelope = json.loads(result.json_path.read_text(encoding="utf-8"))
-            detected, marks = _capture_summary(envelope)
-            name = self.character.get().strip() or detected["character"]
-            envelope["metadata"].update(
-                installation_id=self.license.installation_id,
-                license_lease=self.license.lease,
-                app_version=VERSION,
+            return messagebox.showwarning(
+                "Exportação", "Ative a licença antes de exportar."
             )
-            envelope["capture"] = detected
-            envelope["profiles"] = [{"name": name, "marks": marks}] if name else []
-            temporary = result.json_path.with_suffix(".json.tmp")
-            temporary.write_text(json.dumps(envelope, ensure_ascii=False, indent=2), encoding="utf-8")
-            json.loads(temporary.read_text(encoding="utf-8"))
-            os.replace(temporary, result.json_path)
-            total = result.json_path.stat().st_size + result.csv_path.stat().st_size
-            raw_files = [
-                Path(row[0])
-                for row in self.store.conn.execute("SELECT source FROM captures")
-            ]
+        if not self.current_session:
+            self.current_session = self.store.latest_session()
+        if not self.current_session:
+            return messagebox.showwarning(
+                "Exportação", "Nenhuma sessão capturada está disponível."
+            )
+        target = filedialog.askdirectory(
+            title="Escolha a pasta de exportação", initialdir=str(EXPORT_DIR)
+        )
+        if target:
+            self._export_to(Path(target))
+
+    def _export_to(self, target: Path) -> None:
+        if not self.current_session:
+            return
+        profile = self.profile.get().strip() or "Profile"
+        stamp, counter = self._session_parts()
+        try:
+            characters = self._character_exports()
+            results = []
+            for character in characters:
+                name = str(character["name"])
+                capture_id = (
+                    f"{_safe_name(profile, 'Profile')}-"
+                    f"{_safe_name(name, 'Personagem')}-{stamp}-{counter:03d}"
+                )
+                result = self.store.export(
+                    target,
+                    capture_id,
+                    session_id=self.current_session,
+                    character_uid=character["uid"],
+                    include_unassigned=bool(character["include_unassigned"]),
+                    context={
+                        "profile": profile,
+                        "character_name": name,
+                        "installation_id": self.license.installation_id,
+                        "license_lease": self.license.lease,
+                        "app_version": VERSION,
+                        "session_counter": counter,
+                    },
+                )
+                envelope = json.loads(
+                    result.json_path.read_text(encoding="utf-8")
+                )
+                detected, marks = _capture_summary(envelope)
+                envelope["capture"] = detected
+                envelope["profiles"] = [
+                    {
+                        "profile": profile,
+                        "name": name,
+                        "character_uid": character["uid"],
+                        "marks": marks,
+                    }
+                ]
+                temporary = result.json_path.with_suffix(".json.tmp")
+                temporary.write_text(
+                    json.dumps(envelope, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                json.loads(temporary.read_text(encoding="utf-8"))
+                os.replace(temporary, result.json_path)
+                results.append(result)
+            diagnostic = self.store.export_diagnostics(
+                target,
+                (
+                    f"{_safe_name(profile, 'Profile')}-diagnostico-"
+                    f"{stamp}-{counter:03d}"
+                ),
+                self.current_session,
+            )
+            total = sum(
+                result.json_path.stat().st_size
+                + result.csv_path.stat().st_size
+                for result in results
+            ) + (diagnostic.stat().st_size if diagnostic else 0)
+            raw_files = self.store.session_sources(self.current_session)
+            raw_bytes = int(
+                self.store.session_stats(self.current_session)["raw_bytes"] or 0
+            )
         except Exception as error:
             return messagebox.showerror("Exportação falhou", str(error))
+
+        if diagnostic and messagebox.askyesno(
+            "Diagnóstico sanitizado",
+            "Existem eventos ainda não decodificados. O arquivo separado não "
+            "contém payload, IP, UID, personagem ou licença.\n\n"
+            "Autoriza enviar ao desenvolvedor?",
+        ):
+            self._run(
+                lambda: self.license.upload_diagnostic(diagnostic, VERSION),
+                lambda result, error: messagebox.showinfo(
+                    "Diagnóstico",
+                    (
+                        f"Enviado com protocolo {result.get('receipt')}."
+                        if not error
+                        else f"Não foi possível enviar. O arquivo foi preservado:\n{error}"
+                    ),
+                ),
+            )
+
         erase = messagebox.askyesno(
             "Exportação concluída",
-            f"Arquivos validados: {_format_bytes(total)}.\n\n"
-            f"Enviar {_format_bytes(result.raw_bytes)} de segmentos brutos para a Lixeira "
-            "e remover do histórico local os eventos já exportados?",
+            f"{len(results)} personagem(ns), JSON + CSV validados: "
+            f"{_format_bytes(total)}.\n\n"
+            f"Enviar {_format_bytes(raw_bytes)} de segmentos desta sessão para "
+            "a Lixeira e remover somente esta sessão do histórico local?",
         )
         if erase:
             if not _recycle(raw_files):
                 return messagebox.showwarning(
                     "Lixeira",
-                    "Alguns segmentos não puderam ser movidos. O histórico local foi preservado.",
+                    "Alguns segmentos não puderam ser movidos. "
+                    "O histórico local foi preservado.",
                 )
             try:
-                self.store.clear_exported()
+                self.store.clear_exported(self.current_session)
                 self.last_files = []
                 self.capture_state.configure(
-                    text="Exportação concluída · segmentos na Lixeira · histórico local limpo"
+                    text="Exportação concluída · sessão enviada à Lixeira"
                 )
+                self.current_session = self.store.latest_session()
+                self._save_preferences()
+                self._refresh_info()
             except Exception as error:
                 messagebox.showerror(
                     "Limpeza incompleta",
-                    f"Os arquivos exportados permanecem válidos, mas o histórico local não foi limpo: {error}",
+                    "Os arquivos exportados permanecem válidos, mas a sessão "
+                    f"local não foi limpa: {error}",
                 )
+
+    def _refresh_info(self) -> None:
+        lines = []
+        if not self.current_session:
+            lines = ["Nenhuma sessão disponível."]
+        else:
+            stats = self.store.session_stats(self.current_session)
+            started, ended = stats["started_ns"], stats["ended_ns"]
+            duration = (
+                max(0, int((ended - started) / 1_000_000_000))
+                if isinstance(started, int) and isinstance(ended, int)
+                else 0
+            )
+            lines.extend(
+                [
+                    f"Sessão              {self.current_session}",
+                    f"Tempo               {duration // 60}m {duration % 60}s",
+                    f"Eventos reconhecidos {stats['recognized']}",
+                    f"Sem personagem       {stats['unassigned']}",
+                    f"Não decodificados   {stats['unknown']}",
+                    f"Dados brutos         {_format_bytes(int(stats['raw_bytes'] or 0))}",
+                    "",
+                ]
+            )
+            try:
+                characters = self._character_exports()
+            except ValueError as error:
+                lines.extend([f"Separação pendente  {error}", ""])
+                characters = []
+            for character in characters:
+                envelope = self.store.session_envelope(
+                    self.current_session,
+                    character["uid"],
+                    bool(character["include_unassigned"]),
+                )
+                summary, _ = _capture_summary(envelope)
+                exp_percent = summary["exp_percent"]
+                exp_percent_text = (
+                    f"{exp_percent:.2f}%"
+                    if isinstance(exp_percent, (int, float))
+                    else "—"
+                )
+                lines.extend(
+                    [
+                        f"[{character['name']}]",
+                        f"UID                 {character['uid'] or 'aguardando identificação'}",
+                        f"Level               {summary['level'] if summary['level'] is not None else '—'}",
+                        f"EXP                 {summary['exp'] if summary['exp'] is not None else '—'}",
+                        f"EXP no level        {exp_percent_text}",
+                        f"EXP obtida          {summary['exp_gained']}",
+                        f"Créditos            {summary['credits'] if summary['credits'] else '—'}",
+                        f"Contribuição        {summary['contribution'] if summary['contribution'] is not None else '—'}",
+                        f"Mercado             {summary['market_events']} evento(s)",
+                        f"Kills estimadas     {summary['kills']} (proxy por recompensa)",
+                        "Loot                "
+                        + (
+                            ", ".join(
+                                f"{item['item']} x{item['count']}"
+                                for item in summary["loot"][:10]
+                            )
+                            if summary["loot"]
+                            else "—"
+                        ),
+                        "",
+                    ]
+                )
+        self.info_text.configure(state="normal")
+        self.info_text.delete("1.0", END)
+        self.info_text.insert("1.0", "\n".join(lines))
+        self.info_text.configure(state="disabled")
 
     def check_update(self) -> None:
         self.activation_status.configure(text="Consultando GitHub…")
@@ -363,22 +907,38 @@ class App(tk.Tk):
 
     def _update_found(self, release, error) -> None:
         if error:
-            return self.activation_status.configure(text=f"Atualização indisponível: {error}")
+            return self.activation_status.configure(
+                text=f"Atualização indisponível: {error}"
+            )
         tag = str(release.get("tag_name", ""))
         notes = str(release.get("body", "")).strip()[:800]
         if tag.lstrip("v") == VERSION:
-            return self.activation_status.configure(text="Você já usa a versão mais recente.")
-        if not messagebox.askyesno("Atualização encontrada", f"{tag}\n\n{notes}\n\nBaixar e verificar agora?"):
+            return self.activation_status.configure(
+                text="Você já usa a versão mais recente."
+            )
+        if not messagebox.askyesno(
+            "Atualização encontrada",
+            f"{tag}\n\n{notes}\n\nBaixar e verificar agora?",
+        ):
             return
         public_key = self.license.state.get("public_key")
         if not public_key:
-            return messagebox.showwarning("Atualização", "Ative a licença para obter a chave pública de verificação.")
-        self._run(lambda: download_verified(release, public_key), self._update_downloaded)
+            return messagebox.showwarning(
+                "Atualização",
+                "Ative a licença para obter a chave pública de verificação.",
+            )
+        self._run(
+            lambda: download_verified(release, public_key),
+            self._update_downloaded,
+        )
 
     def _update_downloaded(self, installer, error) -> None:
         if error:
             return messagebox.showerror("Atualização rejeitada", str(error))
-        if messagebox.askyesno("Atualização verificada", "Assinatura e SHA-256 conferem. Abrir o instalador visível agora?"):
+        if messagebox.askyesno(
+            "Atualização verificada",
+            "Assinatura e SHA-256 conferem. Abrir o instalador visível agora?",
+        ):
             if getattr(sys, "frozen", False):
                 rollback = STATE_DIR / "rollback" / "RFNextInfo.exe"
                 rollback.parent.mkdir(parents=True, exist_ok=True)
@@ -388,10 +948,14 @@ class App(tk.Tk):
     def rollback(self) -> None:
         previous = STATE_DIR / "rollback" / "RFNextInfo.exe"
         if not previous.is_file():
-            return messagebox.showinfo("Versão anterior", "Ainda não existe uma versão anterior preservada.")
+            return messagebox.showinfo(
+                "Versão anterior",
+                "Ainda não existe uma versão anterior preservada.",
+            )
         if messagebox.askyesno(
             "Abrir versão anterior",
-            "A versão anterior será aberta como executável preservado. Feche a versão atual antes de capturar.",
+            "A versão anterior será aberta como executável preservado. "
+            "Feche a versão atual antes de capturar.",
         ):
             os.startfile(previous)
 
@@ -401,18 +965,46 @@ class App(tk.Tk):
             total = sum(path.stat().st_size for path in CAPTURE_DIR.glob("*.etl"))
             usage = shutil.disk_usage(CAPTURE_DIR)
             percent_free = usage.free / usage.total if usage.total else 0
-            level = "VERMELHO" if total >= 10 * GIB or percent_free < .10 else "AMARELO" if total >= 5 * GIB else "OK"
-            self.storage_state.configure(
-                text=f"Armazenamento: {_format_bytes(total)} capturados · {_format_bytes(usage.free)} livres · {level}"
+            level = (
+                "VERMELHO"
+                if total >= 10 * GIB or percent_free < 0.10
+                else "AMARELO"
+                if total >= 5 * GIB
+                else "OK"
             )
-            self.start_button.configure(state="disabled" if status.active or not self.capture_allowed else "normal")
-            count = self.store.conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
-            kills = self.store.conn.execute("SELECT COUNT(*) FROM events WHERE type='drop_item_field'").fetchone()[0]
+            self.storage_state.configure(
+                text=(
+                    f"Armazenamento: {_format_bytes(total)} capturados · "
+                    f"{_format_bytes(usage.free)} livres · {level}"
+                )
+            )
+            self.start_button.configure(
+                state="disabled"
+                if status.active or not self.capture_allowed
+                else "normal"
+            )
+            stats = (
+                self.store.session_stats(self.current_session)
+                if self.current_session
+                else {"recognized": 0, "unknown": 0, "unassigned": 0}
+            )
+            kills = (
+                self.store.conn.execute(
+                    """SELECT COUNT(*) FROM events
+                       WHERE session_id=? AND type='drop_item_field'""",
+                    (self.current_session,),
+                ).fetchone()[0]
+                if self.current_session
+                else 0
+            )
             lines = [
-                f"Captura ativa       {'SIM' if status.active else 'NÃO'}",
-                f"Segmentos atuais    {len(status.files)}",
-                f"Tamanho da sessão   {_format_bytes(status.bytes_written)}",
-                f"Eventos reconhecidos {count}",
+                f"Captura ativa        {'SIM' if status.active else 'NÃO'}",
+                f"Sessão atual         {self.current_session or '—'}",
+                f"Segmentos atuais     {len(status.files)}",
+                f"Tamanho da sessão    {_format_bytes(status.bytes_written)}",
+                f"Eventos reconhecidos {stats['recognized']}",
+                f"Sem personagem       {stats['unassigned']}",
+                f"Não decodificados    {stats['unknown']}",
                 f"Kills estimadas      {kills}  (proxy por recompensa)",
                 "",
                 "Dados não confirmados permanecem ocultos.",
@@ -426,17 +1018,25 @@ class App(tk.Tk):
         self.after(1000, self._poll)
 
     def _close(self) -> None:
+        self._save_preferences()
         if self.capture.status().active and self.minimize_to_tray:
             try:
                 import pystray
                 from PIL import Image
+
                 if not self.tray:
                     image = Image.open(ASSETS / "karvalho-primary-gold.png")
                     self.tray = pystray.Icon(
-                        "RF NEXT INFO", image, "RF NEXT INFO · captura visível",
+                        "RF NEXT INFO",
+                        image,
+                        "RF NEXT INFO · captura visível",
                         pystray.Menu(
-                            pystray.MenuItem("Abrir", lambda: self.after(0, self.deiconify)),
-                            pystray.MenuItem("Encerrar", lambda: self.after(0, self._exit)),
+                            pystray.MenuItem(
+                                "Abrir", lambda: self.after(0, self.deiconify)
+                            ),
+                            pystray.MenuItem(
+                                "Encerrar", lambda: self.after(0, self._exit)
+                            ),
                         ),
                     )
                     threading.Thread(target=self.tray.run, daemon=True).start()
@@ -448,9 +1048,13 @@ class App(tk.Tk):
 
     def _exit(self) -> None:
         if self.capture.status().active:
-            if not messagebox.askyesno("Encerrar", "A captura está ativa. Parar com segurança e encerrar?"):
+            if not messagebox.askyesno(
+                "Encerrar",
+                "A captura está ativa. Parar com segurança e encerrar?",
+            ):
                 return
             self.capture.stop()
+        self._save_preferences()
         if self.tray:
             self.tray.stop()
         self.store.close()
@@ -459,12 +1063,26 @@ class App(tk.Tk):
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
-        sample, marks = _capture_summary({"events": [{
-            "type": "collection_snapshot_chunk",
-            "data": {"fields": {"character_name": "Carvalho"}, "records": [
-                {"collection_index": 1001, "completed_slots": [0, 2]}
-            ]},
-        }]})
-        assert sample["character"] == "Carvalho" and marks == {"1001": [1, 3]}
+        sample, marks = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "collection_snapshot_chunk",
+                        "data": {
+                            "fields": {"character_name": "Carvalho"},
+                            "records": [
+                                {
+                                    "collection_index": 1001,
+                                    "completed_slots": [0, 2],
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        )
+        assert sample["character"] == "Carvalho"
+        assert marks == {"1001": [1, 3]}
+        assert _safe_name("Profile/Teste", "Profile") == "Profile-Teste"
         raise SystemExit(0)
     App().mainloop()

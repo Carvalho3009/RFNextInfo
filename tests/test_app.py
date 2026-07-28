@@ -87,6 +87,10 @@ class AppLogicTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             client = LicenseClient(Path(directory))
             client.state.update(lease=lease, public_key=public, installation_id="install-1")
+            client._save()
+            remembered = LicenseClient(Path(directory))
+            self.assertEqual(remembered.lease, lease)
+            self.assertEqual(remembered.installation_id, "install-1")
             client._json = Mock(side_effect=urllib.error.HTTPError(
                 "https://license", 401, "revogada", {}, None
             ))
@@ -95,6 +99,22 @@ class AppLogicTest(unittest.TestCase):
             client.state["installation_id"] = "outra-instalacao"
             with self.assertRaises(ValueError):
                 client.claims()
+
+            diagnostic = Path(directory) / "diagnostic.json"
+            diagnostic.write_text(
+                json.dumps(
+                    {
+                        "privacy": "sem payload",
+                        "events": [{"opcode": "0x7777", "decoded_size": 12}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            remembered._json = Mock(return_value={"receipt": "test-1"})
+            self.assertEqual(
+                remembered.upload_diagnostic(diagnostic, "1.0.0")["receipt"],
+                "test-1",
+            )
 
 
 if __name__ == "__main__":
