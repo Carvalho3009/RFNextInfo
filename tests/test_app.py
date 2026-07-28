@@ -191,6 +191,8 @@ class AppLogicTest(unittest.TestCase):
             "license_id": "license-1",
             "installation_id": "install-1",
             "issued_at": "2026-07-27T00:00:00Z",
+            "license_starts_at": "2026-07-01T00:00:00Z",
+            "license_expires_at": "2999-12-31T00:00:00Z",
             "next_check_at": "2000-01-01T00:00:00Z",
             "valid_until": "2999-01-01T00:00:00Z",
         }
@@ -221,17 +223,31 @@ class AppLogicTest(unittest.TestCase):
             remembered = LicenseClient(Path(directory))
             self.assertEqual(remembered.lease, lease)
             self.assertEqual(remembered.installation_id, "install-1")
+            self.assertEqual(
+                remembered.state["license_expires_at"],
+                "2999-12-31T00:00:00Z",
+            )
+            self.assertNotIn(
+                lease.encode(), (Path(directory) / "license.dat").read_bytes()
+            )
+            legacy = Path(directory) / "legacy-license.json"
+            legacy.write_text(
+                json.dumps(client.state), encoding="utf-8"
+            )
             machine = LicenseClient(
                 Path(directory) / "machine",
-                legacy_paths=(Path(directory) / "license.json",),
+                legacy_paths=(legacy,),
             )
             self.assertEqual(machine.lease, lease)
-            self.assertTrue((Path(directory) / "machine" / "license.json").is_file())
-            (Path(directory) / "machine" / "license.json").write_text(
-                "{corrompido", encoding="utf-8"
+            self.assertFalse(legacy.exists())
+            protected = Path(directory) / "machine" / "license.dat"
+            self.assertTrue(protected.is_file())
+            protected.write_bytes(
+                protected.read_bytes()[:-1] + b"\0"
             )
             recovered = LicenseClient(Path(directory) / "machine")
             self.assertEqual(recovered.lease, lease)
+            self.assertEqual(recovered.load_status, "backup")
             client._json = Mock(side_effect=urllib.error.HTTPError(
                 "https://license", 401, "revogada", {}, None
             ))

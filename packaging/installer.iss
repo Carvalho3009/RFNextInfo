@@ -1,5 +1,5 @@
 #define AppName "RF NEXT INFO"
-#define AppVersion "1.0.4"
+#define AppVersion "1.0.5"
 #define AppPublisher "Karvalho"
 #define AppExeName "RFNextInfo.exe"
 
@@ -12,7 +12,7 @@ AppPublisherURL=https://karvalho.dev.br/
 DefaultDirName={autopf}\Karvalho\RF NEXT INFO
 DefaultGroupName=Karvalho
 OutputDir=..\dist
-OutputBaseFilename=RFNextInfo-Setup-1.0.4
+OutputBaseFilename=RFNextInfo-Setup-1.0.5
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
@@ -34,5 +34,32 @@ Name: "{autodesktop}\RF NEXT INFO"; Filename: "{app}\{#AppExeName}"; Tasks: desk
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDescription: "Atalhos:"
 
-[Run]
-Filename: "{app}\{#AppExeName}"; Description: "Abrir RF NEXT INFO"; Flags: nowait postinstall skipifsilent
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  LogPath: String;
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+  LogPath := ExpandConstant('{commonappdata}\Karvalho\RFNextInfo\logs\install.log');
+  ForceDirectories(ExtractFileDir(LogPath));
+  if not Exec(
+    ExpandConstant('{app}\{#AppExeName}'),
+    '--self-test',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode
+  ) then
+    ResultCode := -1;
+  SaveStringToFile(
+    LogPath,
+    'version={#AppVersion} self_test=' + IntToStr(ResultCode) + #13#10,
+    True
+  );
+  if ResultCode <> 0 then
+    RaiseException(
+      'O teste do programa instalado falhou. Consulte install.log.'
+    );
+end;

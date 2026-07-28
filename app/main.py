@@ -23,7 +23,7 @@ from core.capture import GIB, PktmonCapture
 from core.connections import connected_processes, ports_for_executable
 from core.store import CaptureStore
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -202,12 +202,18 @@ class App(tk.Tk):
             version=VERSION,
             legacy_paths=(STATE_DIR / "license.json",),
         )
+        self.log.info(
+            "license_state_loaded source=%s has_lease=%s",
+            self.license.load_status,
+            bool(self.license.lease),
+        )
         self.capture = PktmonCapture(CAPTURE_DIR)
         self.store = CaptureStore(DB_PATH)
         self.last_files: list[Path] = []
         self.capture_allowed = False
         self.current_session = self.store.latest_session()
         self.tray = None
+        self._ingesting = False
         self._last_poll_error = ""
         self._last_game_signature = None
         self._game_choices: dict[str, str] = {}
@@ -809,7 +815,7 @@ class App(tk.Tk):
         self.license_state.configure(text=f"Licença: {message}")
         self.start_button.configure(
             state="normal"
-            if allowed and not self.capture.status().active
+            if allowed and not self._ingesting
             else "disabled"
         )
         return allowed, message
@@ -818,12 +824,33 @@ class App(tk.Tk):
         allowed, message = self._refresh_license()
         if not allowed:
             return messagebox.showwarning("Captura bloqueada", message)
-        if self.capture.status().active:
+        if self._ingesting:
             return messagebox.showwarning(
-                "Captura já ativa",
-                "O PktMon já está capturando. Clique em Parar para recuperar "
-                "e analisar os arquivos existentes.",
+                "Análise em andamento",
+                "Aguarde a leitura da captura anterior antes de iniciar outra.",
             )
+        if self.capture.status().active:
+            if (
+                self.prefs.get("capture_pending")
+                and self.capture.segment_files()
+            ):
+                self.stop_capture()
+                return messagebox.showinfo(
+                    "Captura anterior encerrada",
+                    "A captura anterior foi fechada e será analisada. "
+                    "Inicie novamente quando a leitura terminar.",
+                )
+            try:
+                self.capture.stop()
+                self.log.info("external_pktmon_stopped_before_capture")
+            except Exception as error:
+                self.log.exception(
+                    "external_pktmon_stop_failed reason=%s",
+                    _safe_error_code(error),
+                )
+                return messagebox.showerror(
+                    "Não foi possível preparar a captura", str(error)
+                )
         profile = self.profile.get().strip()
         characters = [
             name
@@ -956,6 +983,7 @@ class App(tk.Tk):
                 store.close()
 
         def ingest_done(result, error):
+            self._ingesting = False
             if error:
                 text = f"Captura encerrada · leitura falhou: {error}"
             else:
@@ -988,6 +1016,7 @@ class App(tk.Tk):
             ):
                 self._export_to(EXPORT_DIR)
 
+        self._ingesting = True
         self._run(ingest, ingest_done)
 
     def _session_parts(self) -> tuple[str, int]:
@@ -1545,7 +1574,7 @@ class App(tk.Tk):
             )
             self.start_button.configure(
                 state="disabled"
-                if status.active or not self.capture_allowed
+                if self._ingesting or not self.capture_allowed
                 else "normal"
             )
             stats = (

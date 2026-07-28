@@ -60,8 +60,8 @@ class CoreTest(unittest.TestCase):
 
     def test_connections_are_grouped_by_executable(self):
         paths = {
-            10: r"C:\Games\RFNext.exe",
-            11: r"C:\Games\RFNext.exe",
+            10: r"C:\Games\ProjectRF.exe",
+            11: r"C:\Games\ProjectRF.exe",
             12: r"C:\Browser\browser.exe",
         }
         rows = [
@@ -75,9 +75,10 @@ class CoreTest(unittest.TestCase):
         ):
             processes = connected_processes()
             ports, clients = ports_for_executable(paths[10])
-        self.assertEqual(len(processes), 2)
+        self.assertEqual(len(processes), 1)
         self.assertEqual(ports, (50100, 50101, 50200))
         self.assertEqual(clients, 2)
+        self.assertEqual(ports_for_executable(paths[12]), ((), 0))
 
     def test_pktmon_uses_discovered_and_reconnected_ports(self):
         class Runner:
@@ -85,10 +86,19 @@ class CoreTest(unittest.TestCase):
 
             def __init__(self):
                 self.calls = []
+                self.start_attempts = 0
 
             def __call__(self, args, **_kwargs):
                 self.calls.append(args)
                 if args[1] == "start":
+                    self.start_attempts += 1
+                    if self.start_attempts == 1:
+                        class Busy:
+                            returncode = 1
+                            stderr = "O Monitor de Pacotes já foi iniciado."
+                            stdout = ""
+
+                        return Busy()
                     self.running = True
                 elif args[1] == "stop":
                     self.running = False
@@ -123,8 +133,10 @@ class CoreTest(unittest.TestCase):
             if call[1:3] == ["filter", "add"]
         ]
         self.assertEqual(
-            [call[-1] for call in filters], ["50100", "50200", "50300"]
+            [call[-1] for call in filters],
+            ["50100", "50200", "50100", "50200", "50300"],
         )
+        self.assertEqual(runner.start_attempts, 2)
 
     def test_pktmon_orphan_is_attached_stopped_and_preserved(self):
         class Runner:

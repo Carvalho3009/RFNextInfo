@@ -127,6 +127,8 @@ def connected_processes() -> dict[str, tuple[set[int], set[int]]]:
         path = paths[pid]
         if not path:
             continue
+        if not os.path.basename(path).casefold().startswith("projectrf"):
+            continue
         key = os.path.normcase(os.path.abspath(path))
         pids, ports = result.setdefault(key, (set(), set()))
         pids.add(pid)
