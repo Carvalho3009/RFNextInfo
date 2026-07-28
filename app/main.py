@@ -22,14 +22,19 @@ from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.store import CaptureStore
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
+MACHINE_STATE_DIR = (
+    Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
+    if os.getenv("PROGRAMDATA")
+    else STATE_DIR / "machine"
+)
 CAPTURE_DIR = Path.home() / "Documents" / "Capturas"
 EXPORT_DIR = CAPTURE_DIR / "Exportados"
 ASSETS = ROOT / "assets"
 DB_PATH = STATE_DIR / "capture.sqlite3"
 PREFERENCES_PATH = STATE_DIR / "preferences.json"
-LOG_PATH = STATE_DIR / "logs" / "rfnext-info.log"
+LOG_PATH = MACHINE_STATE_DIR / "logs" / "rfnext-info.log"
 
 
 def _item_names() -> dict[str, str]:
@@ -57,6 +62,11 @@ def _safe_name(value: str, fallback: str) -> str:
     value = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "-", value.strip())
     value = re.sub(r"\s+", "-", value).strip(".- ")
     return (value or fallback)[:50]
+
+
+def _capture_prefix(session_id: str) -> str | None:
+    match = re.search(r"-(\d{8}-\d{6})-(\d+)$", session_id)
+    return f"rfnext-{match.group(1)}-{int(match.group(2)):03d}" if match else None
 
 
 def _capture_summary(envelope: dict) -> tuple[dict, dict[str, list[int]]]:
@@ -168,9 +178,14 @@ class App(tk.Tk):
         self.minsize(860, 650)
         self.configure(bg="#070909")
         STATE_DIR.mkdir(parents=True, exist_ok=True)
+        MACHINE_STATE_DIR.mkdir(parents=True, exist_ok=True)
         CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
         self.log = configure_log(LOG_PATH, VERSION)
-        self.license = LicenseClient(STATE_DIR, version=VERSION)
+        self.license = LicenseClient(
+            MACHINE_STATE_DIR,
+            version=VERSION,
+            legacy_paths=(STATE_DIR / "license.json",),
+        )
         self.capture = PktmonCapture(CAPTURE_DIR)
         self.store = CaptureStore(DB_PATH)
         self.last_files: list[Path] = []
@@ -413,6 +428,31 @@ class App(tk.Tk):
             self.license_tab, text="", style="Muted.TLabel", wraplength=820
         )
         self.activation_status.pack(anchor="w")
+        ttk.Label(
+            self.license_tab,
+            text=f"Versão instalada: {VERSION} · log técnico ativo",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(8, 4))
+        support_buttons = ttk.Frame(self.license_tab)
+        support_buttons.pack(anchor="w")
+        ttk.Button(
+            support_buttons,
+            text="Enviar log técnico",
+            style="Quiet.TButton",
+            command=self.send_diagnostic,
+        ).pack(side=LEFT)
+        ttk.Button(
+            support_buttons,
+            text="Abrir pasta do log",
+            style="Quiet.TButton",
+            command=self.open_log_folder,
+        ).pack(side=LEFT, padx=10)
+        ttk.Button(
+            support_buttons,
+            text="Salvar cópia do log",
+            style="Quiet.TButton",
+            command=self.save_log_copy,
+        ).pack(side=LEFT)
         ttk.Separator(self.license_tab).pack(fill=X, pady=24)
         ttk.Label(
             self.license_tab, text="Atualizações", style="Gold.TLabel"
@@ -443,25 +483,6 @@ class App(tk.Tk):
             text="Abrir versão anterior",
             style="Quiet.TButton",
             command=self.rollback,
-        ).pack(anchor="w")
-        ttk.Separator(self.license_tab).pack(fill=X, pady=24)
-        ttk.Label(
-            self.license_tab, text="Suporte e aprimoramento", style="Gold.TLabel"
-        ).pack(anchor="w")
-        ttk.Label(
-            self.license_tab,
-            text=(
-                "Se encontrar um problema, envie o log técnico sanitizado. "
-                "O envio acontece somente após sua confirmação."
-            ),
-            style="Muted.TLabel",
-            wraplength=820,
-        ).pack(anchor="w", pady=(5, 10))
-        ttk.Button(
-            self.license_tab,
-            text="Enviar log técnico",
-            style="Quiet.TButton",
-            command=self.send_diagnostic,
         ).pack(anchor="w")
 
     def _tutorial_ui(self) -> None:
@@ -506,6 +527,79 @@ class App(tk.Tk):
             if self.prefs.get("channel") in {"stable", "beta"}
             else "stable"
         )
+        last_session = str(self.prefs.get("last_session") or "")
+        if _capture_prefix(last_session):
+            self.current_session = last_session
+        try:
+            running = self.capture.system_running()
+            prefix = str(self.prefs.get("capture_prefix") or "")
+            files = tuple(CAPTURE_DIR.glob(f"{prefix}*.etl")) if prefix else ()
+            if running and not files:
+                candidates = sorted(
+                    CAPTURE_DIR.glob("rfnext-*.etl"),
+                    key=lambda path: path.stat().st_mtime_ns,
+                    reverse=True,
+                )
+                if candidates:
+                    match = re.match(
+                        r"^(rfnext-\d{8}-\d{6}-\d{3})\d*\.etl$",
+                        candidates[0].name,
+                    )
+                    if not match:
+                        match = re.match(
+                            r"^(rfnext-\d{8}-\d{6})\d+\.etl$",
+                            candidates[0].name,
+                        )
+                    prefix = match.group(1) if match else ""
+                    files = (
+                        tuple(CAPTURE_DIR.glob(f"{prefix}*.etl"))
+                        if prefix
+                        else ()
+                    )
+            if prefix and files and (
+                running or bool(self.prefs.get("capture_pending"))
+            ):
+                match = re.match(
+                    r"^rfnext-(\d{8}-\d{6})-(\d{3})$", prefix
+                )
+                if match and _capture_prefix(self.current_session or "") != prefix:
+                    profile = _safe_name(
+                        self.profile.get().strip(), "Profile"
+                    )
+                    self.current_session = (
+                        f"{profile}-{match.group(1)}-{int(match.group(2)):03d}"
+                    )
+                else:
+                    legacy = re.match(r"^rfnext-(\d{8}-\d{6})$", prefix)
+                    if legacy and legacy.group(1) not in (
+                        self.current_session or ""
+                    ):
+                        profile = _safe_name(
+                            self.profile.get().strip(), "Profile"
+                        )
+                        counter = int(self.prefs.get("session_counter", 0))
+                        self.current_session = (
+                            f"{profile}-{legacy.group(1)}-{counter:03d}"
+                        )
+                status = self.capture.attach(prefix)
+                self.last_files = list(status.files)
+                self.prefs.update(
+                    capture_prefix=prefix,
+                    capture_pending=True,
+                )
+                self.capture_state.configure(
+                    text=(
+                        f"Captura pendente recuperada · {len(status.files)} "
+                        "segmento(s) · clique Parar para analisar"
+                    )
+                )
+                self.log.info(
+                    "capture_recovered active=%s segments=%d",
+                    status.active,
+                    len(status.files),
+                )
+        except Exception:
+            self.log.exception("capture_recovery_failed")
         self._save_preferences()
 
     def _save_preferences(self) -> None:
@@ -579,6 +673,12 @@ class App(tk.Tk):
         allowed, message = self._refresh_license()
         if not allowed:
             return messagebox.showwarning("Captura bloqueada", message)
+        if self.capture.status().active:
+            return messagebox.showwarning(
+                "Captura já ativa",
+                "O PktMon já está capturando. Clique em Parar para recuperar "
+                "e analisar os arquivos existentes.",
+            )
         profile = self.profile.get().strip()
         characters = [
             name
@@ -593,30 +693,64 @@ class App(tk.Tk):
                 "Identificação",
                 "Informe o Profile do site e pelo menos um personagem.",
             )
-        self.prefs["session_counter"] = int(
-            self.prefs.get("session_counter", 0)
-        ) + 1
+        counter = int(self.prefs.get("session_counter", 0)) + 1
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        counter = int(self.prefs["session_counter"])
-        self.current_session = (
+        session_id = (
             f"{_safe_name(profile, 'Profile')}-{stamp}-{counter:03d}"
         )
-        self._save_preferences()
+        capture_prefix = f"rfnext-{stamp}-{counter:03d}"
         try:
-            self.capture.start(f"rfnext-{stamp}-{counter:03d}")
-            self.log.info("capture_started ports=12000,12020,12040")
-            self.capture_state.configure(
-                text="Capturando até dois clientes em TCP/12000, 12020 e 12040"
-            )
+            self.capture.start(capture_prefix)
         except Exception as error:
             self.log.exception("capture_start_failed")
-            messagebox.showerror("Não foi possível iniciar", str(error))
+            return messagebox.showerror("Não foi possível iniciar", str(error))
+        self.current_session = session_id
+        self.prefs.update(
+            session_counter=counter,
+            capture_prefix=capture_prefix,
+            capture_pending=True,
+        )
+        try:
+            self._save_preferences()
+        except OSError:
+            self.log.exception("capture_state_save_failed")
+        self.log.info("capture_started ports=12000,12020,12040")
+        self.capture_state.configure(
+            text="Capturando até dois clientes em TCP/12000, 12020 e 12040"
+        )
 
     def stop_capture(self) -> None:
         if not self.current_session:
-            return messagebox.showwarning(
-                "Sessão", "Não existe sessão atual para encerrar."
+            try:
+                running = self.capture.status().active
+            except Exception as error:
+                return messagebox.showerror("Falha ao consultar PktMon", str(error))
+            if not running:
+                return messagebox.showwarning(
+                    "Sessão", "Não existe sessão atual para encerrar."
+                )
+            if not messagebox.askyesno(
+                "PktMon externo ativo",
+                "O PktMon está ativo sem uma sessão reconhecida pelo programa. "
+                "Deseja encerrá-lo? Nenhum arquivo será apagado.",
+            ):
+                return
+            try:
+                self.capture.stop()
+                self.capture_state.configure(
+                    text="PktMon externo encerrado · nenhum arquivo foi apagado"
+                )
+            except Exception as error:
+                messagebox.showerror("Falha ao parar", str(error))
+            return
+        if not self.capture.attached:
+            prefix = str(
+                self.prefs.get("capture_prefix")
+                or _capture_prefix(self.current_session)
+                or ""
             )
+            if prefix and tuple(CAPTURE_DIR.glob(f"{prefix}*.etl")):
+                self.capture.attach(prefix)
         try:
             status = self.capture.stop()
             self.last_files = list(status.files)
@@ -658,6 +792,9 @@ class App(tk.Tk):
                         f" · {len(failures)} segmento(s) ignorado(s): "
                         + "; ".join(failures)
                     )
+                else:
+                    self.prefs["capture_pending"] = False
+                    self._save_preferences()
             self.capture_state.configure(text=text)
             self._refresh_info()
             if not error and self.auto_export.get():
@@ -735,15 +872,18 @@ class App(tk.Tk):
         return result
 
     def export(self) -> None:
-        if not self.license.lease:
-            return messagebox.showwarning(
-                "Exportação", "Ative a licença antes de exportar."
-            )
         if not self.current_session:
             self.current_session = self.store.latest_session()
         if not self.current_session:
             return messagebox.showwarning(
                 "Exportação", "Nenhuma sessão capturada está disponível."
+            )
+        pending_files = self.capture.segment_files()
+        if pending_files and not self.store.session_sources(self.current_session):
+            return messagebox.showwarning(
+                "Captura pendente",
+                "Os arquivos capturados ainda não foram analisados. Clique em "
+                "Parar, aguarde a leitura e tente exportar novamente.",
             )
         target = filedialog.askdirectory(
             title="Escolha a pasta de exportação", initialdir=str(EXPORT_DIR)
@@ -765,6 +905,37 @@ class App(tk.Tk):
             session_id,
             logs=recent_lines(LOG_PATH) if include_logs else None,
         )
+
+    def open_log_folder(self) -> None:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        os.startfile(LOG_PATH.parent)
+
+    def save_log_copy(self) -> None:
+        lines = recent_lines(LOG_PATH)
+        if not lines:
+            return messagebox.showinfo(
+                "Log técnico", "Ainda não há registros para salvar."
+            )
+        target = filedialog.asksaveasfilename(
+            title="Salvar cópia sanitizada do log",
+            defaultextension=".txt",
+            initialfile=(
+                f"RFNextInfo-log-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+            ),
+            filetypes=(("Arquivo de texto", "*.txt"),),
+        )
+        if not target:
+            return
+        path = Path(target)
+        temporary = path.with_name(f"{path.name}.tmp")
+        try:
+            temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            os.replace(temporary, path)
+            self.log.info("log_copy_saved")
+            messagebox.showinfo("Log técnico", "Cópia sanitizada salva.")
+        except OSError as error:
+            temporary.unlink(missing_ok=True)
+            messagebox.showerror("Log técnico", str(error))
 
     def send_diagnostic(self) -> None:
         if not self.license.lease:
@@ -1124,7 +1295,11 @@ class App(tk.Tk):
 
     def _close(self) -> None:
         self._save_preferences()
-        if self.capture.status().active and self.minimize_to_tray:
+        if (
+            self.capture.attached
+            and self.capture.status().active
+            and self.minimize_to_tray
+        ):
             try:
                 import pystray
                 from PIL import Image
@@ -1152,7 +1327,7 @@ class App(tk.Tk):
         self._exit()
 
     def _exit(self) -> None:
-        if self.capture.status().active:
+        if self.capture.attached and self.capture.status().active:
             if not messagebox.askyesno(
                 "Encerrar",
                 "A captura está ativa. Parar com segurança e encerrar?",

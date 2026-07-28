@@ -12,7 +12,7 @@ from unittest.mock import Mock
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.license import LicenseClient, _activation_error, verify_lease
-from app.main import App, _capture_summary
+from app.main import App, _capture_prefix, _capture_summary
 from app.support_log import LOGGER_NAME, configure, recent_lines
 from app.updater import UPDATE_SIGNATURE_CONTEXT, verify_manifest
 
@@ -54,6 +54,10 @@ class AppLogicTest(unittest.TestCase):
         ))
         self.assertTrue(completed.wait(1))
         self.assertEqual(observed, [(None, "falhou")])
+        self.assertEqual(
+            _capture_prefix("Profile-20260728-010203-007"),
+            "rfnext-20260728-010203-007",
+        )
 
     def test_support_log_is_sanitized(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -121,6 +125,17 @@ class AppLogicTest(unittest.TestCase):
             remembered = LicenseClient(Path(directory))
             self.assertEqual(remembered.lease, lease)
             self.assertEqual(remembered.installation_id, "install-1")
+            machine = LicenseClient(
+                Path(directory) / "machine",
+                legacy_paths=(Path(directory) / "license.json",),
+            )
+            self.assertEqual(machine.lease, lease)
+            self.assertTrue((Path(directory) / "machine" / "license.json").is_file())
+            (Path(directory) / "machine" / "license.json").write_text(
+                "{corrompido", encoding="utf-8"
+            )
+            recovered = LicenseClient(Path(directory) / "machine")
+            self.assertEqual(recovered.lease, lease)
             client._json = Mock(side_effect=urllib.error.HTTPError(
                 "https://license", 401, "revogada", {}, None
             ))

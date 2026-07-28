@@ -54,28 +54,51 @@ class LicenseClient:
         state_dir: Path,
         server: str = "https://rflicenca.karvalho.dev.br",
         version: str = "unknown",
+        legacy_paths: tuple[Path, ...] = (),
     ) -> None:
         self.state_dir = Path(state_dir)
         self.path = self.state_dir / "license.json"
+        self.backup_path = self.state_dir / "license.backup.json"
         self.server = server.rstrip("/")
         self.user_agent = f"RFNextInfo/{version}"
-        self.state = self._load()
+        primary = self._read(self.path)
+        self.state = (
+            primary
+            or self._read(self.backup_path)
+            or {"installation_id": str(uuid.uuid4())}
+        )
+        if primary is None and self.lease:
+            self._save()
+        if not self.lease:
+            for legacy_path in legacy_paths:
+                migrated = self._read(Path(legacy_path))
+                if migrated:
+                    self.state = migrated
+                    self._save()
+                    break
 
-    def _load(self) -> dict:
-        if self.path.is_file():
-            try:
-                value = json.loads(self.path.read_text(encoding="utf-8"))
-                if isinstance(value, dict) and value.get("installation_id"):
-                    return value
-            except (OSError, ValueError):
-                pass
-        return {"installation_id": str(uuid.uuid4())}
+    @staticmethod
+    def _read(path: Path) -> dict | None:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(value, dict) and value.get("installation_id"):
+                return value
+        except (OSError, ValueError):
+            pass
+        return None
 
     def _save(self) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = json.dumps(self.state, ensure_ascii=False, indent=2)
+        temporary = self.path.with_name(f"{self.path.name}.tmp")
+        temporary.write_text(payload, encoding="utf-8")
         os.replace(temporary, self.path)
+        try:
+            backup = self.backup_path.with_name(f"{self.backup_path.name}.tmp")
+            backup.write_text(payload, encoding="utf-8")
+            os.replace(backup, self.backup_path)
+        except OSError:
+            pass
 
     def _json(self, path: str, payload: dict | None = None) -> dict:
         body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()

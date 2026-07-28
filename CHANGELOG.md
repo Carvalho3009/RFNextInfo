@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2 — 2026-07-28
+
+- licença e logs persistidos na pasta comum do computador, com migração do formato anterior;
+- recuperação de captura PktMon que permaneceu ativa após fechamento ou falha;
+- arquivos ETL pendentes podem ser parados e analisados sem serem apagados;
+- falha ao iniciar não substitui mais a referência da captura anterior;
+- exportação permanece disponível mesmo se a licença não for reconhecida;
+- botões de enviar, abrir a pasta e salvar uma cópia sanitizada do log no topo da aba Licença.
+
 ## 1.0.1 — 2026-07-28
 
 - log técnico local com rotação automática e limite aproximado de 4 MB;

@@ -13,9 +13,11 @@
 - Alertas: 5 GB; 10 GB ou 10% livre; encerramento seguro abaixo de 2 GB livres.
 - Após exportar: mostrar tamanhos, validar o arquivo e oferecer envio dos brutos à Lixeira.
 - Licença online a cada 24h, tolerância de 72h; depois bloquear novas capturas e preservar exportação.
+- A exportação e a recuperação dos arquivos existentes permanecem disponíveis sem licença reconhecida.
+- Captura PktMon pendente após falha deve ser recuperável sem apagar o ETL.
 - Atualização GitHub stable/beta, visível e confirmada, com manifesto assinado, SHA-256 e rollback de uma versão.
 - Sem telemetria; diagnósticos e logs sanitizados só são enviados após consentimento.
-- Log técnico local rotativo de até aproximadamente 4 MB; envio manual separado na aba Licença.
+- Log técnico local rotativo de até aproximadamente 4 MB; envio, pasta e cópia manual na aba Licença.
 
 ## Marca
 
