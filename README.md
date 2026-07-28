@@ -53,7 +53,7 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 ## Executar
 
-Use [RFNextInfo-Setup-1.0.7.exe](dist/RFNextInfo-Setup-1.0.7.exe). O Windows
+Use [RFNextInfo-Setup-1.0.8.exe](dist/RFNextInfo-Setup-1.0.8.exe). O Windows
 solicita elevação porque o Pktmon precisa de permissão administrativa. As
 dependências ficam instaladas junto ao programa, sem extração temporária
 `_MEI`.

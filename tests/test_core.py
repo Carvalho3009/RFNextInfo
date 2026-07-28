@@ -170,6 +170,64 @@ class CoreTest(unittest.TestCase):
             finally:
                 db.close()
 
+    def test_unidentified_flow_is_assigned_to_existing_uid_by_exp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "exp.etl"
+            raw.write_bytes(b"capture")
+            db = CaptureStore(root / "state.sqlite")
+            try:
+                need = 3_908_016_337
+                events = []
+                for index, (flow, percent) in enumerate(
+                    (("closest", 60), ("other", 10)), 1
+                ):
+                    events.extend(
+                        [
+                            {
+                                "flow": flow,
+                                "stream_offset": index,
+                                "bundle_seq": 0,
+                                "ts_ns": index,
+                                "opcode": 0x0417,
+                                "type": "update_exp",
+                                "data": {
+                                    "fields": {
+                                        "level": 68,
+                                        "exp": need * percent // 100,
+                                    }
+                                },
+                            },
+                            {
+                                "flow": flow,
+                                "stream_offset": index + 10,
+                                "bundle_seq": 0,
+                                "ts_ns": index + 10,
+                                "opcode": 0x040A,
+                                "type": "drop_item_field",
+                                "data": {"fields": {"item_id": index}},
+                            },
+                        ]
+                    )
+                db.add_events(raw, events, "session-exp")
+                match = db.assign_unidentified_to_uid_by_exp(
+                    "session-exp", "101", 59.5
+                )
+                self.assertEqual(match["uid"], "101")
+                self.assertEqual(
+                    len(
+                        db.session_envelope(
+                            "session-exp", character_uid="101"
+                        )["events"]
+                    ),
+                    2,
+                )
+                self.assertEqual(
+                    db.session_stats("session-exp")["unassigned"], 2
+                )
+            finally:
+                db.close()
+
     def test_pktmon_uses_discovered_and_reconnected_ports(self):
         class Runner:
             running = False
@@ -411,7 +469,13 @@ class CoreTest(unittest.TestCase):
                     session_id="session-a",
                     character_uid="101",
                     include_unassigned=True,
-                    context={"profile": "Profile", "character_name": "Alice"},
+                    context={
+                        "profile": "Profile",
+                        "character_name": "Alice",
+                        "installation_id": "install-1",
+                        "license_lease": "lease-1",
+                        "codex_marks": {"1001": [1, 3]},
+                    },
                 )
                 envelope = json.loads(exported.json_path.read_text(encoding="utf-8"))
                 self.assertEqual(len(envelope["events"]), 1)
@@ -419,6 +483,15 @@ class CoreTest(unittest.TestCase):
                     envelope["events"][0]["data"]["fields"]["exp_percent"],
                     50.0,
                 )
+                header, row = exported.csv_path.read_text(
+                    encoding="utf-8-sig"
+                ).splitlines()[:2]
+                self.assertIn("license_lease", header)
+                self.assertIn("codex_marks", header)
+                self.assertIn("Profile", row)
+                self.assertIn("install-1", row)
+                self.assertIn("lease-1", row)
+                self.assertIn('""1001"":[1,3]', row)
                 diagnostic = db.export_diagnostics(
                     root, "Profile-diagnostico-20260728-001", "session-a"
                 )
