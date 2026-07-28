@@ -4,6 +4,7 @@
 
 - progresso visível durante consulta, download e verificação da atualização;
 - o aplicativo salva o estado e encerra antes de o instalador substituir os arquivos;
+- o instalador aguarda o fechamento de versões anteriores sem forçar o processo;
 - atualização bloqueada durante captura ativa para evitar perda de dados;
 - download parcial nunca é tratado como instalador verificado.
 

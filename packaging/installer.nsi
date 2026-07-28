@@ -17,7 +17,24 @@ InstallDirRegKey HKLM "Software\Karvalho\RFNextInfo" "InstallDir"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "PortugueseBR"
 
+Function EnsureAppClosed
+  IfFileExists "$INSTDIR\RFNextInfo.exe" 0 done
+retry:
+  ClearErrors
+  FileOpen $0 "$INSTDIR\RFNextInfo.exe" a
+  IfErrors running
+  FileClose $0
+  Goto done
+running:
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
+    "Feche o RF NEXT INFO antes de continuar.$\r$\n$\r$\nSe houver captura ativa, cancele a instalação, pare a captura e aguarde a leitura. Depois tente novamente." \
+    IDRETRY retry
+  Abort
+done:
+FunctionEnd
+
 Section "RF NEXT INFO" SEC_APP
+  Call EnsureAppClosed
   Sleep 1500
   SetOutPath "$INSTDIR"
   File "..\dist\RFNextInfo.exe"
