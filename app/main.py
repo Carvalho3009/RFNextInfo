@@ -24,9 +24,10 @@ from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.connections import connected_processes, ports_for_executable
 from core.ingest import DEFAULT_PORTS
+from core.pktmon_realtime import RealtimeCapture
 from core.store import CaptureStore
 
-VERSION = "1.0.9"
+VERSION = "1.0.10"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -39,6 +40,7 @@ ASSETS = ROOT / "assets"
 DB_PATH = STATE_DIR / "capture.sqlite3"
 PREFERENCES_PATH = STATE_DIR / "preferences.json"
 LOG_PATH = MACHINE_STATE_DIR / "logs" / "rfnext-info.log"
+PREVIEW_DIR = STATE_DIR / "preview"
 
 
 def _item_names() -> dict[str, str]:
@@ -202,9 +204,12 @@ class App(tk.Tk):
         CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
         self.log = configure_log(LOG_PATH, VERSION)
         self.license = LicenseClient(
-            MACHINE_STATE_DIR,
+            STATE_DIR,
             version=VERSION,
-            legacy_paths=(STATE_DIR / "license.json",),
+            legacy_paths=(
+                MACHINE_STATE_DIR / "license.dat",
+                MACHINE_STATE_DIR / "license.json",
+            ),
         )
         self.log.info(
             "license_state_loaded source=%s has_lease=%s",
@@ -219,6 +224,10 @@ class App(tk.Tk):
         self.tray = None
         self._ingesting = False
         self._live_ingesting = False
+        self._live_capture: RealtimeCapture | None = None
+        self._live_files: list[Path] = []
+        self._live_ports: tuple[int, ...] = ()
+        self._live_index = 0
         self._ingest_lock = threading.Lock()
         self._next_live_decode = time.monotonic() + 30
         self._last_live_decode = "Ainda não executada"
@@ -232,6 +241,10 @@ class App(tk.Tk):
         self._build()
         self._load_preferences()
         self._refresh_info()
+        self._run(
+            lambda: self.license.refresh_if_due(VERSION),
+            self._license_checked,
+        )
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.bind("<Control-F8>", lambda _: self.start_capture())
         self.bind("<Control-F9>", lambda _: self.stop_capture())
@@ -881,8 +894,7 @@ class App(tk.Tk):
         )
         self._refresh_license()
 
-    def _refresh_license(self) -> tuple[bool, str]:
-        allowed, message = self.license.refresh_if_due(VERSION)
+    def _apply_license_status(self, allowed: bool, message: str) -> None:
         self.capture_allowed = allowed
         self.license_state.configure(text=f"Licença: {message}")
         self.start_button.configure(
@@ -890,6 +902,18 @@ class App(tk.Tk):
             if allowed and not self._ingesting
             else "disabled"
         )
+
+    def _license_checked(self, result, error) -> None:
+        allowed, message = (
+            (False, f"Falha ao verificar: {type(error).__name__}")
+            if error
+            else result
+        )
+        self._apply_license_status(allowed, message)
+
+    def _refresh_license(self) -> tuple[bool, str]:
+        allowed, message = self.license.refresh_if_due(VERSION)
+        self._apply_license_status(allowed, message)
         return allowed, message
 
     def start_capture(self) -> None:
@@ -978,6 +1002,16 @@ class App(tk.Tk):
             )
             return messagebox.showerror("Não foi possível iniciar", str(error))
         self.current_session = session_id
+        self._live_files = []
+        self._live_ports = filter_ports
+        self._live_index = 0
+        try:
+            self._open_live_preview()
+        except Exception as error:
+            self._live_capture = None
+            self.log.warning(
+                "live_preview_unavailable reason=%s", _safe_error_code(error)
+            )
         self.prefs.update(
             session_counter=counter,
             capture_prefix=capture_prefix,
@@ -989,7 +1023,11 @@ class App(tk.Tk):
         self._next_live_decode = (
             time.monotonic() + self._decode_interval_seconds()
         )
-        self._last_live_decode = "Aguardando primeiro segmento fechado"
+        self._last_live_decode = (
+            "Aguardando primeira atualização"
+            if self._live_capture
+            else "Prévia ao vivo indisponível; exportação normal"
+        )
         for obsolete in (
             "character1_pid",
             "character2_pid",
@@ -1047,6 +1085,7 @@ class App(tk.Tk):
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="disabled")
         try:
+            self._close_live_preview()
             if not self.capture.attached:
                 prefix = str(
                     self.prefs.get("capture_prefix")
@@ -1071,12 +1110,18 @@ class App(tk.Tk):
             return messagebox.showerror("Falha ao parar", str(error))
         session_id = self.current_session
         files = tuple(self.last_files)
+        preview_files = tuple(self._live_files)
         decode_ports = tuple(
             self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
         )
 
         def ingest():
-            return self._ingest_files(files, session_id, decode_ports)
+            return self._ingest_files(
+                files,
+                session_id,
+                decode_ports,
+                remove_sources=preview_files,
+            )
 
         def ingest_done(result, error):
             self._ingesting = False
@@ -1119,6 +1164,8 @@ class App(tk.Tk):
                 else:
                     self.prefs["capture_pending"] = False
                     self._save_preferences()
+                    for path in preview_files:
+                        path.unlink(missing_ok=True)
             self.capture_state.configure(text=text)
             self.live_decode_state.configure(
                 text=f"Última atualização: {self._last_live_decode}"
@@ -1139,10 +1186,13 @@ class App(tk.Tk):
         files: tuple[Path, ...],
         session_id: str,
         decode_ports: tuple[int, ...],
+        *,
+        remove_sources: tuple[Path, ...] = (),
     ) -> tuple[int, list[str], int]:
         with self._ingest_lock:
             store = CaptureStore(DB_PATH)
             try:
+                store.remove_sources(remove_sources)
                 added = 0
                 failures = []
                 empty_count = 0
@@ -1173,9 +1223,46 @@ class App(tk.Tk):
             finally:
                 store.close()
 
-    def _maybe_decode_live(self, status) -> None:
+    def _open_live_preview(self) -> None:
+        if not self.current_session or not self._live_ports:
+            return
+        PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        self._live_index += 1
+        target = PREVIEW_DIR / (
+            f"{_safe_name(self.current_session, 'sessao')}"
+            f"-live-{self._live_index:04d}.pcap"
+        )
+        capture = RealtimeCapture(target, self._live_ports)
+        capture.start()
+        self._live_capture = capture
+
+    def _close_live_preview(self) -> Path | None:
+        capture, self._live_capture = self._live_capture, None
+        if capture is None:
+            return None
+        try:
+            capture.stop()
+        except Exception as error:
+            self.log.warning(
+                "live_preview_stop_failed reason=%s", _safe_error_code(error)
+            )
+        self.log.info(
+            "live_preview_closed packets=%d received=%d filtered=%d "
+            "missed_write=%d missed_read=%d",
+            capture.packets,
+            capture.received_packets,
+            capture.filtered_packets,
+            capture.missed_write,
+            capture.missed_read,
+        )
+        if capture.target.exists():
+            self._live_files.append(capture.target)
+            return capture.target
+        return None
+
+    def _maybe_decode_live(self) -> None:
         if (
-            not status.active
+            not self._live_capture
             or self._ingesting
             or self._live_ingesting
             or not self.current_session
@@ -1184,15 +1271,32 @@ class App(tk.Tk):
             return
         interval = self._decode_interval_seconds()
         self._next_live_decode = time.monotonic() + interval
-        files = tuple(status.files[:-1])
+        closed = self._close_live_preview()
+        try:
+            self._open_live_preview()
+        except Exception as error:
+            self.log.warning(
+                "live_preview_restart_failed reason=%s",
+                _safe_error_code(error),
+            )
+        files = (
+            (closed,)
+            if closed and closed.exists() and closed.stat().st_size > 24
+            else ()
+        )
         if not files:
-            self._last_live_decode = "Aguardando segmento fechado"
+            self._last_live_decode = "Aguardando pacotes do RF"
             return
         self._live_ingesting = True
-        self.live_decode_state.configure(text="Decodificando segmento fechado…")
+        self.live_decode_state.configure(text="Atualizando informações…")
         session_id = self.current_session
         decode_ports = tuple(
-            self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
+            dict.fromkeys(
+                (
+                    *(self.prefs.get("capture_decode_ports") or DEFAULT_PORTS),
+                    *(self.prefs.get("capture_ports") or ()),
+                )
+            )
         )
 
         def done(result, error):
@@ -1400,6 +1504,11 @@ class App(tk.Tk):
         return result
 
     def export(self) -> None:
+        if self.capture.status().active:
+            return messagebox.showwarning(
+                "Captura ativa",
+                "Pare a captura e aguarde a análise final antes de exportar.",
+            )
         if not self.current_session:
             self.current_session = self.store.latest_session()
         if not self.current_session:
@@ -1899,6 +2008,7 @@ class App(tk.Tk):
             saved = set(self.prefs.get("capture_ports") or ())
             saved.update(filter_ports)
             self.prefs["capture_ports"] = sorted(saved)
+            self._live_ports = tuple(sorted(set(self._live_ports) | saved))
             decode_ports = set(
                 self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
             )
@@ -1922,10 +2032,10 @@ class App(tk.Tk):
             status = self.capture.status()
             if status.active:
                 self._refresh_active_game_connections()
-                self._maybe_decode_live(status)
                 packet_count = self.capture.packet_count()
                 if packet_count is not None:
                     self._last_packet_count = packet_count
+            self._maybe_decode_live()
             total = sum(path.stat().st_size for path in CAPTURE_DIR.glob("*.etl"))
             usage = shutil.disk_usage(CAPTURE_DIR)
             percent_free = usage.free / usage.total if usage.total else 0
@@ -2039,6 +2149,7 @@ class App(tk.Tk):
                 "A captura está ativa. Parar com segurança e encerrar?",
             ):
                 return
+            self._close_live_preview()
             self.capture.stop()
         self._save_preferences()
         if self.tray:

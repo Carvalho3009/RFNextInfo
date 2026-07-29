@@ -26,7 +26,7 @@ try {
             if (Test-Path -LiteralPath $LocalNsis) { $Nsis = Get-Item -LiteralPath $LocalNsis }
         }
         if ($Nsis) {
-            & $Nsis.FullName '.\packaging\installer.nsi'
+            & $Nsis.Source '.\packaging\installer.nsi'
             if ($LASTEXITCODE) { throw 'Falha ao gerar o instalador.' }
         } else {
             Write-Warning 'Inno Setup/NSIS não encontrado; executável portátil gerado em dist.'

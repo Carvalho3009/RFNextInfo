@@ -253,6 +253,14 @@ class CaptureStore:
                     "DELETE FROM captures WHERE session_id=?", (session_id,)
                 )
 
+    def remove_sources(self, sources: Iterable[Path]) -> None:
+        values = [(str(Path(source)),) for source in sources]
+        if not values:
+            return
+        with self.conn:
+            self.conn.executemany("DELETE FROM events WHERE source=?", values)
+            self.conn.executemany("DELETE FROM captures WHERE source=?", values)
+
     def latest_session(self) -> str | None:
         row = self.conn.execute(
             "SELECT session_id FROM captures ORDER BY imported_at DESC LIMIT 1"

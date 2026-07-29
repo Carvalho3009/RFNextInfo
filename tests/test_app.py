@@ -23,6 +23,23 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_saved_license_check_updates_startup_ui(self):
+        app = Mock()
+        app._ingesting = False
+        app._apply_license_status.side_effect = (
+            lambda allowed, message: App._apply_license_status(
+                app, allowed, message
+            )
+        )
+
+        App._license_checked(app, (True, "Licença válida."), None)
+
+        self.assertTrue(app.capture_allowed)
+        app.license_state.configure.assert_called_with(
+            text="Licença: Licença válida."
+        )
+        app.start_button.configure.assert_called_with(state="normal")
+
     def test_capture_uses_all_detected_ports_without_character_process_choice(self):
         app = Mock()
         app._refresh_license.return_value = (True, "Licença válida")
@@ -42,10 +59,11 @@ class AppLogicTest(unittest.TestCase):
         with patch(
             "app.main.ports_for_executable",
             return_value=((50100, 50200), (12010, 12020), 2),
-        ):
+        ), patch("app.main.RealtimeCapture"):
             App.start_capture(app)
         started_ports = app.capture.start_for_ports.call_args.args[1]
         self.assertEqual(started_ports, (50100, 50200, 12010, 12020))
+        self.assertEqual(app._live_ports, started_ports)
         self.assertEqual(
             app.prefs["capture_decode_ports"],
             [12000, 12010, 12020, 12040],
@@ -83,6 +101,9 @@ class AppLogicTest(unittest.TestCase):
             def ingest(self, *_args, **_kwargs):
                 raise ValueError("PCAPNG sem pacotes utilizáveis")
 
+            def remove_sources(self, _sources):
+                pass
+
             def close(self):
                 pass
 
@@ -99,11 +120,12 @@ class AppLogicTest(unittest.TestCase):
                 "capture_decode_ports": [12010, 12020],
             }
             app.capture_allowed = True
+            app._live_files = []
             app.auto_export.get.return_value = False
             app._ingest_lock = threading.Lock()
             app._ingest_files.side_effect = (
-                lambda files, session_id, ports: App._ingest_files(
-                    app, files, session_id, ports
+                lambda files, session_id, ports, **kwargs: App._ingest_files(
+                    app, files, session_id, ports, **kwargs
                 )
             )
             app._run.side_effect = lambda job, done: done(job(), None)
@@ -116,27 +138,45 @@ class AppLogicTest(unittest.TestCase):
                 app.capture_state.configure.call_args.kwargs["text"],
             )
 
-    def test_live_decode_only_uses_closed_segments(self):
+    def test_live_decode_rotates_preview_without_stopping_primary_capture(self):
         app = Mock()
         app._ingesting = False
         app._live_ingesting = False
         app.current_session = "session-1"
         app._next_live_decode = 0
         app._decode_interval_seconds.return_value = 30
-        app.prefs = {"capture_decode_ports": [12010, 12020]}
-        first = Path("segment-1.etl")
-        active = Path("segment-2.etl")
-        status = Mock(active=True, files=(first, active))
+        app.prefs = {
+            "capture_decode_ports": [12010, 12020],
+            "capture_ports": [50100],
+        }
+        preview = Path("preview-1.pcap")
+        app._live_capture = Mock()
+        app._close_live_preview.return_value = preview
+        app._open_live_preview.return_value = None
         app._run.side_effect = lambda job, done: done((4, [], 0), None)
 
-        App._maybe_decode_live(app, status)
+        with patch.object(Path, "stat") as stat:
+            stat.return_value.st_size = 100
+            App._maybe_decode_live(app)
 
         files = app._run.call_args.args[0]()
         self.assertEqual(files, app._ingest_files.return_value)
         app._ingest_files.assert_called_with(
-            (first,), "session-1", (12010, 12020)
+            (preview,), "session-1", (12010, 12020, 50100)
         )
+        app.capture.stop.assert_not_called()
         self.assertFalse(app._live_ingesting)
+        app._refresh_info.assert_called_once()
+
+    @patch("app.main.messagebox.showwarning")
+    def test_export_waits_for_complete_capture(self, warning):
+        app = Mock()
+        app.capture.status.return_value.active = True
+
+        App.export(app)
+
+        warning.assert_called_once()
+        app.store.latest_session.assert_not_called()
 
     def test_two_names_without_uid_export_as_reviewable_combined_file(self):
         app = Mock()
@@ -437,6 +477,16 @@ class AppLogicTest(unittest.TestCase):
             self.assertFalse(legacy.exists())
             protected = Path(directory) / "machine" / "license.dat"
             self.assertTrue(protected.is_file())
+            local = LicenseClient(
+                Path(directory) / "local",
+                legacy_paths=(protected,),
+            )
+            self.assertEqual(local.lease, lease)
+            self.assertEqual(local.load_status, "migrated")
+            self.assertEqual(
+                LicenseClient(Path(directory) / "local").lease,
+                lease,
+            )
             protected.write_bytes(
                 protected.read_bytes()[:-1] + b"\0"
             )

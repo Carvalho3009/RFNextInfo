@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.10 — 2026-07-29
+
+- valida a licença salva em segundo plano ao abrir e atualiza o estado da tela;
+- atualiza informações durante a captura usando o preview nativo do PktMon;
+- preserva a captura ETL completa como fonte da exportação.
+
 ## 1.0.9 — 2026-07-28
 
 - portas locais e remotas do `ProjectRF` passam pela captura e pela análise;

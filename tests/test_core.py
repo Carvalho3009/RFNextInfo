@@ -1,13 +1,21 @@
+import ctypes
 import json
 import os
 import sqlite3
 import struct
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from core.capture import PktmonCapture, _pktmon_running
+from core.pktmon_realtime import (
+    RealtimeCapture,
+    _DataSourceList,
+    _data_source_pointers,
+    _matches_tcp_port,
+)
 from core.connections import (
     connected_processes,
     ports_for_executable,
@@ -18,6 +26,61 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_store_can_remove_preview_sources_before_final_ingest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "preview.pcap"
+            source.write_bytes(b"preview")
+            store = CaptureStore(Path(temp) / "state.sqlite3")
+            store.add_events(source, [], "session-1")
+
+            store.remove_sources((source,))
+
+            self.assertEqual(store.session_sources("session-1"), [])
+            store.close()
+
+    def test_realtime_data_source_pointer_list_uses_windows_alignment(self):
+        buffer = ctypes.create_string_buffer(
+            _DataSourceList.first.offset + 2 * ctypes.sizeof(ctypes.c_void_p)
+        )
+        ctypes.c_uint32.from_buffer(buffer).value = 2
+        ctypes.c_void_p.from_buffer(
+            buffer, _DataSourceList.first.offset
+        ).value = 0x1234
+        ctypes.c_void_p.from_buffer(
+            buffer,
+            _DataSourceList.first.offset + ctypes.sizeof(ctypes.c_void_p),
+        ).value = 0x5678
+
+        self.assertEqual(_data_source_pointers(buffer), (0x1234, 0x5678))
+
+    def test_realtime_filter_keeps_only_configured_rf_tcp_ports(self):
+        packet = bytearray(54)
+        packet[12:14] = b"\x08\x00"
+        packet[14] = 0x45
+        packet[23] = 6
+        packet[34:38] = struct.pack("!HH", 53000, 12010)
+
+        self.assertTrue(_matches_tcp_port(bytes(packet), {12010}))
+        self.assertFalse(_matches_tcp_port(bytes(packet), {443}))
+
+    def test_realtime_capture_writes_decoder_compatible_pcap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / "live.pcap"
+            capture = RealtimeCapture(target, (12010,))
+            writer = threading.Thread(target=capture._write_pcap)
+            writer.start()
+            capture._items.put((10**30, b"\x00" * 14))
+            capture._items.put(None)
+            writer.join(timeout=2)
+
+            self.assertFalse(writer.is_alive())
+            self.assertEqual(capture.packets, 1)
+            self.assertEqual(struct.unpack("<I", target.read_bytes()[:4])[0], 0xA1B23C4D)
+            packet_seconds = struct.unpack(
+                "<I", target.read_bytes()[24:28]
+            )[0]
+            self.assertGreater(packet_seconds, 946_684_800)
+
     def test_store_migrates_existing_capture_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.sqlite"

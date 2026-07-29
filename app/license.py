@@ -75,17 +75,37 @@ class LicenseClient:
             else "none"
         )
         self.state = primary or backup or {"installation_id": str(uuid.uuid4())}
-        legacy_candidates = [
+        legacy_json = [
             self.state_dir / "license.json",
             self.state_dir / "license.backup.json",
         ]
+        legacy_protected = []
         for legacy_path in map(Path, legacy_paths):
-            legacy_candidates.extend(
-                (legacy_path, legacy_path.with_name("license.backup.json"))
-            )
+            if legacy_path.suffix == ".dat":
+                legacy_protected.extend(
+                    (
+                        legacy_path,
+                        legacy_path.with_name("license.backup.dat"),
+                    )
+                )
+            else:
+                legacy_json.extend(
+                    (
+                        legacy_path,
+                        legacy_path.with_name("license.backup.json"),
+                    )
+                )
         migrated = False
         if not self.lease:
-            for legacy_path in dict.fromkeys(legacy_candidates):
+            for legacy_path in dict.fromkeys(legacy_protected):
+                legacy_state = self._read_protected(legacy_path)
+                if legacy_state and legacy_state.get("lease"):
+                    self.state = legacy_state
+                    migrated = True
+                    self.load_status = "migrated"
+                    break
+        if not self.lease:
+            for legacy_path in dict.fromkeys(legacy_json):
                 legacy_state = self._read_json(legacy_path)
                 if legacy_state and legacy_state.get("lease"):
                     self.state = legacy_state
@@ -100,7 +120,7 @@ class LicenseClient:
         if primary is None and (self.lease or not self.path.exists()):
             self._save()
         if migrated:
-            for legacy_path in dict.fromkeys(legacy_candidates):
+            for legacy_path in dict.fromkeys(legacy_json):
                 legacy_state = self._read_json(legacy_path)
                 if (
                     legacy_state
