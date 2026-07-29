@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.9 — 2026-07-28
+
+- portas locais e remotas do `ProjectRF` passam pela captura e pela análise;
+- a porta RF `12010` entra no conjunto conhecido e recupera eventos antes
+  presentes no ETL, mas ignorados pelo decoder;
+- a parada é idempotente e impede análises concorrentes da mesma sessão;
+- ETL sem pacotes permanece pendente e preservado para nova análise;
+- mudanças no decoder, catálogo ou portas reprocessam capturas antigas;
+- a tela exibe os contadores de pacotes do PktMon quando disponíveis;
+- o parser PCAPNG valida blocos truncados e informa diagnóstico seguro;
+- fluxos TCP com gap tentam ressincronização somente após três frames válidos.
+
 ## 1.0.8 — 2026-07-28
 
 - a exportação pergunta a EXP atual quando há um UID confirmado e eventos

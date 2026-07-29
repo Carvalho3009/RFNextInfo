@@ -1,4 +1,6 @@
 import json
+import os
+import sqlite3
 import struct
 import tempfile
 import unittest
@@ -10,12 +12,43 @@ from core.connections import (
     connected_processes,
     ports_for_executable,
 )
-from core.ingest import _pcapng_to_pcap, _safe_parse
+from core.ingest import _decode_stream_resync, _pcapng_to_pcap, _safe_parse
 from core.rfnext_frame_decode import pcap_tcp_streams
 from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_store_migrates_existing_capture_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.sqlite"
+            conn = sqlite3.connect(path)
+            conn.executescript(
+                """
+                CREATE TABLE events(
+                 id INTEGER PRIMARY KEY, source TEXT NOT NULL, flow TEXT NOT NULL,
+                 stream_offset INTEGER NOT NULL, bundle_seq INTEGER NOT NULL,
+                 ts_ns INTEGER, opcode INTEGER NOT NULL, type TEXT NOT NULL,
+                 character_uid TEXT, data_json TEXT NOT NULL
+                );
+                CREATE TABLE captures(
+                 source TEXT PRIMARY KEY, size INTEGER NOT NULL,
+                 mtime_ns INTEGER NOT NULL, imported_at TEXT NOT NULL,
+                 events_added INTEGER NOT NULL
+                );
+                """
+            )
+            conn.close()
+            store = CaptureStore(path)
+            try:
+                columns = {
+                    row[1]
+                    for row in store.conn.execute("PRAGMA table_info(captures)")
+                }
+                self.assertIn("session_id", columns)
+                self.assertIn("ingestion_key", columns)
+            finally:
+                store.close()
+
     def test_collection_catalog_is_applied_during_parse(self):
         class Decoder:
             class DecodeError(Exception):
@@ -77,11 +110,12 @@ class CoreTest(unittest.TestCase):
             "core.connections._process_path", side_effect=paths.get
         ):
             processes = connected_processes()
-            ports, clients = ports_for_executable(paths[10])
+            local_ports, remote_ports, clients = ports_for_executable(paths[10])
         self.assertEqual(len(processes), 1)
-        self.assertEqual(ports, (50100, 50101, 50200))
+        self.assertEqual(local_ports, (50100, 50101, 50200))
+        self.assertEqual(remote_ports, (9000, 9001))
         self.assertEqual(clients, 2)
-        self.assertEqual(ports_for_executable(paths[12]), ((), 0))
+        self.assertEqual(ports_for_executable(paths[12]), ((), (), 0))
 
     def test_unidentified_flows_are_matched_to_closest_exp(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -284,11 +318,13 @@ class CoreTest(unittest.TestCase):
             [call[-1] for call in filters],
             [
                 "12000",
+                "12010",
                 "12020",
                 "12040",
                 "50100",
                 "50200",
                 "12000",
+                "12010",
                 "12020",
                 "12040",
                 "50100",
@@ -347,7 +383,7 @@ class CoreTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture = PktmonCapture(root, segment_mb=64, runner=lambda args, **kwargs: calls.append(args) or Result())
-            self.assertEqual(capture.ports, (12000, 12020, 12040))
+            self.assertEqual(capture.ports, (12000, 12010, 12020, 12040))
             capture._command("start", "--capture")
             self.assertEqual(calls[0][:2], ["pktmon", "start"])
 
@@ -380,6 +416,20 @@ class CoreTest(unittest.TestCase):
                 self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM captures").fetchone()[0], 0)
             finally:
                 db.close()
+
+    def test_capture_segments_are_ordered_by_write_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = PktmonCapture(root, runner=lambda *_a, **_k: None)
+            capture._prefix = root / "rfnext-test.etl"
+            older = root / "rfnext-test10.etl"
+            active = root / "rfnext-test2.etl"
+            older.write_bytes(b"old")
+            active.write_bytes(b"active")
+            os.utime(older, ns=(1, 1))
+            os.utime(active, ns=(2, 2))
+
+            self.assertEqual(capture.segment_files(), (older, active))
 
     def test_minimal_pcapng_conversion(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -529,6 +579,95 @@ class CoreTest(unittest.TestCase):
             source.write_bytes(header + records)
             streams = pcap_tcp_streams(source, 12020)
             self.assertEqual([stream for _, stream, _ in streams], [b"abc"])
+
+    def test_pktmon_packet_count_uses_json_counters(self):
+        class Result:
+            returncode = 0
+            stderr = ""
+            stdout = json.dumps(
+                {
+                    "components": [
+                        {"edges": [{"packets": 7}, {"packets": 3}]},
+                        {"packet_count": 2},
+                    ]
+                }
+            )
+
+        capture = PktmonCapture(Path("."), runner=lambda *_a, **_k: Result())
+        self.assertEqual(capture.packet_count(), 12)
+
+    def test_decoder_resync_requires_three_consecutive_frames(self):
+        class Decoder:
+            class DecodeError(Exception):
+                pass
+
+            @staticmethod
+            def decode_stream(_stream):
+                raise Decoder.DecodeError("gap")
+
+            @staticmethod
+            def frame_length_from_wire(header):
+                return int.from_bytes(header[1:3], "little")
+
+            @staticmethod
+            def decode_frame(frame):
+                if len(frame) != 6:
+                    raise Decoder.DecodeError("invalid")
+                return frame, {"wire_length": len(frame), "opcode": 1}
+
+        frame = b"\x00\x06\x00\x00\x01\x00"
+        recovered = _decode_stream_resync(
+            Decoder, b"\xff\xff\xff\xff" + frame * 3
+        )
+        self.assertEqual(
+            [info["stream_offset"] for _, info in recovered],
+            [4, 10, 16],
+        )
+
+    def test_ingest_rebuilds_events_when_decoder_identity_changes(self):
+        event_old = {
+            "flow": "flow",
+            "stream_offset": 1,
+            "bundle_seq": 0,
+            "ts_ns": 1,
+            "opcode": 0x7777,
+            "type": "unparsed",
+            "data": {"confidence": "old"},
+        }
+        event_new = {
+            **event_old,
+            "type": "decoded",
+            "data": {"confidence": "new"},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "capture.pcap"
+            raw.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite")
+            try:
+                with patch(
+                    "core.store.decoder_identity", return_value="decoder-a"
+                ), patch(
+                    "core.store.decoded_events", return_value=iter([event_old])
+                ):
+                    self.assertEqual(store.ingest(raw, session_id="s"), 1)
+                    self.assertEqual(store.ingest(raw, session_id="s"), 0)
+                with patch(
+                    "core.store.decoder_identity", return_value="decoder-b"
+                ), patch(
+                    "core.store.decoded_events", return_value=iter([event_new])
+                ):
+                    self.assertEqual(store.ingest(raw, session_id="s"), 1)
+                rows = store.conn.execute(
+                    "SELECT type,data_json FROM events WHERE source=?",
+                    (str(raw),),
+                ).fetchall()
+                self.assertEqual(
+                    rows,
+                    [("decoded", '{"confidence": "new"}')],
+                )
+            finally:
+                store.close()
 
 
 if __name__ == "__main__":

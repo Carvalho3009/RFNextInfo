@@ -26,6 +26,7 @@ class AppLogicTest(unittest.TestCase):
     def test_capture_uses_all_detected_ports_without_character_process_choice(self):
         app = Mock()
         app._refresh_license.return_value = (True, "Licença válida")
+        app._decode_interval_seconds.return_value = 30
         app._ingesting = False
         app.capture.status.return_value.active = False
         app.profile.get.return_value = "Profile"
@@ -40,11 +41,15 @@ class AppLogicTest(unittest.TestCase):
         }
         with patch(
             "app.main.ports_for_executable",
-            return_value=((50100, 50200), 2),
+            return_value=((50100, 50200), (12010, 12020), 2),
         ):
             App.start_capture(app)
         started_ports = app.capture.start_for_ports.call_args.args[1]
-        self.assertEqual(started_ports, (50100, 50200))
+        self.assertEqual(started_ports, (50100, 50200, 12010, 12020))
+        self.assertEqual(
+            app.prefs["capture_decode_ports"],
+            [12000, 12010, 12020, 12040],
+        )
         self.assertNotIn("capture_pid_uids", app.prefs)
         self.assertNotIn("capture_port_uids", app.prefs)
         self.assertNotIn("capture_character_names", app.prefs)
@@ -63,6 +68,75 @@ class AppLogicTest(unittest.TestCase):
         self.assertFalse(App._session_has_data(app))
         app.store.session_stats.return_value["unknown"] = 1
         self.assertTrue(App._session_has_data(app))
+
+    def test_stop_capture_is_idempotent_while_ingesting(self):
+        app = Mock()
+        app._ingesting = True
+        App.stop_capture(app)
+        app.capture.stop.assert_not_called()
+
+    def test_empty_capture_stays_pending_for_reanalysis(self):
+        class EmptyStore:
+            def __init__(self, _path):
+                pass
+
+            def ingest(self, *_args, **_kwargs):
+                raise ValueError("PCAPNG sem pacotes utilizáveis")
+
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "empty.etl"
+            raw.write_bytes(b"metadata")
+            app = Mock()
+            app._ingesting = False
+            app.current_session = "session-1"
+            app.capture.attached = True
+            app.capture.stop.return_value.files = (raw,)
+            app.prefs = {
+                "capture_pending": True,
+                "capture_decode_ports": [12010, 12020],
+            }
+            app.capture_allowed = True
+            app.auto_export.get.return_value = False
+            app._ingest_lock = threading.Lock()
+            app._ingest_files.side_effect = (
+                lambda files, session_id, ports: App._ingest_files(
+                    app, files, session_id, ports
+                )
+            )
+            app._run.side_effect = lambda job, done: done(job(), None)
+            with patch("app.main.CaptureStore", EmptyStore):
+                App.stop_capture(app)
+            self.assertTrue(app.prefs["capture_pending"])
+            self.assertFalse(app._ingesting)
+            self.assertIn(
+                "arquivos preservados",
+                app.capture_state.configure.call_args.kwargs["text"],
+            )
+
+    def test_live_decode_only_uses_closed_segments(self):
+        app = Mock()
+        app._ingesting = False
+        app._live_ingesting = False
+        app.current_session = "session-1"
+        app._next_live_decode = 0
+        app._decode_interval_seconds.return_value = 30
+        app.prefs = {"capture_decode_ports": [12010, 12020]}
+        first = Path("segment-1.etl")
+        active = Path("segment-2.etl")
+        status = Mock(active=True, files=(first, active))
+        app._run.side_effect = lambda job, done: done((4, [], 0), None)
+
+        App._maybe_decode_live(app, status)
+
+        files = app._run.call_args.args[0]()
+        self.assertEqual(files, app._ingest_files.return_value)
+        app._ingest_files.assert_called_with(
+            (first,), "session-1", (12010, 12020)
+        )
+        self.assertFalse(app._live_ingesting)
 
     def test_two_names_without_uid_export_as_reviewable_combined_file(self):
         app = Mock()

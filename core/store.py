@@ -13,7 +13,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .ingest import SENSITIVE_OPCODE, decoded_events
+from .ingest import (
+    DEFAULT_PORTS,
+    SENSITIVE_OPCODE,
+    decoded_events,
+    decoder_identity,
+)
 
 SCHEMA_VERSION = 1
 MAX_EXPORT_BYTES = 512 * 1024 * 1024
@@ -48,7 +53,8 @@ CREATE TABLE IF NOT EXISTS events(
 CREATE TABLE IF NOT EXISTS captures(
  source TEXT PRIMARY KEY, size INTEGER NOT NULL, mtime_ns INTEGER NOT NULL,
  imported_at TEXT NOT NULL, events_added INTEGER NOT NULL,
- session_id TEXT NOT NULL DEFAULT 'legacy'
+ session_id TEXT NOT NULL DEFAULT 'legacy',
+ ingestion_key TEXT NOT NULL DEFAULT ''
 );
 """
 
@@ -112,6 +118,11 @@ class CaptureStore:
                     self.conn.execute(
                         f"ALTER TABLE {table} ADD COLUMN session_id TEXT NOT NULL DEFAULT 'legacy'"
                     )
+                if table == "captures" and "ingestion_key" not in columns:
+                    self.conn.execute(
+                        "ALTER TABLE captures ADD COLUMN "
+                        "ingestion_key TEXT NOT NULL DEFAULT ''"
+                    )
             self.conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_events_session "
                 "ON events(session_id, character_uid, id)"
@@ -129,16 +140,23 @@ class CaptureStore:
         source: Path,
         events: Iterable[dict[str, Any]],
         session_id: str = "legacy",
+        ingestion_key: str = "",
     ) -> int:
         if not session_id or len(session_id) > 128:
             raise ValueError("session_id inválido")
         source = Path(source)
         stat = source.stat()
         existing = self.conn.execute(
-            "SELECT size, mtime_ns, session_id FROM captures WHERE source=?",
+            """SELECT size,mtime_ns,session_id,ingestion_key
+               FROM captures WHERE source=?""",
             (str(source),),
         ).fetchone()
-        if existing == (stat.st_size, stat.st_mtime_ns, session_id):
+        if existing == (
+            stat.st_size,
+            stat.st_mtime_ns,
+            session_id,
+            ingestion_key,
+        ):
             return 0
 
         prepared: list[tuple[dict[str, Any], dict[str, Any], str | None]] = []
@@ -159,6 +177,10 @@ class CaptureStore:
 
         added = 0
         with self.conn:
+            if existing:
+                self.conn.execute(
+                    "DELETE FROM events WHERE source=?", (str(source),)
+                )
             for event, clean, uid in prepared:
                 cursor = self.conn.execute(
                     """INSERT OR IGNORE INTO events
@@ -181,12 +203,14 @@ class CaptureStore:
                 added += cursor.rowcount
             self.conn.execute(
                 """INSERT INTO captures
-                (source,size,mtime_ns,imported_at,events_added,session_id)
-                VALUES(?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET
+                (source,size,mtime_ns,imported_at,events_added,session_id,
+                 ingestion_key)
+                VALUES(?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET
                 size=excluded.size,mtime_ns=excluded.mtime_ns,
                 imported_at=excluded.imported_at,
                 events_added=excluded.events_added,
-                session_id=excluded.session_id""",
+                session_id=excluded.session_id,
+                ingestion_key=excluded.ingestion_key""",
                 (
                     str(source),
                     stat.st_size,
@@ -194,6 +218,7 @@ class CaptureStore:
                     datetime.now(timezone.utc).isoformat(),
                     added,
                     session_id,
+                    ingestion_key,
                 ),
             )
         return added
@@ -204,11 +229,15 @@ class CaptureStore:
         *,
         session_id: str = "legacy",
         decoder_path: Path | None = None,
+        ports: tuple[int, ...] = DEFAULT_PORTS,
     ) -> int:
+        ports = tuple(dict.fromkeys(ports or DEFAULT_PORTS))
+        ingestion_key = decoder_identity(decoder_path, ports)
         return self.add_events(
             source,
-            decoded_events(source, decoder_path=decoder_path),
+            decoded_events(source, decoder_path=decoder_path, ports=ports),
             session_id,
+            ingestion_key,
         )
 
     def clear_exported(self, session_id: str | None = None) -> None:

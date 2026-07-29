@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import threading
@@ -25,6 +26,23 @@ def _pktmon_running(status: str) -> bool:
     )
 
 
+def _packet_total(value: object) -> int:
+    if isinstance(value, dict):
+        total = 0
+        for key, item in value.items():
+            normalized = str(key).casefold().replace("_", "")
+            if normalized in ("packets", "packetcount") and isinstance(
+                item, (int, float)
+            ):
+                total += max(0, int(item))
+            else:
+                total += _packet_total(item)
+        return total
+    if isinstance(value, list):
+        return sum(_packet_total(item) for item in value)
+    return 0
+
+
 @dataclass(frozen=True)
 class CaptureStatus:
     active: bool
@@ -41,7 +59,7 @@ class PktmonCapture:
         self,
         output_dir: Path,
         *,
-        ports: tuple[int, ...] = (12000, 12020, 12040),
+        ports: tuple[int, ...] = (12000, 12010, 12020, 12040),
         segment_mb: int = 512,
         stop_free_bytes: int = 2 * GIB,
         poll_seconds: float = 2,
@@ -73,19 +91,29 @@ class PktmonCapture:
             raise ValueError("session_id contém caractere inválido")
 
     def _command(self, *args: str) -> subprocess.CompletedProcess[str]:
-        result = self._run(
-            ["pktmon", *args],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        try:
+            result = self._run(
+                ["pktmon", *args],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError("PktMon não respondeu em 30 segundos") from error
         if result.returncode:
             raise RuntimeError((result.stderr or result.stdout).strip())
         return result
 
     def system_running(self) -> bool:
         return _pktmon_running(self._command("status").stdout)
+
+    def packet_count(self) -> int | None:
+        try:
+            payload = json.loads(self._command("counters", "--json").stdout)
+        except (RuntimeError, ValueError):
+            return None
+        return _packet_total(payload)
 
     def _stop_pktmon(self) -> None:
         try:
@@ -109,17 +137,20 @@ class PktmonCapture:
         self, session_id: str, ports: tuple[int, ...] = ()
     ) -> CaptureStatus:
         self._validate_session_id(session_id)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._prefix = self.output_dir / f"{session_id}.etl"
-        self._active = self.system_running()
-        self._active_ports = {
-            port for port in ports if 1 <= port <= 65535
-        }
-        if self._active and (
-            self._watcher is None or not self._watcher.is_alive()
-        ):
-            self._watcher = threading.Thread(target=self._watch_disk, daemon=True)
-            self._watcher.start()
+        with self._lock:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self._prefix = self.output_dir / f"{session_id}.etl"
+            self._active = self.system_running()
+            self._active_ports = {
+                port for port in ports if 1 <= port <= 65535
+            }
+            if self._active and (
+                self._watcher is None or not self._watcher.is_alive()
+            ):
+                self._watcher = threading.Thread(
+                    target=self._watch_disk, daemon=True
+                )
+                self._watcher.start()
         return self.status()
 
     def start(self, session_id: str) -> Path:
@@ -243,7 +274,12 @@ class PktmonCapture:
     def segment_files(self) -> tuple[Path, ...]:
         if self._prefix is None:
             return ()
-        return tuple(sorted(self.output_dir.glob(f"{self._prefix.stem}*.etl")))
+        return tuple(
+            sorted(
+                self.output_dir.glob(f"{self._prefix.stem}*.etl"),
+                key=lambda path: (path.stat().st_mtime_ns, path.name),
+            )
+        )
 
     @property
     def attached(self) -> bool:

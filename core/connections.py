@@ -117,11 +117,11 @@ def _process_path(pid: int) -> str | None:
         kernel.CloseHandle(handle)
 
 
-def connected_processes() -> dict[str, tuple[set[int], set[int]]]:
-    """Retorna caminho -> (PIDs, portas locais), sem IPs ou payloads."""
-    result: dict[str, tuple[set[int], set[int]]] = {}
+def connected_processes() -> dict[str, tuple[set[int], set[int], set[int]]]:
+    """Retorna caminho -> (PIDs, portas locais, portas remotas), sem IPs."""
+    result: dict[str, tuple[set[int], set[int], set[int]]] = {}
     paths: dict[int, str | None] = {}
-    for pid, local_port, _remote_port in _tcp_rows():
+    for pid, local_port, remote_port in _tcp_rows():
         if pid not in paths:
             paths[pid] = _process_path(pid)
         path = paths[pid]
@@ -130,13 +130,24 @@ def connected_processes() -> dict[str, tuple[set[int], set[int]]]:
         if not os.path.basename(path).casefold().startswith("projectrf"):
             continue
         key = os.path.normcase(os.path.abspath(path))
-        pids, ports = result.setdefault(key, (set(), set()))
+        pids, local_ports, remote_ports = result.setdefault(
+            key, (set(), set(), set())
+        )
         pids.add(pid)
-        ports.add(local_port)
+        local_ports.add(local_port)
+        remote_ports.add(remote_port)
     return result
 
 
-def ports_for_executable(executable: str) -> tuple[tuple[int, ...], int]:
+def ports_for_executable(
+    executable: str,
+) -> tuple[tuple[int, ...], tuple[int, ...], int]:
     selected = os.path.normcase(os.path.abspath(executable))
-    pids, ports = connected_processes().get(selected, (set(), set()))
-    return tuple(sorted(ports)), len(pids)
+    pids, local_ports, remote_ports = connected_processes().get(
+        selected, (set(), set(), set())
+    )
+    return (
+        tuple(sorted(local_ports)),
+        tuple(sorted(remote_ports)),
+        len(pids),
+    )

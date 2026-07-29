@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
 import struct
@@ -12,18 +13,37 @@ from types import ModuleType
 from typing import Any, Iterator
 
 SENSITIVE_OPCODE = 0x0101
+DEFAULT_PORTS = (12000, 12010, 12020, 12040)
+INGESTION_VERSION = 2
 
 
-def load_decoder(path: Path | None = None) -> ModuleType:
+def _decoder_file(path: Path | None = None) -> Path:
     candidates = [
         path,
-        Path(__file__).with_name("rfnext_frame_decode.py"),
         Path(os.environ["RFNEXT_DECODER_PATH"]) if os.environ.get("RFNEXT_DECODER_PATH") else None,
+        Path(__file__).with_name("rfnext_frame_decode.py"),
         Path(r"K:\MCP\Karvalho\rf-next\analysis\1.28.5\rfnext_frame_decode.py"),
     ]
     decoder_path = next((candidate for candidate in candidates if candidate and candidate.is_file()), None)
     if decoder_path is None:
         raise RuntimeError("decoder canônico não foi empacotado ou configurado")
+    return decoder_path
+
+
+def decoder_identity(
+    path: Path | None = None, ports: tuple[int, ...] = DEFAULT_PORTS
+) -> str:
+    digest = hashlib.sha256(_decoder_file(path).read_bytes())
+    digest.update(f"|ingest={INGESTION_VERSION}|".encode())
+    catalog = Path(__file__).with_name("collection_requirements.csv")
+    if catalog.is_file():
+        digest.update(hashlib.sha256(catalog.read_bytes()).digest())
+    digest.update(",".join(str(port) for port in sorted(set(ports))).encode())
+    return digest.hexdigest()
+
+
+def load_decoder(path: Path | None = None) -> ModuleType:
+    decoder_path = _decoder_file(path)
     spec = importlib.util.spec_from_file_location("rfnext_info_decoder", decoder_path)
     if spec is None or spec.loader is None:
         raise RuntimeError("não foi possível carregar o decoder canônico")
@@ -38,7 +58,7 @@ def _pcapng_to_pcap(source: Path, target: Path) -> None:
     cursor = 0
     endian = "<"
     interfaces: list[tuple[int, int]] = []
-    packets: list[tuple[int, bytes, int]] = []
+    packets: list[tuple[int, bytes, int, int]] = []
     while cursor + 12 <= len(raw):
         block_type_bytes = raw[cursor : cursor + 4]
         if block_type_bytes == b"\x0a\x0d\x0d\x0a":
@@ -52,6 +72,8 @@ def _pcapng_to_pcap(source: Path, target: Path) -> None:
             raise ValueError("PCAPNG truncado ou bloco inválido")
         body = raw[cursor + 8 : cursor + block_len - 4]
         if block_type == 1:
+            if len(body) < 8:
+                raise ValueError("IDB PCAPNG truncado")
             linktype = struct.unpack_from(endian + "H", body)[0]
             ts_to_ns = 1_000  # resolução padrão: microssegundos
             option = 8
@@ -70,19 +92,31 @@ def _pcapng_to_pcap(source: Path, target: Path) -> None:
                     break
             interfaces.append((linktype, ts_to_ns))
         elif block_type == 6:
+            if len(body) < 20:
+                raise ValueError("EPB PCAPNG truncado")
             interface_id, high, low, captured, original = struct.unpack_from(endian + "IIIII", body)
             if interface_id >= len(interfaces) or 20 + captured > len(body):
                 raise ValueError("EPB PCAPNG inválido")
             linktype, ts_to_ns = interfaces[interface_id]
             timestamp_ns = ((high << 32) | low) * ts_to_ns
-            packets.append((timestamp_ns, body[20 : 20 + captured], original))
+            packets.append(
+                (timestamp_ns, body[20 : 20 + captured], original, linktype)
+            )
         cursor += block_len
-    linktypes = {item[0] for item in interfaces}
-    if not packets or len(linktypes) != 1 or next(iter(linktypes)) not in (1, 113):
-        raise ValueError("PCAPNG sem pacotes Ethernet/Linux SLL compatíveis")
+    packets = [packet for packet in packets if packet[3] in (1, 113)]
+    linktypes = {packet[3] for packet in packets}
+    if not packets:
+        raise ValueError(
+            f"PCAPNG sem pacotes utilizáveis "
+            f"(bytes={len(raw)}, interfaces={len(interfaces)}, pacotes=0)"
+        )
+    if len(linktypes) != 1:
+        raise ValueError(
+            f"PCAPNG com múltiplos linktypes de pacotes: {sorted(linktypes)}"
+        )
     with target.open("wb") as output:
         output.write(struct.pack("<IHHIIII", 0xA1B23C4D, 2, 4, 0, 0, 0xFFFF, next(iter(linktypes))))
-        for timestamp_ns, packet, original in packets:
+        for timestamp_ns, packet, original, _linktype in packets:
             seconds, fraction = divmod(timestamp_ns, 1_000_000_000)
             output.write(struct.pack("<IIII", seconds, fraction, len(packet), original))
             output.write(packet)
@@ -136,11 +170,53 @@ def _safe_parse(
     return parsed
 
 
+def _frame_at(
+    decoder: ModuleType, stream: bytes, offset: int
+) -> tuple[bytes, dict[str, Any], int]:
+    if len(stream) - offset < 6:
+        raise decoder.DecodeError("cabeçalho incompleto")
+    length = int(decoder.frame_length_from_wire(stream[offset : offset + 3]))
+    end = offset + length
+    if length < 6 or end > len(stream):
+        raise decoder.DecodeError("frame truncado")
+    decoded, info = decoder.decode_frame(stream[offset:end])
+    info["stream_offset"] = offset
+    return decoded, info, end
+
+
+def _decode_stream_resync(
+    decoder: ModuleType, stream: bytes
+) -> list[tuple[bytes, dict[str, Any]]]:
+    try:
+        return decoder.decode_stream(stream)
+    except decoder.DecodeError:
+        pass
+    recovered: list[tuple[bytes, dict[str, Any]]] = []
+    cursor = 0
+    while cursor + 6 <= len(stream):
+        candidate: list[tuple[bytes, dict[str, Any]]] = []
+        next_offset = cursor
+        while next_offset + 6 <= len(stream):
+            try:
+                decoded, info, next_offset = _frame_at(
+                    decoder, stream, next_offset
+                )
+            except decoder.DecodeError:
+                break
+            candidate.append((decoded, info))
+        if len(candidate) >= 3:
+            recovered.extend(candidate)
+            cursor = max(next_offset, cursor + 1)
+        else:
+            cursor += 1
+    return recovered
+
+
 def decoded_events(
     source: Path,
     *,
     decoder_path: Path | None = None,
-    ports: tuple[int, ...] = (12000, 12020, 12040),
+    ports: tuple[int, ...] = DEFAULT_PORTS,
 ) -> Iterator[dict[str, Any]]:
     decoder = load_decoder(decoder_path)
     catalog_path = Path(__file__).with_name("collection_requirements.csv")
@@ -152,10 +228,7 @@ def decoded_events(
         for port in ports:
             for flow, stream, spans in decoder.pcap_tcp_streams(pcap, port):
                 time_cursor = 0
-                try:
-                    outer_frames = decoder.decode_stream(stream)
-                except decoder.DecodeError:
-                    continue
+                outer_frames = _decode_stream_resync(decoder, stream)
                 for outer_decoded, outer_info in outer_frames:
                     if spans:
                         frame_end = outer_info["stream_offset"] + outer_info["wire_length"]

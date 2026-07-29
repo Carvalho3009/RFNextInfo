@@ -7,6 +7,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, X, filedialog, messagebox, simpledialog, ttk
@@ -22,9 +23,10 @@ from app.support_log import configure as configure_log, recent_lines
 from app.updater import download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.connections import connected_processes, ports_for_executable
+from core.ingest import DEFAULT_PORTS
 from core.store import CaptureStore
 
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -79,6 +81,7 @@ def _safe_error_code(error: Exception) -> str:
         ("outra captura pktmon", "external_pktmon"),
         ("acesso negado", "access_denied"),
         ("access is denied", "access_denied"),
+        ("não respondeu", "pktmon_timeout"),
         ("espaço livre", "low_disk_space"),
     ):
         if marker in text:
@@ -215,7 +218,12 @@ class App(tk.Tk):
         self.current_session = self.store.latest_session()
         self.tray = None
         self._ingesting = False
+        self._live_ingesting = False
+        self._ingest_lock = threading.Lock()
+        self._next_live_decode = time.monotonic() + 30
+        self._last_live_decode = "Ainda não executada"
         self._last_poll_error = ""
+        self._last_packet_count: int | None = None
         self._last_game_signature = None
         self._game_choices: dict[str, str] = {}
         self._selected_game_path = ""
@@ -338,6 +346,40 @@ class App(tk.Tk):
             status, text="Armazenamento: calculando", style="Muted.TLabel"
         )
         self.storage_state.grid(row=2, column=0, sticky="w", pady=(5, 0))
+        self.live_decode_state = ttk.Label(
+            status,
+            text="Atualização durante captura: a cada 30 s",
+            style="Muted.TLabel",
+        )
+        self.live_decode_state.grid(
+            row=3, column=0, sticky="w", pady=(5, 0)
+        )
+        interval = ttk.Frame(status, style="Panel.TFrame")
+        interval.grid(row=0, column=1, rowspan=4, sticky="e", padx=(18, 0))
+        ttk.Label(
+            interval, text="Atualizar informações a cada", style="Muted.TLabel"
+        ).pack(side=LEFT)
+        self.decode_interval = tk.IntVar(value=30)
+        self.decode_interval_input = ttk.Spinbox(
+            interval,
+            from_=15,
+            to=300,
+            increment=5,
+            width=5,
+            textvariable=self.decode_interval,
+            command=self._decode_interval_changed,
+        )
+        self.decode_interval_input.pack(side=LEFT, padx=(8, 4))
+        self.decode_interval_input.bind(
+            "<FocusOut>", self._decode_interval_changed
+        )
+        self.decode_interval_input.bind(
+            "<Return>", self._decode_interval_changed
+        )
+        ttk.Label(interval, text="segundos", style="Muted.TLabel").pack(
+            side=LEFT
+        )
+        status.columnconfigure(0, weight=1)
         buttons = ttk.Frame(self.capture_tab, padding=(0, 18))
         buttons.pack(fill=X)
         self.start_button = ttk.Button(
@@ -601,6 +643,14 @@ class App(tk.Tk):
         self.character1.insert(0, str(self.prefs.get("character1", "")))
         self.character2.insert(0, str(self.prefs.get("character2", "")))
         self.auto_export.set(bool(self.prefs.get("auto_export", False)))
+        try:
+            interval = int(self.prefs.get("decode_interval_seconds", 30))
+        except (TypeError, ValueError):
+            interval = 30
+        self.decode_interval.set(max(15, min(300, interval)))
+        self._next_live_decode = (
+            time.monotonic() + self.decode_interval.get()
+        )
         self.channel.set(
             self.prefs.get("channel")
             if self.prefs.get("channel") in {"stable", "beta"}
@@ -700,6 +750,7 @@ class App(tk.Tk):
                 "character1": self.character1.get().strip(),
                 "character2": self.character2.get().strip(),
                 "auto_export": self.auto_export.get(),
+                "decode_interval_seconds": self._decode_interval_seconds(),
                 "channel": self.channel.get(),
                 "last_session": self.current_session,
                 "game_executable": self._selected_game_path,
@@ -712,6 +763,18 @@ class App(tk.Tk):
             encoding="utf-8",
         )
         os.replace(temporary, PREFERENCES_PATH)
+
+    def _decode_interval_seconds(self) -> int:
+        try:
+            return max(15, min(300, int(self.decode_interval.get())))
+        except (tk.TclError, TypeError, ValueError):
+            return 30
+
+    def _decode_interval_changed(self, _event=None) -> None:
+        interval = self._decode_interval_seconds()
+        self.decode_interval.set(interval)
+        self._next_live_decode = time.monotonic() + interval
+        self._save_preferences()
 
     def _run(self, job, done) -> None:
         def worker():
@@ -743,7 +806,7 @@ class App(tk.Tk):
                 )
             return
         choices: dict[str, str] = {}
-        for path, (pids, ports) in sorted(
+        for path, (pids, local_ports, _remote_ports) in sorted(
             processes.items(), key=lambda item: Path(item[0]).name.casefold()
         ):
             name = Path(path).name
@@ -751,7 +814,7 @@ class App(tk.Tk):
                 name = f"{name} ({Path(path).parent.name})"
             label = (
                 f"{name} · {len(pids)} cliente(s) · "
-                f"{len(ports)} conexão(ões)"
+                f"{len(local_ports)} conexão(ões)"
             )
             choices[label] = path
         if (
@@ -773,12 +836,14 @@ class App(tk.Tk):
         )
         self.game_choice.set(selected)
         if selected:
-            ports, clients = ports_for_executable(self._selected_game_path)
+            local_ports, _remote_ports, clients = ports_for_executable(
+                self._selected_game_path
+            )
             self.game_status.configure(
                 text=(
                     f"{clients} cliente(s) conectado(s) · "
-                    f"{len(ports)} conexão(ões) encontrada(s)"
-                    if ports
+                    f"{len(local_ports)} conexão(ões) encontrada(s)"
+                    if local_ports
                     else "Aguardando conexão do jogo"
                 )
             )
@@ -877,8 +942,10 @@ class App(tk.Tk):
                 "Conexão do jogo",
                 "Abra o jogo, clique em Atualizar lista e escolha o executável.",
             )
-        ports, clients = ports_for_executable(self._selected_game_path)
-        if not ports:
+        local_ports, remote_ports, clients = ports_for_executable(
+            self._selected_game_path
+        )
+        if not local_ports:
             self.refresh_game_choices(False)
             return messagebox.showwarning(
                 "Conexão do jogo",
@@ -897,8 +964,14 @@ class App(tk.Tk):
             f"{_safe_name(profile, 'Profile')}-{stamp}-{counter:03d}"
         )
         capture_prefix = f"rfnext-{stamp}-{counter:03d}"
+        filter_ports = tuple(
+            dict.fromkeys((*local_ports, *remote_ports))
+        )
+        decode_ports = tuple(
+            dict.fromkeys((*DEFAULT_PORTS, *remote_ports))
+        )
         try:
-            self.capture.start_for_ports(capture_prefix, ports)
+            self.capture.start_for_ports(capture_prefix, filter_ports)
         except Exception as error:
             self.log.exception(
                 "capture_start_failed reason=%s", _safe_error_code(error)
@@ -909,8 +982,14 @@ class App(tk.Tk):
             session_counter=counter,
             capture_prefix=capture_prefix,
             capture_pending=True,
-            capture_ports=list(ports),
+            capture_ports=list(filter_ports),
+            capture_decode_ports=list(decode_ports),
         )
+        self._last_packet_count = 0
+        self._next_live_decode = (
+            time.monotonic() + self._decode_interval_seconds()
+        )
+        self._last_live_decode = "Aguardando primeiro segmento fechado"
         for obsolete in (
             "character1_pid",
             "character2_pid",
@@ -924,16 +1003,23 @@ class App(tk.Tk):
         except OSError:
             self.log.exception("capture_state_save_failed")
         self.log.info(
-            "capture_started clients=%d connections=%d", clients, len(ports)
+            "capture_started clients=%d local_connections=%d "
+            "remote_ports=%d filters=%d",
+            clients,
+            len(local_ports),
+            len(remote_ports),
+            len(filter_ports),
         )
         self.capture_state.configure(
             text=(
                 f"Capturando {clients} cliente(s) · "
-                f"{len(ports)} conexão(ões) monitorada(s)"
+                f"{len(local_ports)} conexão(ões) · aguardando pacotes"
             )
         )
 
     def stop_capture(self) -> None:
+        if self._ingesting:
+            return
         if not self.current_session:
             try:
                 running = self.capture.status().active
@@ -957,65 +1043,74 @@ class App(tk.Tk):
             except Exception as error:
                 messagebox.showerror("Falha ao parar", str(error))
             return
-        if not self.capture.attached:
-            prefix = str(
-                self.prefs.get("capture_prefix")
-                or _capture_prefix(self.current_session)
-                or ""
-            )
-            if prefix and tuple(CAPTURE_DIR.glob(f"{prefix}*.etl")):
-                self.capture.attach(
-                    prefix, tuple(self.prefs.get("capture_ports") or ())
-                )
+        self._ingesting = True
+        self.start_button.configure(state="disabled")
+        self.stop_button.configure(state="disabled")
         try:
+            if not self.capture.attached:
+                prefix = str(
+                    self.prefs.get("capture_prefix")
+                    or _capture_prefix(self.current_session)
+                    or ""
+                )
+                if prefix and tuple(CAPTURE_DIR.glob(f"{prefix}*.etl")):
+                    self.capture.attach(
+                        prefix, tuple(self.prefs.get("capture_ports") or ())
+                    )
             status = self.capture.stop()
             self.last_files = list(status.files)
             self.log.info("capture_stopped segments=%d", len(self.last_files))
             self.capture_state.configure(text="Lendo segmentos capturados…")
         except Exception as error:
+            self._ingesting = False
+            self.stop_button.configure(state="normal")
+            self.start_button.configure(
+                state="normal" if self.capture_allowed else "disabled"
+            )
             self.log.exception("capture_stop_failed")
             return messagebox.showerror("Falha ao parar", str(error))
         session_id = self.current_session
+        files = tuple(self.last_files)
+        decode_ports = tuple(
+            self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
+        )
 
         def ingest():
-            store = CaptureStore(DB_PATH)
-            try:
-                added = 0
-                failures = []
-                for path in self.last_files:
-                    try:
-                        added += store.ingest(path, session_id=session_id)
-                    except Exception as error:
-                        reason = _safe_error_code(error)
-                        self.log.exception(
-                            "capture_segment_ingest_failed reason=%s", reason
-                        )
-                        if reason == "empty_capture":
-                            continue
-                        failures.append(f"{path.name}: {error}")
-                return added, failures
-            finally:
-                store.close()
+            return self._ingest_files(files, session_id, decode_ports)
 
         def ingest_done(result, error):
             self._ingesting = False
+            self.stop_button.configure(state="normal")
+            self.start_button.configure(
+                state="normal" if self.capture_allowed else "disabled"
+            )
             if error:
-                text = f"Captura encerrada · leitura falhou: {error}"
+                text = (
+                    "Captura encerrada · leitura falhou: "
+                    f"{_safe_error_code(error)}"
+                )
             else:
-                added, failures = result
+                added, failures, empty_count = result
                 self.log.info(
-                    "capture_ingested events=%d failures=%d",
+                    "capture_ingested events=%d failures=%d empty=%d",
                     added,
                     len(failures),
+                    empty_count,
                 )
-                text = (
-                    f"Captura encerrada · {added} eventos novos"
-                    if added
-                    else (
-                        "Captura encerrada sem eventos reconhecidos · "
-                        "exportação disponível com alerta"
+                if empty_count:
+                    text = (
+                        "Captura encerrada sem pacotes · arquivos preservados "
+                        "para nova análise"
                     )
-                )
+                else:
+                    text = (
+                        f"Captura encerrada · {added} eventos novos"
+                        if added
+                        else (
+                            "Captura encerrada sem eventos decodificados · "
+                            "exportação disponível com alerta"
+                        )
+                    )
                 if failures:
                     text += (
                         f" · {len(failures)} segmento(s) ignorado(s): "
@@ -1025,6 +1120,9 @@ class App(tk.Tk):
                     self.prefs["capture_pending"] = False
                     self._save_preferences()
             self.capture_state.configure(text=text)
+            self.live_decode_state.configure(
+                text=f"Última atualização: {self._last_live_decode}"
+            )
             self._refresh_info()
             if (
                 not error
@@ -1034,8 +1132,104 @@ class App(tk.Tk):
             ):
                 self._export_to(EXPORT_DIR)
 
-        self._ingesting = True
         self._run(ingest, ingest_done)
+
+    def _ingest_files(
+        self,
+        files: tuple[Path, ...],
+        session_id: str,
+        decode_ports: tuple[int, ...],
+    ) -> tuple[int, list[str], int]:
+        with self._ingest_lock:
+            store = CaptureStore(DB_PATH)
+            try:
+                added = 0
+                failures = []
+                empty_count = 0
+                for path in files:
+                    try:
+                        added += store.ingest(
+                            path,
+                            session_id=session_id,
+                            ports=decode_ports,
+                        )
+                    except Exception as error:
+                        reason = _safe_error_code(error)
+                        self.log.exception(
+                            "capture_segment_ingest_failed reason=%s "
+                            "segment_bytes=%d",
+                            reason,
+                            path.stat().st_size if path.exists() else 0,
+                        )
+                        if reason == "empty_capture":
+                            empty_count += 1
+                            failures.append(
+                                f"{path.name}: nenhum pacote correspondeu "
+                                "aos filtros"
+                            )
+                            continue
+                        failures.append(f"{path.name}: {reason}")
+                return added, failures, empty_count
+            finally:
+                store.close()
+
+    def _maybe_decode_live(self, status) -> None:
+        if (
+            not status.active
+            or self._ingesting
+            or self._live_ingesting
+            or not self.current_session
+            or time.monotonic() < self._next_live_decode
+        ):
+            return
+        interval = self._decode_interval_seconds()
+        self._next_live_decode = time.monotonic() + interval
+        files = tuple(status.files[:-1])
+        if not files:
+            self._last_live_decode = "Aguardando segmento fechado"
+            return
+        self._live_ingesting = True
+        self.live_decode_state.configure(text="Decodificando segmento fechado…")
+        session_id = self.current_session
+        decode_ports = tuple(
+            self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
+        )
+
+        def done(result, error):
+            self._live_ingesting = False
+            self._last_live_decode = datetime.now().strftime("%H:%M:%S")
+            if error:
+                self.live_decode_state.configure(
+                    text=(
+                        "Atualização falhou · nova tentativa em "
+                        f"{interval} s"
+                    )
+                )
+                return
+            added, failures, _empty_count = result
+            self.log.info(
+                "live_capture_ingested events=%d failures=%d segments=%d",
+                added,
+                len(failures),
+                len(files),
+            )
+            suffix = (
+                f" · {len(failures)} falha(s)"
+                if failures
+                else ""
+            )
+            self.live_decode_state.configure(
+                text=(
+                    f"Atualizado às {self._last_live_decode} · "
+                    f"{added} evento(s) novo(s){suffix}"
+                )
+            )
+            self._refresh_info()
+
+        self._run(
+            lambda: self._ingest_files(files, session_id, decode_ports),
+            done,
+        )
 
     def _session_parts(self) -> tuple[str, int]:
         match = re.search(r"-(\d{8}-\d{6})-(\d+)$", self.current_session or "")
@@ -1672,8 +1866,10 @@ class App(tk.Tk):
     def _refresh_active_game_connections(self) -> None:
         if not self._selected_game_path:
             return
-        ports, clients = ports_for_executable(self._selected_game_path)
-        signature = (clients, ports)
+        local_ports, remote_ports, clients = ports_for_executable(
+            self._selected_game_path
+        )
+        signature = (clients, local_ports, remote_ports)
         if signature == self._last_game_signature:
             return
         self._last_game_signature = signature
@@ -1685,8 +1881,11 @@ class App(tk.Tk):
         if not clients:
             self.game_status.configure(text="Aguardando reconexão do jogo")
             return
+        filter_ports = tuple(
+            dict.fromkeys((*local_ports, *remote_ports))
+        )
         try:
-            added = self.capture.add_ports(ports)
+            added = self.capture.add_ports(filter_ports)
         except Exception as error:
             self.log.exception(
                 "capture_connection_update_failed reason=%s",
@@ -1698,14 +1897,23 @@ class App(tk.Tk):
             return
         if added:
             saved = set(self.prefs.get("capture_ports") or ())
-            saved.update(ports)
+            saved.update(filter_ports)
             self.prefs["capture_ports"] = sorted(saved)
+            decode_ports = set(
+                self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
+            )
+            decode_ports.update(remote_ports)
+            self.prefs["capture_decode_ports"] = sorted(decode_ports)
             self._save_preferences()
-            self.log.info("capture_connections_added count=%d", added)
+            self.log.info(
+                "capture_connections_added filters=%d remote_ports=%d",
+                added,
+                len(remote_ports),
+            )
         self.game_status.configure(
             text=(
                 f"{clients} cliente(s) conectado(s) · "
-                f"{len(ports)} conexão(ões) monitorada(s)"
+                f"{len(local_ports)} conexão(ões) monitorada(s)"
             )
         )
 
@@ -1714,6 +1922,10 @@ class App(tk.Tk):
             status = self.capture.status()
             if status.active:
                 self._refresh_active_game_connections()
+                self._maybe_decode_live(status)
+                packet_count = self.capture.packet_count()
+                if packet_count is not None:
+                    self._last_packet_count = packet_count
             total = sum(path.stat().st_size for path in CAPTURE_DIR.glob("*.etl"))
             usage = shutil.disk_usage(CAPTURE_DIR)
             percent_free = usage.free / usage.total if usage.total else 0
@@ -1754,10 +1966,17 @@ class App(tk.Tk):
                 f"Sessão atual         {self.current_session or '—'}",
                 f"Segmentos atuais     {len(status.files)}",
                 f"Tamanho da sessão    {_format_bytes(status.bytes_written)}",
+                "Pacotes observados   "
+                + (
+                    str(self._last_packet_count)
+                    if self._last_packet_count is not None
+                    else "indisponível"
+                ),
                 f"Eventos reconhecidos {stats['recognized']}",
                 f"Sem personagem       {stats['unassigned']}",
                 f"Não decodificados    {stats['unknown']}",
                 f"Kills estimadas      {kills}  (proxy por recompensa)",
+                f"Última atualização   {self._last_live_decode}",
                 "",
                 "Dados não confirmados permanecem ocultos.",
             ]
