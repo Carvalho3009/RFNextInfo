@@ -23,6 +23,7 @@ from app.main import (
     _capture_prefix,
     _capture_summary,
     _collection_marks,
+    _configured_capture_dir,
     _market_rows,
     _merge_client_routes,
     _safe_error_code,
@@ -39,6 +40,37 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_configured_capture_dir_uses_saved_absolute_path(self):
+        with tempfile.TemporaryDirectory() as folder:
+            preferences = Path(folder) / "preferences.json"
+            target = Path(folder) / "capturas"
+            preferences.write_text(
+                json.dumps({"capture_directory": str(target)}),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_configured_capture_dir(preferences), target)
+
+    def test_choose_capture_directory_persists_and_rebuilds_capture(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "capturas"
+            app = Mock()
+            app.capture_dir = Path(folder)
+            app.prefs = {}
+            app._capture_is_active.return_value = False
+
+            with patch(
+                "app.main.filedialog.askdirectory", return_value=str(target)
+            ), patch("app.main.PktmonCapture") as capture:
+                App._choose_capture_directory(app)
+
+            self.assertEqual(app.capture_dir, target.resolve())
+            capture.assert_called_once_with(target.resolve())
+            app._save_preferences.assert_called_once()
+            app.capture_directory_state.configure.assert_called_once_with(
+                text=str(target.resolve())
+            )
+
     def test_scroll_ignores_native_combobox_popup(self):
         canvas = Mock()
         app = Mock(
@@ -186,6 +218,62 @@ class AppLogicTest(unittest.TestCase):
 
         app._send_mode_snapshot.assert_called_once_with("market")
         app.after.assert_not_called()
+
+    def test_character_send_includes_detected_equipment(self):
+        app = Mock()
+        app.current_session = "Profile-20260730-120000-001"
+        app.site_profile.profile = "CarvalhoRF"
+        app.site_profile.upload_live.return_value = {"receipt": "ok"}
+        app.license.installation_id = "installation"
+        app.license.lease = {"valid": True}
+        app.active_character_uid = "101"
+        app._active_client_index = 0
+        app._character_exports.return_value = [
+            {
+                "uid": "101",
+                "name": "Carvalho",
+                "client_key": "client:a",
+                "include_unassigned": False,
+                "only_unassigned": False,
+            }
+        ]
+        app.store.session_envelope.return_value = {
+            "events": [
+                {
+                    "type": "player_profile_info",
+                    "data": {
+                        "fields": {
+                            "active_equipment": {
+                                "slots": [
+                                    {
+                                        "equip_part_type": 1,
+                                        "resolved": True,
+                                        "item": {
+                                            "item_index": 1000078,
+                                            "enchant_level": 7,
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                }
+            ]
+        }
+        app.quick_mode_labels = {"character": Mock()}
+        app.queue_mode_times = {"character": Mock()}
+        app._run.side_effect = lambda job, done: done(job(), None)
+
+        App._send_mode_snapshot(app, "character")
+
+        payload = app.site_profile.upload_live.call_args.args[1]
+        equipment = [
+            {"item_index": 1000078, "slot": 1, "refinement": 7}
+        ]
+        self.assertEqual(
+            payload["profiles"][0]["loadout"]["equipment"], equipment
+        )
+        self.assertEqual(payload["loadout"]["equipment"], equipment)
 
     def test_client_tab_switch_does_not_ask_for_name(self):
         app = Mock()
@@ -554,6 +642,7 @@ class AppLogicTest(unittest.TestCase):
             raw = Path(folder) / "pending.etl"
             raw.write_bytes(b"undecoded")
             app = Mock()
+            app.capture_dir = Path(folder)
             app.current_session = "Profile-20260729-120000-001"
             app.capture.segment_files.return_value = (raw,)
             app.capture.status.return_value.active = False
@@ -580,6 +669,7 @@ class AppLogicTest(unittest.TestCase):
 
     def test_discard_stale_session_without_files_does_not_query_pktmon(self):
         app = Mock()
+        app.capture_dir = Path("missing-capture-dir")
         app.current_session = "Profile-20260729-120000-001"
         app._live_files = []
         app.capture.segment_files.return_value = ()
