@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS capture_windows(
 CREATE TABLE IF NOT EXISTS subsessions(
  id TEXT PRIMARY KEY, session_id TEXT NOT NULL, character_uid TEXT,
  name TEXT NOT NULL, location TEXT NOT NULL DEFAULT '',
+ map_name TEXT NOT NULL DEFAULT '', spot_name TEXT NOT NULL DEFAULT '',
  mobs_json TEXT NOT NULL DEFAULT '[]',
  mob_levels_json TEXT NOT NULL DEFAULT '{}',
  duration_minutes INTEGER NOT NULL DEFAULT 0,
@@ -213,6 +214,8 @@ class CaptureStore:
                     "duration_minutes INTEGER NOT NULL DEFAULT 0"
                 )
             for column, definition in (
+                ("map_name", "TEXT NOT NULL DEFAULT ''"),
+                ("spot_name", "TEXT NOT NULL DEFAULT ''"),
                 ("sequence", "INTEGER"),
                 ("upload_state", "TEXT NOT NULL DEFAULT 'pending'"),
                 ("uploaded_at", "TEXT"),
@@ -828,12 +831,15 @@ class CaptureStore:
         *,
         character_uid: str | None = None,
         location: str = "",
+        map_name: str = "",
+        spot_name: str = "",
         mobs: list[str] | None = None,
         mob_levels: dict[str, int | str] | None = None,
         duration_minutes: int = 0,
         started_ns: int,
     ) -> None:
         name, location = name.strip(), location.strip()
+        map_name, spot_name = map_name.strip(), spot_name.strip()
         mobs = [str(mob).strip() for mob in (mobs or []) if str(mob).strip()]
         normalized_levels: dict[str, int | str] = {}
         for mob, level in (mob_levels or {}).items():
@@ -878,15 +884,18 @@ class CaptureStore:
             )
             self.conn.execute(
                 """INSERT INTO subsessions
-                   (id,session_id,character_uid,name,location,mobs_json,
-                     mob_levels_json,duration_minutes,started_ns,sequence)
-                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                   (id,session_id,character_uid,name,location,map_name,
+                     spot_name,mobs_json,mob_levels_json,duration_minutes,
+                     started_ns,sequence)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     subsession_id,
                     session_id,
                     character_uid,
                     name,
                     location,
+                    map_name,
+                    spot_name,
                     json.dumps(mobs, ensure_ascii=False),
                     json.dumps(mob_levels, ensure_ascii=False, sort_keys=True),
                     duration_minutes,
@@ -914,9 +923,9 @@ class CaptureStore:
 
     def subsessions(self, session_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            """SELECT id,character_uid,name,location,mobs_json,
-                      mob_levels_json,duration_minutes,started_ns,ended_ns,
-                      sequence,upload_state,uploaded_at
+            """SELECT id,character_uid,name,location,map_name,spot_name,
+                      mobs_json,mob_levels_json,duration_minutes,started_ns,
+                      ended_ns,sequence,upload_state,uploaded_at
                FROM subsessions WHERE session_id=? ORDER BY started_ns DESC""",
             (session_id,),
         )
@@ -926,6 +935,8 @@ class CaptureStore:
                 "character_uid": character_uid,
                 "name": name,
                 "location": location,
+                "map_name": map_name,
+                "spot_name": spot_name,
                 "mobs": json.loads(mobs),
                 "mob_levels": json.loads(mob_levels),
                 "duration_minutes": duration_minutes,
@@ -940,6 +951,8 @@ class CaptureStore:
                 character_uid,
                 name,
                 location,
+                map_name,
+                spot_name,
                 mobs,
                 mob_levels,
                 duration_minutes,
