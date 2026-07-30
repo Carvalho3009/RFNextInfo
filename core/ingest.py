@@ -14,7 +14,7 @@ from typing import Any, Iterator
 
 SENSITIVE_OPCODE = 0x0101
 DEFAULT_PORTS = (12000, 12010, 12020, 12040)
-INGESTION_VERSION = 2
+INGESTION_VERSION = 3
 
 
 def _decoder_file(path: Path | None = None) -> Path:
@@ -227,6 +227,7 @@ def decoded_events(
         pcap = _to_pcap(Path(source), Path(temp))
         for port in ports:
             for flow, stream, spans in decoder.pcap_tcp_streams(pcap, port):
+                appearances = []
                 time_cursor = 0
                 outer_frames = _decode_stream_resync(decoder, stream)
                 for outer_decoded, outer_info in outer_frames:
@@ -257,6 +258,20 @@ def decoded_events(
                                     },
                                 }
                             continue
+                        if parsed.get("type") == "appear_player_prefix":
+                            if parsed.get("fields", {}).get("equipment_refs"):
+                                appearances.append(parsed)
+                                appearances = appearances[-64:]
+                        elif parsed.get("type") == "player_profile_info":
+                            correlated = decoder.correlate_active_equipment(
+                                parsed, appearances
+                            )
+                            if correlated is not None:
+                                active_equipment, appearance = correlated
+                                parsed["fields"]["active_equipment"] = active_equipment
+                                appearance["fields"]["active_equipment"] = (
+                                    active_equipment
+                                )
                         yield {
                             "source": str(source),
                             "flow": flow,

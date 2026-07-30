@@ -15,6 +15,7 @@ from core.pktmon_realtime import (
     _DataSourceList,
     _data_source_pointers,
     _matches_tcp_port,
+    split_pcap_by_ports,
 )
 from core.connections import (
     connected_processes,
@@ -26,6 +27,116 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_clear_session_removes_raw_and_decoded_state_only_for_target(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            first = root / "first.pcap"
+            second = root / "second.pcap"
+            first.write_bytes(b"raw")
+            second.write_bytes(b"keep")
+            store = CaptureStore(root / "state.sqlite3")
+            store.add_events(first, [], "discard")
+            store.add_events(second, [], "keep")
+            store.add_capture_window("discard", "market", 100, 200)
+            store.start_subsession(
+                "sub-discard",
+                "discard",
+                "Farm",
+                started_ns=300,
+            )
+
+            store.clear_session("discard")
+
+            self.assertEqual(store.session_sources("discard"), [])
+            self.assertEqual(store.capture_windows("discard"), [])
+            self.assertEqual(store.subsessions("discard"), [])
+            self.assertEqual(store.session_sources("keep"), [second])
+            store.start_subsession(
+                "sub-next",
+                "keep",
+                "Farm seguinte",
+                started_ns=400,
+            )
+            self.assertEqual(store.subsessions("keep")[0]["sequence"], 2)
+            store.close()
+
+    def test_capture_windows_and_subsessions_survive_restart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "capture.sqlite3"
+            store = CaptureStore(path)
+            store.add_capture_window(
+                "session", "market", 100, 200, "uid-1"
+            )
+            self.assertEqual(
+                store.pending_capture_uploads("session"),
+                [
+                    {
+                        "mode": "market",
+                        "started_ns": 100,
+                        "ended_ns": 200,
+                        "character_uid": "uid-1",
+                    }
+                ],
+            )
+            store.set_capture_upload_state(
+                "session", "market", 100, "sent"
+            )
+            store.start_subsession(
+                "sub-1",
+                "session",
+                "Farm da manhã",
+                character_uid="uid-1",
+                location="Abismo",
+                mobs=["Bellato", "Accretia"],
+                mob_levels={"Bellato": 65, "Accretia": "60-67"},
+                started_ns=300,
+            )
+            store.end_subsession("sub-1", 900)
+            store.close()
+
+            store = CaptureStore(path)
+            self.assertEqual(
+                store.capture_windows("session"),
+                [{"mode": "market", "started_ns": 100, "ended_ns": 200}],
+            )
+            self.assertEqual(store.pending_capture_uploads("session"), [])
+            self.assertEqual(
+                store.subsessions("session")[0],
+                {
+                    "id": "sub-1",
+                    "character_uid": "uid-1",
+                    "name": "Farm da manhã",
+                    "location": "Abismo",
+                    "mobs": ["Bellato", "Accretia"],
+                    "mob_levels": {"Accretia": "60-67", "Bellato": 65},
+                    "duration_minutes": 0,
+                    "started_ns": 300,
+                    "ended_ns": 900,
+                    "sequence": 1,
+                    "upload_state": "pending",
+                    "uploaded_at": None,
+                },
+            )
+            store.set_subsession_upload_state("sub-1", "sent")
+            store.start_subsession(
+                "sub-2",
+                "session-2",
+                "Farm da tarde",
+                started_ns=1000,
+            )
+            self.assertEqual(store.subsessions("session-2")[0]["sequence"], 2)
+            store.close()
+
+            store = CaptureStore(path)
+            self.assertEqual(
+                store.subsessions("session")[0]["upload_state"], "sent"
+            )
+            self.assertIsNotNone(
+                store.subsessions("session")[0]["uploaded_at"]
+            )
+            self.assertEqual(store.subsessions("session-2")[0]["sequence"], 2)
+            store.close()
+
     def test_store_can_remove_preview_sources_before_final_ingest(self):
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "preview.pcap"
@@ -63,6 +174,41 @@ class CoreTest(unittest.TestCase):
         self.assertTrue(_matches_tcp_port(bytes(packet), {12010}))
         self.assertFalse(_matches_tcp_port(bytes(packet), {443}))
 
+    def test_realtime_filter_accepts_new_ports_without_restart(self):
+        capture = RealtimeCapture(Path("live.pcap"), (12020,))
+
+        self.assertEqual(capture.add_ports((12020, 53000)), 1)
+        self.assertEqual(capture.add_ports((53000,)), 0)
+        self.assertEqual(capture._port_set, {12020, 53000})
+
+    def test_realtime_pcap_is_split_by_client_local_port(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "all.pcap"
+            packet_a = bytearray(54)
+            packet_a[12:14] = b"\x08\x00"
+            packet_a[14] = 0x45
+            packet_a[23] = 6
+            packet_a[34:38] = struct.pack("!HH", 50100, 12010)
+            packet_b = bytearray(packet_a)
+            packet_b[34:38] = struct.pack("!HH", 50200, 12010)
+            source.write_bytes(
+                struct.pack("<IHHIIII", 0xA1B23C4D, 2, 4, 0, 0, 0xFFFF, 1)
+                + struct.pack("<IIII", 1, 0, len(packet_a), len(packet_a))
+                + packet_a
+                + struct.pack("<IIII", 2, 0, len(packet_b), len(packet_b))
+                + packet_b
+            )
+            first = Path(folder) / "client-a.pcap"
+            second = Path(folder) / "client-b.pcap"
+
+            kept = split_pcap_by_ports(
+                source, [(first, (50100,)), (second, (50200,))]
+            )
+
+            self.assertEqual(kept, [first, second])
+            self.assertEqual(first.stat().st_size, 24 + 16 + len(packet_a))
+            self.assertEqual(second.stat().st_size, 24 + 16 + len(packet_b))
+
     def test_realtime_capture_writes_decoder_compatible_pcap(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "live.pcap"
@@ -81,6 +227,48 @@ class CoreTest(unittest.TestCase):
             )[0]
             self.assertGreater(packet_seconds, 946_684_800)
 
+    def test_realtime_checkpoint_flushes_complete_records(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / "live.pcap"
+            capture = RealtimeCapture(target, (12020,))
+            writer = threading.Thread(target=capture._write_pcap)
+            capture._writer = writer
+            writer.start()
+            capture._items.put((1_700_000_000_000_000_000, b"\x00" * 14))
+
+            self.assertEqual(capture.checkpoint(), target)
+            with capture.readable():
+                self.assertEqual(target.stat().st_size, 24 + 16 + 14)
+
+            capture._items.put(None)
+            writer.join(timeout=2)
+            self.assertFalse(writer.is_alive())
+
+    def test_realtime_rotation_closes_one_pcap_and_continues_in_next(self):
+        with tempfile.TemporaryDirectory() as temp:
+            first = Path(temp) / "live-1.pcap"
+            second = Path(temp) / "live-2.pcap"
+            capture = RealtimeCapture(first, (12020,))
+            writer = threading.Thread(target=capture._write_pcap)
+            capture._writer = writer
+            writer.start()
+            capture._items.put(
+                (1_700_000_000_000_000_000, b"\x00" * 14)
+            )
+
+            self.assertEqual(capture.rotate(second), first)
+            capture._items.put(
+                (1_700_000_001_000_000_000, b"\x01" * 14)
+            )
+            capture.checkpoint()
+            capture._items.put(None)
+            writer.join(timeout=2)
+
+            self.assertFalse(writer.is_alive())
+            self.assertEqual(first.stat().st_size, 24 + 16 + 14)
+            self.assertEqual(second.stat().st_size, 24 + 16 + 14)
+            self.assertEqual(capture.target, second)
+
     def test_store_migrates_existing_capture_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.sqlite"
@@ -98,6 +286,12 @@ class CoreTest(unittest.TestCase):
                  mtime_ns INTEGER NOT NULL, imported_at TEXT NOT NULL,
                  events_added INTEGER NOT NULL
                 );
+                CREATE TABLE capture_windows(
+                 id INTEGER PRIMARY KEY, session_id TEXT NOT NULL,
+                 mode TEXT NOT NULL, started_ns INTEGER NOT NULL,
+                 ended_ns INTEGER NOT NULL,
+                 UNIQUE(session_id, mode, started_ns)
+                );
                 """
             )
             conn.close()
@@ -109,6 +303,16 @@ class CoreTest(unittest.TestCase):
                 }
                 self.assertIn("session_id", columns)
                 self.assertIn("ingestion_key", columns)
+                window_columns = {
+                    row[1]
+                    for row in store.conn.execute(
+                        "PRAGMA table_info(capture_windows)"
+                    )
+                }
+                self.assertTrue(
+                    {"character_uid", "upload_state", "uploaded_at"}
+                    <= window_columns
+                )
             finally:
                 store.close()
 
@@ -203,7 +407,7 @@ class CoreTest(unittest.TestCase):
                                 "type": "update_exp",
                                 "data": {
                                     "fields": {
-                                        "level": 68,
+                                        "level": 67,
                                         "exp": need * percent // 100,
                                     }
                                 },
@@ -594,7 +798,7 @@ class CoreTest(unittest.TestCase):
                 self.assertEqual(len(envelope["events"]), 1)
                 self.assertEqual(
                     envelope["events"][0]["data"]["fields"]["exp_percent"],
-                    50.0,
+                    39.68,
                 )
                 header, row = exported.csv_path.read_text(
                     encoding="utf-8-sig"
@@ -617,6 +821,466 @@ class CoreTest(unittest.TestCase):
                 self.assertEqual(db.session_stats("session-b")["recognized"], 1)
             finally:
                 db.close()
+
+    def test_client_ports_separate_events_and_only_world_info_binds_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first, second = root / "first.pcap", root / "second.pcap"
+            first.write_bytes(b"first")
+            second.write_bytes(b"second")
+            routes = ((50001,), (50002,))
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    first,
+                    [
+                        {
+                            "flow": "127.0.0.1:50001 -> 10.0.0.1:12020",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0305,
+                            "type": "appear_player_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": 999,
+                                    "character_name": "Outro jogador",
+                                }
+                            },
+                        },
+                        {
+                            "flow": "127.0.0.1:50002 -> 10.0.0.1:12020",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0307,
+                            "type": "update_exp",
+                            "data": {"fields": {"gain_exp": 10}},
+                        },
+                    ],
+                    "session",
+                    client_ports=routes,
+                )
+                store.add_events(
+                    second,
+                    [
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": 101,
+                                    "character_name": "Alice",
+                                }
+                            },
+                        },
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50002",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": 202,
+                                    "character_name": "Bob",
+                                }
+                            },
+                        },
+                    ],
+                    "session",
+                    client_ports=routes,
+                )
+                self.assertEqual(
+                    store.session_profiles("session"),
+                    [
+                        {
+                            "uid": "101",
+                            "name": "Alice",
+                            "client_key": "client:a",
+                        },
+                        {
+                            "uid": "202",
+                            "name": "Bob",
+                            "client_key": "client:b",
+                        },
+                    ],
+                )
+                uids = {
+                    row[0]
+                    for row in store.conn.execute(
+                        "SELECT DISTINCT character_uid FROM events"
+                    )
+                }
+                self.assertEqual(uids, {"101", "202"})
+            finally:
+                store.close()
+
+    def test_marked_entry_bundle_binds_appear_player_to_client(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "entry.pcap"
+            source.write_bytes(b"entry")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                timestamp = 1_000_000_000
+                store.add_capture_window(
+                    "session", "character", timestamp - 1, timestamp + 1
+                )
+                flow = "10.0.0.1:12020 -> 127.0.0.1:63175"
+                store.add_events(
+                    source,
+                    [
+                        {
+                            "flow": flow,
+                            "stream_offset": index,
+                            "bundle_seq": index,
+                            "ts_ns": timestamp,
+                            "opcode": opcode,
+                            "type": event_type,
+                            "data": data,
+                        }
+                        for index, (opcode, event_type, data) in enumerate(
+                            (
+                                (0x0202, "unparsed", {}),
+                                (0x0323, "unparsed", {}),
+                                (
+                                    0x0305,
+                                    "appear_player_prefix",
+                                    {
+                                        "fields": {
+                                            "character_uid": 101,
+                                            "character_name": "Alice",
+                                            "level": 67,
+                                        }
+                                    },
+                                ),
+                            )
+                        )
+                    ],
+                    "session",
+                    client_ports=((63175,), (63188,)),
+                )
+                self.assertEqual(
+                    store.session_profiles("session"),
+                    [
+                        {
+                            "uid": "101",
+                            "name": "Alice",
+                            "client_key": "client:a",
+                        }
+                    ],
+                )
+            finally:
+                store.close()
+
+    def test_single_client_canonical_identity_survives_unknown_rotated_port(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "rotated.pcap"
+            source.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    source,
+                    [
+                        {
+                            "flow": (
+                                "10.0.0.1:12020 -> "
+                                "192.168.1.1:45843"
+                            ),
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": 101,
+                                    "character_name": "Alice",
+                                }
+                            },
+                        }
+                    ],
+                    "session",
+                    client_ports=((10874, 10910, 12352),),
+                )
+                self.assertEqual(
+                    store.session_profiles("session"),
+                    [
+                        {
+                            "uid": "101",
+                            "name": "Alice",
+                            "client_key": "client:a",
+                        }
+                    ],
+                )
+                self.assertEqual(
+                    store.conn.execute(
+                        """SELECT character_uid,binding_source
+                           FROM client_bindings WHERE session_id=?""",
+                        ("session",),
+                    ).fetchone(),
+                    ("101", "canonical"),
+                )
+            finally:
+                store.close()
+
+    def test_two_unrouted_canonical_identities_get_distinct_clients(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "two-clients.pcap"
+            source.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    source,
+                    [
+                        {
+                            "flow": (
+                                f"10.0.0.1:12020 -> 192.168.1.1:{port}"
+                            ),
+                            "stream_offset": index,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": uid,
+                                    "character_name": name,
+                                }
+                            },
+                        }
+                        for index, (port, uid, name) in enumerate(
+                            (
+                                (48759, 101, "Alice"),
+                                (26864, 202, "Bob"),
+                            ),
+                            1,
+                        )
+                    ],
+                    "session",
+                    client_ports=((12650, 25431),),
+                )
+                self.assertEqual(
+                    store.session_profiles("session"),
+                    [
+                        {
+                            "uid": "101",
+                            "name": "Alice",
+                            "client_key": "client:a",
+                        },
+                        {
+                            "uid": "202",
+                            "name": "Bob",
+                            "client_key": "client:b",
+                        },
+                    ],
+                )
+            finally:
+                store.close()
+
+    def test_ambiguous_marked_entry_does_not_bind_any_appearance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "ambiguous.pcap"
+            source.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                timestamp = 1_000_000_000
+                flow = "10.0.0.1:12020 -> 127.0.0.1:63175"
+                store.add_capture_window(
+                    "session", "character", timestamp - 1, timestamp + 1
+                )
+                events = [
+                    {
+                        "flow": flow,
+                        "stream_offset": index,
+                        "bundle_seq": index,
+                        "ts_ns": timestamp,
+                        "opcode": opcode,
+                        "type": event_type,
+                        "data": data,
+                    }
+                    for index, (opcode, event_type, data) in enumerate(
+                        (
+                            (0x0202, "unparsed", {}),
+                            (0x0323, "unparsed", {}),
+                            (
+                                0x0305,
+                                "appear_player_prefix",
+                                {
+                                    "fields": {
+                                        "character_uid": 101,
+                                        "character_name": "Alice",
+                                    }
+                                },
+                            ),
+                            (
+                                0x0305,
+                                "appear_player_prefix",
+                                {
+                                    "fields": {
+                                        "character_uid": 202,
+                                        "character_name": "Bob",
+                                    }
+                                },
+                            ),
+                        )
+                    )
+                ]
+                store.add_events(
+                    source,
+                    events,
+                    "session",
+                    client_ports=((63175,),),
+                )
+                count = store.conn.execute(
+                    "SELECT COUNT(*) FROM client_bindings"
+                ).fetchone()[0]
+                self.assertEqual(count, 0)
+            finally:
+                store.close()
+
+    def test_heuristic_identity_never_overwrites_canonical_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            canonical = root / "canonical.pcap"
+            heuristic = root / "heuristic.pcap"
+            canonical.write_bytes(b"canonical")
+            heuristic.write_bytes(b"heuristic")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                flow = "10.0.0.1:12020 -> 127.0.0.1:63175"
+                store.add_events(
+                    canonical,
+                    [
+                        {
+                            "flow": flow,
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_uid": 101,
+                                    "character_name": "Alice",
+                                }
+                            },
+                        }
+                    ],
+                    "session",
+                    client_ports=((63175,),),
+                )
+                timestamp = 1_000_000_000
+                store.add_capture_window(
+                    "session", "character", timestamp - 1, timestamp + 1
+                )
+                store.add_events(
+                    heuristic,
+                    [
+                        {
+                            "flow": flow,
+                            "stream_offset": index,
+                            "bundle_seq": index,
+                            "ts_ns": timestamp,
+                            "opcode": opcode,
+                            "type": event_type,
+                            "data": data,
+                        }
+                        for index, (opcode, event_type, data) in enumerate(
+                            (
+                                (0x0202, "unparsed", {}),
+                                (0x0323, "unparsed", {}),
+                                (
+                                    0x0305,
+                                    "appear_player_prefix",
+                                    {
+                                        "fields": {
+                                            "character_uid": 202,
+                                            "character_name": "Bob",
+                                        }
+                                    },
+                                ),
+                            )
+                        )
+                    ],
+                    "session",
+                    client_ports=((63175,),),
+                )
+                self.assertEqual(
+                    store.conn.execute(
+                        """SELECT character_uid,character_name,binding_source
+                           FROM client_bindings WHERE session_id=?""",
+                        ("session",),
+                    ).fetchone(),
+                    ("101", "Alice", "canonical"),
+                )
+            finally:
+                store.close()
+
+    def test_final_etl_keeps_events_from_old_and_current_client_ports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "rotating-ports.etl"
+            raw.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                events = [
+                    {
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:60470",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0307,
+                        "type": "update_exp",
+                        "data": {
+                            "fields": {
+                                "level": 61,
+                                "exp": 100,
+                                "gain_exp": 10,
+                            }
+                        },
+                    },
+                    {
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:60470",
+                        "stream_offset": 2,
+                        "bundle_seq": 0,
+                        "opcode": 0x040A,
+                        "type": "drop_item_field",
+                        "data": {"results": [{"item_index": 1, "count": 2}]},
+                    },
+                    {
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:63175",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0400,
+                        "type": "collection_snapshot_chunk",
+                        "data": {"records": []},
+                    },
+                    {
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:63188",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0400,
+                        "type": "collection_snapshot_chunk",
+                        "data": {"records": []},
+                    },
+                ]
+                store.add_events(
+                    raw,
+                    events,
+                    "session",
+                    client_ports=((60470, 63175), (63188,)),
+                )
+                owners = store.conn.execute(
+                    """SELECT character_uid,type FROM events
+                       ORDER BY stream_offset,type"""
+                ).fetchall()
+                self.assertIn(("client:a", "update_exp"), owners)
+                self.assertIn(("client:a", "drop_item_field"), owners)
+                self.assertIn(("client:b", "collection_snapshot_chunk"), owners)
+            finally:
+                store.close()
 
     def test_invalid_ipv4_total_length_does_not_abort_following_packet(self):
         ethernet = b"\0" * 12 + b"\x08\x00"
@@ -728,6 +1392,72 @@ class CoreTest(unittest.TestCase):
                 self.assertEqual(
                     rows,
                     [("decoded", '{"confidence": "new"}')],
+                )
+            finally:
+                store.close()
+
+    def test_append_only_ingest_keeps_tcp_context_and_adds_only_new_events(self):
+        event_one = {
+            "flow": "10.0.0.1:12020 -> 10.0.0.2:50000",
+            "stream_offset": 0,
+            "bundle_seq": 0,
+            "ts_ns": 1,
+            "opcode": 0x0106,
+            "type": "world_info_prefix",
+            "data": {"fields": {"character_uid": 1, "character_name": "A"}},
+        }
+        event_two = {
+            **event_one,
+            "stream_offset": 10,
+            "opcode": 0x0307,
+            "type": "update_exp",
+            "data": {"level": 67, "exp": 123},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "live.pcap"
+            raw.write_bytes(b"partial")
+            store = CaptureStore(root / "state.sqlite")
+            try:
+                with patch(
+                    "core.store.decoder_identity", return_value="decoder"
+                ), patch(
+                    "core.store.decoded_events", return_value=iter(())
+                ):
+                    self.assertEqual(
+                        store.ingest(raw, session_id="s", append_only=True),
+                        0,
+                    )
+                with raw.open("ab") as output:
+                    output.write(b"-frame-one")
+                with patch(
+                    "core.store.decoder_identity", return_value="decoder"
+                ), patch(
+                    "core.store.decoded_events",
+                    return_value=iter((event_one,)),
+                ):
+                    self.assertEqual(
+                        store.ingest(raw, session_id="s", append_only=True),
+                        1,
+                    )
+                with raw.open("ab") as output:
+                    output.write(b"-frame-two")
+                with patch(
+                    "core.store.decoder_identity", return_value="decoder"
+                ), patch(
+                    "core.store.decoded_events",
+                    return_value=iter((event_one, event_two)),
+                ):
+                    self.assertEqual(
+                        store.ingest(raw, session_id="s", append_only=True),
+                        1,
+                    )
+                self.assertEqual(
+                    store.conn.execute(
+                        "SELECT COUNT(*) FROM events WHERE source=?",
+                        (str(raw),),
+                    ).fetchone()[0],
+                    2,
                 )
             finally:
                 store.close()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 from collections import deque
+from contextlib import contextmanager
 import queue
 import struct
 import threading
@@ -170,10 +171,16 @@ class RealtimeCapture:
         self.missed_read = 0
         self._recent_groups: deque[tuple[int, int]] = deque()
         self._recent_group_set: set[tuple[int, int]] = set()
-        self._items: queue.SimpleQueue[tuple[int, bytes] | None] = (
+        self._items: queue.SimpleQueue[
+            tuple[int, bytes]
+            | tuple[str, Path, threading.Event]
+            | threading.Event
+            | None
+        ] = (
             queue.SimpleQueue()
         )
         self._writer: threading.Thread | None = None
+        self._file_lock = threading.Lock()
         self._api = None
         self._handle = ctypes.c_void_p()
         self._session = ctypes.c_void_p()
@@ -401,42 +408,105 @@ class RealtimeCapture:
         timestamp_ns = (metadata.timestamp - FILETIME_UNIX_EPOCH) * 100
         self._items.put((timestamp_ns, packet))
 
+    def add_ports(self, ports: tuple[int, ...]) -> int:
+        ports = tuple(
+            port
+            for port in dict.fromkeys(ports)
+            if 1 <= port <= 65535 and port not in self._port_set
+        )
+        self._port_set.update(ports)
+        return len(ports)
+
+    def checkpoint(self, timeout: float = 5) -> Path:
+        """Confirma que todos os pacotes anteriores já estão visíveis no PCAP."""
+        if not self._writer or not self._writer.is_alive():
+            raise RuntimeError("captura em tempo real não está ativa")
+        flushed = threading.Event()
+        self._items.put(flushed)
+        if not flushed.wait(timeout):
+            raise RuntimeError("captura em tempo real não confirmou a leitura")
+        if self._writer_error:
+            raise RuntimeError("falha ao gravar o PCAP em tempo real")
+        return self.target
+
+    def rotate(self, target: Path, timeout: float = 5) -> Path:
+        """Fecha o PCAP atual e continua a captura imediatamente em outro."""
+        if not self._writer or not self._writer.is_alive():
+            raise RuntimeError("captura em tempo real não está ativa")
+        previous = self.target
+        rotated = threading.Event()
+        self._items.put(("rotate", Path(target), rotated))
+        if not rotated.wait(timeout):
+            raise RuntimeError("captura em tempo real não confirmou a rotação")
+        if self._writer_error:
+            raise RuntimeError("falha ao rotacionar o PCAP em tempo real")
+        return previous
+
+    @contextmanager
+    def readable(self):
+        """Mantém o arquivo estável enquanto o decoder lê o checkpoint."""
+        with self._file_lock:
+            yield self.target
+
     def _write_pcap(self) -> None:
+        header = struct.pack(
+            "<IHHIIII", 0xA1B23C4D, 2, 4, 0, 0, 0xFFFF, 1
+        )
+        output = None
         try:
-            with self.target.open("wb") as output:
-                output.write(
+            self.target.parent.mkdir(parents=True, exist_ok=True)
+            output = self.target.open("wb")
+            output.write(header)
+            while True:
+                item = self._items.get()
+                if item is None:
+                    break
+                if isinstance(item, threading.Event):
+                    with self._file_lock:
+                        output.flush()
+                    item.set()
+                    continue
+                if len(item) == 3 and item[0] == "rotate":
+                    _, target, rotated = item
+                    try:
+                        with self._file_lock:
+                            output.flush()
+                            output.close()
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            output = target.open("wb")
+                            output.write(header)
+                            self.target = target
+                    finally:
+                        rotated.set()
+                    continue
+                timestamp_ns, packet = item
+                now_ns = time.time_ns()
+                if not 946_684_800_000_000_000 <= timestamp_ns <= (
+                    now_ns + 86_400_000_000_000
+                ):
+                    timestamp_ns = now_ns
+                seconds, fraction = divmod(timestamp_ns, 1_000_000_000)
+                record = (
                     struct.pack(
-                        "<IHHIIII", 0xA1B23C4D, 2, 4, 0, 0, 0xFFFF, 1
+                        "<IIII",
+                        seconds,
+                        fraction,
+                        len(packet),
+                        len(packet),
                     )
+                    + packet
                 )
-                while True:
-                    item = self._items.get()
-                    if item is None:
-                        break
-                    timestamp_ns, packet = item
-                    now_ns = time.time_ns()
-                    if not 946_684_800_000_000_000 <= timestamp_ns <= (
-                        now_ns + 86_400_000_000_000
-                    ):
-                        timestamp_ns = now_ns
-                    seconds, fraction = divmod(
-                        timestamp_ns, 1_000_000_000
-                    )
-                    output.write(
-                        struct.pack(
-                            "<IIII",
-                            seconds,
-                            fraction,
-                            len(packet),
-                            len(packet),
-                        )
-                    )
-                    output.write(packet)
+                with self._file_lock:
+                    output.write(record)
                     self.packets += 1
                     self.bytes += len(packet)
-                output.flush()
         except BaseException as error:
             self._writer_error = error
+        finally:
+            if output and not output.closed:
+                with self._file_lock:
+                    output.flush()
+                    output.close()
 
     def stop(self) -> None:
         if self._api and self._session and self._active:
@@ -469,6 +539,49 @@ class RealtimeCapture:
 
     def __exit__(self, *_exc: object) -> None:
         self.stop()
+
+
+def split_pcap_by_ports(
+    source: Path, targets: list[tuple[Path, tuple[int, ...]]]
+) -> list[Path]:
+    """Separa um PCAP clássico pelas portas locais temporárias de cada cliente."""
+    source = Path(source)
+    with source.open("rb") as input_file:
+        header = input_file.read(24)
+        if len(header) != 24 or header[:4] not in {
+            b"\x4d\x3c\xb2\xa1",
+            b"\xd4\xc3\xb2\xa1",
+        }:
+            raise ValueError("PCAP em tempo real inválido")
+        outputs = []
+        try:
+            for path, ports in targets:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                handle = path.open("wb")
+                handle.write(header)
+                outputs.append((path, set(ports), handle, 0))
+            while record := input_file.read(16):
+                if len(record) != 16:
+                    raise ValueError("registro PCAP incompleto")
+                captured = struct.unpack("<IIII", record)[2]
+                packet = input_file.read(captured)
+                if len(packet) != captured:
+                    raise ValueError("pacote PCAP incompleto")
+                for index, (path, ports, handle, count) in enumerate(outputs):
+                    if _matches_tcp_port(packet[:96], ports):
+                        handle.write(record)
+                        handle.write(packet)
+                        outputs[index] = (path, ports, handle, count + 1)
+        finally:
+            for _path, _ports, handle, _count in outputs:
+                handle.close()
+    kept = []
+    for path, _ports, _handle, count in outputs:
+        if count:
+            kept.append(path)
+        else:
+            path.unlink(missing_ok=True)
+    return kept
 
 
 def probe(target: Path, seconds: int = 30) -> dict[str, int | float | str]:

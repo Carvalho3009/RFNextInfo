@@ -1,5 +1,134 @@
 # Changelog
 
+## 2.0a — 2026-07-30
+
+- O Rover equipado na entrada é lido diretamente do `0x0305` do próprio
+  personagem; não é mais necessário trocar o Rover para exibi-lo.
+
+## 1.0.24 — 2026-07-30
+
+- O leitor incremental reutiliza a correlação canônica entre aparência e
+  inventário para exportar os equipamentos ativos.
+- Personagem, Codex e Memory Chips enviam cargas separadas; Codex envia apenas
+  coleções e Memory Chips envia apenas chips.
+- O site aceita o resumo de captura antigo como fallback para classe, nível,
+  Biosuit, Rover e equipamentos, e recarrega os dados ao voltar para a janela.
+
+## 1.0.23 — 2026-07-30
+
+- Personagem, Mercado, Codex e Memory Chips passam a enviar ao site os dados
+  já lidos pela captura contínua; os botões e atalhos não iniciam novas
+  capturas.
+- O encerramento mostra o progresso real da leitura por segmento.
+- Subsessões encerradas podem ser selecionadas e enviadas individualmente,
+  com identificador cumulativo persistente e proteção contra duplicidade.
+
+## 1.0.22 — 2026-07-30
+
+- O aplicativo passa a se chamar RF NEXT QOL e exibe o novo logo junto ao
+  símbolo do urso com K.
+- O ícone da classe usa a cor da raridade confirmada pelo `Grade` do Biosuit.
+- Trocas de Biosuit confirmadas durante a captura atualizam classe, nome,
+  raridade e ícone sem aguardar o encerramento da sessão.
+- O Rover equipado é identificado por eventos confirmados, exibido com nome e
+  ícone à esquerda da classe; solicitações e respostas com erro são ignoradas.
+
+## 1.0.21 — 2026-07-30
+
+- O mesmo token de Profile autentica os envios de Farm, Codex, Memory Chips
+  e Mercado.
+- Capturas rápidas decodificadas são enviadas em segundo plano sem encerrar a
+  captura contínua; falhas ficam pendentes no banco local para nova tentativa.
+- Codex e Memory Chips são mesclados ao progresso existente, sem apagar
+  coleções que não estavam na captura rápida.
+
+## 1.0.20 — 2026-07-30
+
+- Iniciar com “Descartar sessão anterior” não consulta o Pktmon nem apresenta
+  erro quando existe apenas um identificador antigo, sem arquivos reais.
+- Cada subsessão pode receber uma duração própria em minutos e é encerrada
+  automaticamente no prazo informado.
+- O catálogo 1.28.5 de localização, mob e nível passa a acompanhar o programa;
+  escolher a localização filtra os mobs e preenche o intervalo de níveis.
+- O histórico e o JSON das subsessões incluem EXP total, EXP total em
+  percentual, EXP/h e EXP/h em percentual.
+
+## 1.0.19 — 2026-07-30
+
+- A leitura ao vivo usa segmentos fechados por intervalo e continua gravando
+  em paralelo, sem o limite permanente de 512 MB da prévia.
+- Os clientes exibem separadamente o nome manual e o nome capturado; o nome
+  manual não identifica nem renomeia dados exportados.
+- As durações mostram segundos ou minutos e todas as páginas possuem rolagem
+  vertical e horizontal quando o conteúdo ultrapassa a janela.
+- O aplicativo e a bandeja usam o símbolo do urso com K.
+
+## 1.0.18 — 2026-07-29
+
+- Segmentos residuais vazios não anulam mais os eventos decodificados nem
+  deixam a sessão presa em reanálise.
+- A retomada automática é interrompida quando existe uma falha real pendente.
+- Em uma sessão de cliente único, o `0x0106` canônico vincula o personagem ao
+  Cliente A mesmo depois de uma troca de porta não observada pelo Windows.
+- Uma identidade heurística nunca substitui a identidade canônica e é
+  recusada quando o mesmo pacote contém mais de uma aparição de personagem.
+- O preview bruto é preservado quando nenhuma rota de cliente corresponde aos
+  pacotes, permitindo a decodificação após relog ou troca de porta.
+
+## 1.0.17 — 2026-07-29
+
+- Mantém o histórico de portas de cada cliente durante reconexões e na
+  análise final.
+- Identifica o personagem somente pela sequência completa de entrada marcada,
+  dentro da janela escolhida e numa porta confirmada do Cliente A/B.
+- Não usa aparições comuns de outros jogadores como identidade do usuário.
+
+## 1.0.16 — 2026-07-29
+
+- Alternar Cliente A/B não abre mais a edição do nome; cada cliente possui um botão Renomear.
+- Novas conexões permanecem vinculadas ao processo correto durante a captura ao vivo.
+- EXP, Loot e personagem são atualizados nas leituras periódicas, sem aguardar Parar.
+- EXP faltante e EXP/h (%) usam a exigência correta do próximo nível.
+- Diamantes são exibidos somente quando UID ou nome confirmam o próprio personagem.
+- Cada captura rápida possui duração própria entre 10 e 300 segundos.
+- Os quatro cartões de captura rápida usam a mesma altura e alinhamento.
+
+## 1.0.15 — 2026-07-29
+
+- Separa automaticamente Cliente A e Cliente B pelas portas de cada processo.
+- Mantém a separação nas leituras ao vivo e na análise final dos segmentos.
+- Usa somente a entrada do próprio personagem para confirmar UID e nome.
+- Remove a logo Karvalho do cartão reservado ao símbolo da classe.
+
+## 1.0.14 — 2026-07-29
+
+- Capturas rápidas agora aceitam duração configurável de 10 a 300 segundos.
+- Atalhos receberam contraste dourado nos cartões e nas configurações.
+- Removidas bordas internas que atravessavam textos e dados dos painéis.
+- Cabeçalho e marca lateral foram redimensionados para aproveitar melhor o espaço.
+
+## 1.0.13 — 2026-07-29
+
+- Adicionada opção confirmada para limpar a sessão anterior antes de iniciar.
+- A limpeza inclui arquivos brutos ainda não decodificados e os envia à Lixeira.
+- O histórico, as janelas de captura e as subsessões da sessão descartada também são removidos.
+
+## 1.0.12 — 2026-07-29
+
+- alinha a estrutura das quatro telas ao mockup aprovado;
+- corrige o cronômetro para não avançar com a captura parada;
+- torna explícitos os estados disponível, ativo, pausado e encerrado;
+- recupera e analisa uma captura pendente antes de iniciar a próxima;
+- habilita pausa e continuação da mesma sessão.
+
+## 1.0.11 — 2026-07-29
+
+- recompõe as telas conforme o mockup aprovado com fontes e marca Karvalho;
+- corrige a validação do token do Profile pela API pública autenticada;
+- corrige capturas rápidas e subsessões durante a captura contínua;
+- detecta automaticamente o executável `ProjectRF` conectado;
+- amplia o autoteste do instalador para construir toda a interface.
+
 ## 1.0.10 — 2026-07-29
 
 - valida a licença salva em segundo plano ao abrir e atualiza o estado da tela;

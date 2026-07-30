@@ -1,0 +1,1463 @@
+{
+  "version": "1.28.5",
+  "biosuits": {
+    "2000000": {
+      "name": "Biosuit Básico",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 1
+    },
+    "2011011": {
+      "name": "Shooter Point",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 1
+    },
+    "2011012": {
+      "name": "Shooter Tactical",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 1
+    },
+    "2011013": {
+      "name": "Shooter Direct",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 1
+    },
+    "2012011": {
+      "name": "Ranger Corrosive",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 2
+    },
+    "2012012": {
+      "name": "Ranger Blazing",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 2
+    },
+    "2012013": {
+      "name": "Ranger Burning",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 2
+    },
+    "2012021": {
+      "name": "Ranger Flash",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 2
+    },
+    "2012022": {
+      "name": "Ranger Burst",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 2
+    },
+    "2012023": {
+      "name": "Ranger Spark",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 2
+    },
+    "2013011": {
+      "name": "Striker Ardent",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2013012": {
+      "name": "Striker Heat",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2013013": {
+      "name": "Striker Explosion",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2013014": {
+      "name": "Striker Flame",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2013021": {
+      "name": "Striker Smoke",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2013022": {
+      "name": "Striker Spreadshot",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2013023": {
+      "name": "Striker Suppression",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2013024": {
+      "name": "Striker Scorching",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 3
+    },
+    "2014011": {
+      "name": "Sentinel Combustum",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2014012": {
+      "name": "Sentinel Revello",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2014021": {
+      "name": "Sentinel Tumoru",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2014022": {
+      "name": "Sentinel Seditio",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2014031": {
+      "name": "Sentinel Scissio",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2014032": {
+      "name": "Sentinel Motus",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2014041": {
+      "name": "Sentinel Ferocia",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2014042": {
+      "name": "Sentinel Flama",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 4
+    },
+    "2015011": {
+      "name": "Blaster Topus",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 5
+    },
+    "2015021": {
+      "name": "Blaster Derribo",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 5
+    },
+    "2015031": {
+      "name": "Blaster Ustra",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 5
+    },
+    "2015041": {
+      "name": "Blaster Ruptis",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 5
+    },
+    "2016011": {
+      "name": "Punisher Furious",
+      "biosuit_type": 1,
+      "class_name": "Punisher",
+      "grade": 6
+    },
+    "2021011": {
+      "name": "Panther Nimble",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 1
+    },
+    "2021012": {
+      "name": "Panther Swift",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 1
+    },
+    "2021013": {
+      "name": "Panther Agile",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 1
+    },
+    "2022011": {
+      "name": "Sprinter Extreme",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 2
+    },
+    "2022012": {
+      "name": "Sprinter Cling",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 2
+    },
+    "2022013": {
+      "name": "Sprinter Fatal",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 2
+    },
+    "2022021": {
+      "name": "Sprinter Stealth",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 2
+    },
+    "2022022": {
+      "name": "Sprinter Proxima",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 2
+    },
+    "2022023": {
+      "name": "Sprinter Convert",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 2
+    },
+    "2023011": {
+      "name": "Blader Noticeable",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2023012": {
+      "name": "Blader Dark",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2023013": {
+      "name": "Blader Deadly",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2023014": {
+      "name": "Blader Piercing",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2023021": {
+      "name": "Blader Frost",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2023022": {
+      "name": "Blader Chill",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2023023": {
+      "name": "Blader Freezing",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2023024": {
+      "name": "Blader Grim",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 3
+    },
+    "2024011": {
+      "name": "Shadower Latus",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2024012": {
+      "name": "Shadower Opertum",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2024021": {
+      "name": "Shadower Cor",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2024022": {
+      "name": "Shadower Sica",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2024031": {
+      "name": "Shadower Levis",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2024032": {
+      "name": "Shadower Tenax",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2024041": {
+      "name": "Shadower Asidus",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2024042": {
+      "name": "Shadower Tacite",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 4
+    },
+    "2025011": {
+      "name": "Assassin Peto",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 5
+    },
+    "2025021": {
+      "name": "Assassin Lenitudo",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 5
+    },
+    "2025031": {
+      "name": "Assassin Remitto",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 5
+    },
+    "2025041": {
+      "name": "Assassin Tempestas",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 5
+    },
+    "2026011": {
+      "name": "Phantom Secretive",
+      "biosuit_type": 2,
+      "class_name": "Phantom",
+      "grade": 6
+    },
+    "2031011": {
+      "name": "Guard Daring",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 1
+    },
+    "2031012": {
+      "name": "Guard Exacting",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 1
+    },
+    "2031013": {
+      "name": "Guard Mighty",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 1
+    },
+    "2032011": {
+      "name": "Defender Resolute",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 2
+    },
+    "2032012": {
+      "name": "Defender Somber",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 2
+    },
+    "2032013": {
+      "name": "Defender Certain",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 2
+    },
+    "2032021": {
+      "name": "Defender Pledge",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 2
+    },
+    "2032022": {
+      "name": "Defender Wish",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 2
+    },
+    "2032023": {
+      "name": "Defender Aegis",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 2
+    },
+    "2033011": {
+      "name": "Vanguard Unbroken",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2033012": {
+      "name": "Vanguard Reprimand",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2033013": {
+      "name": "Vanguard Vigilant",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2033014": {
+      "name": "Vanguard Entourage",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2033021": {
+      "name": "Vanguard Prime",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2033022": {
+      "name": "Vanguard Earnest",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2033023": {
+      "name": "Vanguard Brave",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2033024": {
+      "name": "Vanguard Ambitious",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 3
+    },
+    "2034011": {
+      "name": "Templar Una",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2034012": {
+      "name": "Templar Foedus",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2034021": {
+      "name": "Templar Honoris",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2034022": {
+      "name": "Templar Otium",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2034031": {
+      "name": "Templar Signum",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2034032": {
+      "name": "Templar Noster",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2034041": {
+      "name": "Templar Jecur",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2034042": {
+      "name": "Templar Nox",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 4
+    },
+    "2035011": {
+      "name": "Guardian Verum",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 5
+    },
+    "2035021": {
+      "name": "Guardian Constans",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 5
+    },
+    "2035031": {
+      "name": "Guardian Sacrum",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 5
+    },
+    "2035041": {
+      "name": "Guardian Regentis",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 5
+    },
+    "2036011": {
+      "name": "Enforcer Valiant",
+      "biosuit_type": 3,
+      "class_name": "Enforcer",
+      "grade": 6
+    },
+    "2041011": {
+      "name": "Esper Space",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 1
+    },
+    "2041012": {
+      "name": "Esper Void",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 1
+    },
+    "2041013": {
+      "name": "Esper Blank",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 1
+    },
+    "2042011": {
+      "name": "Mentalist Perfect",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 2
+    },
+    "2042012": {
+      "name": "Mentalist Splendorous",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 2
+    },
+    "2042013": {
+      "name": "Mentalist Cosmic",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 2
+    },
+    "2042021": {
+      "name": "Mentalist Great",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 2
+    },
+    "2042022": {
+      "name": "Mentalist Excellent",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 2
+    },
+    "2042023": {
+      "name": "Mentalist Supreme",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 2
+    },
+    "2043011": {
+      "name": "Psychic Confusion",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2043012": {
+      "name": "Psychic Banishing",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2043013": {
+      "name": "Psychic Chaos",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2043014": {
+      "name": "Psychic Split",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2043021": {
+      "name": "Psychic Herald",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2043022": {
+      "name": "Psychic Consequence",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2043023": {
+      "name": "Psychic Prophetic",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2043024": {
+      "name": "Psychic Decisive",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 3
+    },
+    "2044011": {
+      "name": "Kinesis Inferi",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2044012": {
+      "name": "Kinesis Sopor",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2044021": {
+      "name": "Kinesis Crimen",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2044022": {
+      "name": "Kinesis Vandor",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2044031": {
+      "name": "Kinesis Poena",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2044032": {
+      "name": "Kinesis Ruina",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2044041": {
+      "name": "Kinesis Malum",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2044042": {
+      "name": "Kinesis Imago",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 4
+    },
+    "2045011": {
+      "name": "Mystic Recessus",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 5
+    },
+    "2045021": {
+      "name": "Mystic Dirae",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 5
+    },
+    "2045031": {
+      "name": "Mystic Taedium",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 5
+    },
+    "2045041": {
+      "name": "Mystic Insania",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 5
+    },
+    "2046011": {
+      "name": "Psypher Declaratus",
+      "biosuit_type": 4,
+      "class_name": "Psypher",
+      "grade": 6
+    },
+    "2051011": {
+      "name": "Breaker Renegade",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 1
+    },
+    "2051012": {
+      "name": "Breaker Beast",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 1
+    },
+    "2051013": {
+      "name": "Breaker Demon",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 1
+    },
+    "2052011": {
+      "name": "Slayer Wrath",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 2
+    },
+    "2052012": {
+      "name": "Slayer Pride",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 2
+    },
+    "2052013": {
+      "name": "Slayer Envy",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 2
+    },
+    "2052021": {
+      "name": "Slayer Gluttony",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 2
+    },
+    "2052022": {
+      "name": "Slayer Sloth",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 2
+    },
+    "2052023": {
+      "name": "Slayer Greed",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 2
+    },
+    "2053011": {
+      "name": "Berserker Dark",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2053012": {
+      "name": "Berserker Calamity",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2053013": {
+      "name": "Berserker Sacrificial",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2053014": {
+      "name": "Berserker Accuser",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2053021": {
+      "name": "Berserker Assault",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2053022": {
+      "name": "Berserker Rust",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2053023": {
+      "name": "Berserker Deceptive",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2053024": {
+      "name": "Berserker Penance",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 3
+    },
+    "2054011": {
+      "name": "Demonic Anima",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2054012": {
+      "name": "Demonic Crur",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2054021": {
+      "name": "Demonic Vetitum",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2054022": {
+      "name": "Demonic Querella",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2054031": {
+      "name": "Demonic Ictus",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2054032": {
+      "name": "Demonic Lucrum",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2054041": {
+      "name": "Demonic Erecta",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2054042": {
+      "name": "Demonic Plaga",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 4
+    },
+    "2055011": {
+      "name": "Tyrant Bonum",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 5
+    },
+    "2055021": {
+      "name": "Tyrant Defectus",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 5
+    },
+    "2055031": {
+      "name": "Tyrant Domus",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 5
+    },
+    "2055041": {
+      "name": "Tyrant Tonitru",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 5
+    },
+    "2056011": {
+      "name": "Dreadnought Cruel",
+      "biosuit_type": 5,
+      "class_name": "Dreadnought",
+      "grade": 6
+    },
+    "2061011": {
+      "name": "Guide Smart",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 1
+    },
+    "2061012": {
+      "name": "Guide Bind",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 1
+    },
+    "2061013": {
+      "name": "Guide Versatile",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 1
+    },
+    "2062011": {
+      "name": "Maker Wisdom",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 2
+    },
+    "2062012": {
+      "name": "Maker Change",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 2
+    },
+    "2062013": {
+      "name": "Maker Knowledge",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 2
+    },
+    "2062021": {
+      "name": "Maker Notion",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 2
+    },
+    "2062022": {
+      "name": "Maker Notion",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 2
+    },
+    "2062023": {
+      "name": "Maker Unity",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 2
+    },
+    "2063011": {
+      "name": "Engineer Blessing",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2063012": {
+      "name": "Engineer Blissful",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2063013": {
+      "name": "Engineer Eternity",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2063014": {
+      "name": "Engineer Sanguine",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2063021": {
+      "name": "Engineer Worry",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2063022": {
+      "name": "Engineer Harmony",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2063023": {
+      "name": "Engineer Relativity",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2063024": {
+      "name": "Engineer Follower",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 3
+    },
+    "2064011": {
+      "name": "Creator Serenus",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2064012": {
+      "name": "Creator Risus",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2064021": {
+      "name": "Creator Nitens",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2064022": {
+      "name": "Creator Pulcher",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2064031": {
+      "name": "Creator Sermo",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2064032": {
+      "name": "Creator Pullus",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2064041": {
+      "name": "Creator Fortuna",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2064042": {
+      "name": "Creator Arrideo",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 4
+    },
+    "2065011": {
+      "name": "Precursor Palma",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 5
+    },
+    "2065021": {
+      "name": "Precursor Jubar",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 5
+    },
+    "2065031": {
+      "name": "Precursor Honor",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 5
+    },
+    "2065041": {
+      "name": "Precursor Visio",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 5
+    },
+    "2066011": {
+      "name": "Technician Almighty",
+      "biosuit_type": 6,
+      "class_name": "Technician",
+      "grade": 6
+    },
+    "2071011": {
+      "name": "Sabre Deadly",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 1
+    },
+    "2071012": {
+      "name": "Sabre Mortal",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 1
+    },
+    "2071013": {
+      "name": "Sabre Dire",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 1
+    },
+    "2072011": {
+      "name": "Knight Dreadful",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 2
+    },
+    "2072012": {
+      "name": "Knight Solitary",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 2
+    },
+    "2072013": {
+      "name": "Knight Wandering",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 2
+    },
+    "2072021": {
+      "name": "Knight Shadow",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 2
+    },
+    "2072022": {
+      "name": "Knight Grim",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 2
+    },
+    "2072023": {
+      "name": "Knight Agonizing",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 2
+    },
+    "2073011": {
+      "name": "Avenger Ferocious",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2073012": {
+      "name": "Avenger Tormenting",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2073013": {
+      "name": "Avenger Grieving",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2073014": {
+      "name": "Avenger Scourge",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2073021": {
+      "name": "Avenger Angsty",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2073022": {
+      "name": "Avenger Grievous",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2073023": {
+      "name": "Avenger Vicious",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2073024": {
+      "name": "Avenger Malignant",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 3
+    },
+    "2074011": {
+      "name": "Sovereign Nexiles",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2074012": {
+      "name": "Sovereign Verus",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2074021": {
+      "name": "Sovereign Atrox",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2074022": {
+      "name": "Sovereign Grandis",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2074031": {
+      "name": "Sovereign Caligo",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2074032": {
+      "name": "Sovereign Nominis",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2074041": {
+      "name": "Sovereign Colitur",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2074042": {
+      "name": "Sovereign Dignitas",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 4
+    },
+    "2075011": {
+      "name": "Revenant Arcanum",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 5
+    },
+    "2075021": {
+      "name": "Revenant Liber",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 5
+    },
+    "2075031": {
+      "name": "Revenant Beatus",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 5
+    },
+    "2075041": {
+      "name": "Revenant Caelum",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 5
+    },
+    "2076011": {
+      "name": "Arbiter Ultimate",
+      "biosuit_type": 7,
+      "class_name": "Arbiter",
+      "grade": 6
+    },
+    "2081011": {
+      "name": "Ignição de Fogo",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 1
+    },
+    "2081012": {
+      "name": "Ignição Ascendente",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 1
+    },
+    "2081013": {
+      "name": "Ignitor de Aceleração",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 1
+    },
+    "2082011": {
+      "name": "Barragem de Flare",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 2
+    },
+    "2082012": {
+      "name": "Rajada Hiper",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 2
+    },
+    "2082013": {
+      "name": "Rajada Voltic",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 2
+    },
+    "2083011": {
+      "name": "Atlas Impacter",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 3
+    },
+    "2083012": {
+      "name": "Nova Impactador",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 3
+    },
+    "2083013": {
+      "name": "Impactador de Clades",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 3
+    },
+    "2083014": {
+      "name": "Impactador Vulcânico",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 3
+    },
+    "2084011": {
+      "name": "Explosor Ventus",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2084012": {
+      "name": "Explosor de Orbis",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2084021": {
+      "name": "Explosor de Ferrum",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2084022": {
+      "name": "Explosor de Boreas",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2084031": {
+      "name": "Explosor de Aurum",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2084032": {
+      "name": "Explosor de Lacuna",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2084041": {
+      "name": "Explosor de Ignium",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2084042": {
+      "name": "Explosor Vulcanus",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 4
+    },
+    "2085011": {
+      "name": "Exterminador Abyssus",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 5
+    },
+    "2085021": {
+      "name": "Exterminador Aeterno",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 5
+    },
+    "2085031": {
+      "name": "Destilador Terminator",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 5
+    },
+    "2085041": {
+      "name": "Executor Terminador",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 5
+    },
+    "2086011": {
+      "name": "Demolidor de Infinium",
+      "biosuit_type": 8,
+      "class_name": "Demolisher",
+      "grade": 6
+    },
+    "2911011": {
+      "name": "Punisher Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2921011": {
+      "name": "Phantom Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2931011": {
+      "name": "Enforcer Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2941011": {
+      "name": "Psypher Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2951011": {
+      "name": "Dreadnought Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2961011": {
+      "name": "Technician Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2971011": {
+      "name": "Enforcer Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2981011": {
+      "name": "Psypher Otimizado",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 3
+    },
+    "2990001": {
+      "name": "Carta de Biosuit Lendário Prime",
+      "biosuit_type": 0,
+      "class_name": "",
+      "grade": 5
+    }
+  }
+}

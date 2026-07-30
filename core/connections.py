@@ -151,3 +151,27 @@ def ports_for_executable(
         tuple(sorted(remote_ports)),
         len(pids),
     )
+
+
+def clients_for_executable(executable: str) -> list[dict[str, object]]:
+    """Agrupa portas por processo somente para roteamento da captura."""
+    selected = os.path.normcase(os.path.abspath(executable))
+    clients: dict[int, tuple[set[int], set[int]]] = {}
+    paths: dict[int, str | None] = {}
+    for pid, local_port, remote_port in _tcp_rows():
+        if pid not in paths:
+            paths[pid] = _process_path(pid)
+        path = paths[pid]
+        if not path or os.path.normcase(os.path.abspath(path)) != selected:
+            continue
+        local_ports, remote_ports = clients.setdefault(pid, (set(), set()))
+        local_ports.add(local_port)
+        remote_ports.add(remote_port)
+    return [
+        {
+            "pid": pid,
+            "local_ports": tuple(sorted(local_ports)),
+            "remote_ports": tuple(sorted(remote_ports)),
+        }
+        for pid, (local_ports, remote_ports) in sorted(clients.items())
+    ]
