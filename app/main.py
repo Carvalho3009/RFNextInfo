@@ -213,6 +213,24 @@ def _item_names() -> dict[str, str]:
 ITEM_NAMES = _item_names()
 
 
+def _item_grades() -> dict[str, int]:
+    try:
+        return json.loads(
+            (ROOT / "core" / "item_grades.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return {}
+
+
+ITEM_GRADES = _item_grades()
+LOOT_RARITIES = {
+    1: ("common", "Comum"),
+    2: ("uncommon", "Incomum"),
+    3: ("rare", "Raro"),
+    4: ("epic", "Épico"),
+}
+
+
 def _format_bytes(value: int) -> str:
     number = float(value)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -327,8 +345,17 @@ def _capture_summary(
         "contribution": None,
         "market_events": 0,
         "kills": 0,
+        "finalizations": 0,
         "loot": [],
+        "loot_by_rarity": {
+            key: 0 for key, _label in LOOT_RARITIES.values()
+        },
     }
+    observed_exp_gained = 0
+    observed_finalizations = reward_finalizations = 0
+    reward_exp = reward_credits = reward_contribution = 0
+    reward_exp_seen = reward_credits_seen = reward_contribution_seen = False
+    contribution_totals = []
     for event in envelope.get("events", []):
         data = event.get("data") or {}
         fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
@@ -424,7 +451,9 @@ def _capture_summary(
                 summary["equipment"] = equipment
         if isinstance(fields.get("gain_exp"), (int, float)):
             gained = fields["gain_exp"]
-            summary["exp_gained"] += gained
+            observed_exp_gained += gained
+            if fields.get("action_code") in {1005, 1006}:
+                observed_finalizations += 1
             gain_level = fields.get("level")
             gain_required = (
                 LEVEL_CURVE.get(gain_level + 1)
@@ -441,22 +470,45 @@ def _capture_summary(
                 summary["credits"] += fields[credit_key]
                 break
         if isinstance(fields.get("contribution_total"), (int, float)):
-            summary["contribution"] = fields["contribution_total"]
+            contribution_totals.append(fields["contribution_total"])
         kind = str(event.get("type", "")).lower()
         if "exchange" in kind or "market" in kind:
             summary["market_events"] += 1
         if event.get("type") == "drop_item_field":
             summary["kills"] += 1
             for item in data.get("results", []):
+                item_index = item.get("item_index")
+                count = item.get("count")
+                if item_index == 900 and isinstance(count, (int, float)):
+                    reward_exp += count
+                    reward_exp_seen = True
+                    if item.get("action_code") in {1005, 1006}:
+                        reward_finalizations += 1
+                    continue
+                if item_index == 1 and isinstance(count, (int, float)):
+                    reward_credits += count
+                    reward_credits_seen = True
+                    continue
+                if item_index == 1701 and isinstance(count, (int, float)):
+                    reward_contribution += count
+                    reward_contribution_seen = True
+                    continue
+                grade = ITEM_GRADES.get(str(item_index))
+                rarity = LOOT_RARITIES.get(grade)
+                if rarity and isinstance(count, (int, float)):
+                    summary["loot_by_rarity"][rarity[0]] += count
                 summary["loot"].append(
                     {
+                        "item_index": item_index,
                         "item": (
                             item.get("item_name")
-                            or ITEM_NAMES.get(str(item.get("item_index")))
-                            or item.get("item_index")
+                            or ITEM_NAMES.get(str(item_index))
+                            or item_index
                         ),
-                        "count": item.get("count"),
+                        "count": count,
                         "gain_total": item.get("gain_total"),
+                        "grade": grade,
+                        "rarity": rarity[1] if rarity else None,
                     }
                 )
     required = (
@@ -466,6 +518,25 @@ def _capture_summary(
     )
     if required and isinstance(summary["exp"], (int, float)):
         summary["exp_missing"] = max(0, required - summary["exp"])
+    summary["exp_gained"] = (
+        reward_exp if reward_exp_seen else observed_exp_gained
+    )
+    summary["finalizations"] = reward_finalizations or observed_finalizations
+    if reward_exp_seen:
+        summary["exp_gained_percent"] = (
+            reward_exp * 100 / required if required else None
+        )
+    if reward_credits_seen:
+        summary["credits"] = reward_credits
+    if reward_contribution_seen:
+        summary["contribution"] = reward_contribution
+    elif len(contribution_totals) > 1:
+        summary["contribution"] = sum(
+            max(0, current - previous)
+            for previous, current in zip(
+                contribution_totals, contribution_totals[1:]
+            )
+        )
     loadout = {"equipment": summary["equipment"]}
     if summary["biosuit_item_index"]:
         loadout["biosuit"] = {
@@ -1921,6 +1992,8 @@ class App(tk.Tk):
                 "exp_hour",
                 "exp_hour_percent",
                 "credits_hour",
+                "contribution_total",
+                "contribution_hour",
                 "sent",
                 "actions",
             ),
@@ -1937,12 +2010,23 @@ class App(tk.Tk):
             ("exp_hour", "EXP/h", 100),
             ("exp_hour_percent", "EXP/h (%)", 90),
             ("credits_hour", "Crédito/h", 100),
+            ("contribution_total", "Contribuição", 110),
+            ("contribution_hour", "Contribuição/h", 110),
             ("sent", "Enviado", 70),
             ("actions", "Ações", 80),
         ):
             self.subsession_table.heading(column, text=label)
             self.subsession_table.column(column, width=width, anchor="w")
         self.subsession_table.pack(fill=BOTH, expand=True)
+        subsession_scroll = ttk.Scrollbar(
+            history,
+            orient="horizontal",
+            command=self.subsession_table.xview,
+        )
+        self.subsession_table.configure(
+            xscrollcommand=subsession_scroll.set
+        )
+        subsession_scroll.pack(fill=X)
         pagination = ttk.Frame(history, style="PanelBody.TFrame")
         pagination.pack(fill=X, pady=(8, 0))
         self.subsession_page = 1
@@ -3325,6 +3409,12 @@ class App(tk.Tk):
                 else None
             )
             credits_hour = round(summary["credits"] / hours) if hours else 0
+            contribution_hour = (
+                round(summary["contribution"] / hours)
+                if hours
+                and isinstance(summary["contribution"], (int, float))
+                else None
+            )
             self.subsession_table.insert(
                 "",
                 END,
@@ -3348,6 +3438,16 @@ class App(tk.Tk):
                         else "—"
                     ),
                     f"{credits_hour:,.0f}".replace(",", "."),
+                    (
+                        f"{summary['contribution']:,.0f}".replace(",", ".")
+                        if isinstance(summary["contribution"], (int, float))
+                        else "—"
+                    ),
+                    (
+                        f"{contribution_hour:,.0f}".replace(",", ".")
+                        if isinstance(contribution_hour, (int, float))
+                        else "—"
+                    ),
                     "Sim" if item["upload_state"] == "sent" else "Não",
                     "Em andamento" if item["ended_ns"] is None else "Pronta",
                 ),
@@ -4954,6 +5054,11 @@ class App(tk.Tk):
             "diamonds": None,
             "contribution": None,
             "kills": 0,
+            "finalizations": 0,
+            "loot": [],
+            "loot_by_rarity": {
+                key: 0 for key, _label in LOOT_RARITIES.values()
+            },
         }
         overview_name = (
             self._client_display_name(self._active_client_index, profiles)
@@ -4985,11 +5090,18 @@ class App(tk.Tk):
                 else None
             ),
             "kills": summary["kills"],
-            "finalizations": None,
-            "loot": sum(
-                int(item.get("count") or 0) for item in summary.get("loot", [])
-            ),
+            "finalizations": summary["finalizations"],
+            "loot": "",
         }
+        rarity_totals = summary.get("loot_by_rarity") or {}
+        rarity_parts = [
+            f"{label} {int(rarity_totals.get(key, 0))}"
+            for key, label in LOOT_RARITIES.values()
+        ]
+        values["loot"] = "\n".join(
+            " · ".join(rarity_parts[index : index + 2])
+            for index in range(0, len(rarity_parts), 2)
+        )
         self.overview_character.configure(text=str(overview_name))
         class_icon = self.class_icons.get(
             (summary["character_class"], summary["biosuit_grade"] or 0)
@@ -5051,6 +5163,8 @@ class App(tk.Tk):
                     and isinstance(value, (int, float))
                     else f"{value:,.0f}".replace(",", ".")
                     if isinstance(value, (int, float))
+                    else value
+                    if isinstance(value, str) and value
                     else "—"
                 )
             )

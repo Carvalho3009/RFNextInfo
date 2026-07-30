@@ -351,6 +351,84 @@ class AppLogicTest(unittest.TestCase):
         )
         self.assertAlmostEqual(summary["exp_gained_percent"], 10.0)
 
+    def test_reward_packets_drive_farm_totals_without_bonus_duplication(self):
+        events = []
+        contribution_total = 100_000_000
+        for index in range(257):
+            contribution_total += 6_050
+            events.extend(
+                [
+                    {
+                        "type": "drop_item_field",
+                        "data": {
+                            "results": [
+                                {"item_index": 900, "count": 26_584},
+                                {"item_index": 1, "count": 574},
+                                {"item_index": 1701, "count": 6_050},
+                            ]
+                        },
+                    },
+                    {
+                        "type": "update_exp",
+                        "data": {
+                            "action_code": 1006 if index < 9 else 1001,
+                            "gain_exp": 265_840 if index < 9 else 26_584,
+                            "level": 67,
+                        },
+                    },
+                    {
+                        "type": "realm_contribution_update",
+                        "data": {"contribution_total": contribution_total},
+                    },
+                ]
+            )
+
+        summary, _ = _capture_summary({"events": events})
+
+        self.assertEqual(summary["kills"], 257)
+        self.assertEqual(summary["exp_gained"], 6_832_088)
+        self.assertEqual(summary["credits"], 147_518)
+        self.assertEqual(summary["contribution"], 1_554_850)
+        self.assertEqual(summary["finalizations"], 9)
+        self.assertEqual(
+            round(summary["contribution"] / (23 / 60)),
+            4_056_130,
+        )
+        self.assertEqual(summary["loot"], [])
+
+    def test_loot_is_grouped_by_item_rarity(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "drop_item_field",
+                        "data": {
+                            "results": [
+                                {"item_index": 1000000, "count": 2},
+                                {"item_index": 1000036, "count": 3},
+                                {"item_index": 1000078, "count": 4},
+                                {"item_index": 1000126, "count": 5},
+                            ]
+                        },
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(
+            summary["loot_by_rarity"],
+            {
+                "common": 2,
+                "uncommon": 3,
+                "rare": 4,
+                "epic": 5,
+            },
+        )
+        self.assertEqual(
+            [item["rarity"] for item in summary["loot"]],
+            ["Comum", "Incomum", "Raro", "Épico"],
+        )
+
     def test_farm_catalog_links_map_spot_mob_and_level(self):
         self.assertEqual(len(FARM_CATALOG), 25)
         self.assertEqual(
