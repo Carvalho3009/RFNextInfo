@@ -1,6 +1,6 @@
 # Changelog
 
-## Em desenvolvimento
+## 2.0b — 2026-07-30
 
 - O catálogo de farm passa a usar seleção encadeada de mapa, spot e mobs.
 - A subsessão aceita mob extra, nível, observação e duração própria; duração
