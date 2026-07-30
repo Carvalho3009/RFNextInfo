@@ -101,28 +101,48 @@ def _rover_catalog() -> dict[str, dict[str, Any]]:
 ROVERS = _rover_catalog()
 
 
-def _farm_catalog() -> dict[str, dict[str, tuple[int, ...]]]:
-    catalog: dict[str, dict[str, set[int]]] = {}
+def _farm_catalog() -> dict[str, dict[str, dict[str, tuple[int, ...]]]]:
+    catalog: dict[str, dict[str, dict[str, set[int]]]] = {}
     try:
         with (ROOT / "core" / "catalogo.csv").open(
             encoding="utf-8-sig", newline=""
         ) as source:
             for row in csv.DictReader(source):
-                location = str(row.get("display_label_ptbr") or "").strip()
-                mob = str(row.get("mob_name_ptbr") or "").strip()
+                map_name = str(
+                    row.get("mapa")
+                    or row.get("map_name_ptbr")
+                    or row.get("content_name_ptbr")
+                    or ""
+                ).strip()
+                spot_name = str(
+                    row.get("spot_andar")
+                    or row.get("spot_name_ptbr")
+                    or row.get("floor_or_difficulty_ptbr")
+                    or ""
+                ).strip()
+                mob = str(
+                    row.get("mob_name") or row.get("mob_name_ptbr") or ""
+                ).strip()
                 level = int(row.get("mob_level") or 0)
-                if location and mob and 1 <= level <= 999:
-                    catalog.setdefault(location, {}).setdefault(mob, set()).add(
-                        level
-                    )
+                if map_name and spot_name and mob and 1 <= level <= 999:
+                    catalog.setdefault(map_name, {}).setdefault(
+                        spot_name, {}
+                    ).setdefault(mob, set()).add(level)
     except (OSError, TypeError, ValueError, csv.Error):
         return {}
     return {
-        location: {
-            mob: tuple(sorted(levels))
-            for mob, levels in sorted(mobs.items(), key=lambda item: item[0].casefold())
+        map_name: {
+            spot_name: {
+                mob: tuple(sorted(levels))
+                for mob, levels in sorted(
+                    mobs.items(), key=lambda item: item[0].casefold()
+                )
+            }
+            for spot_name, mobs in sorted(
+                spots.items(), key=lambda item: item[0].casefold()
+            )
         }
-        for location, mobs in sorted(
+        for map_name, spots in sorted(
             catalog.items(), key=lambda item: item[0].casefold()
         )
     }
@@ -588,8 +608,6 @@ class App(tk.Tk):
         self._active_client_index = 0
         self._game_choices: dict[str, str] = {}
         self._selected_game_path = ""
-        self._custom_subsession_locations: set[str] = set()
-        self._custom_subsession_mobs: set[str] = set()
         self.prefs: dict = {}
         self._style()
         self._build()
@@ -1753,7 +1771,12 @@ class App(tk.Tk):
             anchor="w", pady=(0, 8)
         )
         self.subsession_name = ttk.Entry(form, width=30)
-        self.subsession_location = ttk.Combobox(form, width=30)
+        self.subsession_map = ttk.Combobox(
+            form, width=30, state="readonly"
+        )
+        self.subsession_spot = ttk.Combobox(
+            form, width=30, state="readonly"
+        )
         self.subsession_mobs = tk.Listbox(
             form,
             height=5,
@@ -1796,22 +1819,23 @@ class App(tk.Tk):
             duration, text="min", style="PanelMuted.TLabel"
         ).pack(side=LEFT, padx=(6, 0))
         for label, widget in (
-            ("Localização", self.subsession_location),
-            ("Mobs · multiseleção", self.subsession_mobs),
-            ("Outro mob", self.subsession_other_mob),
+            ("Mapa", self.subsession_map),
+            ("Spot", self.subsession_spot),
+            ("Mobs do spot · multiseleção", self.subsession_mobs),
+            ("Mob extra", self.subsession_other_mob),
             ("Nível dos mobs", level_range),
             ("Duração (0 = encerrar manualmente)", duration),
-            ("Observações (opcional)", self.subsession_name),
+            ("Observação (opcional)", self.subsession_name),
         ):
             ttk.Label(form, text=label, style="PanelMuted.TLabel").pack(
                 anchor="w", pady=(6, 2)
             )
             widget.pack(fill=X)
-        self.subsession_location.bind(
-            "<<ComboboxSelected>>", self._subsession_location_changed
+        self.subsession_map.bind(
+            "<<ComboboxSelected>>", self._subsession_map_changed
         )
-        self.subsession_location.bind(
-            "<FocusOut>", self._subsession_location_changed
+        self.subsession_spot.bind(
+            "<<ComboboxSelected>>", self._subsession_spot_changed
         )
         self.subsession_mobs.bind(
             "<<ListboxSelect>>", self._subsession_mobs_changed
@@ -2365,27 +2389,17 @@ class App(tk.Tk):
                 quick_seconds = 10
             variable.set(max(10, min(300, quick_seconds)))
         self._refresh_quick_duration_ui()
-        self._custom_subsession_locations = {
-            str(location).strip()
-            for location in self.prefs.get("location_catalog") or ()
-            if str(location).strip() not in FARM_CATALOG
-        }
-        self._custom_subsession_mobs = {
-            str(mob).strip()
-            for mob in self.prefs.get("mob_catalog") or ()
-            if str(mob).strip()
-        }
-        locations = sorted(
-            {*FARM_CATALOG, *self._custom_subsession_locations},
-            key=str.casefold,
+        maps = tuple(sorted(FARM_CATALOG, key=str.casefold))
+        self.subsession_map.configure(values=maps)
+        saved_map = str(self.prefs.get("subsession_map") or "").strip()
+        self.subsession_map.set(
+            saved_map if saved_map in FARM_CATALOG else maps[0] if maps else ""
         )
-        self.subsession_location.configure(values=tuple(locations))
-        saved_location = str(
-            self.prefs.get("subsession_location") or ""
-        ).strip()
-        if saved_location:
-            self.subsession_location.set(saved_location)
-        self._subsession_location_changed()
+        self._subsession_map_changed(
+            preferred_spot=str(
+                self.prefs.get("subsession_spot") or ""
+            ).strip()
+        )
         shortcuts = self.prefs.get("shortcuts") or {}
         for mode, value in self.shortcut_vars.items():
             candidate = str(shortcuts.get(mode, value.get())).upper()
@@ -2517,7 +2531,8 @@ class App(tk.Tk):
                 "subsession_duration_minutes": max(
                     0, min(1440, int(self.subsession_duration_minutes.get()))
                 ),
-                "subsession_location": self.subsession_location.get().strip(),
+                "subsession_map": self.subsession_map.get().strip(),
+                "subsession_spot": self.subsession_spot.get().strip(),
                 "quick_capture_seconds": {
                     mode: self._quick_capture_duration(mode)
                     for mode in self.quick_capture_seconds
@@ -2526,12 +2541,6 @@ class App(tk.Tk):
                     mode: value.get()
                     for mode, value in self.shortcut_vars.items()
                 },
-                "location_catalog": sorted(
-                    self._custom_subsession_locations, key=str.casefold
-                ),
-                "mob_catalog": sorted(
-                    self._custom_subsession_mobs, key=str.casefold
-                ),
             }
         )
         PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -2849,21 +2858,38 @@ class App(tk.Tk):
 
         tick(duration)
 
-    def _subsession_location_changed(self, _event=None) -> None:
-        location = self.subsession_location.get().strip()
-        mobs = set(FARM_CATALOG.get(location, {}))
-        mobs.update(self._custom_subsession_mobs)
+    def _subsession_map_changed(
+        self, _event=None, preferred_spot: str = ""
+    ) -> None:
+        spots = tuple(
+            sorted(
+                FARM_CATALOG.get(self.subsession_map.get().strip(), {}),
+                key=str.casefold,
+            )
+        )
+        self.subsession_spot.configure(values=spots)
+        current = preferred_spot or self.subsession_spot.get().strip()
+        self.subsession_spot.set(
+            current if current in spots else spots[0] if spots else ""
+        )
+        self._subsession_spot_changed()
+
+    def _subsession_spot_changed(self, _event=None) -> None:
+        mobs = FARM_CATALOG.get(
+            self.subsession_map.get().strip(), {}
+        ).get(self.subsession_spot.get().strip(), {})
         self.subsession_mobs.delete(0, END)
-        for mob in sorted(mobs, key=str.casefold):
+        for mob in mobs:
             self.subsession_mobs.insert(END, mob)
 
     def _subsession_mobs_changed(self, _event=None) -> None:
-        location = self.subsession_location.get().strip()
-        location_catalog = FARM_CATALOG.get(location, {})
+        spot_catalog = FARM_CATALOG.get(
+            self.subsession_map.get().strip(), {}
+        ).get(self.subsession_spot.get().strip(), {})
         levels = [
             level
             for index in self.subsession_mobs.curselection()
-            for level in location_catalog.get(
+            for level in spot_catalog.get(
                 str(self.subsession_mobs.get(index)), ()
             )
         ]
@@ -2882,11 +2908,13 @@ class App(tk.Tk):
                 "Subsessão",
                 "Inicie a captura contínua antes de criar uma subsessão.",
             )
-        name = (
-            self.subsession_name.get().strip()
-            or self.subsession_location.get().strip()
-            or "Subsessão"
-        )
+        map_name = self.subsession_map.get().strip()
+        spot_name = self.subsession_spot.get().strip()
+        if not map_name or not spot_name:
+            return messagebox.showwarning(
+                "Subsessão", "Selecione o mapa e o spot."
+            )
+        name = self.subsession_name.get().strip() or spot_name
         mobs = [
             self.subsession_mobs.get(index)
             for index in self.subsession_mobs.curselection()
@@ -2904,8 +2932,7 @@ class App(tk.Tk):
                 "Subsessão",
                 "O nível inicial dos mobs não pode ser maior que o final.",
             )
-        location = self.subsession_location.get().strip()
-        catalog_mobs = FARM_CATALOG.get(location, {})
+        catalog_mobs = FARM_CATALOG.get(map_name, {}).get(spot_name, {})
         manual_level = (
             level_from
             if level_from == level_to
@@ -2938,7 +2965,11 @@ class App(tk.Tk):
                 self.current_session,
                 name,
                 character_uid=self.active_character_uid,
-                location=self.subsession_location.get(),
+                location=" > ".join(
+                    value for value in (map_name, spot_name) if value
+                ),
+                map_name=map_name,
+                spot_name=spot_name,
                 mobs=mobs,
                 mob_levels=levels,
                 duration_minutes=duration_minutes,
@@ -2946,14 +2977,7 @@ class App(tk.Tk):
             )
         except ValueError as error:
             return messagebox.showwarning("Subsessão", str(error))
-        locations = list(self.subsession_location.cget("values"))
-        if location and location not in locations:
-            locations.append(location)
-            self.subsession_location.configure(values=tuple(locations))
-            self._custom_subsession_locations.add(location)
-        self._custom_subsession_mobs.update(
-            mob for mob in mobs if mob not in catalog_mobs
-        )
+        self.subsession_other_mob.delete(0, END)
         self._save_preferences()
         self._refresh_subsessions()
 
@@ -3285,9 +3309,10 @@ class App(tk.Tk):
             return
         elapsed_ns = time.time_ns() - active["started_ns"]
         duration_minutes = int(active.get("duration_minutes") or 0)
+        if duration_minutes == 0:
+            return
         if (
-            duration_minutes
-            and elapsed_ns >= duration_minutes * 60 * 1_000_000_000
+            elapsed_ns >= duration_minutes * 60 * 1_000_000_000
         ):
             self.store.end_subsession(active["id"], time.time_ns())
             self._refresh_subsessions()
@@ -3305,6 +3330,8 @@ class App(tk.Tk):
             f"{active['name']} · automática",
             character_uid=active["character_uid"],
             location=active["location"],
+            map_name=active.get("map_name", ""),
+            spot_name=active.get("spot_name", ""),
             mobs=active["mobs"],
             mob_levels=active["mob_levels"],
             duration_minutes=active["duration_minutes"],

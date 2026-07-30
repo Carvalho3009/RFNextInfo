@@ -1,5 +1,11 @@
 # Changelog
 
+## Em desenvolvimento
+
+- O catálogo de farm passa a usar seleção encadeada de mapa, spot e mobs.
+- A subsessão aceita mob extra, nível, observação e duração própria; duração
+  `0` permanece ativa até o encerramento manual.
+
 ## 2.0a — 2026-07-30
 
 - O Rover equipado na entrada é lido diretamente do `0x0305` do próprio

@@ -263,14 +263,52 @@ class AppLogicTest(unittest.TestCase):
         )
         self.assertAlmostEqual(summary["exp_gained_percent"], 10.0)
 
-    def test_farm_catalog_links_location_mob_and_level(self):
-        location = (
-            "Cidade Arruinada da Babilônia Área 4 > "
-            "Cidade Arruinada da Babilônia [mapa 4354]"
+    def test_farm_catalog_links_map_spot_mob_and_level(self):
+        self.assertEqual(len(FARM_CATALOG), 25)
+        self.assertEqual(
+            sum(len(spots) for spots in FARM_CATALOG.values()), 281
         )
         self.assertEqual(
-            FARM_CATALOG[location]["Arremessador Carmesim"],
+            FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"][
+                "Arremessador Carmesim"
+            ],
             (98,),
+        )
+
+    def test_subsession_map_and_spot_filter_the_next_choices(self):
+        app = Mock()
+        app.subsession_map.get.return_value = (
+            "Cidade Arruinada da Babilônia"
+        )
+        app.subsession_spot.get.return_value = "Área 4"
+
+        App._subsession_map_changed(app, preferred_spot="Área 4")
+
+        expected_spots = tuple(
+            sorted(
+                FARM_CATALOG["Cidade Arruinada da Babilônia"],
+                key=str.casefold,
+            )
+        )
+        app.subsession_spot.configure.assert_called_once_with(
+            values=expected_spots
+        )
+        app.subsession_spot.set.assert_called_once_with("Área 4")
+
+        app._subsession_spot_changed = App._subsession_spot_changed.__get__(
+            app
+        )
+        app.subsession_mobs.reset_mock()
+        app._subsession_spot_changed()
+
+        inserted = [
+            call.args[1] for call in app.subsession_mobs.insert.call_args_list
+        ]
+        self.assertEqual(
+            inserted,
+            list(
+                FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
+            ),
         )
 
     def test_market_window_builds_site_rows(self):
@@ -583,6 +621,27 @@ class AppLogicTest(unittest.TestCase):
         app.store.end_subsession.assert_called_once_with(
             "sub-1", 61_000_000_001
         )
+        app.store.start_subsession.assert_not_called()
+
+    def test_zero_subsession_duration_waits_for_manual_end(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.active_character_uid = "uid-1"
+        app.auto_subsession.get.return_value = True
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "started_ns": 1,
+                "duration_minutes": 0,
+                "ended_ns": None,
+            }
+        ]
+
+        with patch("app.main.time.time_ns", return_value=10**18):
+            App._rotate_auto_subsession(app)
+
+        app.store.end_subsession.assert_not_called()
         app.store.start_subsession.assert_not_called()
 
     def test_saved_license_check_updates_startup_ui(self):
