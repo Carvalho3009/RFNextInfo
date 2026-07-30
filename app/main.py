@@ -1199,7 +1199,10 @@ class App(tk.Tk):
         if not getattr(self, "_page_canvases", None):
             return None
         canvas = self._page_canvases[self._active_page_index]
-        widget = self.winfo_containing(event.x_root, event.y_root)
+        try:
+            widget = self.winfo_containing(event.x_root, event.y_root)
+        except (KeyError, tk.TclError):
+            return None
         while widget is not None and widget is not canvas:
             widget = getattr(widget, "master", None)
         if widget is not canvas or not event.delta:
