@@ -39,6 +39,18 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_scroll_ignores_native_combobox_popup(self):
+        canvas = Mock()
+        app = Mock(
+            _page_canvases=[canvas],
+            _active_page_index=0,
+        )
+        app.winfo_containing.side_effect = KeyError("combobox popdown")
+        event = Mock(x_root=1, y_root=1, delta=120, state=0)
+
+        self.assertIsNone(App._scroll_active_page(app, event))
+        canvas.yview_scroll.assert_not_called()
+
     def test_main_has_every_uppercase_global_it_uses(self):
         tree = ast.parse(Path(main_module.__file__).read_text(encoding="utf-8"))
         used = {
