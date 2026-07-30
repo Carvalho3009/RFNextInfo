@@ -6,16 +6,18 @@ do aplicativo preencher; chave de licença nunca pertence ao arquivo.
 
 ## Fluxo
 
-1. `connections` descobre as portas TCP locais do executável selecionado;
+1. `connections` descobre as portas TCP locais e remotas do executável;
 2. `PktmonCapture` configura essas portas e as portas conhecidas do jogo
-   (`12000`, `12020`, `12040`), cobrindo login e reconexão, e inicia `pktmon`
-   com pacote inteiro, arquivo de 512 MiB e modo `multi-file`.
+   (`12000`, `12010`, `12020`, `12040`), cobrindo login e reconexão, e inicia
+   `pktmon` com pacote inteiro, arquivo de 512 MiB e modo `multi-file`.
 3. O observador encerra com segurança abaixo de 2 GiB livres.
 4. ETL é convertido por `pktmon etl2pcap`; PCAPNG padrão é reduzido a PCAP
    temporário para o decoder canônico.
 5. Apenas eventos reconhecidos são persistidos em SQLite/WAL. `0x0101` é
    descartado antes de qualquer persistência.
-6. JSON e CSV são gravados localmente; o JSON é reaberto e validado antes de
+6. O hash do decoder, catálogo e portas invalida resultados antigos e permite
+   reconstruir a sessão sem apagar o ETL antes da nova leitura.
+7. JSON e CSV são gravados localmente; o JSON é reaberto e validado antes de
    ser considerado exportado.
 
 ## Decoder

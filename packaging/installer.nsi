@@ -1,8 +1,8 @@
 Unicode True
 RequestExecutionLevel admin
-Name "RF NEXT INFO"
-OutFile "..\dist\RFNextInfo-Setup-1.0.8.exe"
-InstallDir "$PROGRAMFILES64\Karvalho\RF NEXT INFO"
+Name "RF NEXT QOL"
+OutFile "..\dist\RFNextQOL-Setup-2.0a.exe"
+InstallDir "$PROGRAMFILES64\Karvalho\RF NEXT QOL"
 InstallDirRegKey HKLM "Software\Karvalho\RFNextInfo" "InstallDir"
 
 !include "MUI2.nsh"
@@ -25,13 +25,13 @@ retry:
   Goto done
 running:
   MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
-    "Feche o RF NEXT INFO antes de continuar.$\r$\n$\r$\nSe houver captura ativa, cancele a instalação, pare a captura e aguarde a leitura. Depois tente novamente." \
+    "Feche o RF NEXT QOL antes de continuar.$\r$\n$\r$\nSe houver captura ativa, cancele a instalação, pare a captura e aguarde a leitura. Depois tente novamente." \
     IDRETRY retry
   Abort
 done:
 FunctionEnd
 
-Section "RF NEXT INFO" SEC_APP
+Section "RF NEXT QOL" SEC_APP
   Call EnsureAppClosed
   Sleep 1500
   RMDir /r "$INSTDIR\_internal"
@@ -48,24 +48,26 @@ self_test_exec_failed:
   StrCpy $0 -1
 self_test_log:
   FileOpen $1 "$APPDATA\Karvalho\RFNextInfo\logs\install.log" a
-  FileWrite $1 "version=1.0.8 self_test=$0$\r$\n"
+  FileWrite $1 "version=2.0a self_test=$0$\r$\n"
   FileClose $1
   SetShellVarContext current
   StrCmp $0 0 self_test_ok
   MessageBox MB_OK|MB_ICONSTOP \
-    "O teste do programa instalado falhou (código $0). Consulte o arquivo install.log e não abra o RF NEXT INFO."
+    "O teste do programa instalado falhou (código $0). Consulte o arquivo install.log e não abra o RF NEXT QOL."
   Abort
 self_test_ok:
   WriteRegStr HKLM "Software\Karvalho\RFNextInfo" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\Karvalho"
-  CreateShortcut "$SMPROGRAMS\Karvalho\RF NEXT INFO.lnk" "$INSTDIR\RFNextInfo.exe"
-  CreateShortcut "$DESKTOP\RF NEXT INFO.lnk" "$INSTDIR\RFNextInfo.exe"
+  Delete "$SMPROGRAMS\Karvalho\RF NEXT INFO.lnk"
+  Delete "$DESKTOP\RF NEXT INFO.lnk"
+  CreateShortcut "$SMPROGRAMS\Karvalho\RF NEXT QOL.lnk" "$INSTDIR\RFNextInfo.exe"
+  CreateShortcut "$DESKTOP\RF NEXT QOL.lnk" "$INSTDIR\RFNextInfo.exe"
 SectionEnd
 
 Section "Uninstall"
-  Delete "$DESKTOP\RF NEXT INFO.lnk"
-  Delete "$SMPROGRAMS\Karvalho\RF NEXT INFO.lnk"
+  Delete "$DESKTOP\RF NEXT QOL.lnk"
+  Delete "$SMPROGRAMS\Karvalho\RF NEXT QOL.lnk"
   RMDir "$SMPROGRAMS\Karvalho"
   RMDir /r "$INSTDIR"
   DeleteRegKey HKLM "Software\Karvalho\RFNextInfo"

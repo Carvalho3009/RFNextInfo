@@ -583,14 +583,103 @@ def parse_login_session_payload(decoded: bytes, port: int) -> dict[str, Any] | N
 
 
 SALVAGE_ITEM = struct.Struct("<QIQ")
+EQUIPMENT_PART_NAMES = (
+    "weapon",
+    "neck_guard",
+    "chest_guard",
+    "lower_guard",
+    "arm_guards",
+    "leg_guards",
+    "ear_cuffs",
+    "necklace",
+    "bangles",
+    "ring",
+    "dimension_cube",
+    "psionic_capsule",
+    "quantum_disk",
+    "hyper_sensor",
+    "drive",
+    "circlet",
+    "stargazer",
+    "deflector",
+)
 
 
 def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
     """Layouts fechados pela captura marcada de 2026-07-26."""
-    if port != 12020 or len(decoded) < HEADER_SIZE:
+    if len(decoded) < HEADER_SIZE:
         return None
     opcode = int.from_bytes(decoded[4:6], "little")
     payload = decoded[HEADER_SIZE:]
+
+    if port == 12010:
+        if opcode == 0x0407 and len(payload) == 75:
+            return {
+                "type": "player_equip_update",
+                "message": "FG2C_update_player_equip_info_Message",
+                "direction": "FG2C",
+                "confidence": "alto-7-trocas-marcadas-2-personagens",
+                "fields": {
+                    "character_uid": struct.unpack_from("<Q", payload, 0)[0],
+                    "rover_item_index": struct.unpack_from("<I", payload, 18)[0],
+                },
+            }
+        return None
+    if port != 12020:
+        return None
+
+    if opcode == 0x1303 and len(payload) == 4:
+        return {
+            "type": "change_biosuit_request",
+            "message": "FC2L_ask_change_biosuit_Message",
+            "direction": "FC2L",
+            "confidence": "alto-3-trocas-marcadas-1-personagem",
+            "fields": {
+                "biosuit_item_index": struct.unpack("<I", payload)[0],
+            },
+        }
+    if opcode == 0x1304 and len(payload) == 15:
+        result, biosuit_item_index, f6_u64_raw, f14_u8_raw = struct.unpack(
+            "<HIQB", payload
+        )
+        return {
+            "type": "change_biosuit_response",
+            "message": "FL2C_ans_change_biosuit_Message",
+            "direction": "FL2C",
+            "confidence": "alto-3-trocas-marcadas-1-personagem",
+            "fields": {
+                "result": result,
+                "biosuit_item_index": biosuit_item_index,
+                "f6_u64_raw": f6_u64_raw,
+                "f14_u8_raw": f14_u8_raw,
+            },
+        }
+
+    if opcode == 0x1402 and len(payload) == 4:
+        return {
+            "type": "change_rover_request",
+            "message": "FC2L_ask_change_rover_Message",
+            "direction": "FC2L",
+            "confidence": "alto-7-trocas-marcadas-2-personagens",
+            "fields": {
+                "rover_item_index": struct.unpack("<I", payload)[0],
+            },
+        }
+    if opcode == 0x1403 and len(payload) == 7:
+        result, rover_item_index, trailing_state_raw = struct.unpack(
+            "<HIB", payload
+        )
+        return {
+            "type": "change_rover_response",
+            "message": "FL2C_ans_change_rover_Message",
+            "direction": "FL2C",
+            "confidence": "alto-7-trocas-marcadas-2-personagens",
+            "fields": {
+                "result": result,
+                "rover_item_index": rover_item_index,
+                "trailing_state_raw": trailing_state_raw,
+            },
+        }
 
     if opcode == 0x0106 and len(payload) >= 16:
         result, f2, character_uid, level, name_length = struct.unpack_from(
@@ -603,6 +692,11 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
             character_name = payload[16:name_end].decode("utf-16le")
         except UnicodeDecodeError:
             return None
+        biosuit_item_index = (
+            struct.unpack_from("<I", payload, name_end + 1)[0]
+            if name_end + 5 <= len(payload)
+            else None
+        )
         return {
             "type": "world_info_prefix",
             "message": "FA2C_ans_world_info_Message",
@@ -613,6 +707,7 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
                 "character_uid": character_uid,
                 "level": level,
                 "character_name": character_name,
+                "biosuit_item_index": biosuit_item_index,
                 "remaining_payload_length": len(payload) - name_end,
             },
         }
@@ -626,6 +721,32 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
             character_name = payload[10:name_end].decode("utf-16le")
         except UnicodeDecodeError:
             return None
+        equipment_fields = {}
+        if len(payload) - name_end - 46 == 988:
+            refs_offset = len(payload) - 195
+            biosuit_offset = refs_offset - 10
+            equipment_prefix = payload[biosuit_offset + 4:refs_offset]
+            equipment_refs = []
+            for equip_part_type, equip_part in enumerate(EQUIPMENT_PART_NAMES, 1):
+                ref_offset = refs_offset + (equip_part_type - 1) * 8
+                inventory_slot = struct.unpack_from("<H", payload, ref_offset)[0]
+                item_uid_raw = payload[ref_offset + 2:ref_offset + 8]
+                equipment_refs.append(
+                    {
+                        "equip_part_type": equip_part_type,
+                        "equip_part": equip_part,
+                        "inventory_slot": inventory_slot,
+                        "item_uid": int.from_bytes(item_uid_raw, "little"),
+                        "item_uid_hex": item_uid_raw.hex(),
+                    }
+                )
+            equipment_fields = {
+                "biosuit_item_index": struct.unpack_from("<I", payload, biosuit_offset)[0],
+                "rover_item_index": struct.unpack_from("<I", equipment_prefix, 1)[0],
+                "equipment_prefix_raw": equipment_prefix.hex(),
+                "equipment_refs": equipment_refs,
+                "equipment_suffix_raw": payload[refs_offset + 144:].hex(),
+            }
         return {
             "type": "appear_player_prefix",
             "message": "FG2C_appear_player_list_Message",
@@ -636,8 +757,12 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
                 "level": struct.unpack_from("<H", payload, name_end)[0],
                 "diamonds": struct.unpack_from("<Q", payload, name_end + 38)[0],
                 "remaining_payload_length": len(payload) - name_end - 46,
+                **equipment_fields,
             },
         }
+
+    if opcode == 0x0403:
+        return _parse_player_profile_payload(payload)
 
     if opcode in (0x0413, 0x0414):
         cursor = 2 if opcode == 0x0413 else 4
@@ -733,6 +858,127 @@ def _parse_item_info(payload: bytes, cursor: int) -> tuple[dict[str, Any], int]:
         "is_broken": bool(is_broken_raw),
         "expire_time": expire_time,
     }, cursor
+
+
+def _parse_compact_profile_item(payload: bytes, cursor: int) -> tuple[dict[str, Any], int]:
+    (inventory_slot,), cursor = _read_struct(
+        payload, cursor, "<H", "profile inventory slot"
+    )
+    uid_end = cursor + 6
+    if uid_end > len(payload):
+        raise DecodeError(f"truncated profile item UID at payload offset {cursor}")
+    item_uid_raw = payload[cursor:uid_end]
+    cursor = uid_end
+
+    fixed, cursor = _read_struct(payload, cursor, "<IQBH", "profile item prefix")
+    item_index, count, locked_raw, enchant_level = fixed
+    (talic_count,), cursor = _read_struct(payload, cursor, "<H", "profile talic count")
+    talic_bytes = talic_count * 4
+    if cursor + talic_bytes > len(payload):
+        raise DecodeError(f"truncated profile talic vector with {talic_count} entries")
+    talic_indices = list(struct.unpack_from(f"<{talic_count}I", payload, cursor))
+    cursor += talic_bytes
+
+    (option_count,), cursor = _read_struct(payload, cursor, "<H", "profile option count")
+    item_options = []
+    for _ in range(option_count):
+        values, cursor = _read_struct(payload, cursor, "<IfB", "profile option entry")
+        item_options.append(
+            {
+                "option_index": values[0],
+                "value": values[1],
+                "change_lock": bool(values[2]),
+            }
+        )
+    suffix, cursor = _read_struct(payload, cursor, "<BQ", "profile item suffix")
+    return {
+        "inventory_slot": inventory_slot,
+        "item_uid": int.from_bytes(item_uid_raw, "little"),
+        "item_uid_hex": item_uid_raw.hex(),
+        "item_index": item_index,
+        "count": count,
+        "lock": bool(locked_raw),
+        "enchant_level": enchant_level,
+        "talic_indices": talic_indices,
+        "item_options": item_options,
+        "is_broken": bool(suffix[0]),
+        "expire_time": suffix[1],
+    }, cursor
+
+
+def _parse_player_profile_payload(payload: bytes) -> dict[str, Any] | None:
+    if len(payload) < 3:
+        return None
+    f0_u8_raw, item_count = struct.unpack_from("<BH", payload)
+    cursor = 3
+    items = []
+    try:
+        for _ in range(item_count):
+            item, cursor = _parse_compact_profile_item(payload, cursor)
+            items.append(item)
+    except (DecodeError, struct.error):
+        return None
+    if cursor != len(payload):
+        return None
+    return {
+        "type": "player_profile_info",
+        "message": "FG2C_ans_player_profile_info_Message",
+        "direction": "FG2C",
+        "confidence": "alto-layout-exato-2-sessoes-ground-truth",
+        "fields": {
+            "f0_u8_raw": f0_u8_raw,
+            "item_count": item_count,
+            "items": items,
+        },
+    }
+
+
+def add_profile_item_names(profile: dict[str, Any], names: dict[int, str]) -> None:
+    for item in profile.get("fields", {}).get("items", []):
+        name = names.get(item["item_index"])
+        if name:
+            item["item_name_ptbr"] = name
+
+
+def correlate_active_equipment(
+    profile: dict[str, Any], appearances: list[dict[str, Any]]
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    profile_items = profile.get("fields", {}).get("items", [])
+    by_uid = {item["item_uid"]: item for item in profile_items if item["item_uid"]}
+    candidates = []
+    for appearance in appearances:
+        refs = appearance.get("fields", {}).get("equipment_refs", [])
+        selected = [ref for ref in refs if ref["item_uid"]]
+        matched = sum(ref["item_uid"] in by_uid for ref in selected)
+        if matched:
+            candidates.append((matched, len(selected), appearance, refs))
+    if not candidates:
+        return None
+    matched, selected_count, appearance, refs = max(candidates, key=lambda item: item[0])
+    slots = []
+    for ref in refs:
+        slot = dict(ref)
+        item = by_uid.get(ref["item_uid"])
+        slot["empty"] = ref["item_uid"] == 0
+        slot["resolved"] = item is not None
+        if item is not None:
+            slot["item"] = item
+        slots.append(slot)
+    active = {
+        "character_uid": appearance["fields"]["character_uid"],
+        "character_name": appearance["fields"]["character_name"],
+        "biosuit_item_index": appearance["fields"].get("biosuit_item_index"),
+        "selected_item_count": selected_count,
+        "matched_item_count": matched,
+        "complete": matched == selected_count,
+        "confidence": (
+            "alto-uid-exato+ground-truth"
+            if matched == selected_count
+            else "medio-correlacao-parcial"
+        ),
+        "slots": slots,
+    }
+    return active, appearance
 
 
 def _parse_detailed_exchange_info(payload: bytes, cursor: int) -> tuple[dict[str, Any], int]:
@@ -1322,6 +1568,73 @@ def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
 # — comportamento de progresso de missao, sem trio de float32 de coordenada.
 # fmt fecha exatamente 27B e valida sobre TODAS as 47834 amostras da captura rica.
 BATTLEPASS_MISSION_UPDATE = struct.Struct("<HQIIIIB")  # 27 B
+
+
+EVENT_MISSION_PROGRESS_UPDATE = struct.Struct("<HQIIQH")  # 28 B
+EVENT_MISSION_REWARD_REQUEST = struct.Struct("<II")  # 8 B
+EVENT_MISSION_REWARD_RESPONSE_PREFIX = struct.Struct("<HII")  # 10 de 42 B
+
+
+def parse_event_mission_payload(decoded: bytes) -> dict[str, Any] | None:
+    opcode = int.from_bytes(decoded[4:6], "little")
+    payload = decoded[HEADER_SIZE:]
+    if opcode == 0x1E06 and len(payload) == EVENT_MISSION_PROGRESS_UPDATE.size:
+        mission_index, character_uid, group, objective, f18, state = (
+            EVENT_MISSION_PROGRESS_UPDATE.unpack(payload)
+        )
+        return {
+            "type": "event_mission_progress_update",
+            "opcode": "0x1e06",
+            "message": "FL2C_event_mission_progress_update_Message",
+            "direction": "FL2C",
+            "confidence": "alto-layout-59756-amostras",
+            "fmt": "<HQIIQH",
+            "fields": {
+                "mission_index@0": mission_index,
+                "character_uid@2": character_uid,
+                "event_mission_group@10": group,
+                "objective_index@14": objective,
+                "f18@18": f18,
+                "state_raw@26": state,
+            },
+            "confidence_by_field": {
+                "mission_index@0": "medio-alto (4502/4503 no catalogo local)",
+                "character_uid@2": "alto (casa com 0x0106 nos dois personagens)",
+                "event_mission_group@10": "alto (repete em 0x1e07/0x1e08)",
+                "objective_index@14": "alto (repete em 0x1e07/0x1e08)",
+                "f18@18": "nao-confirmado",
+                "state_raw@26": "nao-confirmado (observados 0, 256 e 257)",
+            },
+        }
+    if opcode == 0x1E07 and len(payload) == EVENT_MISSION_REWARD_REQUEST.size:
+        group, objective = EVENT_MISSION_REWARD_REQUEST.unpack(payload)
+        return {
+            "type": "event_mission_reward_request",
+            "opcode": "0x1e07",
+            "message": "FC2L_ask_event_mission_reward_Message",
+            "direction": "FC2L",
+            "confidence": "alto-5-pares-capturados",
+            "fields": {
+                "event_mission_group@0": group,
+                "objective_index@4": objective,
+            },
+        }
+    if opcode == 0x1E08 and len(payload) == 42:
+        result, group, objective = EVENT_MISSION_REWARD_RESPONSE_PREFIX.unpack_from(payload)
+        return {
+            "type": "event_mission_reward_response",
+            "opcode": "0x1e08",
+            "message": "FL2C_ans_event_mission_reward_Message",
+            "direction": "FL2C",
+            "confidence": "alto-prefixo-5-pares-capturados",
+            "fields": {
+                "result_code@0": result,
+                "event_mission_group@2": group,
+                "objective_index@6": objective,
+                "reward_payload_hex@10": payload[10:].hex(),
+            },
+        }
+    return None
 
 
 def parse_1e12_payload(decoded: bytes) -> dict[str, Any] | None:
@@ -1918,6 +2231,28 @@ def self_test() -> None:
     market_rows = latest_market_rows(market_infos)
     assert [row["ItemIndex"] for row in market_rows] == [10, 11]
     assert market_rows[0]["PricePerUnit"] == 12.5 and market_rows[0]["Qty"] == 14
+    # 0x1e06-0x1e08: progresso e recompensa de missao de evento.
+    event_frame = bytearray(HEADER_SIZE + EVENT_MISSION_PROGRESS_UPDATE.size)
+    event_frame[4:6] = (0x1E06).to_bytes(2, "little")
+    event_frame[6:] = EVENT_MISSION_PROGRESS_UPDATE.pack(
+        4502, 6150132606160031134, 40014310, 2, 4807, 0
+    )
+    event = parse_event_mission_payload(bytes(event_frame))
+    assert event["fields"]["character_uid@2"] == 6150132606160031134
+    assert event["fields"]["event_mission_group@10"] == 40014310
+    reward_request = bytearray(HEADER_SIZE + EVENT_MISSION_REWARD_REQUEST.size)
+    reward_request[4:6] = (0x1E07).to_bytes(2, "little")
+    reward_request[6:] = EVENT_MISSION_REWARD_REQUEST.pack(40014310, 2)
+    request = parse_event_mission_payload(bytes(reward_request))
+    assert request["fields"]["objective_index@4"] == 2
+    reward_response = bytearray(HEADER_SIZE + 42)
+    reward_response[4:6] = (0x1E08).to_bytes(2, "little")
+    reward_response[6:] = EVENT_MISSION_REWARD_RESPONSE_PREFIX.pack(
+        0, 40014310, 2
+    ) + bytes(32)
+    response = parse_event_mission_payload(bytes(reward_response))
+    assert response["fields"]["result_code@0"] == 0
+    assert parse_event_mission_payload(bytes(reward_response[:-1])) is None
     # trackA2: 0x1e12 battlepass mission update (27B, layout validado em captura)
     mission_payload = BATTLEPASS_MISSION_UPDATE.pack(4525, 6150132606160031134, 400014454, 7, 38097, 0, 0)
     mission_frame = bytearray(HEADER_SIZE + len(mission_payload))
@@ -1954,13 +2289,44 @@ def self_test() -> None:
     truncated_character[6:] = (1).to_bytes(2, "little")
     truncated = parse_login_session_payload(bytes(truncated_character), 12000)
     assert truncated is not None and truncated["field_decode"] == "layout-mismatch"
-    world_payload = struct.pack("<HHQHH", 0, 2, 7, 66, 8) + "Carvalho".encode("utf-16le")
+    world_payload = (
+        struct.pack("<HHQHH", 0, 2, 7, 66, 8)
+        + "Carvalho".encode("utf-16le")
+        + b"\0"
+        + struct.pack("<I", 2075041)
+    )
     world_frame = bytearray(HEADER_SIZE + len(world_payload))
     world_frame[4:6] = (0x0106).to_bytes(2, "little")
     world_frame[6:] = world_payload
     world = parse_marked_gameplay_payload(bytes(world_frame), 12020)
     assert world["fields"]["character_name"] == "Carvalho"
+    assert world["fields"]["biosuit_item_index"] == 2075041
     assert world["fields"]["level"] == 66
+    biosuit_request_frame = bytearray(HEADER_SIZE + 4)
+    biosuit_request_frame[4:6] = (0x1303).to_bytes(2, "little")
+    biosuit_request_frame[6:] = struct.pack("<I", 2_055_041)
+    biosuit_request = parse_marked_gameplay_payload(
+        bytes(biosuit_request_frame), 12020
+    )
+    assert biosuit_request["fields"]["biosuit_item_index"] == 2_055_041
+    biosuit_response_frame = bytearray(HEADER_SIZE + 15)
+    biosuit_response_frame[4:6] = (0x1304).to_bytes(2, "little")
+    biosuit_response_frame[6:] = struct.pack(
+        "<HIQB", 0, 2_055_041, 457_063_468_049_408, 0
+    )
+    biosuit_response = parse_marked_gameplay_payload(
+        bytes(biosuit_response_frame), 12020
+    )
+    assert biosuit_response["fields"] == {
+        "result": 0,
+        "biosuit_item_index": 2_055_041,
+        "f6_u64_raw": 457_063_468_049_408,
+        "f14_u8_raw": 0,
+    }
+    assert (
+        parse_marked_gameplay_payload(bytes(biosuit_response_frame[:-1]), 12020)
+        is None
+    )
     player_payload = (
         struct.pack("<QH", 7, 8)
         + "Carvalho".encode("utf-16le")
@@ -1973,6 +2339,84 @@ def self_test() -> None:
     player_frame[6:] = player_payload
     player = parse_marked_gameplay_payload(bytes(player_frame), 12020)
     assert player["fields"]["diamonds"] == 3753
+    equipped_uid = bytes.fromhex("a0250838d001")
+    full_player_payload = bytearray(player_payload[:26] + bytes(1034))
+    struct.pack_into("<Q", full_player_payload, 26 + 38, 3753)
+    refs_offset = len(full_player_payload) - 195
+    struct.pack_into("<I", full_player_payload, refs_offset - 10, 2_075_041)
+    struct.pack_into("<I", full_player_payload, refs_offset - 5, 4_400_008)
+    struct.pack_into("<H", full_player_payload, refs_offset, 15)
+    full_player_payload[refs_offset + 2:refs_offset + 8] = equipped_uid
+    full_player_frame = bytearray(HEADER_SIZE + len(full_player_payload))
+    full_player_frame[4:6] = (0x0305).to_bytes(2, "little")
+    full_player_frame[6:] = full_player_payload
+    full_player = parse_marked_gameplay_payload(bytes(full_player_frame), 12020)
+    assert full_player["fields"]["biosuit_item_index"] == 2_075_041
+    assert full_player["fields"]["rover_item_index"] == 4_400_008
+    assert full_player["fields"]["equipment_refs"][0]["item_uid_hex"] == equipped_uid.hex()
+    profile_item = (
+        struct.pack("<H", 15)
+        + equipped_uid
+        + struct.pack("<IQBH", 1_002_279, 1, 1, 8)
+        + struct.pack("<HIIH", 2, 161_049, 160_948, 0)
+        + struct.pack("<BQ", 0, 0)
+    )
+    profile_payload = struct.pack("<BH", 1, 1) + profile_item
+    profile_frame = bytearray(HEADER_SIZE + len(profile_payload))
+    profile_frame[4:6] = (0x0403).to_bytes(2, "little")
+    profile_frame[6:] = profile_payload
+    profile = parse_marked_gameplay_payload(bytes(profile_frame), 12020)
+    assert profile["fields"]["items"][0]["item_index"] == 1_002_279
+    assert profile["fields"]["items"][0]["enchant_level"] == 8
+    correlated = correlate_active_equipment(profile, [full_player])
+    assert correlated is not None
+    active, _ = correlated
+    assert active["complete"] is True
+    assert active["slots"][0]["item"]["item_index"] == 1_002_279
+    rover_request_frame = bytearray(HEADER_SIZE + 4)
+    rover_request_frame[4:6] = (0x1402).to_bytes(2, "little")
+    rover_request_frame[6:] = struct.pack("<I", 4_300_017)
+    rover_request = parse_marked_gameplay_payload(
+        bytes(rover_request_frame), 12020
+    )
+    assert rover_request["type"] == "change_rover_request"
+    assert rover_request["fields"]["rover_item_index"] == 4_300_017
+    assert (
+        parse_marked_gameplay_payload(bytes(rover_request_frame), 12010)
+        is None
+    )
+    rover_response_frame = bytearray(HEADER_SIZE + 7)
+    rover_response_frame[4:6] = (0x1403).to_bytes(2, "little")
+    rover_response_frame[6:] = struct.pack("<HIB", 0, 4_300_017, 0)
+    rover_response = parse_marked_gameplay_payload(
+        bytes(rover_response_frame), 12020
+    )
+    assert rover_response["type"] == "change_rover_response"
+    assert rover_response["fields"] == {
+        "result": 0,
+        "rover_item_index": 4_300_017,
+        "trailing_state_raw": 0,
+    }
+    assert (
+        parse_marked_gameplay_payload(bytes(rover_response_frame[:-1]), 12020)
+        is None
+    )
+    equip_payload = bytearray(75)
+    struct.pack_into("<Q", equip_payload, 0, 6_150_132_606_160_031_134)
+    struct.pack_into("<I", equip_payload, 18, 4_400_011)
+    equip_frame = bytearray(HEADER_SIZE + len(equip_payload))
+    equip_frame[4:6] = (0x0407).to_bytes(2, "little")
+    equip_frame[6:] = equip_payload
+    equip = parse_marked_gameplay_payload(bytes(equip_frame), 12010)
+    assert equip["type"] == "player_equip_update"
+    assert equip["fields"] == {
+        "character_uid": 6_150_132_606_160_031_134,
+        "rover_item_index": 4_400_011,
+    }
+    assert parse_marked_gameplay_payload(bytes(equip_frame), 12020) is None
+    assert (
+        parse_marked_gameplay_payload(bytes(equip_frame[:-1]), 12010) is None
+    )
     salvage_payload = struct.pack("<H", 1) + SALVAGE_ITEM.pack(9, 1002416, 1)
     salvage_frame = bytearray(HEADER_SIZE + len(salvage_payload))
     salvage_frame[4:6] = (0x0413).to_bytes(2, "little")
@@ -2098,6 +2542,7 @@ def main() -> int:
     )
     names = load_item_names(args.items_csv)
     collection_slots = load_collection_slots(args.collection_requirements_csv)
+    appearances_by_flow: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
     if args.out_dir:
         args.out_dir.mkdir(parents=True, exist_ok=True)
     infos = []
@@ -2143,6 +2588,21 @@ def main() -> int:
                 ):
                     info["decoded"] = login_session
                 marked_gameplay = parse_marked_gameplay_payload(decoded, args.port)
+                if marked_gameplay is not None:
+                    flow_key = flow or f"port:{args.port}"
+                    if marked_gameplay["type"] == "appear_player_prefix":
+                        if marked_gameplay.get("fields", {}).get("equipment_refs"):
+                            appearances_by_flow[flow_key].append(marked_gameplay)
+                            appearances_by_flow[flow_key] = appearances_by_flow[flow_key][-64:]
+                    elif marked_gameplay["type"] == "player_profile_info":
+                        add_profile_item_names(marked_gameplay, names)
+                        correlated = correlate_active_equipment(
+                            marked_gameplay, appearances_by_flow[flow_key]
+                        )
+                        if correlated is not None:
+                            active_equipment, appearance = correlated
+                            marked_gameplay["fields"]["active_equipment"] = active_equipment
+                            appearance["fields"]["active_equipment"] = active_equipment
                 if (
                     parsed is None
                     and observation is None
@@ -2165,7 +2625,7 @@ def main() -> int:
                     job1 = parse_job1_payload(decoded)
                     if job1 is not None:
                         info["decoded"] = job1
-                # trackA2: decoders inferidos por captura (0x1e12, 0x2302). Ultimo
+                # trackA2: decoders inferidos por captura. Ultimo
                 # fallback: so quando nada casou e sem sobrescrever info["decoded"].
                 if (
                     parsed is None
@@ -2174,7 +2634,11 @@ def main() -> int:
                     and nmssw is None
                     and "decoded" not in info
                 ):
-                    trackA2 = parse_1e12_payload(decoded) or parse_2302_payload(decoded)
+                    trackA2 = (
+                        parse_event_mission_payload(decoded)
+                        or parse_1e12_payload(decoded)
+                        or parse_2302_payload(decoded)
+                    )
                     if trackA2 is not None:
                         info["decoded"] = trackA2
                 if args.exchange_only and parsed is None:

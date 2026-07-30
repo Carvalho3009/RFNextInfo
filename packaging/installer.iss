@@ -1,5 +1,5 @@
-#define AppName "RF NEXT INFO"
-#define AppVersion "1.0.8"
+#define AppName "RF NEXT QOL"
+#define AppVersion "2.0a"
 #define AppPublisher "Karvalho"
 #define AppExeName "RFNextInfo.exe"
 
@@ -9,10 +9,10 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL=https://karvalho.dev.br/
-DefaultDirName={autopf}\Karvalho\RF NEXT INFO
+DefaultDirName={autopf}\Karvalho\RF NEXT QOL
 DefaultGroupName=Karvalho
 OutputDir=..\dist
-OutputBaseFilename=RFNextInfo-Setup-1.0.8
+OutputBaseFilename=RFNextQOL-Setup-2.0a
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
@@ -30,9 +30,13 @@ Source: "..\dist\RFNextInfo\*"; DestDir: "{app}"; Flags: ignoreversion recursesu
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\_internal"
 
+[InstallDelete]
+Type: files; Name: "{autoprograms}\Karvalho\RF NEXT INFO.lnk"
+Type: files; Name: "{autodesktop}\RF NEXT INFO.lnk"
+
 [Icons]
-Name: "{autoprograms}\Karvalho\RF NEXT INFO"; Filename: "{app}\{#AppExeName}"
-Name: "{autodesktop}\RF NEXT INFO"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\Karvalho\RF NEXT QOL"; Filename: "{app}\{#AppExeName}"
+Name: "{autodesktop}\RF NEXT QOL"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDescription: "Atalhos:"

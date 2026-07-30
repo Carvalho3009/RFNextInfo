@@ -81,3 +81,24 @@ makensis.exe .\packaging\installer.nsi
 
 O instalador ainda não possui assinatura Authenticode. A autenticidade das
 atualizações é validada internamente por Ed25519 e SHA-256.
+
+### Diagnóstico da atualização durante a captura
+
+Antes de habilitar a rotação temporizada, execute em PowerShell como
+Administrador:
+
+```powershell
+.\tools\Test-PktmonLive.ps1
+```
+
+O teste aborta se já houver captura ou filtros PktMon ativos, preserva os ETLs
+gerados e grava `resultado.json` em
+`Documentos\Capturas\Diagnosticos\pktmon-live-*`. Ele mede a conversão de um
+segmento fechado enquanto a captura continua e o intervalo real de
+`stop`/`start`.
+
+Para validar o streaming contínuo sem parar a captura:
+
+```powershell
+python .\tools\Test-PktmonRealtime.py --seconds 30
+```
