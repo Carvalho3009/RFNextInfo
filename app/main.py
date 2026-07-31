@@ -115,10 +115,12 @@ def _rover_catalog() -> dict[str, dict[str, Any]]:
 ROVERS = _rover_catalog()
 
 
-def _farm_catalog() -> dict[str, dict[str, dict[str, tuple[int, ...]]]]:
+def _farm_catalog(
+    filename: str = "catalogo.csv",
+) -> dict[str, dict[str, dict[str, tuple[int, ...]]]]:
     catalog: dict[str, dict[str, dict[str, set[int]]]] = {}
     try:
-        with (ROOT / "core" / "catalogo.csv").open(
+        with (ROOT / "core" / filename).open(
             encoding="utf-8-sig", newline=""
         ) as source:
             for row in csv.DictReader(source):
@@ -163,6 +165,32 @@ def _farm_catalog() -> dict[str, dict[str, dict[str, tuple[int, ...]]]]:
 
 
 FARM_CATALOG = _farm_catalog()
+FARM_CATALOG_EN = _farm_catalog("catalogo_en.csv")
+
+
+def _farm_label_translations() -> tuple[dict, dict]:
+    try:
+        with (ROOT / "core" / "catalogo.csv").open(
+            encoding="utf-8-sig", newline=""
+        ) as source:
+            pt_rows = list(csv.DictReader(source))
+        with (ROOT / "core" / "catalogo_en.csv").open(
+            encoding="utf-8-sig", newline=""
+        ) as source:
+            en_rows = list(csv.DictReader(source))
+    except (OSError, csv.Error):
+        return {}, {}
+    forward = {}
+    reverse = {}
+    for pt, en in zip(pt_rows, en_rows):
+        pt_key = (pt["mapa"], pt["spot_andar"])
+        en_key = (en["mapa"], en["spot_andar"])
+        forward[pt_key] = en_key
+        reverse[en_key] = pt_key
+    return forward, reverse
+
+
+FARM_LABELS_PT_EN, FARM_LABELS_EN_PT = _farm_label_translations()
 
 
 def _register_private_fonts() -> None:
@@ -2132,7 +2160,7 @@ class App(tk.Tk):
         names.pack(fill=X, pady=(4, 0))
         ttk.Label(
             names,
-            text="Nomes dos itens",
+            text="Idioma dos nomes",
             style="PanelMuted.TLabel",
         ).pack(side=LEFT)
         item_language = ttk.Combobox(
@@ -2555,16 +2583,17 @@ class App(tk.Tk):
                 quick_seconds = 10
             variable.set(max(10, min(300, quick_seconds)))
         self._refresh_quick_duration_ui()
-        maps = tuple(sorted(FARM_CATALOG, key=str.casefold))
-        self.subsession_map.configure(values=maps)
-        saved_map = str(self.prefs.get("subsession_map") or "").strip()
-        self.subsession_map.set(
-            saved_map if saved_map in FARM_CATALOG else maps[0] if maps else ""
+        language = (
+            "en" if self.prefs.get("item_name_language") == "en" else "pt"
         )
-        self._subsession_map_changed(
-            preferred_spot=str(
-                self.prefs.get("subsession_spot") or ""
-            ).strip()
+        self.item_name_language.set(language)
+        self.item_language_field.set(
+            "English" if language == "en" else "Português"
+        )
+        saved_map = str(self.prefs.get("subsession_map") or "").strip()
+        self._refresh_farm_choices(
+            saved_map,
+            str(self.prefs.get("subsession_spot") or "").strip(),
         )
         shortcuts = self.prefs.get("shortcuts") or {}
         for mode, value in self.shortcut_vars.items():
@@ -2588,13 +2617,6 @@ class App(tk.Tk):
         self.decode_interval.set(max(15, min(300, interval)))
         self._next_live_decode = (
             time.monotonic() + self.decode_interval.get()
-        )
-        language = (
-            "en" if self.prefs.get("item_name_language") == "en" else "pt"
-        )
-        self.item_name_language.set(language)
-        self.item_language_field.set(
-            "English" if language == "en" else "Português"
         )
         self.channel.set(
             self.prefs.get("channel")
@@ -2776,7 +2798,21 @@ class App(tk.Tk):
         self._save_preferences()
 
     def _item_language_changed(self, label: str) -> None:
-        self.item_name_language.set("en" if label == "English" else "pt")
+        old_language = self.item_name_language.get()
+        new_language = "en" if label == "English" else "pt"
+        current = (
+            self.subsession_map.get().strip(),
+            self.subsession_spot.get().strip(),
+        )
+        translated = (
+            FARM_LABELS_PT_EN.get(current, current)
+            if old_language == "pt" and new_language == "en"
+            else FARM_LABELS_EN_PT.get(current, current)
+            if old_language == "en" and new_language == "pt"
+            else current
+        )
+        self.item_name_language.set(new_language)
+        self._refresh_farm_choices(*translated)
         self._save_preferences()
         self._refresh_info()
 
@@ -2799,6 +2835,28 @@ class App(tk.Tk):
             if self.item_name_language.get() == "en"
             else ITEM_NAMES
         )
+
+    def _selected_farm_catalog(
+        self,
+    ) -> dict[str, dict[str, dict[str, tuple[int, ...]]]]:
+        return (
+            FARM_CATALOG_EN
+            if self.item_name_language.get() == "en"
+            else FARM_CATALOG
+        )
+
+    def _refresh_farm_choices(
+        self, preferred_map: str = "", preferred_spot: str = ""
+    ) -> None:
+        catalog = self._selected_farm_catalog()
+        maps = tuple(sorted(catalog, key=str.casefold))
+        self.subsession_map.configure(values=maps)
+        self.subsession_map.set(
+            preferred_map
+            if preferred_map in catalog
+            else maps[0] if maps else ""
+        )
+        self._subsession_map_changed(preferred_spot=preferred_spot)
 
     def _quick_capture_duration(self, mode: str) -> int:
         try:
@@ -3100,9 +3158,10 @@ class App(tk.Tk):
     def _subsession_map_changed(
         self, _event=None, preferred_spot: str = ""
     ) -> None:
+        catalog = self._selected_farm_catalog()
         spots = tuple(
             sorted(
-                FARM_CATALOG.get(self.subsession_map.get().strip(), {}),
+                catalog.get(self.subsession_map.get().strip(), {}),
                 key=str.casefold,
             )
         )
@@ -3114,7 +3173,7 @@ class App(tk.Tk):
         self._subsession_spot_changed()
 
     def _subsession_spot_changed(self, _event=None) -> None:
-        mobs = FARM_CATALOG.get(
+        mobs = self._selected_farm_catalog().get(
             self.subsession_map.get().strip(), {}
         ).get(self.subsession_spot.get().strip(), {})
         self.subsession_mobs.delete(0, END)
@@ -3122,7 +3181,7 @@ class App(tk.Tk):
             self.subsession_mobs.insert(END, mob)
 
     def _subsession_mobs_changed(self, _event=None) -> None:
-        spot_catalog = FARM_CATALOG.get(
+        spot_catalog = self._selected_farm_catalog().get(
             self.subsession_map.get().strip(), {}
         ).get(self.subsession_spot.get().strip(), {})
         levels = [
@@ -3171,7 +3230,9 @@ class App(tk.Tk):
                 "Subsessão",
                 "O nível inicial dos mobs não pode ser maior que o final.",
             )
-        catalog_mobs = FARM_CATALOG.get(map_name, {}).get(spot_name, {})
+        catalog_mobs = self._selected_farm_catalog().get(
+            map_name, {}
+        ).get(spot_name, {})
         manual_level = (
             level_from
             if level_from == level_to

@@ -1,0 +1,2580 @@
+﻿mapa,spot_andar,npc_id,mob_level,exp_base,mob_name
+Ruined City of Babylon,Area 4,3435420,98,204876,Crimson Thrower
+Ruined City of Babylon,Area 4,3435418,98,204876,Crimson Hound
+Ruined City of Babylon,Area 4,3435401,98,2560950,Gigas
+Ruined City of Babylon,Area 4,3435419,98,204876,Crimson Infernal Larva
+Ruined City of Babylon,Area 4,3435402,98,2560950,Morposi
+Ruined City of Babylon,Area 1,3435120,86,87486,Crimson Thrower
+Ruined City of Babylon,Area 1,3435118,86,87486,Crimson Hound
+Ruined City of Babylon,Area 1,3435101,86,1345950,Gigas
+Ruined City of Babylon,Area 1,3435119,86,87486,Crimson Infernal Larva
+Ruined City of Babylon,Area 1,3435102,86,1345950,Morposi
+Ruined City of Babylon,Area 2,3435220,90,111211,Crimson Thrower
+Ruined City of Babylon,Area 2,3435218,90,111211,Crimson Hound
+Ruined City of Babylon,Area 2,3435201,90,1710950,Gigas
+Ruined City of Babylon,Area 2,3435219,90,111211,Crimson Infernal Larva
+Ruined City of Babylon,Area 2,3435202,90,1710950,Morposi
+Ruined City of Babylon,Area 3,3435320,94,154888,Crimson Thrower
+Ruined City of Babylon,Area 3,3435318,94,154888,Crimson Hound
+Ruined City of Babylon,Area 3,3435301,94,2115950,Gigas
+Ruined City of Babylon,Area 3,3435319,94,154888,Crimson Infernal Larva
+Ruined City of Babylon,Area 3,3435302,94,2115950,Morposi
+Beltran Armory,Beltran Armory Supplies Depot,305914,11,11,Beltran Outlaw Knife Fighter
+Beltran Armory,Beltran Armory Outer Perimeter,305903,10,10,Beltran Outlaw Arsonist
+Beltran Armory,Beltran Armory Outer Perimeter,305902,10,10,Beltran Mech Combatant
+Beltran Armory,Beltran Armory Outer Perimeter,305901,10,10,Beltran Boarder Guard
+Beltran Armory,Beltran Armory Outer Perimeter,305905,11,11,Beltran Laser Bork
+Beltran Armory,Beltran Armory Outer Perimeter,305904,11,11,Beltran Outlaw Knife Fighter
+Beltran Armory,Beltran Armory Outer Perimeter,305907,12,12,Beltran Soma Shocktrooper
+Beltran Armory,Beltran Armory Outer Perimeter,305908,12,12,Beltran Patrol Drone
+Beltran Armory,Beltran Armory Ruin,305906,11,11,Beltran Soma Sentry
+Beltran Armory,Beltran Armory Ruin,305907,12,12,Beltran Soma Shocktrooper
+Beltran Armory,Beltran Armory Headquarters,305909,12,12,Beltran Sentry
+Beltran Armory,Beltran Armory Headquarters,305912,13,14,Beltran Passer Alpha
+Beltran Armory,Beltran Armory Headquarters,305911,13,14,Beltran Heavy Cavalry
+Beltran Armory,Beltran Armory Headquarters,305913,13,14,Beltran Crawler Mercenary
+Beltran Armory,Beltran Armory Headquarters,305910,13,14,Beltran Super Soldier
+Instalação de Suprimento Orbital,Dock A-02,4504029,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,Dock A-02,4504021,94,50719,A02 Mech Warrior
+Instalação de Suprimento Orbital,Dock A-02,4504022,94,50719,A02 Mech Gunner
+Instalação de Suprimento Orbital,Dock A-03,4504039,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,Dock A-03,4504031,94,50719,A03 Mech Warrior
+Instalação de Suprimento Orbital,Dock A-03,4504032,94,50719,A03 Mech Gunner
+Instalação de Suprimento Orbital,Dock A-04,4504041,99,64469,A04 Snatcher Raider
+Instalação de Suprimento Orbital,Dock A-04,4504049,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock A-04,4504042,99,64469,A04 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock A-05,4504051,99,64469,A05 Snatcher Raider
+Instalação de Suprimento Orbital,Dock A-05,4504059,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock A-05,4504052,99,64469,A05 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock A-06,4504061,99,64469,A06 Snatcher Raider
+Instalação de Suprimento Orbital,Dock A-06,4504069,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock A-06,4504062,99,64469,A06 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock A-06,4504064,99,64469,A06 Vafer Siege Trooper
+Instalação de Suprimento Orbital,Dock A-06,4504063,99,64469,A06 Vafer Heavy Trooper
+Instalação de Suprimento Orbital,Dock A-07,4504071,104,80719,A07 Nether Warrior
+Instalação de Suprimento Orbital,Dock A-07,4504079,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock A-07,4504072,104,80719,A07 Nether Sentry
+Instalação de Suprimento Orbital,Dock A-08,4504081,104,80719,A08 Nether Warrior
+Instalação de Suprimento Orbital,Dock A-08,4504083,104,80719,A08 Nether Annihilator
+Instalação de Suprimento Orbital,Dock A-08,4504089,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock A-08,4504082,104,80719,A08 Nether Sentry
+Instalação de Suprimento Orbital,Dock A-09,4504091,104,80719,A09 Nether Warrior
+Instalação de Suprimento Orbital,Dock A-09,4504092,104,80719,A09 Nether Sentry
+Instalação de Suprimento Orbital,Dock A-09,4504093,104,80719,A09 Nether Annihilator
+Instalação de Suprimento Orbital,Dock A-09,4504099,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock B-02,4504122,94,50719,B02 Mech Gunner
+Instalação de Suprimento Orbital,Dock B-02,4504129,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,Dock B-02,4504121,94,50719,B02 Mech Warrior
+Instalação de Suprimento Orbital,Dock B-03,4504139,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,Dock B-03,4504131,94,50719,B03 Mech Warrior
+Instalação de Suprimento Orbital,Dock B-03,4504132,94,50719,B03 Mech Gunner
+Instalação de Suprimento Orbital,Dock B-04,4504141,99,64469,B04 Snatcher Raider
+Instalação de Suprimento Orbital,Dock B-04,4504149,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock B-04,4504142,99,64469,B04 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock B-05,4504151,99,64469,B05 Snatcher Raider
+Instalação de Suprimento Orbital,Dock B-05,4504159,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock B-05,4504152,99,64469,B05 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock B-06,4504161,99,64469,B06 Snatcher Raider
+Instalação de Suprimento Orbital,Dock B-06,4504164,99,64469,B06 Vafer Siege Trooper
+Instalação de Suprimento Orbital,Dock B-06,4504163,99,64469,B06 Vafer Heavy Trooper
+Instalação de Suprimento Orbital,Dock B-06,4504169,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock B-06,4504162,99,64469,B06 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock B-07,4504172,104,80719,B07 Nether Sentry
+Instalação de Suprimento Orbital,Dock B-07,4504179,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock B-07,4504171,104,80719,B07 Nether Warrior
+Instalação de Suprimento Orbital,Dock B-08,4504183,104,80719,B08 Nether Annihilator
+Instalação de Suprimento Orbital,Dock B-08,4504181,104,80719,B08 Nether Warrior
+Instalação de Suprimento Orbital,Dock B-08,4504182,104,80719,B08 Nether Sentry
+Instalação de Suprimento Orbital,Dock B-08,4504189,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock B-09,4504193,104,80719,B09 Nether Annihilator
+Instalação de Suprimento Orbital,Dock B-09,4504199,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock B-09,4504191,104,80719,B09 Nether Warrior
+Instalação de Suprimento Orbital,Dock B-09,4504192,104,80719,B09 Nether Sentry
+Instalação de Suprimento Orbital,Dock C-02,4504222,94,50719,C02 Mech Gunner
+Instalação de Suprimento Orbital,Dock C-02,4504229,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,Dock C-02,4504221,94,50719,C02 Mech Warrior
+Instalação de Suprimento Orbital,Dock C-03,4504239,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,Dock C-03,4504232,94,50719,C03 Mech Gunner
+Instalação de Suprimento Orbital,Dock C-03,4504231,94,50719,C03 Mech Warrior
+Instalação de Suprimento Orbital,Dock C-04,4504241,99,64469,C04 Snatcher Raider
+Instalação de Suprimento Orbital,Dock C-04,4504242,99,64469,C04 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock C-04,4504249,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock C-05,4504251,99,64469,C05 Snatcher Raider
+Instalação de Suprimento Orbital,Dock C-05,4504252,99,64469,C05 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock C-05,4504259,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock C-06,4504261,99,64469,C06 Snatcher Raider
+Instalação de Suprimento Orbital,Dock C-06,4504262,99,64469,C06 Snatcher Sniper
+Instalação de Suprimento Orbital,Dock C-06,4504264,99,64469,C06 Vafer Siege Trooper
+Instalação de Suprimento Orbital,Dock C-06,4504263,99,64469,C06 Vafer Heavy Trooper
+Instalação de Suprimento Orbital,Dock C-06,4504269,99,64469,Rampaging Pathfinder
+Instalação de Suprimento Orbital,Dock C-07,4504271,104,80719,C07 Nether Warrior
+Instalação de Suprimento Orbital,Dock C-07,4504272,104,80719,C07 Nether Sentry
+Instalação de Suprimento Orbital,Dock C-07,4504279,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock C-08,4504283,104,80719,C08 Nether Annihilator
+Instalação de Suprimento Orbital,Dock C-08,4504281,104,80719,C08 Nether Warrior
+Instalação de Suprimento Orbital,Dock C-08,4504282,104,80719,C08 Nether Sentry
+Instalação de Suprimento Orbital,Dock C-08,4504289,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock C-09,4504293,104,80719,C09 Nether Annihilator
+Instalação de Suprimento Orbital,Dock C-09,4504291,104,80719,C09 Nether Warrior
+Instalação de Suprimento Orbital,Dock C-09,4504299,104,80719,Rampaging Armored Ghost
+Instalação de Suprimento Orbital,Dock C-09,4504292,104,80719,C09 Nether Sentry
+Instalação de Suprimento Orbital,Doca S-01,4504329,106,95519,Rampaging Elite Raider
+Instalação de Suprimento Orbital,Doca S-01,4504321,106,95519,Hiveguard Recon
+Instalação de Suprimento Orbital,Doca S-01,4504322,106,95519,Hiveguard Striker
+Instalação de Suprimento Orbital,Doca S-01,4504323,106,95519,Hiveguard Vanguard
+Instalação de Suprimento Orbital,Doca S-02,4504332,106,95519,EOD Striker
+Instalação de Suprimento Orbital,Doca S-02,4504339,106,95519,Rampaging Elite Raider
+Instalação de Suprimento Orbital,Doca S-02,4504331,106,95519,EOD Recon
+Instalação de Suprimento Orbital,Doca S-02,4504333,106,95519,EOD Vanguard
+Instalação de Suprimento Orbital,Doca S-03,4504342,106,95519,Cemetery Guard Striker
+Instalação de Suprimento Orbital,Doca S-03,4504341,106,95519,Cemetery Guard Recon
+Instalação de Suprimento Orbital,Doca S-03,4504349,106,95519,Rampaging Elite Raider
+Instalação de Suprimento Orbital,Doca S-03,4504343,106,95519,Cemetery Guard Vanguard
+Instalação de Suprimento Orbital,Forja Celeste,4504311,106,95519,Nestkeeper Recon
+Instalação de Suprimento Orbital,Forja Celeste,4504319,106,95519,Rampaging Elite Raider
+Instalação de Suprimento Orbital,Forja Celeste,4504312,106,95519,Nestkeeper Striker
+Instalação de Suprimento Orbital,Forja Celeste,4504313,106,95519,Nestkeeper Vanguard
+Instalação de Suprimento Orbital,A-01 Gate Platform,4504019,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,A-01 Gate Platform,4504011,94,50719,A01 Mech Warrior
+Instalação de Suprimento Orbital,A-01 Gate Platform,4504012,94,50719,A01 Mech Gunner
+Instalação de Suprimento Orbital,Plataforma do Portão B-01,4504112,94,50719,B01 Mech Gunner
+Instalação de Suprimento Orbital,Plataforma do Portão B-01,4504119,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,Plataforma do Portão B-01,4504111,94,50719,B01 Mech Warrior
+Instalação de Suprimento Orbital,C-01 Gate Platform,4504212,94,50719,C01 Mech Gunner
+Instalação de Suprimento Orbital,C-01 Gate Platform,4504219,94,50719,Rampaging Assault Bork
+Instalação de Suprimento Orbital,C-01 Gate Platform,4504211,94,50719,C01 Mech Warrior
+Novus World,Byrosa Drilling Base,308103,22,41,Rosetta Mahr Breeder
+Novus World,Byrosa Drilling Base,308102,22,41,Rosetta Catus
+Novus World,Byrosa Drilling Base,308101,22,41,Rosetta Silex
+Novus World,Byrosa Drilling Base,308104,23,45,Rosetta Mahr Host
+Novus World,Byrosa Drilling Base,308106,23,45,Rosetta Predo Marksman
+Novus World,Byrosa Drilling Base,308105,23,45,Rosetta Predo Marauder
+Novus World,Byrosa Drilling Base,308107,23,45,Rosetta Equesian Marauder
+Novus World,Byrosa Drilling Base,308108,24,50,Rosetta Equesian Marksman
+Novus World,Byrosa Drilling Base,308109,24,50,Rosetta Crawler Warrior
+Novus World,Byrosa Drilling Base,308110,24,50,Rosetta Crawler Sentry
+Novus World,Severin Research Base,313203,80,17469,Vergen Heavy Cavalry
+Novus World,Severin Research Base,313297,80,17469,Rampaging Pathfinder
+Novus World,Severin Research Base,313201,80,17469,Vergen Sentry
+Novus World,Severin Research Base,313202,80,17469,Vergen Super Soldier
+Novus World,Severin Research Base,313204,80,17469,Vergen Chuti
+Novus World,Severin Research Base,313298,81,18919,Savage Splinter
+Novus World,Severin Research Base,313206,81,18919,Vergen Ferinky Tracker
+Novus World,Severin Research Base,313205,81,18919,Vergen Ferinky Sniper
+Novus World,Severin Research Base,313207,81,18919,Vergen Ferinky Bruiser
+Novus World,Severin Research Base,313299,82,20419,Rampaging Armored Ghost
+Novus World,Severin Research Base,313211,82,20419,Vergen Palid Sorcerer
+Novus World,Severin Research Base,313209,82,20419,Vergen Palid Guardian
+Novus World,Severin Research Base,313210,82,20419,Vergen Palid Mindblaster
+Novus World,Severin Research Base,313208,82,20419,Vergen Flem
+Novus World,Horizon Base,312905,76,12169,Ramon Patrol Gunner
+Novus World,Horizon Base,312902,76,12169,Ramon Patrol Drone
+Novus World,Horizon Base,312904,76,12169,Ramon Patrol Swordsman
+Novus World,Horizon Base,312901,76,12169,Ramon Patrol Passer
+Novus World,Horizon Base,312906,76,12169,Ramon Gladiator
+Novus World,Horizon Base,312908,76,12169,Ramon Sniper
+Novus World,Horizon Base,312999,77,13469,Rampaging Assault Bork
+Novus World,Horizon Base,312910,77,13469,Ramon Sniffer Drone
+Novus World,Horizon Base,312997,77,13469,Rampaging Junker
+Novus World,Horizon Base,312998,77,13469,Rampaging Pathfinder
+Novus World,Horizon Base,312913,77,13469,Ramon Mech Gunner
+Novus World,Horizon Base,312914,77,13469,Ramon Laser Bork
+Novus World,Horizon Base,312912,77,13469,Ramon Mech Warrior
+Novus World,Ropus Bay,3110396,103,77269,Savage Brutal
+Novus World,Ropus Bay,3110303,103,77269,Ropus Chuti
+Novus World,Ropus Bay,3110301,103,77269,Ropus Ertelem
+Novus World,Ropus Bay,3110302,103,77269,Ropus Flem
+Novus World,Ropus Bay,3110304,103,77269,Ropus Symbi
+Novus World,Ropus Bay,3110306,104,80719,Ropus Snatcher Sniper
+Novus World,Ropus Bay,3110305,104,80719,Ropus Snatcher Raider
+Novus World,Ropus Bay,3110308,104,80719,Ropus Vafer Siege Trooper
+Novus World,Ropus Bay,3110307,104,80719,Ropus Vafer Heavy Trooper
+Novus World,Ropus Bay,3110397,104,80719,Savage Symbi
+Novus World,Ropus Bay,3110398,105,84269,Savage Splinter
+Novus World,Ropus Bay,3110310,105,84269,Ropus Anabola
+Novus World,Ropus Bay,3110309,105,84269,Ropus Crook
+Novus World,Ropus Bay,3110311,105,84269,Ropus Fezal
+Novus World,Ropus Bay,3110312,105,84269,Ropus Infernal Draco
+Novus World,Ropus Bay,3110399,106,87919,Savage Cannibal
+Novus World,Ropus Bay,3110315,106,87919,Ropus Catus
+Novus World,Ropus Bay,3110316,106,87919,Ropus Warbeast
+Novus World,Ropus Bay,3110314,106,87919,Ropus Kaigar
+Novus World,Ropus Bay,3110313,106,87919,Ropus Lapis
+Novus World,Nable Mining Field,313501,89,32319,Nable Combat Bork
+Novus World,Nable Mining Field,313504,89,32319,Nable Lydian Medic
+Novus World,Nable Mining Field,313597,89,32319,Rampaging Ghost
+Novus World,Nable Mining Field,313502,89,32319,Nable Lydian Surgeon
+Novus World,Nable Mining Field,313503,89,32319,Nable Lydian Docker
+Novus World,Nable Mining Field,313598,90,34219,Rampaging Armored Ghost
+Novus World,Nable Mining Field,313507,90,34219,Nable Crawler Warrior
+Novus World,Nable Mining Field,313505,90,34219,Nable Armed Mule
+Novus World,Nable Mining Field,313506,90,34219,Nable Pathfinder
+Novus World,Nable Mining Field,313508,90,34219,Nable Crawler Sentry
+Novus World,Nable Mining Field,313511,91,36169,Nable Scavenger
+Novus World,Nable Mining Field,313510,91,36169,Nable Mech Warrior
+Novus World,Nable Mining Field,313599,91,36169,Rampaging Junker
+Novus World,Nable Mining Field,313509,91,36169,Nable Assault Bork
+Novus World,Nable Mining Field,313512,91,36169,Nable Passer Alpha
+Novus World,Mayazar Training Ground,305705,33,103,Training Ground Dummy Gunner
+Novus World,Mayazar Training Ground,305701,33,103,Training Ground Junk Scavenger
+Novus World,Mayazar Training Ground,305703,33,103,Training Ground G-Box
+Novus World,Mayazar Training Ground,305704,33,103,Training Ground Dummy Warrior
+Novus World,Mayazar Training Ground,305702,33,103,Training Ground Junker
+Novus World,Mayazar Training Ground,305708,34,110,Training Ground Assault Bork
+Novus World,Mayazar Training Ground,305707,34,110,Training Ground Laser Bork
+Novus World,Mayazar Training Ground,305709,34,110,Training Ground Combat Bork
+Novus World,Mayazar Training Ground,305710,34,110,Training Ground Sniffer Drone
+Novus World,Mayazar Training Ground,305706,34,110,Training Ground Armed Mule
+Novus World,Stray Snowfield,3113301,95,48269,Stray Soma Assassin
+Novus World,Stray Snowfield,3113304,95,48269,Stray Surgeon
+Novus World,Stray Snowfield,3113302,95,48269,Stray Soma Heavy Warrior
+Novus World,Stray Snowfield,3113397,95,48269,Rampaging Pathfinder
+Novus World,Stray Snowfield,3113303,95,48269,Stray Soma Shockmancer
+Novus World,Stray Snowfield,3113305,96,50719,Stray Docker
+Novus World,Stray Snowfield,3113398,96,50719,Rampaging Armored Ghost
+Novus World,Stray Snowfield,3113306,96,50719,Stray Medic
+Novus World,Stray Snowfield,3113308,96,50719,Stray Skorm Tusk
+Novus World,Stray Snowfield,3113307,96,50719,Stray Skorm Skarz
+Novus World,Stray Snowfield,3113311,97,53269,Stray Nether Annihilator
+Novus World,Stray Snowfield,3113310,97,53269,Stray Nether Warrior
+Novus World,Stray Snowfield,3113399,97,53269,Rampaging Junker
+Novus World,Stray Snowfield,3113312,97,53269,Stray Nether Sentry
+Novus World,Stray Snowfield,3113309,97,53269,Stray Skorm Novs
+Novus World,Cauldron Hill,307505,41,179,Cauldron Clod
+Novus World,Cauldron Hill,307509,41,179,Cauldron Demolis
+Novus World,Cauldron Hill,307510,41,179,Cauldron Nezad
+Novus World,Cauldron Hill,307506,41,179,Cauldron Nyoka
+Novus World,Cauldron Hill,307508,41,179,Cauldron Silex
+Novus World,Cauldron Hill,307595,42,209,Savage Arghol
+Novus World,Cauldron Hill,307503,42,209,Cauldron Gunner
+Novus World,Cauldron Hill,307598,42,209,Rampaging Assault Bork
+Novus World,Cauldron Hill,307596,42,209,Savage Brutal
+Novus World,Cauldron Hill,307504,42,209,Cauldron Bruiser
+Novus World,Cauldron Hill,307597,42,209,Savage Splinter
+Novus World,Cauldron Hill,307502,42,209,Cauldron Arsonist
+Novus World,Cauldron Hill,307599,42,209,Rampaging Junker
+Novus World,Cauldron Hill,307501,42,209,Cauldron Tracker
+Novus World,Cauldron Hill,307507,42,209,Cauldron Devourer
+Novus World,Wanderer's Hill,306599,57,1469,Savage Arghol
+Novus World,Wanderer's Hill,306514,57,1469,Wandering Jailer
+Novus World,Wanderer's Hill,306504,57,1469,Hill Lapis
+Novus World,Wanderer's Hill,306506,57,1469,Hill Devourer
+Novus World,Wanderer's Hill,306597,57,1469,Savage Splinter
+Novus World,Wanderer's Hill,306503,57,1469,Wandering Executor
+Novus World,Wanderer's Hill,306598,57,1469,Rampaging Ghost
+Novus World,Wanderer's Hill,306501,57,1469,Hill Arghol
+Novus World,Wanderer's Hill,306502,57,1469,Hill Ertelem
+Novus World,Wanderer's Hill,306511,57,1469,Hill Fezal
+Novus World,Wanderer's Hill,306510,57,1469,Hill Kaigar
+Novus World,Wanderer's Hill,306512,57,1469,Hill Temizl
+Novus World,Wanderer's Hill,306513,57,1469,Wandering Spearman
+Novus World,Wanderer's Hill,306508,57,1469,Hill Larva
+Novus World,Wanderer's Hill,306505,57,1469,Hill Rigor Lapis
+Novus World,Wanderer's Hill,306509,57,1469,Hill Stink Bug
+Novus World,Wanderer's Hill,306507,57,1469,Wandering Battle Priest
+Novus World,Pioneer's Hill,306397,65,3369,Savage Arghol
+Novus World,Pioneer's Hill,306306,65,3369,Wasteland Snatcher Tosser
+Novus World,Pioneer's Hill,306399,65,3369,Rampaging Assault Bork
+Novus World,Pioneer's Hill,306307,65,3369,Wasteland Snatcher Rider
+Novus World,Pioneer's Hill,306310,65,3369,Rampaging Surgeon
+Novus World,Pioneer's Hill,306301,65,3369,Starving Devourer
+Novus World,Pioneer's Hill,306309,65,3369,Rampaging Docker
+Novus World,Pioneer's Hill,306398,65,3369,Savage Splinter
+Novus World,Pioneer's Hill,306311,65,3369,Rampaging G-Box
+Novus World,Pioneer's Hill,306303,65,3369,Starving Gafftail
+Novus World,Pioneer's Hill,306302,65,3369,Starving Desert Klon
+Novus World,Pioneer's Hill,306304,65,3369,Wasteland Snatcher Spearman
+Novus World,Pioneer's Hill,306305,65,3369,Wasteland Snatcher Axeman
+Novus World,Pioneer's Hill,306308,65,3369,Rampaging Medic
+Novus World,Hill of Predators,308301,27,65,Foothills Splinter
+Novus World,Hill of Predators,308304,27,65,Foothills Flem
+Novus World,Hill of Predators,308302,27,65,Foothills Kaigar
+Novus World,Hill of Predators,308307,27,65,Foothills Lunker
+Novus World,Hill of Predators,308310,27,65,Foothills Mahr
+Novus World,Hill of Predators,308303,27,65,Foothills Temizl
+Novus World,Hill of Predators,308312,28,71,Foothills Predo Marksman
+Novus World,Hill of Predators,308305,28,71,Foothills Predo Gladiator
+Novus World,Hill of Predators,308308,28,71,Foothills Crawler Warrior
+Novus World,Hill of Predators,308306,28,71,Foothills Predo Infantry
+Novus World,Hill of Predators,308311,28,71,Foothills Predo Marauder
+Novus World,Hill of Predators,308309,28,71,Foothills Crawler Sentry
+Novus World,Saura Colony,305104,78,14769,Kphala Mech Gunner
+Novus World,Saura Colony,305105,78,14769,Kphala Elimar Warrior
+Novus World,Saura Colony,305103,78,14769,Kphala Mech Warrior
+Novus World,Saura Colony,305101,78,14769,Kphala Saura Warrior
+Novus World,Saura Colony,305106,78,14769,Kphala Elimar Sentry
+Novus World,Saura Colony,305102,78,14769,Kphala Saura Sentry
+Novus World,Saura Colony,305198,79,16069,Rampaging Assault Bork
+Novus World,Saura Colony,305199,79,16069,Savage Brutal
+Novus World,Saura Colony,305197,79,16069,Rampaging Junker
+Novus World,Saura Colony,305110,79,16069,Kphala Arghol
+Novus World,Saura Colony,305107,79,16069,Kphala Grumble
+Novus World,Saura Colony,305109,79,16069,Kphala Striker
+Novus World,Saura Colony,305108,79,16069,Kphala Vanguard
+Novus World,Anakade Research Complex,307602,29,77,Anakade Outlaw Gunner
+Novus World,Anakade Research Complex,307603,29,77,Anakade Outlaw Bruiser
+Novus World,Anakade Research Complex,307605,29,77,Anakade Assault Bork
+Novus World,Anakade Research Complex,307604,29,77,Anakade Laser Bork
+Novus World,Anakade Research Complex,307601,29,77,Anakade Outlaw Knife Fighter
+Novus World,Anakade Research Complex,307609,30,83,Anakade Ferinky Bruiser
+Novus World,Anakade Research Complex,307611,30,83,Anakade Heavy Cavalry
+Novus World,Anakade Research Complex,307607,30,83,Anakade Mech Combatant
+Novus World,Anakade Research Complex,307610,30,83,Anakade Ferinky Tracker
+Novus World,Anakade Research Complex,307608,30,83,Anakade Sentry
+Novus World,Desert of Death,307806,71,7269,Desert Mech Gunner
+Novus World,Desert of Death,307802,71,7269,Desert Vagabond Gunner
+Novus World,Desert of Death,307804,71,7269,Desert Vagabond Berserker
+Novus World,Desert of Death,307801,71,7269,Desert Vagabond Comber
+Novus World,Desert of Death,307805,71,7269,Desert Mech Swordsman
+Novus World,Desert of Death,307803,71,7269,Desert Vagabond Slasher
+Novus World,Desert of Death,307899,72,8069,Savage Arghol
+Novus World,Desert of Death,307897,72,8069,Rampaging Assault Bork
+Novus World,Desert of Death,307808,72,8069,Desert Nyoka
+Novus World,Desert of Death,307813,72,8069,Desert Silex
+Novus World,Desert of Death,307810,72,8069,Desert Yusigula
+Novus World,Desert of Death,307812,72,8069,Desert Devourer
+Novus World,Desert of Death,307807,72,8069,Desert Peep Drone
+Novus World,Desert of Death,307898,72,8069,Rampaging Junker
+Novus World,Desert of Death,307809,72,8069,Desert Clod
+Novus World,Desert of Death,307811,72,8069,Desert Sand Worm
+Novus World,Ramon Desert,305213,75,10869,Savage Arghol
+Novus World,Ramon Desert,305211,75,10869,Ramon Soma Assassin
+Novus World,Ramon Desert,305204,75,10869,Ramon Ferinky Hunter
+Novus World,Ramon Desert,305209,75,10869,Ramon Clops Destroyer
+Novus World,Ramon Desert,305215,75,10869,Rampaging Junker
+Novus World,Ramon Desert,305214,75,10869,Rampaging Pathfinder
+Novus World,Ramon Desert,305202,75,10869,Ramon Clod
+Novus World,Ramon Desert,305208,75,10869,Ramon Clops Sniper
+Novus World,Ramon Desert,305203,75,10869,Ramon Dagan
+Novus World,Ramon Desert,305201,75,10869,Ramon Devourer
+Novus World,Ramon Desert,305205,75,10869,Ramon Ferinky Sniper
+Novus World,Ramon Desert,305206,75,10869,Ramon Ferinky Bruiser
+Novus World,Ramon Desert,305210,75,10869,Ramon Soma Heavy Warrior
+Novus World,Ramon Desert,305212,75,10869,Ramon Soma Shockmancer
+Novus World,Ramon Desert,305207,75,10869,Ramon Clops Tracker
+Novus World,Somora Wasteland,308507,31,89,Somora Chuti
+Novus World,Somora Wasteland,308504,31,89,Somora Sniffer Drone
+Novus World,Somora Wasteland,308501,31,89,Somora Peep Drone
+Novus World,Somora Wasteland,308505,31,89,Somora Mech Swordsman
+Novus World,Somora Wasteland,308506,31,89,Somora Lunker
+Novus World,Somora Wasteland,308509,31,89,Somora Devourer
+Novus World,Somora Wasteland,308508,31,89,Somora Heavy Scud
+Novus World,Somora Wasteland,308502,31,89,Somora Passer Alpha
+Novus World,Somora Wasteland,308503,31,89,Somora Passer Gamma
+Novus World,Rambler Wasteland,305302,63,2469,Rambler Mech Gunner
+Novus World,Rambler Wasteland,305305,63,2469,Rambler Vagabond Gunner
+Novus World,Rambler Wasteland,305307,63,2469,Rambler Vagabond Berserker
+Novus World,Rambler Wasteland,305398,63,2469,Rampaging Assault Bork
+Novus World,Rambler Wasteland,305304,63,2469,Rambler Vagabond Comber
+Novus World,Rambler Wasteland,305303,63,2469,Rambler Peep Drone
+Novus World,Rambler Wasteland,305301,63,2469,Rambler Mech Swordsman
+Novus World,Rambler Wasteland,305399,63,2469,Savage Splinter
+Novus World,Rambler Wasteland,305310,63,2469,Rambler Glatt
+Novus World,Rambler Wasteland,305309,63,2469,Rambler Grumble Hook
+Novus World,Rambler Wasteland,305308,63,2469,Rambler Grumble
+Novus World,Rambler Wasteland,305397,63,2469,Rampaging Junker
+Novus World,Rambler Wasteland,305311,63,2469,Rambler Lapis
+Novus World,Rambler Wasteland,305312,63,2469,Rambler Lunker
+Novus World,Rambler Wasteland,305306,63,2469,Rambler Vagabond Slasher
+Novus World,Seth Slums,305599,66,3969,Savage Arghol
+Novus World,Seth Slums,305592,66,3969,Rampaging Assault Bork
+Novus World,Seth Slums,305508,66,3969,Seth Crawler Poacher
+Novus World,Seth Slums,305507,66,3969,Seth Chuti
+Novus World,Seth Slums,305503,66,3969,Seth Peep Drone
+Novus World,Seth Slums,305504,66,3969,Seth Fezal
+Novus World,Seth Slums,305505,66,3969,Seth Flem
+Novus World,Seth Slums,305598,66,3969,Rampaging Junker
+Novus World,Seth Slums,305506,66,3969,Seth Lunker
+Novus World,Seth Slums,305514,66,3969,Seth Predo Sentry
+Novus World,Seth Slums,305501,66,3969,Seth Mech Swordsman
+Novus World,Seth Slums,305515,66,3969,Seth Predo Gladiator
+Novus World,Seth Slums,305511,66,3969,Seth Predo Marauder
+Novus World,Seth Landfill,312604,67,4569,Seth Landfill Gunner
+Novus World,Seth Landfill,312605,67,4569,Seth Landfill Knife Fighter
+Novus World,Seth Landfill,312602,67,4569,Seth Landfill Arsonist
+Novus World,Seth Landfill,312601,67,4569,Seth Nyoka
+Novus World,Seth Landfill,312603,67,4569,Seth Landfill Tracker
+Novus World,Seth Landfill,312606,67,4569,Seth Devourer
+Novus World,Seth Landfill,312699,68,5169,Rampaging Assault Bork
+Novus World,Seth Landfill,312697,68,5169,Savage Splinter
+Novus World,Seth Landfill,312698,68,5169,Rampaging Junker
+Novus World,Seth Landfill,312609,68,5169,Seth Vagabond Gunner
+Novus World,Seth Landfill,312611,68,5169,Seth Vagabond Berserker
+Novus World,Seth Landfill,312608,68,4569,Seth Vagabond Comber
+Novus World,Seth Landfill,312610,68,5169,Seth Vagabond Slasher
+Novus World,Ruvia Frost Forest,3115301,98,55919,Ruvia Splinter
+Novus World,Ruvia Frost Forest,3115391,98,55919,Savage Splinter
+Novus World,Ruvia Frost Forest,3115302,98,55919,Ruvia Lizard
+Novus World,Ruvia Frost Forest,3115304,98,55919,Infected Ruvia Larva
+Novus World,Ruvia Frost Forest,3115303,98,55919,Ruvia Anabola
+Novus World,Ruvia Frost Forest,3115392,99,58669,Savage Cannibal
+Novus World,Ruvia Frost Forest,3115305,99,58669,Infected Ruvia Splinter
+Novus World,Ruvia Frost Forest,3115306,99,58669,Ruvia Wild Beast
+Novus World,Ruvia Frost Forest,3115307,99,58669,Infected Ruvia Lizard
+Novus World,Ruvia Frost Forest,3115308,99,58669,Infected Ruvia Talpa
+Novus World,Ruvia Frost Forest,3115393,100,61519,Savage Brutal
+Novus World,Ruvia Frost Forest,3115312,100,61519,Ruvia Crimson Hound
+Novus World,Ruvia Frost Forest,3115311,100,61519,Ruvia Ferinky Bruiser
+Novus World,Ruvia Frost Forest,3115310,100,61519,Ruvia Ferinky Sniper
+Novus World,Ruvia Frost Forest,3115309,100,61519,Infected Ruvia Soldier
+Novus World,Inewt Forest,313605,78,14769,Inewt Heavy Cavalry
+Novus World,Inewt Forest,313607,78,14769,Inewt Kaigar
+Novus World,Inewt Forest,313606,78,14769,Inewt Temizl
+Novus World,Inewt Forest,313602,78,14769,Inewt Symbi
+Novus World,Inewt Forest,313601,78,14769,Inewt Lizard
+Novus World,Inewt Forest,313696,78,14769,Savage Symbi
+Novus World,Inewt Forest,313604,79,16069,Inewt Mech Combatant
+Novus World,Inewt Forest,313697,79,16069,Savage Splinter
+Novus World,Inewt Forest,313608,79,16069,Inewt Soma Warrior
+Novus World,Inewt Forest,313609,79,16069,Inewt Soma Wizard
+Novus World,Inewt Forest,313610,79,16069,Inewt Soma Ranger
+Novus World,Inewt Forest,313603,79,16069,Inewt Super Soldier
+Novus World,Inewt Forest,313613,80,17469,Inewt Vafer Siege Trooper
+Novus World,Inewt Forest,313612,80,17469,Inewt Vafer Heavy Trooper
+Novus World,Inewt Forest,313611,80,17469,Inewt Snatcher Raider
+Novus World,Inewt Forest,313698,80,17469,Rampaging Junker
+Novus World,Inewt Forest,313616,81,18919,Inewt Gunner
+Novus World,Inewt Forest,313615,81,18919,Inewt Bruiser
+Novus World,Inewt Forest,313699,81,18919,Rampaging Pathfinder
+Novus World,Inewt Forest,313614,81,18919,Inewt Snatcher Sniper
+Novus World,Lowed Forest,305802,17,23,Lowed Ash
+Novus World,Lowed Forest,305801,17,23,Lowed Flem
+Novus World,Lowed Forest,305804,18,26,Lowed Ferinky Tracker
+Novus World,Lowed Forest,305803,18,26,Lowed Symbi
+Novus World,Lowed Forest,305806,19,29,Lowed Ferinky Bruiser
+Novus World,Lowed Forest,305805,19,29,Lowed Ferinky Sniper
+Novus World,Mayazar Forest,305612,32,96,Mayazar Hugaff
+Novus World,Mayazar Forest,305603,32,96,Mayazar Soma Assassin
+Novus World,Mayazar Forest,305606,32,96,Mayazar Gang Gunner
+Novus World,Mayazar Forest,305602,32,96,Mayazar Gang Bruiser
+Novus World,Mayazar Forest,305611,32,96,Mayazar Gaff
+Novus World,Mayazar Forest,305610,32,96,Mayazar Gang Knife Fighter
+Novus World,Mayazar Forest,305605,32,96,Mayazar Anabola
+Novus World,Mayazar Forest,305608,32,96,Mayazar Kaigar
+Novus World,Mayazar Forest,305601,32,96,Mayazar Meevlan
+Novus World,Mayazar Forest,305604,32,96,Mayazar Soma Shockmancer
+Novus World,Mayazar Forest,305609,32,96,Mayazar Soma Shocktrooper
+Novus World,Mayazar Forest,305607,32,96,Mayazar Symbi
+Novus World,Forest of Exiles,306621,48,599,Abiectio Anabola
+Novus World,Forest of Exiles,306618,48,599,Abiectio Assault Bork
+Novus World,Forest of Exiles,306620,48,599,Abiectio Laser Bork
+Novus World,Forest of Exiles,306624,48,599,Abiectio Glatt
+Novus World,Forest of Exiles,306623,48,599,Abiectio Mahr
+Novus World,Forest of Exiles,306699,48,599,Savage Arghol
+Novus World,Forest of Exiles,306626,48,599,Abiectio Archer
+Novus World,Forest of Exiles,306627,48,599,Abiectio Archivist
+Novus World,Forest of Exiles,306619,48,599,Abiectio Surveillance Bot
+Novus World,Forest of Exiles,306698,48,599,Savage Cannibal
+Novus World,Forest of Exiles,306617,48,599,Abiectio Control Bork
+Novus World,Forest of Exiles,306622,48,599,Abiectio Demolis
+Novus World,Forest of Exiles,306625,48,599,Infected Exile
+Novus World,Forest of Exiles,306697,48,599,Rampaging Pathfinder
+Novus World,Forest of the Dead,306703,53,1069,Mortum Stink Bug
+Novus World,Forest of the Dead,306704,53,1069,Mortum Ash
+Novus World,Forest of the Dead,306702,53,1069,Mortum Mahr Breeder
+Novus World,Forest of the Dead,306706,53,1069,Mortum Grumble
+Novus World,Forest of the Dead,306701,53,1069,Mortum Mahr
+Novus World,Forest of the Dead,306705,53,1069,Mortum Meevlan
+Novus World,Forest of the Dead,306798,54,1169,Savage Arghol
+Novus World,Forest of the Dead,306708,54,1169,Mortum Predo Marksman
+Novus World,Forest of the Dead,306799,54,1169,Rampaging Assault Bork
+Novus World,Forest of the Dead,306797,54,1169,Savage Splinter
+Novus World,Forest of the Dead,306712,54,1169,Mortum Ferinky Bruiser
+Novus World,Forest of the Dead,306709,54,1169,Mortum Gafftail
+Novus World,Forest of the Dead,306707,54,1169,Mortum Predo Marauder
+Novus World,Forest of the Dead,306710,54,1169,Mortum Ferinky Tracker
+Novus World,Forest of the Dead,306796,54,1169,Savage Symbi
+Novus World,Forest of the Dead,306711,54,1169,Mortum Ferinky Sniper
+Novus World,North Dorian Forest,306005,39,149,Dorian Nether Annihilator
+Novus World,North Dorian Forest,306003,39,149,Dorian Splinter
+Novus World,North Dorian Forest,306004,39,149,Dorian Nether Warrior
+Novus World,North Dorian Forest,306001,39,149,Dorian Stink Bug
+Novus World,North Dorian Forest,306006,39,149,Dorian Nether Sentry
+Novus World,North Dorian Forest,306009,39,149,Infected Dorian Splinter
+Novus World,North Dorian Forest,306007,39,149,Mutated Infected
+Novus World,North Dorian Forest,306002,39,149,Dorian Lizard
+Novus World,North Dorian Forest,306008,39,149,Infected Dorian Lizard
+Novus World,North Dorian Forest,306011,39,149,Infected Accretia Soldier
+Novus World,North Dorian Forest,306010,39,149,Infected Bellato Soldier
+Novus World,South Dorian Forest,306101,40,159,Dorian Nether Assassin
+Novus World,South Dorian Forest,306108,40,159,Dorian Cannibal
+Novus World,South Dorian Forest,306105,40,159,Infected Dorian Cannibal
+Novus World,South Dorian Forest,306102,40,159,Dorian Nether Destroyer
+Novus World,South Dorian Forest,306103,40,159,Dorian Nether Sniper
+Novus World,South Dorian Forest,306109,40,159,Dorian Larva
+Novus World,South Dorian Forest,306106,40,159,Infected Dorian Larva
+Novus World,South Dorian Forest,306110,40,159,Dorian Nezad
+Novus World,South Dorian Forest,306107,40,159,Infected Cora Priest
+Novus World,Blackstone Munitions Factory,312504,64,2869,Blackstone Gunner
+Novus World,Blackstone Munitions Factory,312501,64,2869,Blackstone Saura Shocktrooper
+Novus World,Blackstone Munitions Factory,312599,64,2869,Rampaging Assault Bork
+Novus World,Blackstone Munitions Factory,312508,64,2869,Blackstone Catus
+Novus World,Blackstone Munitions Factory,312506,64,2869,Blackstone Sniffer Drone
+Novus World,Blackstone Munitions Factory,312509,64,2869,Blackstone Splinter
+Novus World,Blackstone Munitions Factory,312597,64,2869,Savage Splinter
+Novus World,Blackstone Munitions Factory,312502,64,2869,Blackstone Saura Sniper
+Novus World,Blackstone Munitions Factory,312510,64,2869,Blackstone Grumble
+Novus World,Blackstone Munitions Factory,312503,64,2869,Blackstone Warrior
+Novus World,Blackstone Munitions Factory,312513,64,2869,Blackstone Saura Warrior
+Novus World,Blackstone Munitions Factory,312507,64,2869,Blackstone Passer Alpha
+Novus World,Blackstone Munitions Factory,312598,64,2869,Rampaging Pathfinder
+Novus World,Blackstone Munitions Factory,312512,64,2869,Blackstone Saura Tracker
+Novus World,Pilgrim's Island,307010,58,1569,Pilgrim Acolyte
+Novus World,Pilgrim's Island,307097,58,1569,Savage Arghol
+Novus World,Pilgrim's Island,307007,58,1569,Pilgrim Archer
+Novus World,Pilgrim's Island,307009,58,1569,Pilgrim Archivist
+Novus World,Pilgrim's Island,307008,58,1569,Pilgrim Jailer
+Novus World,Pilgrim's Island,307099,58,1569,Rampaging Armored Ghost
+Novus World,Pilgrim's Island,307098,58,1569,Rampaging Ghost
+Novus World,Pilgrim's Island,307006,58,1569,Pilgrim Judge
+Novus World,Pilgrim's Island,307003,58,1569,Pilgrim Lizard
+Novus World,Pilgrim's Island,307004,58,1569,Pilgrim Draco
+Novus World,Pilgrim's Island,307005,58,1569,Pilgrim Ertelem
+Novus World,Pilgrim's Island,307001,58,1569,Pilgrim Flem
+Novus World,Pilgrim's Island,307002,58,1569,Pilgrim Kaigar
+Novus World,Pilgrim's Island,307096,58,1569,Savage Symbi
+Novus World,Garden of the Gods,308709,49,689,Khran Anabola
+Novus World,Garden of the Gods,308716,49,689,Savage Arghol
+Novus World,Garden of the Gods,308717,49,689,Rampaging Ghost
+Novus World,Garden of the Gods,308712,49,689,Khran Palid Mindblaster
+Novus World,Garden of the Gods,308708,49,689,Khran Lapis
+Novus World,Garden of the Gods,308707,49,689,Khran Optic Larva
+Novus World,Garden of the Gods,308704,49,689,Khran Nezad
+Novus World,Garden of the Gods,308701,49,689,Khran Stink Bug
+Novus World,Garden of the Gods,308715,49,689,Khran Devourer
+Novus World,Garden of the Gods,308718,49,689,Savage Symbi
+Novus World,Garden of the Gods,308711,50,779,Khran Equesian Marksman
+Novus World,Garden of the Gods,308706,50,779,Khran Predo Marksman
+Novus World,Garden of the Gods,308713,50,779,Khran Palid Sorcerer
+Novus World,Garden of the Gods,308702,50,779,Khran Ferinky Bruiser
+Novus World,Garden of the Gods,308714,50,779,Khran Palid Guardian
+Novus World,Garden of the Gods,308710,50,779,Khran Equesian Marauder
+Novus World,Garden of the Gods,308705,50,779,Khran Predo Marauder
+Novus World,Garden of the Gods,308703,50,779,Khran Ferinky Tracker
+Novus World,Diamant Mine,3112304,92,40169,Chrome Arms Aux Trooper
+Novus World,Diamant Mine,3112391,92,40169,Rampaging Assault Bork
+Novus World,Diamant Mine,3112303,92,40169,Chrome Arms Shocktrooper
+Novus World,Diamant Mine,3112301,92,40169,Chrome Arms Drone
+Novus World,Diamant Mine,3112302,92,40169,Chrome Arms Sentry
+Novus World,Diamant Mine,3112307,93,43669,Diamant Assaulter
+Novus World,Diamant Mine,3112306,93,43669,Diamant Vanguard
+Novus World,Diamant Mine,3112392,93,43669,Rampaging Junker
+Novus World,Diamant Mine,3112308,93,43669,Diamant Passer Alpha
+Novus World,Diamant Mine,3112305,93,43669,Diamant Sniffer
+Novus World,Diamant Mine,3112310,94,45919,White Fang Heavy Cavalry
+Novus World,Diamant Mine,3112311,94,45919,White Fang Mech Combatant
+Novus World,Diamant Mine,3112393,94,45919,Rampaging Pathfinder
+Novus World,Diamant Mine,3112309,94,45919,White Fang Sentry
+Novus World,Diamant Mine,3112312,94,45919,White Fang Super Soldier
+Novus World,Numerus Plateau,307104,61,1969,Numerus Catus
+Novus World,Numerus Plateau,307103,61,1969,Numerus Crawler Hunter
+Novus World,Numerus Plateau,307102,61,1969,Numerus Crawler Warrior
+Novus World,Numerus Plateau,307101,61,1969,Numerus Kaigar
+Novus World,Numerus Plateau,307105,61,1969,Numerus Lapis
+Novus World,Numerus Plateau,307106,61,1969,Numerus Rigor Lapis
+Novus World,Numerus Plateau,307111,62,2169,Numerus Acolyte
+Novus World,Numerus Plateau,307109,62,2169,Numerus Archer
+Novus World,Numerus Plateau,307199,62,2169,Rampaging Ghost
+Novus World,Numerus Plateau,307198,62,2169,Rampaging Junker
+Novus World,Numerus Plateau,307108,62,2169,Numerus Equesian Marksman
+Novus World,Numerus Plateau,307107,62,2169,Numerus Equesian Bandit
+Novus World,Numerus Plateau,307110,62,2169,Numerus Spearman
+Novus World,Numerus Plateau,307112,62,2169,Numerus Zealot
+Novus World,Numerus Plateau,307197,62,2169,Savage Symbi
+Novus World,Black Plains,306802,55,1269,Onyx Lizard Elder
+Novus World,Black Plains,306809,55,1269,Onyx Archivist
+Novus World,Black Plains,306805,55,1269,Onyx Ash
+Novus World,Black Plains,306806,55,1269,Onyx Fire Ash
+Novus World,Black Plains,306804,55,1269,Onyx Rex Cannibal
+Novus World,Black Plains,306815,55,1269,Savage Cannibal
+Novus World,Black Plains,306814,55,1269,Savage Splinter
+Novus World,Black Plains,306816,55,1269,Rampaging Ghost
+Novus World,Black Plains,306803,55,1269,Onyx Glatt
+Novus World,Black Plains,306811,55,1269,Onyx Firestarter
+Novus World,Black Plains,306801,55,1269,Onyx Lizard
+Novus World,Black Plains,306807,55,1269,Onyx Infernal Larva
+Novus World,Black Plains,306808,55,1269,Onyx Zealot
+Novus World,Black Plains,306812,55,1269,Onyx Purifier
+Novus World,Spire Plains,306497,47,509,Rampaging Assault Bork
+Novus World,Spire Plains,306498,47,509,Savage Brutal
+Novus World,Spire Plains,306406,47,509,Spire Ash
+Novus World,Spire Plains,306405,47,509,Spire Wild Beast
+Novus World,Spire Plains,306407,47,509,Spire Vafer Nipper
+Novus World,Spire Plains,306499,47,509,Savage Symbi
+Novus World,Spire Plains,306404,47,509,Spire Anabola
+Novus World,Spire Plains,306411,47,509,Spire Predo Marksman
+Novus World,Spire Plains,306401,47,509,Spire Brutal
+Novus World,Spire Plains,306402,47,509,Spire Infernal Draco
+Novus World,Spire Plains,306409,47,509,Spire Vafer Rogue
+Novus World,Spire Plains,306410,47,509,Spire Vafer Mortal
+Novus World,Spire Plains,306412,47,509,Spire Vafer Rex
+Novus World,Spire Plains,306408,47,509,Spire Predo Marauder
+Novus World,Spire Plains,306403,47,509,Spire Symbi
+Novus World,Romulus Gate,308602,69,5869,Romulus Soma Assassin
+Novus World,Romulus Gate,308612,69,5869,Romulus Scavenger
+Novus World,Romulus Gate,308601,69,5869,Romulus Soma Heavy Knight
+Novus World,Romulus Gate,308610,69,5869,Romulus Clops Destroyer
+Novus World,Romulus Gate,308604,69,5869,Romulus Mecha Swordsman
+Novus World,Romulus Gate,308698,69,5869,Savage Splinter
+Novus World,Romulus Gate,308607,69,5869,Romulus Gafftail
+Novus World,Romulus Gate,308608,69,5869,Romulus Grumble Hook
+Novus World,Romulus Gate,308697,69,5869,Rampaging Junker
+Novus World,Romulus Gate,308699,69,5869,Rampaging Pathfinder
+Novus World,Romulus Gate,308611,69,5869,Romulus Clops Sniper
+Novus World,Romulus Gate,308605,69,5869,Romulus Peep Drone
+Novus World,Romulus Gate,308613,69,5869,Romulus Junker
+Novus World,Romulus Gate,308606,69,5869,Romulus Silex
+Novus World,Romulus Gate,308603,69,5869,Romulus Soma Shockmancer
+Novus World,Lowed Outpost,308801,14,16,Lowed Lydian Surgeon
+Novus World,Lowed Outpost,308802,14,16,Lowed Lydian Medic
+Novus World,Lowed Outpost,308803,15,18,Lowed Pathfinder
+Novus World,Lowed Outpost,308804,15,18,Lowed Sentry
+Novus World,Lowed Outpost,308806,16,20,Lowed Armed Mule
+Novus World,Lowed Outpost,308805,16,20,Lowed Super Soldier
+Novus World,Great Temple Square,307797,56,1369,Savage Cannibal
+Novus World,Great Temple Square,307704,56,1369,Infected Ferren Splinter
+Novus World,Great Temple Square,307798,56,1369,Savage Splinter
+Novus World,Great Temple Square,307709,56,1369,Infected Guard
+Novus World,Great Temple Square,307710,56,1369,Infected Ferren Lizard
+Novus World,Great Temple Square,307703,56,1369,Infected Ferren Larva
+Novus World,Great Temple Square,307701,56,1369,Ferren Infernal Larva
+Novus World,Great Temple Square,307702,56,1369,Ferren Optic Larva
+Novus World,Great Temple Square,307705,56,1369,Infected Great Temple Priest
+Novus World,Great Temple Square,307707,56,1369,Infected Follower
+Novus World,Great Temple Square,307708,56,1369,Infected Mutant Follower
+Novus World,Great Temple Square,307799,56,1369,Savage Symbi
+Novus World,Great Temple Square,307706,56,1369,Infected Talpa Ascetic
+Novus World,Misty Swamp,306905,51,869,Swamp Anabola
+Novus World,Misty Swamp,306918,51,869,Savage Arghol
+Novus World,Misty Swamp,306908,51,869,Swamp Snatcher Tosser
+Novus World,Misty Swamp,306917,51,869,Savage Brutal
+Novus World,Misty Swamp,306901,51,869,Swamp Demolis
+Novus World,Misty Swamp,306902,51,869,Swamp Infernal Demolis
+Novus World,Misty Swamp,306916,51,869,Rampaging Armored Ghost
+Novus World,Misty Swamp,306913,51,869,Rampaging Ghost
+Novus World,Misty Swamp,306909,51,869,Swamp Snatcher Spearman
+Novus World,Misty Swamp,306912,51,869,Swamp Snatcher Axeman
+Novus World,Misty Swamp,306910,52,969,Swamp Archivist
+Novus World,Misty Swamp,306907,52,969,Swamp Dagan
+Novus World,Misty Swamp,306906,52,969,Swamp Ertelem
+Novus World,Misty Swamp,306903,52,969,Swamp Vafer Rogue
+Novus World,Misty Swamp,306911,52,969,Swamp Missionary
+Novus World,Misty Swamp,306904,52,969,Swamp Vafer Mortal
+Novus World,Ghent Mine Ruins,307303,43,249,Ghent Equesian Marksman
+Novus World,Ghent Mine Ruins,307302,43,249,Ghent Ferinky Bruiser
+Novus World,Ghent Mine Ruins,307307,43,249,Ghent Lydian Docker
+Novus World,Ghent Mine Ruins,307304,43,249,Ghent Equesian Marauder
+Novus World,Ghent Mine Ruins,307301,43,249,Ghent Ferinky Sniper
+Novus World,Ghent Mine Ruins,307313,44,299,Ghent Nether Annihilator
+Novus World,Ghent Mine Ruins,307399,44,299,Rampaging Assault Bork
+Novus World,Ghent Mine Ruins,307308,44,299,Ghent Lydian Surgeon
+Novus World,Ghent Mine Ruins,307309,44,299,Ghent Saura Shocktrooper
+Novus World,Ghent Mine Ruins,307311,44,299,Ghent Nether Warrior
+Novus World,Ghent Mine Ruins,307398,44,299,Rampaging Junker
+Novus World,Ghent Mine Ruins,307397,44,299,Rampaging Pathfinder
+Novus World,Ghent Mine Ruins,307312,44,299,Ghent Nether Sentry
+Novus World,Ghent Mine Ruins,307310,44,299,Ghent Saura Sniper
+Novus World,Anteros Ruins,3116301,101,64469,Anteros Infected Alpha
+Novus World,Anteros Ruins,3116302,101,64469,Anteros Infected Beta
+Novus World,Anteros Ruins,3116304,101,64469,Anteros Shocktrooper
+Novus World,Anteros Ruins,3116313,101,64469,Savage Infected Cannibal
+Novus World,Anteros Ruins,3116303,101,64469,Anteros Splinter
+Novus World,Anteros Ruins,3116306,102,67519,Anteros Temizl
+Novus World,Anteros Ruins,3116305,102,67519,Anteros Assassin
+Novus World,Anteros Ruins,3116314,102,67519,Savage Splinter
+Novus World,Anteros Ruins,3116308,102,67519,Anteros Sting Ghost
+Novus World,Anteros Ruins,3116307,102,67519,Anteros Wild Beast
+Novus World,Anteros Ruins,3116310,103,70669,Anteros Cannon Ghost
+Novus World,Anteros Ruins,3116309,103,70669,Anteros Armored Ghost
+Novus World,Anteros Ruins,3116315,103,70669,Rampaging Ghost
+Novus World,Anteros Ruins,3116311,103,70669,Anteros Sniper
+Novus World,Anteros Ruins,3116312,103,70669,Anteros Tactician
+Novus World,Broken Ruins,312804,73,8869,Ruins Vagabond Comber
+Novus World,Broken Ruins,312803,73,8869,Ruins Devourer
+Novus World,Broken Ruins,312806,73,8869,Ruins Vagabond Slasher
+Novus World,Broken Ruins,312805,73,8869,Ruins Vagabond Gunner
+Novus World,Broken Ruins,312801,73,8869,Ruins Grumble
+Novus World,Broken Ruins,312802,73,8869,Ruins Silex
+Novus World,Broken Ruins,312899,74,9669,Savage Arghol
+Novus World,Broken Ruins,312808,74,9669,Ruins Vagabond Berserker
+Novus World,Broken Ruins,312897,74,9669,Rampaging Assault Bork
+Novus World,Broken Ruins,312809,74,9669,Ruins Pathfinder
+Novus World,Broken Ruins,312898,74,9669,Rampaging Junker
+Novus World,Broken Ruins,312807,74,9669,Ruins Armed Mule
+Novus World,Broken Ruins,312812,74,9669,Ruins Clod
+Novus World,Broken Ruins,312810,74,9669,Ruins Desert Klon
+Novus World,Broken Ruins,312811,74,9669,Ruins Heavy Scud
+Novus World,Fallen Temple,307204,59,1669,Fallen Archivist
+Novus World,Fallen Temple,307201,59,1669,Fallen Brutal
+Novus World,Fallen Temple,307205,59,1669,Fallen Jailer
+Novus World,Fallen Temple,307203,59,1669,Fallen Infernal Draco
+Novus World,Fallen Temple,307207,59,1669,Fallen Executor
+Novus World,Fallen Temple,307202,59,1669,Fallen Mahr
+Novus World,Fallen Temple,307206,59,1669,Fallen Zealot
+Novus World,Fallen Temple,307297,60,1769,Savage Arghol
+Novus World,Fallen Temple,307210,60,1769,Fallen Mahr Breeder
+Novus World,Fallen Temple,307208,60,1769,Fallen Demolis
+Novus World,Fallen Temple,307298,60,1769,Savage Splinter
+Novus World,Fallen Temple,307299,60,1769,Rampaging Ghost
+Novus World,Fallen Temple,307209,60,1769,Fallen Inquisitor
+Novus World,Fallen Temple,307211,60,1769,Fallen Meevlan
+Novus World,Land of Rest,307997,70,6569,Savage Arghol
+Novus World,Land of Rest,307999,70,6569,Savage Splinter
+Novus World,Land of Rest,307998,70,6569,Rampaging Junker
+Novus World,Land of Rest,307908,70,6569,Requiétĭo Snatcher Tosser
+Novus World,Land of Rest,307903,70,6569,Requiétĭo Predo Marksman
+Novus World,Land of Rest,307904,70,6569,Requiétĭo Snatcher Rider
+Novus World,Land of Rest,307906,70,6569,Requiétĭo Fezal
+Novus World,Land of Rest,307907,70,6569,Requiétĭo Desert Klon
+Novus World,Land of Rest,307905,70,6569,Requiétĭo Snatcher Spearman
+Novus World,Land of Rest,307909,70,6569,Requiétĭo Snatcher Axeman
+Novus World,Land of Rest,307901,70,6569,Requiétĭo Nyoka
+Novus World,Land of Rest,307910,70,6569,Requiétĭo Predo Marauder
+Novus World,Land of Rest,307902,70,6569,Requiétĭo Silex
+Novus World,Galio Sunken Lands,307409,45,359,Infected Galio Splinter
+Novus World,Galio Sunken Lands,307401,45,359,Galio Nether Warrior
+Novus World,Galio Sunken Lands,307405,45,359,Infected Galio Nezad
+Novus World,Galio Sunken Lands,307406,45,359,Infected Galio Lizard
+Novus World,Galio Sunken Lands,307411,45,359,Infected Galio Larva
+Novus World,Galio Sunken Lands,307421,46,429,Savage Cannibal
+Novus World,Galio Sunken Lands,307414,46,429,Savage Splinter
+Novus World,Galio Sunken Lands,307422,46,429,Rampaging Armored Ghost
+Novus World,Galio Sunken Lands,307404,46,429,Galio Nether Annihilator
+Novus World,Galio Sunken Lands,307410,46,429,Infected Galio Cannibal
+Novus World,Galio Sunken Lands,307403,46,429,Galio Nether Sentry
+Novus World,Galio Sunken Lands,307407,46,429,Infected Priest
+Novus World,Galio Sunken Lands,307420,46,429,Infected Accretia Soldier
+Novus World,Galio Sunken Lands,307408,46,429,Infected Talpa
+Novus World,Skadi Vale,305407,37,133,Skadi Helas Heavy Cavalry
+Novus World,Skadi Vale,305401,37,133,Skadi Lizard
+Novus World,Skadi Vale,305405,37,133,Skadi Helas Sentry
+Novus World,Skadi Vale,305403,37,133,Skadi Warbeast
+Novus World,Skadi Vale,305402,37,133,Skadi Fezal
+Novus World,Skadi Vale,305406,37,133,Skadi Helas Mech Combatant
+Novus World,Skadi Vale,305410,38,141,Skadi Desert Klon
+Novus World,Skadi Vale,305404,38,141,Skadi Splinter
+Novus World,Skadi Vale,305411,38,141,Skadi Wild Beast
+Novus World,Skadi Vale,305412,38,141,Skadi Dagan
+Novus World,Skadi Vale,305409,38,141,Skadi Lunker
+Novus World,Skadi Vale,305408,38,141,Skadi Vafer
+Novus World,Screaming Vale,313004,78,14769,Bale Snatcher Tosser
+Novus World,Screaming Vale,313015,78,14769,Bale Soma Assassin
+Novus World,Screaming Vale,313012,78,14769,Bale Clops Sniper
+Novus World,Screaming Vale,313007,78,14769,Bale Assault Bork
+Novus World,Screaming Vale,313011,78,14769,Bale Pathfinder
+Novus World,Screaming Vale,313009,78,14769,Bale Reitor
+Novus World,Screaming Vale,313016,78,14769,Bale Soma Shockmancer
+Novus World,Screaming Vale,313098,78,14769,Rampaging Assault Bork
+Novus World,Screaming Vale,313003,78,14769,Bale Junk Scavenger
+Novus World,Screaming Vale,313014,78,14769,Bale Soma Heavy Warrior
+Novus World,Screaming Vale,313097,78,14769,Rampaging Junker
+Novus World,Screaming Vale,313005,78,14769,Bale Snatcher Spearman
+Novus World,Screaming Vale,313010,78,14769,Bale Armed Mule
+Novus World,Screaming Vale,313099,78,14769,Rampaging Pathfinder
+Novus World,Screaming Vale,313013,78,14769,Bale Clops Tracker
+Novus World,Screaming Vale,313001,78,14769,Bale Ferinky Tracker
+Novus World,Screaming Vale,313002,78,14769,Bale Ferinky Sniper
+Novus World,Screaming Vale,313008,78,14769,Bale Lydian Surgeon
+Novus World,Forgotten Valley,308208,25,55,Veris Outlaw Knife Fighter
+Novus World,Forgotten Valley,308211,25,55,Veris Outlaw Gunner
+Novus World,Forgotten Valley,308212,25,55,Veris Outlaw Bruiser
+Novus World,Forgotten Valley,308214,25,55,Veris Meevlan
+Novus World,Forgotten Valley,308217,26,60,Veris Stink Bug
+Novus World,Forgotten Valley,308201,26,60,Veris Gafftail
+Novus World,Forgotten Valley,308215,26,60,Veris Grumble
+Novus World,Forgotten Valley,308216,26,60,Veris Grumble Oul
+Novus World,Karma Valley,313402,86,26919,Karma Clops Sniper
+Novus World,Karma Valley,313403,86,26919,Karma Clops Destroyer
+Novus World,Karma Valley,313404,86,26919,Karma Laser Bork
+Novus World,Karma Valley,313497,86,26919,Rampaging Pathfinder
+Novus World,Karma Valley,313401,86,26919,Karma Clops Tracker
+Novus World,Karma Valley,313408,87,28669,Karma Calliana Warrior
+Novus World,Karma Valley,313498,87,28669,Rampaging Junker
+Novus World,Karma Valley,313405,87,28669,Karma Recon
+Novus World,Karma Valley,313407,87,28669,Karma Striker
+Novus World,Karma Valley,313406,87,28669,Karma Vanguard
+Novus World,Karma Valley,313412,88,30469,Karma Nether Annihilator
+Novus World,Karma Valley,313409,88,30469,Karma Calliana Marksman
+Novus World,Karma Valley,313499,88,30469,Rampaging Armored Ghost
+Novus World,Karma Valley,313411,88,30469,Karma Nether Warrior
+Novus World,Karma Valley,313410,88,30469,Karma Nether Sentry
+Novus World,Vulcan Valley,308409,35,117,Vulcan Catus
+Novus World,Vulcan Valley,308405,35,117,Vulcan Crawler Sentry
+Novus World,Vulcan Valley,308408,35,117,Vulcan Arghol
+Novus World,Vulcan Valley,308407,35,117,Vulcan Flem
+Novus World,Vulcan Valley,308410,35,117,Vulcan Gafftail
+Novus World,Vulcan Valley,308406,36,125,Vulcan Crawler Warrior
+Novus World,Vulcan Valley,308403,36,125,Vulcan Ferinky Raider
+Novus World,Vulcan Valley,308404,36,125,Vulcan Lydian Docker
+Novus World,Vulcan Valley,308401,36,125,Vulcan Ferinky Tracker
+Novus World,Vulcan Valley,308402,36,125,Vulcan Ferinky Sentry
+Novus World,Vulcan Valley,308411,36,125,Vulcan Clod
+Novus World,Old Frontier,306202,20,33,Frontier Clops Destroyer
+Novus World,Old Frontier,306203,20,33,Frontier Clops Sniper
+Novus World,Old Frontier,306201,20,33,Frontier Clops Tracker
+Novus World,Old Frontier,306206,21,37,Frontier Outlaw Shocktrooper
+Novus World,Old Frontier,306205,21,37,Frontier Outlaw Arsonist
+Novus World,Old Frontier,306204,21,37,Frontier Outlaw Knife Fighter
+Novus World,Pumus Quarantine Zone,313306,83,21969,Pumus Gang Gunner
+Novus World,Pumus Quarantine Zone,313303,83,21969,Pumus Gang Strongman
+Novus World,Pumus Quarantine Zone,313314,83,21969,Savage Splinter
+Novus World,Pumus Quarantine Zone,313302,83,21969,Pumus Wild Beast
+Novus World,Pumus Quarantine Zone,313304,83,21969,Pumus Soma Ranger
+Novus World,Pumus Quarantine Zone,313301,83,21969,Pumus Silex
+Novus World,Pumus Quarantine Zone,313315,84,23569,Rampaging Assault Bork
+Novus World,Pumus Quarantine Zone,313307,84,23569,Pumus Lydian Surgeon
+Novus World,Pumus Quarantine Zone,313317,84,23569,Pumus Soma Warrior
+Novus World,Pumus Quarantine Zone,313305,84,23569,Pumus Soma Wizard
+Novus World,Pumus Quarantine Zone,313308,84,23569,Pumus Lydian Medic
+Novus World,Pumus Quarantine Zone,313309,84,23569,Pumus Lydian Docker
+Novus World,Pumus Quarantine Zone,313310,85,25219,Pumus Gang Bruiser
+Novus World,Pumus Quarantine Zone,313313,85,25219,Pumus Splinter
+Novus World,Pumus Quarantine Zone,313316,85,25219,Rampaging Ghost
+Novus World,Pumus Quarantine Zone,313312,85,25219,Pumus Ertelem
+Novus World,Pumus Quarantine Zone,313311,85,25219,Pumus Vafer Siege Trooper
+Novus World,Cordis Crater,3120396,115,172669,Savage Arghol
+Novus World,Cordis Crater,3120303,115,172669,Cordis Gafftail
+Novus World,Cordis Crater,3120302,115,172669,Cordis Meevlan
+Novus World,Cordis Crater,3120301,115,172669,Cordis Nyoka
+Novus World,Cordis Crater,3120304,116,181669,Cordis Vafer Mortal
+Novus World,Cordis Crater,3120305,116,181669,Cordis Vafer Rex
+Novus World,Cordis Crater,3120397,116,181669,Savage Crook
+Novus World,Cordis Crater,3120306,116,181669,Cordis Sneak Tosser
+Novus World,Cordis Crater,3120309,117,190919,Cordis Control Bork
+Novus World,Cordis Crater,3120308,117,190919,Cordis Passer Alpha
+Novus World,Cordis Crater,3120307,117,190919,Cordis Lydian Docker
+Novus World,Cordis Crater,3120398,117,190919,Rampaging Mecha Tweezer
+Novus World,Cordis Crater,3120310,118,200419,Cordis Grumble Oul
+Novus World,Cordis Crater,3120312,118,200419,Cordis Kadal
+Novus World,Cordis Crater,3120311,118,200419,Cordis Lapis
+Novus World,Cordis Crater,3120399,118,200419,Rampaging Armored Ghost
+Novus World,Credo Wasteland,3122302,104,80869,Credo Crawler Scout
+Novus World,Credo Wasteland,3122304,104,80869,Credo Splinter
+Novus World,Credo Wasteland,3122303,104,80869,Credo Wild Beast
+Novus World,Credo Wasteland,3122301,104,80869,Credo Crawler Warrior
+Novus World,Credo Wasteland,3122397,104,80869,Savage Splinter
+Novus World,Credo Wasteland,3122307,105,84169,Credo Clops Lunk
+Novus World,Credo Wasteland,3122305,105,84169,Credo Clops Seeker
+Novus World,Credo Wasteland,3122306,105,84169,Credo Clops Deceiver
+Novus World,Credo Wasteland,3122308,105,84169,Credo Vafer Rogue
+Novus World,Credo Wasteland,3122398,105,84169,Rampaging Pathfinder
+Novus World,Credo Wasteland,3122312,106,90169,Credo Glatt
+Novus World,Credo Wasteland,3122309,106,90169,Credo Vafer Mortal
+Novus World,Credo Wasteland,3122310,106,90169,Credo Vafer Rex
+Novus World,Credo Wasteland,3122311,106,90169,Credo Vafer Assassin
+Novus World,Credo Wasteland,3122399,106,90169,Savage Crook
+Novus World,Chaldea Volcanic Island,3123304,107,96419,Glossa Vagabond Gunner
+Novus World,Chaldea Volcanic Island,3123391,107,96419,Rampaging Assault Bork
+Novus World,Chaldea Volcanic Island,3123301,107,96419,Glossa Surgeon
+Novus World,Chaldea Volcanic Island,3123303,107,96419,Glossa Vagabond Comber
+Novus World,Chaldea Volcanic Island,3123302,107,96419,Glossa Medic
+Novus World,Chaldea Volcanic Island,3123308,108,102919,Glossa Vagabond Berserker
+Novus World,Chaldea Volcanic Island,3123305,108,102919,Glossa Crystal Gaff
+Novus World,Chaldea Volcanic Island,3123307,108,102919,Glossa Recon
+Novus World,Chaldea Volcanic Island,3123306,108,102919,Glossa Scavenger
+Novus World,Chaldea Volcanic Island,3123392,108,102919,Rampaging Junker
+Novus World,Chaldea Volcanic Island,3123311,109,109669,Glossa Crystal Catus
+Novus World,Chaldea Volcanic Island,3123312,109,109669,Glossa Crystal Temizl
+Novus World,Chaldea Volcanic Island,3123309,109,109669,Glossa Vanguard
+Novus World,Chaldea Volcanic Island,3123310,109,109669,Glossa Walker
+Novus World,Chaldea Volcanic Island,3123393,109,109669,Rampaging Pathfinder
+Novus World,Limen Cliffs,3125303,110,116669,Limen Devourer
+Novus World,Limen Cliffs,3125397,110,116669,Savage Splinter
+Novus World,Limen Cliffs,3125302,110,116669,Limen Fezal
+Novus World,Limen Cliffs,3125301,110,116669,Limen Silex
+Novus World,Limen Cliffs,3125304,110,116669,Limen Thermit Purifier
+Novus World,Limen Cliffs,3125398,111,123919,Savage Cannibal
+Novus World,Limen Cliffs,3125308,111,123919,Limen Crystal Catus
+Novus World,Limen Cliffs,3125305,111,123919,Limen Thermit Knight
+Novus World,Limen Cliffs,3125307,111,123919,Limen Crystal Temizl
+Novus World,Limen Cliffs,3125306,111,123919,Limen Hyburn Baria
+Novus World,Limen Cliffs,3125309,112,131419,Limen Crystal Gafftail
+Novus World,Limen Cliffs,3125310,112,131419,Limen Hyburn Equus
+Novus World,Limen Cliffs,3125311,112,131419,Limen Hyburn Nepa
+Novus World,Limen Cliffs,3125312,112,131419,Limen Thermit Judge
+Novus World,Limen Cliffs,3125399,112,131419,Rampaging Pathfinder
+Novus World,Sacer Ruins,3126313,113,139169,Rampaging Ghost
+Novus World,Sacer Ruins,3126303,113,139169,Sacer Snatcher Spearman
+Novus World,Sacer Ruins,3126304,113,147169,Sacer Snatcher Tosser
+Novus World,Sacer Ruins,3126301,113,139169,Sacer Vafer Mortal
+Novus World,Sacer Ruins,3126302,113,139169,Sacer Vafer Rex
+Novus World,Sacer Ruins,3126308,114,147169,Sacer Palid Sorcerer
+Novus World,Sacer Ruins,3126306,114,147169,Sacer Crawler Scout
+Novus World,Sacer Ruins,3126305,114,147169,Sacer Crawler Warrior
+Novus World,Sacer Ruins,3126307,114,147169,Sacer Palid Mindblaster
+Novus World,Sacer Ruins,3126314,114,147169,Savage Symbi
+Novus World,Sacer Ruins,3126309,115,155419,Sacer Crystal Catus
+Novus World,Sacer Ruins,3126312,115,155419,Sacer Crystal Grumble Horn
+Novus World,Sacer Ruins,3126315,115,155419,Savage Splinter
+Novus World,Sacer Ruins,3126310,115,155419,Sacer Crystal Gaff
+Novus World,Sacer Ruins,3126311,115,155419,Sacer Crystal Lapis
+High-Orbit Launch Base,Battlefield of Giants,358090,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Battlefield of Giants,358001,85,28669,Spearhead Recon
+High-Orbit Launch Base,Battlefield of Giants,358002,85,28669,Spearhead Striker
+High-Orbit Launch Base,Battlefield of Giants,358003,85,28669,Spearhead Vanguard
+High-Orbit Launch Base,Dock A-01,358103,75,13469,A01 Lydian Surgeon
+High-Orbit Launch Base,Dock A-01,358102,75,13469,A01 Snatcher Raider
+High-Orbit Launch Base,Dock A-01,358190,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Dock A-01,358101,75,13469,A01 Snatcher Sniper
+High-Orbit Launch Base,Dock A-02,358502,75,13469,A02 Snatcher Raider
+High-Orbit Launch Base,Dock A-02,358590,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Dock A-02,358503,75,13469,A02 Lydian Surgeon
+High-Orbit Launch Base,Dock A-02,358501,75,13469,A02 Snatcher Sniper
+High-Orbit Launch Base,Dock A-03,358703,75,13469,A03 Lydian Surgeon
+High-Orbit Launch Base,Dock A-03,358702,75,13469,A03 Snatcher Raider
+High-Orbit Launch Base,Dock A-03,358790,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Dock A-03,358701,75,13469,A03 Snatcher Sniper
+High-Orbit Launch Base,Dock A-04,359102,75,13469,A04 Snatcher Raider
+High-Orbit Launch Base,Dock A-04,359190,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Dock A-04,359103,75,13469,A04 Lydian Surgeon
+High-Orbit Launch Base,Dock A-04,359101,75,13469,A04 Snatcher Sniper
+High-Orbit Launch Base,Dock A-05,359203,75,13469,A05 Lydian Surgeon
+High-Orbit Launch Base,Dock A-05,359202,75,13469,A05 Snatcher Raider
+High-Orbit Launch Base,Dock A-05,359290,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Dock A-05,359201,75,13469,A05 Snatcher Sniper
+High-Orbit Launch Base,Dock A-06,359703,75,13469,A06 Lydian Surgeon
+High-Orbit Launch Base,Dock A-06,359702,75,13469,A06 Snatcher Raider
+High-Orbit Launch Base,Dock A-06,359790,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Dock A-06,359701,75,13469,A06 Snatcher Sniper
+High-Orbit Launch Base,Dock B-01,358401,85,28669,B01 Recon
+High-Orbit Launch Base,Dock B-01,358403,85,28669,B01 Vanguard
+High-Orbit Launch Base,Dock B-01,358490,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Dock B-01,358402,85,28669,B01 Striker
+High-Orbit Launch Base,Dock B-02,359090,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Dock B-02,359001,85,28669,B02 Recon
+High-Orbit Launch Base,Dock B-02,359002,85,28669,B02 Striker
+High-Orbit Launch Base,Dock B-02,359003,85,28669,B02 Vanguard
+High-Orbit Launch Base,Dock B-03,359601,85,28669,B03 Recon
+High-Orbit Launch Base,Dock B-03,359603,85,28669,B03 Vanguard
+High-Orbit Launch Base,Dock B-03,359690,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Dock B-03,359602,85,28669,B03 Striker
+High-Orbit Launch Base,Dock C-01,358203,80,20419,C01 Laser Bork
+High-Orbit Launch Base,Dock C-01,358205,80,20419,C01 Saura Warrior
+High-Orbit Launch Base,Dock C-01,358204,80,20419,C01 Lydian Medic
+High-Orbit Launch Base,Dock C-01,358206,80,20419,C01 Saura Shocktrooper
+High-Orbit Launch Base,Dock C-01,358207,80,20419,C01 Saura Sniper
+High-Orbit Launch Base,Dock C-01,358202,80,20419,C01 Vafer Siege Trooper
+High-Orbit Launch Base,Dock C-01,358201,80,20419,C01 Vafer Heavy Trooper
+High-Orbit Launch Base,Dock C-01,358290,80,20419,Rampaging Junker
+High-Orbit Launch Base,Dock C-01,358291,80,20419,Rampaging Junker
+High-Orbit Launch Base,Dock C-02,358803,80,20419,C02 Laser Bork
+High-Orbit Launch Base,Dock C-02,358804,80,20419,C02 Lydian Medic
+High-Orbit Launch Base,Dock C-02,358806,80,20419,C02 Saura Shocktrooper
+High-Orbit Launch Base,Dock C-02,358807,80,20419,C02 Saura Sniper
+High-Orbit Launch Base,Dock C-02,358802,80,20419,C02 Vafer Siege Trooper
+High-Orbit Launch Base,Dock C-02,358801,80,20419,C02 Vafer Heavy Trooper
+High-Orbit Launch Base,Dock C-02,358805,80,20419,C02 Saura Warrior
+High-Orbit Launch Base,Dock C-02,358890,80,20419,Rampaging Junker
+High-Orbit Launch Base,Dock C-02,358891,80,20419,Rampaging Junker
+High-Orbit Launch Base,Dock C-03,359403,80,20419,C03 Laser Bork
+High-Orbit Launch Base,Dock C-03,359404,80,20419,C03 Lydian Medic
+High-Orbit Launch Base,Dock C-03,359406,80,20419,C03 Saura Shocktrooper
+High-Orbit Launch Base,Dock C-03,359407,80,20419,C03 Saura Sniper
+High-Orbit Launch Base,Dock C-03,359402,80,20419,C03 Vafer Siege Trooper
+High-Orbit Launch Base,Dock C-03,359401,80,20419,C03 Vafer Heavy Trooper
+High-Orbit Launch Base,Dock C-03,359405,80,20419,C03 Saura Warrior
+High-Orbit Launch Base,Dock C-03,359490,80,20419,Rampaging Junker
+High-Orbit Launch Base,Dock C-03,359491,80,20419,Rampaging Junker
+High-Orbit Launch Base,Dock C-11,358303,85,28669,C11 Vanguard
+High-Orbit Launch Base,Dock C-11,358304,85,28669,C11 Peep Drone
+High-Orbit Launch Base,Dock C-11,358390,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Dock C-11,358301,85,28669,C11 Recon
+High-Orbit Launch Base,Dock C-11,358302,85,28669,C11 Striker
+High-Orbit Launch Base,Dock C-12,358903,85,28669,C12 Vanguard
+High-Orbit Launch Base,Dock C-12,358904,85,28669,C12 Peep Drone
+High-Orbit Launch Base,Dock C-12,358990,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Dock C-12,358901,85,28669,C12 Recon
+High-Orbit Launch Base,Dock C-12,358902,85,28669,C12 Striker
+High-Orbit Launch Base,Dock C-13,359503,85,28669,C13 Vanguard
+High-Orbit Launch Base,Dock C-13,359504,85,28669,C13 Peep Drone
+High-Orbit Launch Base,Dock C-13,359590,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Dock C-13,359501,85,28669,C13 Recon
+High-Orbit Launch Base,Dock C-13,359502,85,28669,C13 Striker
+High-Orbit Launch Base,Landing Dock A-00,357703,75,13469,A00 Lydian Surgeon
+High-Orbit Launch Base,Landing Dock A-00,357702,75,13469,A00 Snatcher Raider
+High-Orbit Launch Base,Landing Dock A-00,357790,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Landing Dock A-00,357701,75,13469,A00 Snatcher Sniper
+High-Orbit Launch Base,Landing Dock B-00,357802,75,13469,B00 Snatcher Raider
+High-Orbit Launch Base,Landing Dock B-00,357803,75,13469,B00 Lydian Surgeon
+High-Orbit Launch Base,Landing Dock B-00,357890,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Landing Dock B-00,357801,75,13469,B00 Snatcher Sniper
+High-Orbit Launch Base,Landing Dock C-00,357990,75,13469,Rampaging Assault Bork
+High-Orbit Launch Base,Landing Dock C-00,357903,75,13469,C00 Lydian Surgeon
+High-Orbit Launch Base,Landing Dock C-00,357902,75,13469,C00 Snatcher Raider
+High-Orbit Launch Base,Landing Dock C-00,357901,75,13469,C00 Snatcher Sniper
+High-Orbit Launch Base,Pyromaniac's Hunting Ground,358690,85,28669,Rampaging Pathfinder
+High-Orbit Launch Base,Pyromaniac's Hunting Ground,358601,85,28669,Firewatch Recon
+High-Orbit Launch Base,Pyromaniac's Hunting Ground,358602,85,28669,Firewatch Striker
+High-Orbit Launch Base,Pyromaniac's Hunting Ground,358603,85,28669,Firewatch Vanguard
+High-Orbit Launch Base,Central Tower,359802,90,38169,Calliana Marksman
+High-Orbit Launch Base,Central Tower,359890,90,38169,Rampaging Ghost
+High-Orbit Launch Base,Central Tower,359801,90,38169,Calliana Warrior
+High-Orbit Launch Base,Central Tower,359804,90,38169,Lydian Docker
+High-Orbit Launch Base,Central Tower,359803,90,38169,Calliana Tank
+High-Orbit Launch Base,Pulverizer's Traces,359301,85,28669,Defender Recon
+High-Orbit Launch Base,Pulverizer's Traces,359302,85,28669,Defender Striker
+High-Orbit Launch Base,Pulverizer's Traces,359303,85,28669,Defender Vanguard
+High-Orbit Launch Base,Pulverizer's Traces,359390,85,28669,Rampaging Pathfinder
+Atlas Canyon,Mecha Lapis Nest,350405,55,1469,Kilika Predo Marksman
+Atlas Canyon,Mecha Lapis Nest,350406,55,1469,Rampaging Assault Bork
+Atlas Canyon,Mecha Lapis Nest,350401,55,1469,Kilika Arghol
+Atlas Canyon,Mecha Lapis Nest,350402,55,1469,Kilika Gafftail
+Atlas Canyon,Mecha Lapis Nest,350407,55,1469,Rampaging Pathfinder
+Atlas Canyon,Mecha Lapis Nest,350404,55,1469,Kilika Predo Marauder
+Atlas Canyon,Mecha Nyoka Nest,351606,55,1469,Rampaging Assault Bork
+Atlas Canyon,Mecha Nyoka Nest,351601,55,1469,Lerneh Arghol
+Atlas Canyon,Mecha Nyoka Nest,351605,55,1469,Lerneh Predo Marksman
+Atlas Canyon,Mecha Nyoka Nest,351602,55,1469,Lerneh Gafftail
+Atlas Canyon,Mecha Nyoka Nest,351604,55,1469,Lerneh Predo Marauder
+Atlas Canyon,Mecha Nyoka Nest,351607,55,1469,Rampaging Pathfinder
+Atlas Canyon,Mecha Silex Nest,351006,55,1469,Rampaging Assault Bork
+Atlas Canyon,Mecha Silex Nest,351001,55,1469,Minos Arghol
+Atlas Canyon,Mecha Silex Nest,351005,55,1469,Minos Predo Marksman
+Atlas Canyon,Mecha Silex Nest,351002,55,1469,Minos Gafftail
+Atlas Canyon,Mecha Silex Nest,351004,55,1469,Minos Predo Marauder
+Atlas Canyon,Mecha Silex Nest,351007,55,1469,Rampaging Pathfinder
+Atlas Canyon,Engagement Point: Claws of the Beast,350502,50,969,Talos Equesian Marksman
+Atlas Canyon,Engagement Point: Claws of the Beast,350302,50,969,Titan Equesian Marksman
+Atlas Canyon,Engagement Point: Claws of the Beast,350306,50,969,Titan Predo Marksman
+Atlas Canyon,Engagement Point: Claws of the Beast,350308,50,969,Rampaging Assault Bork
+Atlas Canyon,Engagement Point: Claws of the Beast,350508,50,969,Rampaging Assault Bork
+Atlas Canyon,Engagement Point: Claws of the Beast,350503,50,969,Talos Scavenger
+Atlas Canyon,Engagement Point: Claws of the Beast,350303,50,969,Titan Scavenger
+Atlas Canyon,Engagement Point: Claws of the Beast,350307,50,969,Rampaging Ghost
+Atlas Canyon,Engagement Point: Claws of the Beast,350507,50,969,Rampaging Ghost
+Atlas Canyon,Engagement Point: Claws of the Beast,350304,50,969,Rampaging Junker
+Atlas Canyon,Engagement Point: Claws of the Beast,350504,50,969,Rampaging Junker
+Atlas Canyon,Engagement Point: Claws of the Beast,350309,50,969,Rampaging Pathfinder
+Atlas Canyon,Engagement Point: Claws of the Beast,350509,50,969,Rampaging Pathfinder
+Atlas Canyon,Engagement Point: Claws of the Beast,350301,50,969,Titan Equesian Marauder
+Atlas Canyon,Engagement Point: Claws of the Beast,350305,50,969,Titan Predo Marauder
+Atlas Canyon,Engagement Point: Claws of the Beast,350506,50,969,Talos Predo Marksman
+Atlas Canyon,Engagement Point: Claws of the Beast,350501,50,969,Talos Equesian Marauder
+Atlas Canyon,Engagement Point: Claws of the Beast,350505,50,969,Talos Predo Marauder
+Atlas Canyon,Engagement Point: Rockjaw,350906,50,969,Argo Predo Marksman
+Atlas Canyon,Engagement Point: Rockjaw,350903,50,969,Argo Scavenger
+Atlas Canyon,Engagement Point: Rockjaw,350905,50,969,Argo Predo Marauder
+Atlas Canyon,Engagement Point: Rockjaw,350902,50,969,Argo Equesian Marksman
+Atlas Canyon,Engagement Point: Rockjaw,351102,50,969,Ottos Equesian Marksman
+Atlas Canyon,Engagement Point: Rockjaw,351106,50,969,Ottos Predo Marksman
+Atlas Canyon,Engagement Point: Rockjaw,350908,50,969,Rampaging Assault Bork
+Atlas Canyon,Engagement Point: Rockjaw,351108,50,969,Rampaging Assault Bork
+Atlas Canyon,Engagement Point: Rockjaw,350907,50,969,Rampaging Ghost
+Atlas Canyon,Engagement Point: Rockjaw,351107,50,969,Rampaging Ghost
+Atlas Canyon,Engagement Point: Rockjaw,350904,50,969,Rampaging Junker
+Atlas Canyon,Engagement Point: Rockjaw,351104,50,969,Rampaging Junker
+Atlas Canyon,Engagement Point: Rockjaw,351103,50,969,Ottos Scavenger
+Atlas Canyon,Engagement Point: Rockjaw,350909,50,969,Rampaging Pathfinder
+Atlas Canyon,Engagement Point: Rockjaw,351109,50,969,Rampaging Pathfinder
+Atlas Canyon,Engagement Point: Rockjaw,350901,50,969,Argo Equesian Marauder
+Atlas Canyon,Engagement Point: Rockjaw,351101,50,969,Ottos Equesian Marauder
+Atlas Canyon,Engagement Point: Rockjaw,351105,50,969,Ottos Predo Marauder
+Atlas Canyon,Engagement Point: Serpent Spine,351502,50,969,Gerryon Equesian Marksman
+Atlas Canyon,Engagement Point: Serpent Spine,351508,50,969,Rampaging Assault Bork
+Atlas Canyon,Engagement Point: Serpent Spine,351708,50,969,Rampaging Assault Bork
+Atlas Canyon,Engagement Point: Serpent Spine,351507,50,969,Rampaging Ghost
+Atlas Canyon,Engagement Point: Serpent Spine,351707,50,969,Rampaging Ghost
+Atlas Canyon,Engagement Point: Serpent Spine,351506,50,969,Gerryon Predo Marksman
+Atlas Canyon,Engagement Point: Serpent Spine,351503,50,969,Gerryon Scavenger
+Atlas Canyon,Engagement Point: Serpent Spine,351504,50,969,Rampaging Junker
+Atlas Canyon,Engagement Point: Serpent Spine,351704,50,969,Rampaging Junker
+Atlas Canyon,Engagement Point: Serpent Spine,351702,50,969,Ouros Equesian Marksman
+Atlas Canyon,Engagement Point: Serpent Spine,351706,50,969,Ouros Predo Marksman
+Atlas Canyon,Engagement Point: Serpent Spine,351701,50,969,Ouros Equesian Marauder
+Atlas Canyon,Engagement Point: Serpent Spine,351705,50,969,Ouros Predo Marauder
+Atlas Canyon,Engagement Point: Serpent Spine,351509,50,969,Rampaging Pathfinder
+Atlas Canyon,Engagement Point: Serpent Spine,351709,50,969,Rampaging Pathfinder
+Atlas Canyon,Engagement Point: Serpent Spine,351501,50,969,Gerryon Equesian Marauder
+Atlas Canyon,Engagement Point: Serpent Spine,351505,50,969,Gerryon Predo Marauder
+Atlas Canyon,Engagement Point: Serpent Spine,351703,50,969,Ouros Scavenger
+Atlas Canyon,Alliance Territory,351206,45,509,Savage Brutal
+Atlas Canyon,Alliance Territory,351406,45,509,Savage Brutal
+Atlas Canyon,Alliance Territory,351403,45,509,Gerryon Devourer
+Atlas Canyon,Alliance Territory,351203,45,509,Ottos Devourer
+Atlas Canyon,Alliance Territory,351405,45,509,Gerryon Infernal Draco
+Atlas Canyon,Alliance Territory,351205,45,509,Ottos Infernal Draco
+Atlas Canyon,Alliance Territory,351201,45,509,Ottos Splinter
+Atlas Canyon,Alliance Territory,351401,45,509,Gerryon Splinter
+Atlas Canyon,Alliance Territory,351402,45,509,Gerryon Symbi
+Atlas Canyon,Alliance Territory,351204,45,509,Ottos Optic Larva
+Atlas Canyon,Alliance Territory,351404,45,509,Gerryon Optic Larva
+Atlas Canyon,Alliance Territory,351202,45,509,Ottos Symbi
+Atlas Canyon,Federation Territory,350802,45,509,Argo Symbi
+Atlas Canyon,Federation Territory,350606,45,509,Savage Brutal
+Atlas Canyon,Federation Territory,350806,45,509,Savage Brutal
+Atlas Canyon,Federation Territory,350803,45,509,Argo Devourer
+Atlas Canyon,Federation Territory,350603,45,509,Talos Devourer
+Atlas Canyon,Federation Territory,350805,45,509,Argo Infernal Draco
+Atlas Canyon,Federation Territory,350801,45,509,Argo Splinter
+Atlas Canyon,Federation Territory,350601,45,509,Talos Splinter
+Atlas Canyon,Federation Territory,350804,45,509,Argo Optic Larva
+Atlas Canyon,Federation Territory,350604,45,509,Talos Optic Larva
+Atlas Canyon,Federation Territory,350605,45,509,Talos Infernal Draco
+Atlas Canyon,Federation Territory,350602,45,509,Talos Symbi
+Atlas Canyon,Imperial Territory,350206,45,509,Savage Brutal
+Atlas Canyon,Imperial Territory,351806,45,509,Savage Brutal
+Atlas Canyon,Imperial Territory,351803,45,509,Ouros Devourer
+Atlas Canyon,Imperial Territory,350203,45,509,Titan Devourer
+Atlas Canyon,Imperial Territory,351805,45,509,Ouros Infernal Draco
+Atlas Canyon,Imperial Territory,350205,45,509,Titan Infernal Draco
+Atlas Canyon,Imperial Territory,350201,45,509,Titan Splinter
+Atlas Canyon,Imperial Territory,351804,45,509,Ouros Optic Larva
+Atlas Canyon,Imperial Territory,350204,45,509,Titan Optic Larva
+Atlas Canyon,Imperial Territory,351801,45,509,Ouros Splinter
+Atlas Canyon,Imperial Territory,351802,45,509,Ouros Symbi
+Atlas Canyon,Imperial Territory,350202,45,509,Titan Symbi
+Crag Orbital Lift,Dock A-01,355502,60,2169,A01 Pathfinder
+Crag Orbital Lift,Dock A-01,355504,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Dock A-01,355503,60,2169,A01 Armed Mule
+Crag Orbital Lift,Dock A-01,355501,60,2169,A01 Clops Tracker
+Crag Orbital Lift,Dock A-02,355902,60,2169,A02 Pathfinder
+Crag Orbital Lift,Dock A-02,355904,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Dock A-02,355903,60,2169,A02 Armed Mule
+Crag Orbital Lift,Dock A-02,355901,60,2169,A02 Clops Sniper
+Crag Orbital Lift,Dock A-03,356101,60,2169,A03 Clops Sniper
+Crag Orbital Lift,Dock A-03,356102,60,2169,A03 Pathfinder
+Crag Orbital Lift,Dock A-03,356104,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Dock A-03,356103,60,2169,A03 Armed Mule
+Crag Orbital Lift,Dock A-04,356502,60,2169,A04 Pathfinder
+Crag Orbital Lift,Dock A-04,356504,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Dock A-04,356501,60,2169,A04 Clops Destroyer
+Crag Orbital Lift,Dock A-04,356503,60,2169,A04 Armed Mule
+Crag Orbital Lift,Dock A-05,356602,60,2169,A05 Pathfinder
+Crag Orbital Lift,Dock A-05,356604,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Dock A-05,356601,60,2169,A05 Clops Destroyer
+Crag Orbital Lift,Dock A-05,356603,60,2169,A05 Armed Mule
+Crag Orbital Lift,Dock A-06,357102,60,2169,A06 Pathfinder
+Crag Orbital Lift,Dock A-06,357104,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Dock A-06,357101,60,2169,A06 Clops Destroyer
+Crag Orbital Lift,Dock A-06,357103,60,2169,A06 Armed Mule
+Crag Orbital Lift,Dock B-01,355803,65,4569,B01 Lydian Surgeon
+Crag Orbital Lift,Dock B-01,355804,65,4569,Rampaging Assault Bork
+Crag Orbital Lift,Dock B-01,355802,65,4569,B01 Clops Destroyer
+Crag Orbital Lift,Dock B-01,355801,65,4569,B01 Clops Tracker
+Crag Orbital Lift,Dock B-02,356402,65,4569,B02 Clops Sniper
+Crag Orbital Lift,Dock B-02,356403,65,4569,B02 Clops Destroyer
+Crag Orbital Lift,Dock B-02,356404,65,4569,Rampaging Junker
+Crag Orbital Lift,Dock B-02,356401,65,4569,B02 Clops Tracker
+Crag Orbital Lift,Dock B-03,357003,65,4569,B03 Pathfinder
+Crag Orbital Lift,Dock B-03,357004,65,4569,Rampaging Ghost
+Crag Orbital Lift,Dock B-03,357001,65,4569,B03 Clops Tracker
+Crag Orbital Lift,Dock B-03,357002,65,4569,B03 Clops Sniper
+Crag Orbital Lift,Dock C-01,355606,65,4569,Rampaging Assault Bork
+Crag Orbital Lift,Dock C-01,355605,65,4569,C01 Pathfinder
+Crag Orbital Lift,Dock C-01,355602,65,4569,C01 Clops Sniper
+Crag Orbital Lift,Dock C-01,355603,65,4569,C01 Clops Destroyer
+Crag Orbital Lift,Dock C-01,355608,65,4569,Rampaging Ghost
+Crag Orbital Lift,Dock C-01,355607,65,4569,Rampaging Junker
+Crag Orbital Lift,Dock C-01,355604,65,4569,C01 Armed Mule
+Crag Orbital Lift,Dock C-01,355601,65,4569,C01 Clops Tracker
+Crag Orbital Lift,Dock C-02,356206,65,4569,Rampaging Assault Bork
+Crag Orbital Lift,Dock C-02,356202,65,4569,C02 Clops Sniper
+Crag Orbital Lift,Dock C-02,356205,65,4569,C02 Pathfinder
+Crag Orbital Lift,Dock C-02,356203,65,4569,C02 Clops Destroyer
+Crag Orbital Lift,Dock C-02,356208,65,4569,Rampaging Ghost
+Crag Orbital Lift,Dock C-02,356207,65,4569,Rampaging Junker
+Crag Orbital Lift,Dock C-02,356204,65,4569,C02 Armed Mule
+Crag Orbital Lift,Dock C-02,356201,65,4569,C02 Clops Tracker
+Crag Orbital Lift,Dock C-03,356806,65,4569,Rampaging Assault Bork
+Crag Orbital Lift,Dock C-03,356805,65,4569,C03 Pathfinder
+Crag Orbital Lift,Dock C-03,356803,65,4569,C03 Clops Destroyer
+Crag Orbital Lift,Dock C-03,356808,65,4569,Rampaging Ghost
+Crag Orbital Lift,Dock C-03,356807,65,4569,Rampaging Junker
+Crag Orbital Lift,Dock C-03,356804,65,4569,C03 Armed Mule
+Crag Orbital Lift,Dock C-03,356801,65,4569,C03 Clops Tracker
+Crag Orbital Lift,Dock C-03,356802,65,4569,C03 Clops Sniper
+Crag Orbital Lift,Dock C-11,355705,70,8069,C11 Clops Sniper
+Crag Orbital Lift,Dock C-11,355701,70,8069,C11 Soma Heavy Warrior
+Crag Orbital Lift,Dock C-11,355703,70,8069,C11 Soma Shockmancer
+Crag Orbital Lift,Dock C-11,355706,70,8069,C11 Clops Destroyer
+Crag Orbital Lift,Dock C-11,355707,70,8069,Rampaging Junker
+Crag Orbital Lift,Dock C-11,355708,70,8069,Rampaging Pathfinder
+Crag Orbital Lift,Dock C-11,355704,70,8069,C11 Clops Tracker
+Crag Orbital Lift,Dock C-11,355702,70,8069,C11 Soma Sentry
+Crag Orbital Lift,Dock C-12,356305,70,8069,C12 Clops Sniper
+Crag Orbital Lift,Dock C-12,356301,70,8069,C12 Soma Heavy Warrior
+Crag Orbital Lift,Dock C-12,356303,70,8069,C12 Soma Shockmancer
+Crag Orbital Lift,Dock C-12,356306,70,8069,C12 Clops Destroyer
+Crag Orbital Lift,Dock C-12,356307,70,8069,Rampaging Junker
+Crag Orbital Lift,Dock C-12,356308,70,8069,Rampaging Pathfinder
+Crag Orbital Lift,Dock C-12,356304,70,8069,C12 Clops Tracker
+Crag Orbital Lift,Dock C-12,356302,70,8069,C12 Soma Sentry
+Crag Orbital Lift,Dock C-13,356901,70,8069,C13 Soma Heavy Warrior
+Crag Orbital Lift,Dock C-13,356903,70,8069,C13 Soma Shockmancer
+Crag Orbital Lift,Dock C-13,356906,70,8069,C13 Clops Destroyer
+Crag Orbital Lift,Dock C-13,356907,70,8069,Rampaging Junker
+Crag Orbital Lift,Dock C-13,356908,70,8069,Rampaging Pathfinder
+Crag Orbital Lift,Dock C-13,356904,70,8069,C13 Clops Tracker
+Crag Orbital Lift,Dock C-13,356902,70,8069,C13 Soma Sentry
+Crag Orbital Lift,Dock C-13,356905,70,8069,C13 Clops Sniper
+Crag Orbital Lift,Damaged Road,355403,70,8069,Destroyers Clops Sniper
+Crag Orbital Lift,Damaged Road,355401,70,8069,Destroyers Soma Heavy Warrior
+Crag Orbital Lift,Damaged Road,355404,70,8069,Rampaging Junker
+Crag Orbital Lift,Damaged Road,355402,70,8069,Destroyers Clops Tracker
+Crag Orbital Lift,Rampage Site,356702,70,8069,Rushers Soma Heavy Warrior
+Crag Orbital Lift,Rampage Site,356704,70,8069,Rampaging Pathfinder
+Crag Orbital Lift,Rampage Site,356703,70,8069,Rushers Clops Tracker
+Crag Orbital Lift,Rampage Site,356701,70,8069,Rushers Soma Shockmancer
+Crag Orbital Lift,Landing Dock A-00,355102,60,2169,A00 Pathfinder
+Crag Orbital Lift,Landing Dock A-00,355104,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Landing Dock A-00,355103,60,2169,A00 Armed Mule
+Crag Orbital Lift,Landing Dock A-00,355101,60,2169,A00 Clops Tracker
+Crag Orbital Lift,Landing Dock B-00,355302,60,2169,B00 Pathfinder
+Crag Orbital Lift,Landing Dock B-00,355304,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Landing Dock B-00,355301,60,2169,B00 Clops Destroyer
+Crag Orbital Lift,Landing Dock B-00,355303,60,2169,B00 Armed Mule
+Crag Orbital Lift,Landing Dock C-00,355204,60,2169,Rampaging Assault Bork
+Crag Orbital Lift,Landing Dock C-00,355201,60,2169,C00 Clops Sniper
+Crag Orbital Lift,Landing Dock C-00,355202,60,2169,C00 Pathfinder
+Crag Orbital Lift,Landing Dock C-00,355203,60,2169,C00 Armed Mule
+Crag Orbital Lift,Burnt Dock,356003,70,8069,Arsonists Clops Destroyer
+Crag Orbital Lift,Burnt Dock,356001,70,8069,Arsonists Soma Heavy Warrior
+Crag Orbital Lift,Burnt Dock,356004,70,8069,Rampaging Junker
+Crag Orbital Lift,Burnt Dock,356002,70,8069,Arsonists Soma Sentry
+Crag Orbital Lift,Central Tower,357203,70,8069,Towerguard Armored Ghost
+Crag Orbital Lift,Central Tower,357204,70,8069,Rampaging Armored Ghost
+Crag Orbital Lift,Central Tower,357201,70,8069,Towerguard Ghost
+Crag Orbital Lift,Central Tower,357202,70,8069,Towerguard Sting Ghost
+Orbital Defense Facility,Orbital Defense Facility,4504901,102,30459500,Citadel Ghost
+Orbital Defense Facility,Hive,4504329,106,95519,Rampaging Elite Raider
+Orbital Defense Facility,Hive,4504321,106,95519,Hiveguard Recon
+Orbital Defense Facility,Hive,4504322,106,95519,Hiveguard Striker
+Orbital Defense Facility,Hive,4504323,106,95519,Hiveguard Vanguard
+Orbital Defense Facility,Hive,4554328,106,13469,Dancing Wasp
+Orbital Defense Facility,Dock A-02,4504029,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,Dock A-02,4504021,94,50719,A02 Mech Warrior
+Orbital Defense Facility,Dock A-02,4504022,94,50719,A02 Mech Gunner
+Orbital Defense Facility,Dock A-03,4504039,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,Dock A-03,4504031,94,50719,A03 Mech Warrior
+Orbital Defense Facility,Dock A-03,4504032,94,50719,A03 Mech Gunner
+Orbital Defense Facility,Dock A-04,4504041,99,64469,A04 Snatcher Raider
+Orbital Defense Facility,Dock A-04,4504049,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock A-04,4504042,99,64469,A04 Snatcher Sniper
+Orbital Defense Facility,Dock A-05,4504051,99,64469,A05 Snatcher Raider
+Orbital Defense Facility,Dock A-05,4504059,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock A-05,4504052,99,64469,A05 Snatcher Sniper
+Orbital Defense Facility,Dock A-06,4504061,99,64469,A06 Snatcher Raider
+Orbital Defense Facility,Dock A-06,4504069,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock A-06,4504062,99,64469,A06 Snatcher Sniper
+Orbital Defense Facility,Dock A-06,4504064,99,64469,A06 Vafer Siege Trooper
+Orbital Defense Facility,Dock A-06,4504063,99,64469,A06 Vafer Heavy Trooper
+Orbital Defense Facility,Dock A-07,4504071,104,80719,A07 Nether Warrior
+Orbital Defense Facility,Dock A-07,4504079,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock A-07,4504072,104,80719,A07 Nether Sentry
+Orbital Defense Facility,Dock A-08,4504081,104,80719,A08 Nether Warrior
+Orbital Defense Facility,Dock A-08,4504083,104,80719,A08 Nether Annihilator
+Orbital Defense Facility,Dock A-08,4504089,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock A-08,4504082,104,80719,A08 Nether Sentry
+Orbital Defense Facility,Dock A-09,4504091,104,80719,A09 Nether Warrior
+Orbital Defense Facility,Dock A-09,4504092,104,80719,A09 Nether Sentry
+Orbital Defense Facility,Dock A-09,4504093,104,80719,A09 Nether Annihilator
+Orbital Defense Facility,Dock A-09,4504099,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock B-02,4504122,94,50719,B02 Mech Gunner
+Orbital Defense Facility,Dock B-02,4504129,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,Dock B-02,4504121,94,50719,B02 Mech Warrior
+Orbital Defense Facility,Dock B-03,4504139,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,Dock B-03,4504131,94,50719,B03 Mech Warrior
+Orbital Defense Facility,Dock B-03,4504132,94,50719,B03 Mech Gunner
+Orbital Defense Facility,Dock B-04,4504141,99,64469,B04 Snatcher Raider
+Orbital Defense Facility,Dock B-04,4504149,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock B-04,4504142,99,64469,B04 Snatcher Sniper
+Orbital Defense Facility,Dock B-05,4504151,99,64469,B05 Snatcher Raider
+Orbital Defense Facility,Dock B-05,4504159,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock B-05,4504152,99,64469,B05 Snatcher Sniper
+Orbital Defense Facility,Dock B-06,4504161,99,64469,B06 Snatcher Raider
+Orbital Defense Facility,Dock B-06,4504164,99,64469,B06 Vafer Siege Trooper
+Orbital Defense Facility,Dock B-06,4504163,99,64469,B06 Vafer Heavy Trooper
+Orbital Defense Facility,Dock B-06,4504169,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock B-06,4504162,99,64469,B06 Snatcher Sniper
+Orbital Defense Facility,Dock B-07,4504172,104,80719,B07 Nether Sentry
+Orbital Defense Facility,Dock B-07,4504179,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock B-07,4504171,104,80719,B07 Nether Warrior
+Orbital Defense Facility,Dock B-08,4504183,104,80719,B08 Nether Annihilator
+Orbital Defense Facility,Dock B-08,4504181,104,80719,B08 Nether Warrior
+Orbital Defense Facility,Dock B-08,4504182,104,80719,B08 Nether Sentry
+Orbital Defense Facility,Dock B-08,4504189,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock B-09,4504193,104,80719,B09 Nether Annihilator
+Orbital Defense Facility,Dock B-09,4504199,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock B-09,4504191,104,80719,B09 Nether Warrior
+Orbital Defense Facility,Dock B-09,4504192,104,80719,B09 Nether Sentry
+Orbital Defense Facility,Dock C-02,4504222,94,50719,C02 Mech Gunner
+Orbital Defense Facility,Dock C-02,4504229,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,Dock C-02,4504221,94,50719,C02 Mech Warrior
+Orbital Defense Facility,Dock C-03,4504239,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,Dock C-03,4504232,94,50719,C03 Mech Gunner
+Orbital Defense Facility,Dock C-03,4504231,94,50719,C03 Mech Warrior
+Orbital Defense Facility,Dock C-04,4504241,99,64469,C04 Snatcher Raider
+Orbital Defense Facility,Dock C-04,4504242,99,64469,C04 Snatcher Sniper
+Orbital Defense Facility,Dock C-04,4504249,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock C-05,4504251,99,64469,C05 Snatcher Raider
+Orbital Defense Facility,Dock C-05,4504252,99,64469,C05 Snatcher Sniper
+Orbital Defense Facility,Dock C-05,4504259,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock C-06,4504261,99,64469,C06 Snatcher Raider
+Orbital Defense Facility,Dock C-06,4504262,99,64469,C06 Snatcher Sniper
+Orbital Defense Facility,Dock C-06,4504264,99,64469,C06 Vafer Siege Trooper
+Orbital Defense Facility,Dock C-06,4504263,99,64469,C06 Vafer Heavy Trooper
+Orbital Defense Facility,Dock C-06,4504269,99,64469,Rampaging Pathfinder
+Orbital Defense Facility,Dock C-07,4504271,104,80719,C07 Nether Warrior
+Orbital Defense Facility,Dock C-07,4504272,104,80719,C07 Nether Sentry
+Orbital Defense Facility,Dock C-07,4504279,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock C-08,4504283,104,80719,C08 Nether Annihilator
+Orbital Defense Facility,Dock C-08,4504281,104,80719,C08 Nether Warrior
+Orbital Defense Facility,Dock C-08,4504282,104,80719,C08 Nether Sentry
+Orbital Defense Facility,Dock C-08,4504289,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock C-09,4504293,104,80719,C09 Nether Annihilator
+Orbital Defense Facility,Dock C-09,4504291,104,80719,C09 Nether Warrior
+Orbital Defense Facility,Dock C-09,4504299,104,80719,Rampaging Armored Ghost
+Orbital Defense Facility,Dock C-09,4504292,104,80719,C09 Nether Sentry
+Orbital Defense Facility,Ground Zero,4554338,102,13469,Mad Bomber
+Orbital Defense Facility,Ground Zero,4504332,106,95519,EOD Striker
+Orbital Defense Facility,Ground Zero,4504339,106,95519,Rampaging Elite Raider
+Orbital Defense Facility,Ground Zero,4504331,106,95519,EOD Recon
+Orbital Defense Facility,Ground Zero,4504333,106,95519,EOD Vanguard
+Orbital Defense Facility,Sentinel Nest,4504311,106,95519,Nestkeeper Recon
+Orbital Defense Facility,Sentinel Nest,4504319,106,95519,Rampaging Elite Raider
+Orbital Defense Facility,Sentinel Nest,4504312,106,95519,Nestkeeper Striker
+Orbital Defense Facility,Sentinel Nest,4504313,106,95519,Nestkeeper Vanguard
+Orbital Defense Facility,Sentinel Nest,4554318,108,13469,Orbital Sentinel
+Orbital Defense Facility,B-01 Gate Platform,4504112,94,50719,B01 Mech Gunner
+Orbital Defense Facility,B-01 Gate Platform,4504119,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,B-01 Gate Platform,4504111,94,50719,B01 Mech Warrior
+Orbital Defense Facility,A-01 Gate Platform,4504019,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,A-01 Gate Platform,4504011,94,50719,A01 Mech Warrior
+Orbital Defense Facility,A-01 Gate Platform,4504012,94,50719,A01 Mech Gunner
+Orbital Defense Facility,C-01 Gate Platform,4504212,94,50719,C01 Mech Gunner
+Orbital Defense Facility,C-01 Gate Platform,4504219,94,50719,Rampaging Assault Bork
+Orbital Defense Facility,C-01 Gate Platform,4504211,94,50719,C01 Mech Warrior
+Orbital Defense Facility,Grave of the Giants,4554348,104,13469,Big Hunter
+Orbital Defense Facility,Grave of the Giants,4504342,106,95519,Cemetery Guard Striker
+Orbital Defense Facility,Grave of the Giants,4504341,106,95519,Cemetery Guard Recon
+Orbital Defense Facility,Grave of the Giants,4504349,106,95519,Rampaging Elite Raider
+Orbital Defense Facility,Grave of the Giants,4504343,106,95519,Cemetery Guard Vanguard
+Albern Warzone,Ianthe A,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Ianthe A,376006,106,87919,Ianthe Crimson Hound
+Albern Warzone,Ianthe A,376014,106,87919,Ianthe Crimson Regenerator
+Albern Warzone,Ianthe A,376099,106,87919,Savage Infected Lizard
+Albern Warzone,Ianthe B,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Ianthe B,376098,102,73919,Savage Infected Splinter
+Albern Warzone,Ianthe B,376013,102,73919,Ianthe Crimson Thrower
+Albern Warzone,Ianthe B,376008,102,73919,Ianthe Licker
+Albern Warzone,Ianthe B,376007,102,73919,Ianthe Turkan Sniper
+Albern Warzone,Ianthe C,376010,96,55919,Ianthe Saura Sniper
+Albern Warzone,Ianthe C,376011,96,55919,Ianthe Turkan Raider
+Albern Warzone,Ianthe C,376003,96,55919,Ianthe Turkan Heavy Trooper
+Albern Warzone,Ianthe C,376097,96,55919,Rampaging Pathfinder
+Albern Warzone,Ianthe C,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Ianthe D,376005,90,38169,Ianthe Nether Warrior
+Albern Warzone,Ianthe D,376002,90,38169,Ianthe Malpas Hook
+Albern Warzone,Ianthe D,376012,90,38169,Ianthe Nether Sentry
+Albern Warzone,Ianthe D,376004,90,38169,Ianthe Turkan Siege Trooper
+Albern Warzone,Ianthe D,376096,90,38169,Rampaging Junker
+Albern Warzone,Ianthe D,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Ianthe E,376009,82,23569,Ianthe Malpas Spitter
+Albern Warzone,Ianthe E,376001,82,23569,Ianthe Saura Shocktrooper
+Albern Warzone,Ianthe E,376095,82,23569,Savage Larva
+Albern Warzone,Ianthe E,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Phero A,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Phero A,376099,106,87919,Savage Infected Lizard
+Albern Warzone,Phero A,376206,106,87919,Phero Crimson Hound
+Albern Warzone,Phero A,376214,106,87919,Phero Crimson Regenerator
+Albern Warzone,Phero B,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Phero B,376098,102,73919,Savage Infected Splinter
+Albern Warzone,Phero B,376208,102,73919,Phero Licker
+Albern Warzone,Phero B,376213,102,73919,Phero Crimson Thrower
+Albern Warzone,Phero B,376207,102,73919,Phero Turkan Sniper
+Albern Warzone,Phero C,376097,96,55919,Rampaging Pathfinder
+Albern Warzone,Phero C,376210,96,55919,Phero Saura Sniper
+Albern Warzone,Phero C,376211,96,55919,Phero Turkan Raider
+Albern Warzone,Phero C,376203,96,55919,Phero Turkan Heavy Trooper
+Albern Warzone,Phero C,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Phero D,376202,90,38169,Phero Malpas Hook
+Albern Warzone,Phero D,376096,90,38169,Rampaging Junker
+Albern Warzone,Phero D,376205,90,38169,Phero Nether Warrior
+Albern Warzone,Phero D,376212,90,38169,Phero Nether Sentry
+Albern Warzone,Phero D,376204,90,38169,Phero Turkan Siege Trooper
+Albern Warzone,Phero D,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Phero E,376209,82,23569,Phero Malpas Spitter
+Albern Warzone,Phero E,376095,82,23569,Savage Larva
+Albern Warzone,Phero E,376201,82,23569,Phero Saura Shocktrooper
+Albern Warzone,Phero E,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Anchor Point,376098,102,73919,Savage Infected Splinter
+Albern Warzone,Anchor Point,376054,102,73919,Nether Warrior
+Albern Warzone,Anchor Point,376055,106,87919,Nether Annihilator
+Albern Warzone,Anchor Point,376099,106,87919,Savage Infected Lizard
+Albern Warzone,Xanthe A,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Xanthe A,376106,106,87919,Xanthe Crimson Hound
+Albern Warzone,Xanthe A,376099,106,87919,Savage Infected Lizard
+Albern Warzone,Xanthe A,376114,106,87919,Xanthe Crimson Regenerator
+Albern Warzone,Xanthe B,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Xanthe B,376113,102,73919,Xanthe Crimson Thrower
+Albern Warzone,Xanthe B,376098,102,73919,Savage Infected Splinter
+Albern Warzone,Xanthe B,376108,102,73919,Xanthe Licker
+Albern Warzone,Xanthe B,376107,102,73919,Xanthe Turkan Sniper
+Albern Warzone,Xanthe C,376097,96,55919,Rampaging Pathfinder
+Albern Warzone,Xanthe C,376110,96,55919,Xanthe Saura Sniper
+Albern Warzone,Xanthe C,376111,96,55919,Xanthe Turkan Raider
+Albern Warzone,Xanthe C,376103,96,55919,Xanthe Turkan Heavy Trooper
+Albern Warzone,Xanthe C,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Xanthe D,376102,90,38169,Xanthe Malpas Hook
+Albern Warzone,Xanthe D,376096,90,38169,Rampaging Junker
+Albern Warzone,Xanthe D,376112,90,38169,Xanthe Nether Sentry
+Albern Warzone,Xanthe D,376104,90,38169,Xanthe Turkan Siege Trooper
+Albern Warzone,Xanthe D,376105,90,38169,Xanthe Nether Warrior
+Albern Warzone,Xanthe D,376300,99,16775700,Nether Pulverizer
+Albern Warzone,Xanthe E,376095,82,23569,Savage Larva
+Albern Warzone,Xanthe E,376109,82,23569,Xanthe Malpas Spitter
+Albern Warzone,Xanthe E,376101,82,23569,Xanthe Saura Shocktrooper
+Albern Warzone,Xanthe E,376300,99,16775700,Nether Pulverizer
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910103,40,477,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910113,40,477,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910109,40,477,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910106,40,477,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910101,40,477,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910102,40,477,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910114,40,477,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910108,40,477,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910110,40,477,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910112,40,477,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910111,40,477,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910104,40,477,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910116,40,477,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910107,40,477,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910115,40,477,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 1,3910105,40,477,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910503,60,5307,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910513,60,5307,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910509,60,5307,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910506,60,5307,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910501,60,5307,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910502,60,5307,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910514,60,5307,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910508,60,5307,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910510,60,5307,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910512,60,5307,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910511,60,5307,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910504,60,5307,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910516,60,5307,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910507,60,5307,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910515,60,5307,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 5,3910505,60,5307,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910603,65,10107,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910613,65,10107,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910609,65,10107,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910606,65,10107,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910601,65,10107,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910602,65,10107,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910614,65,10107,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910608,65,10107,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910610,65,10107,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910612,65,10107,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910611,65,10107,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910604,65,10107,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910616,65,10107,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910607,65,10107,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910615,65,10107,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 6,3910605,65,10107,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910703,70,19707,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910713,70,19707,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910709,70,19707,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910706,70,19707,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910701,70,19707,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910702,70,19707,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910714,70,19707,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910708,70,19707,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910710,70,19707,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910712,70,19707,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910711,70,19707,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910704,70,19707,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910716,70,19707,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910707,70,19707,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910715,70,19707,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 7,3910705,70,19707,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910803,75,32607,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910813,75,32607,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910809,75,32607,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910806,75,32607,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910801,75,32607,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910802,75,32607,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910814,75,32607,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910808,75,32607,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910810,75,32607,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910812,75,32607,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910811,75,32607,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910804,75,32607,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910816,75,32607,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910807,75,32607,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910815,75,32607,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 8,3910805,75,32607,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910903,80,52407,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910913,80,52407,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910909,80,52407,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910906,80,52407,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910901,80,52407,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910902,80,52407,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910914,80,52407,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910908,80,52407,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910910,80,52407,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910912,80,52407,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910911,80,52407,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910904,80,52407,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910916,80,52407,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910907,80,52407,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910915,80,52407,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 9,3910905,80,52407,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911003,85,75657,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911013,85,75657,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911009,85,75657,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911006,85,75657,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911001,85,75657,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911002,85,75657,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911014,85,75657,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911008,85,75657,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911010,85,75657,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911012,85,75657,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911011,85,75657,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911004,85,75657,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911016,85,75657,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911007,85,75657,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911015,85,75657,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 10,3911005,85,75657,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911103,90,102657,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911113,90,102657,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911109,90,102657,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911106,90,102657,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911101,90,102657,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911102,90,102657,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911114,90,102657,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911108,90,102657,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911110,90,102657,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911112,90,102657,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911111,90,102657,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911104,90,102657,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911116,90,102657,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911107,90,102657,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911115,90,102657,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 11,3911105,90,102657,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910203,45,1077,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910213,45,1077,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910209,45,1077,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910206,45,1077,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910201,45,1077,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910202,45,1077,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910214,45,1077,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910208,45,1077,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910210,45,1077,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910212,45,1077,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910211,45,1077,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910204,45,1077,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910216,45,1077,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910207,45,1077,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910215,45,1077,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 2,3910205,45,1077,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910303,50,2337,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910313,50,2337,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910309,50,2337,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910306,50,2337,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910301,50,2337,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910302,50,2337,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910314,50,2337,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910308,50,2337,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910310,50,2337,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910312,50,2337,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910311,50,2337,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910304,50,2337,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910316,50,2337,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910307,50,2337,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910315,50,2337,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 3,3910305,50,2337,Overly Thriving Tree
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910403,55,3807,Snowball Thrower
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910413,55,3807,Furious Two-Tiered Snowman
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910409,55,3807,Three-Tiered Snowman of Terror
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910406,55,3807,Runaway Gift Box
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910401,55,3807,Gift Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910402,55,3807,Delinquent Hunter
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910414,55,3807,Burning Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910408,55,3807,Shining Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910410,55,3807,Furious Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910412,55,3807,Raging Tree Decoration
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910411,55,3807,Onlooker Flem
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910404,55,3807,Candy Thief
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910416,55,3807,Runaway Reindeer
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910407,55,3807,Reindeer on a Strike
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910415,55,3807,Victim Chuti
+Santa's Warehouse,Santa's Warehouse Lv. 4,3910405,55,3807,Overly Thriving Tree
+Secret Nemesis Base,Secret Nemesis Base 1F,340302,45,689,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 1F,340310,45,689,Assault Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340309,45,689,Laser Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340311,45,689,Control Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340303,45,689,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 1F,340306,45,689,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 1F,340301,45,689,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 1F,340304,45,689,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 1F,340305,45,689,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 1F,340332,50,1169,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 1F,340340,50,1169,Assault Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340339,50,1169,Laser Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340341,50,1169,Control Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340333,50,1169,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 1F,340342,50,1169,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 1F,340336,50,1169,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 1F,340335,50,1169,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 1F,340331,50,1169,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 1F,340334,50,1169,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 1F,340362,55,1669,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 1F,340370,55,1669,Assault Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340369,55,1669,Laser Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340371,55,1669,Control Bork
+Secret Nemesis Base,Secret Nemesis Base 1F,340363,55,1669,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 1F,340372,55,1669,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 1F,340366,55,1669,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 1F,340361,55,1669,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 1F,340364,55,1669,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 1F,340365,55,1669,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 2F,340402,60,2869,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 2F,340408,60,2869,Gunner Commander
+Secret Nemesis Base,Secret Nemesis Base 2F,340407,60,2869,Sword Commander
+Secret Nemesis Base,Secret Nemesis Base 2F,340403,60,2869,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 2F,340412,60,2869,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 2F,340406,60,2869,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 2F,340405,60,2869,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 2F,340401,60,2869,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 2F,340404,60,2869,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 2F,340410,60,2869,Armed Mule
+Secret Nemesis Base,Secret Nemesis Base 2F,340432,64,5169,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 2F,340438,64,5169,Gunner Commander
+Secret Nemesis Base,Secret Nemesis Base 2F,340437,64,5169,Sword Commander
+Secret Nemesis Base,Secret Nemesis Base 2F,340433,64,5169,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 2F,340442,64,5169,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 2F,340436,64,5169,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 2F,340431,64,5169,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 2F,340434,64,5169,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 2F,340440,64,5169,Armed Mule
+Secret Nemesis Base,Secret Nemesis Base 2F,340441,64,5169,Passer Delta
+Secret Nemesis Base,Secret Nemesis Base 2F,340439,64,5169,Passer Alpha
+Secret Nemesis Base,Secret Nemesis Base 2F,340435,64,5169,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 2F,340462,68,8069,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 2F,340468,68,8069,Gunner Commander
+Secret Nemesis Base,Secret Nemesis Base 2F,340467,68,8069,Sword Commander
+Secret Nemesis Base,Secret Nemesis Base 2F,340463,68,8069,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 2F,340472,68,8069,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 2F,340466,68,8069,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 2F,340465,68,8069,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 2F,340461,68,8069,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 2F,340464,68,8069,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 2F,340470,68,8069,Armed Mule
+Secret Nemesis Base,Secret Nemesis Base 2F,340471,68,8069,Passer Delta
+Secret Nemesis Base,Secret Nemesis Base 2F,340469,68,8069,Passer Alpha
+Secret Nemesis Base,Secret Nemesis Base 3F,340502,72,12169,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 3F,340503,72,12169,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 3F,340513,72,12169,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 3F,340506,72,12169,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340505,72,12169,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 3F,340507,72,12169,Crawler Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340501,72,12169,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340504,72,12169,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 3F,340509,72,12169,Recon
+Secret Nemesis Base,Secret Nemesis Base 3F,340508,72,12169,Crawler Sentry
+Secret Nemesis Base,Secret Nemesis Base 3F,340510,72,12169,Striker
+Secret Nemesis Base,Secret Nemesis Base 3F,340511,72,12169,Vanguard
+Secret Nemesis Base,Secret Nemesis Base 3F,340532,75,16069,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 3F,340533,75,16069,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 3F,340543,75,16069,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 3F,340537,75,16069,Crawler Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340531,75,16069,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340534,75,16069,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 3F,340539,75,16069,Recon
+Secret Nemesis Base,Secret Nemesis Base 3F,340538,75,16069,Crawler Sentry
+Secret Nemesis Base,Secret Nemesis Base 3F,340540,75,16069,Striker
+Secret Nemesis Base,Secret Nemesis Base 3F,340541,75,16069,Vanguard
+Secret Nemesis Base,Secret Nemesis Base 3F,340562,78,20419,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 3F,340563,78,20419,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 3F,340572,78,20419,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 3F,340566,78,20419,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340567,78,20419,Crawler Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340561,78,20419,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 3F,340564,78,20419,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 3F,340569,78,20419,Recon
+Secret Nemesis Base,Secret Nemesis Base 3F,340565,78,20419,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 3F,340568,78,20419,Crawler Sentry
+Secret Nemesis Base,Secret Nemesis Base 3F,340570,78,20419,Striker
+Secret Nemesis Base,Secret Nemesis Base 3F,340571,78,20419,Vanguard
+Secret Nemesis Base,Secret Nemesis Base 4F,340602,82,26919,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 4F,340603,82,26919,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 4F,340612,82,26919,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 4F,340606,82,26919,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340601,82,26919,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340610,82,26919,Soma Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340611,82,26919,Soma Wizard
+Secret Nemesis Base,Secret Nemesis Base 4F,340604,82,26919,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 4F,340607,82,26919,Lydian Medic
+Secret Nemesis Base,Secret Nemesis Base 4F,340608,82,26919,Lydian Docker
+Secret Nemesis Base,Secret Nemesis Base 4F,340609,82,26919,Soma Ranger
+Secret Nemesis Base,Secret Nemesis Base 4F,340605,82,26919,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 4F,340632,86,34219,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 4F,340633,86,34219,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 4F,340642,86,34219,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 4F,340636,86,34219,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340635,86,34219,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 4F,340631,86,34219,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340640,86,34219,Soma Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340641,86,34219,Soma Wizard
+Secret Nemesis Base,Secret Nemesis Base 4F,340634,86,34219,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 4F,340637,86,34219,Lydian Medic
+Secret Nemesis Base,Secret Nemesis Base 4F,340638,86,34219,Lydian Docker
+Secret Nemesis Base,Secret Nemesis Base 4F,340639,86,34219,Soma Ranger
+Secret Nemesis Base,Secret Nemesis Base 4F,340662,90,42319,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 4F,340663,90,42319,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 4F,340672,90,42319,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 4F,340666,90,42319,Big Magnum Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340665,90,42319,Big Magnum Sentry
+Secret Nemesis Base,Secret Nemesis Base 4F,340661,90,42319,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340670,90,42319,Soma Warrior
+Secret Nemesis Base,Secret Nemesis Base 4F,340671,90,42319,Soma Wizard
+Secret Nemesis Base,Secret Nemesis Base 4F,340664,90,42319,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 4F,340667,90,42319,Lydian Medic
+Secret Nemesis Base,Secret Nemesis Base 4F,340668,90,42319,Lydian Docker
+Secret Nemesis Base,Secret Nemesis Base 4F,340669,90,42319,Soma Ranger
+Secret Nemesis Base,Secret Nemesis Base 5F,340702,95,58669,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 5F,340706,95,58669,Assault Bork
+Secret Nemesis Base,Secret Nemesis Base 5F,340705,95,58669,Control Bork
+Secret Nemesis Base,Secret Nemesis Base 5F,340703,95,58669,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 5F,340712,95,58669,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 5F,340701,95,58669,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 5F,340710,95,58669,Soma Warrior
+Secret Nemesis Base,Secret Nemesis Base 5F,340704,95,58669,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 5F,340707,95,58669,Lydian Medic
+Secret Nemesis Base,Secret Nemesis Base 5F,340708,95,58669,Lydian Docker
+Secret Nemesis Base,Secret Nemesis Base 5F,340709,95,58669,Soma Ranger
+Secret Nemesis Base,Secret Nemesis Base 5F,340711,95,58669,Sniffer
+Secret Nemesis Base,Secret Nemesis Base 5F,340732,100,80869,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 5F,340736,100,80869,Assault Bork
+Secret Nemesis Base,Secret Nemesis Base 5F,340735,100,80869,Control Bork
+Secret Nemesis Base,Secret Nemesis Base 5F,340733,100,80869,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 5F,340742,100,80869,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 5F,340731,100,80869,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 5F,340740,100,80869,Soma Warrior
+Secret Nemesis Base,Secret Nemesis Base 5F,340741,100,80869,Soma Wizard
+Secret Nemesis Base,Secret Nemesis Base 5F,340734,100,80869,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 5F,340737,100,80869,Lydian Medic
+Secret Nemesis Base,Secret Nemesis Base 5F,340738,100,80869,Lydian Docker
+Secret Nemesis Base,Secret Nemesis Base 5F,340739,100,80869,Sniffer
+Secret Nemesis Base,Secret Nemesis Base 5F,340762,105,109669,Mech Gunner
+Secret Nemesis Base,Secret Nemesis Base 5F,340763,105,109669,Mech Swordsman
+Secret Nemesis Base,Secret Nemesis Base 5F,340772,105,109669,Rampaging Ghost
+Secret Nemesis Base,Secret Nemesis Base 5F,340761,105,109669,Mech Warrior
+Secret Nemesis Base,Secret Nemesis Base 5F,340766,105,109669,Junker
+Secret Nemesis Base,Secret Nemesis Base 5F,340764,105,109669,Mech Ranger
+Secret Nemesis Base,Secret Nemesis Base 5F,340767,105,109669,Lydian Medic
+Secret Nemesis Base,Secret Nemesis Base 5F,340765,105,109669,Passer Alpha
+Secret Nemesis Base,Secret Nemesis Base 5F,340768,105,109669,Lydian Docker
+Secret Nemesis Base,Secret Nemesis Base 5F,340769,105,109669,Recon
+Secret Nemesis Base,Secret Nemesis Base 5F,340771,105,109669,Striker
+Secret Nemesis Base,Secret Nemesis Base 5F,340770,105,109669,Vanguard
+Exclusive Mining Field,Exclusive Mining Field 1F,361013,60,2869,Nightmare Ghost
+Exclusive Mining Field,Exclusive Mining Field 1F,361002,60,2869,Mine Gafftail
+Exclusive Mining Field,Exclusive Mining Field 1F,361004,60,2869,Mine Grumble Oul
+Exclusive Mining Field,Exclusive Mining Field 1F,361003,60,2869,Mine Heavy Scud
+Exclusive Mining Field,Exclusive Mining Field 1F,361001,60,2869,Mine Silex
+Exclusive Mining Field,Exclusive Mining Field 1F,361009,70,9669,Holy Stone Seeker
+Exclusive Mining Field,Exclusive Mining Field 1F,361012,70,9669,Nightmare Armored Ghost
+Exclusive Mining Field,Exclusive Mining Field 1F,361008,70,9669,Holy Stone Guardian
+Exclusive Mining Field,Exclusive Mining Field 1F,361007,70,9669,Mine Clod
+Exclusive Mining Field,Exclusive Mining Field 1F,361005,70,9669,Mine Grumble
+Exclusive Mining Field,Exclusive Mining Field 1F,361006,70,9669,Mine Arghol
+Exclusive Mining Field,Exclusive Mining Field 1F,361010,70,9669,Holy Stone Sweeper
+Exclusive Mining Field,Exclusive Mining Field 2F,363005,82,26919,Nightmare Ghost
+Exclusive Mining Field,Exclusive Mining Field 2F,363002,82,26919,Mine Gafftail
+Exclusive Mining Field,Exclusive Mining Field 2F,363004,82,26919,Mine Grumble Oul
+Exclusive Mining Field,Exclusive Mining Field 2F,363003,82,26919,Mine Heavy Scud
+Exclusive Mining Field,Exclusive Mining Field 2F,363001,82,26919,Mine Silex
+Exclusive Mining Field,Exclusive Mining Field 2F,363015,90,42319,Holy Stone Seeker
+Exclusive Mining Field,Exclusive Mining Field 2F,363017,90,42319,Nightmare Armored Ghost
+Exclusive Mining Field,Exclusive Mining Field 2F,363014,90,42319,Holy Stone Guardian
+Exclusive Mining Field,Exclusive Mining Field 2F,363013,90,42319,Mine Clod
+Exclusive Mining Field,Exclusive Mining Field 2F,363011,90,42319,Mine Grumble
+Exclusive Mining Field,Exclusive Mining Field 2F,363012,90,42319,Mine Arghol
+Exclusive Mining Field,Exclusive Mining Field 2F,363016,90,42319,Holy Stone Sweeper
+Exclusive Mining Field,Exclusive Mining Field 3F,3460305,95,58669,Nightmare Ghost
+Exclusive Mining Field,Exclusive Mining Field 3F,3460302,95,58669,Mine Gafftail
+Exclusive Mining Field,Exclusive Mining Field 3F,3460304,95,58669,Mine Grumble Oul
+Exclusive Mining Field,Exclusive Mining Field 3F,3460303,95,58669,Mine Heavy Scud
+Exclusive Mining Field,Exclusive Mining Field 3F,3460301,95,58669,Mine Silex
+Exclusive Mining Field,Exclusive Mining Field 3F,3460310,105,109669,Holy Stone Seeker
+Exclusive Mining Field,Exclusive Mining Field 3F,3460312,105,109669,Nightmare Armored Ghost
+Exclusive Mining Field,Exclusive Mining Field 3F,3460309,105,109669,Holy Stone Guardian
+Exclusive Mining Field,Exclusive Mining Field 3F,3460308,105,109669,Mine Clod
+Exclusive Mining Field,Exclusive Mining Field 3F,3460306,105,109669,Mine Grumble
+Exclusive Mining Field,Exclusive Mining Field 3F,3460307,105,109669,Mine Arghol
+Exclusive Mining Field,Exclusive Mining Field 3F,3460311,105,109669,Holy Stone Sweeper
+Public Mining Field,Public Mining Field 1F,361106,50,1169,Sorting Station Arghol
+Public Mining Field,Public Mining Field 1F,361110,50,1169,Sorting Station Holy Stone Seeker
+Public Mining Field,Public Mining Field 1F,361107,50,1169,Sorting Station Clod
+Public Mining Field,Public Mining Field 1F,361102,50,1169,Sorting Station Gafftail
+Public Mining Field,Public Mining Field 1F,361104,50,1169,Sorting Station Grumble
+Public Mining Field,Public Mining Field 1F,361105,50,1169,Sorting Station Grumble Oul
+Public Mining Field,Public Mining Field 1F,361108,50,1169,Sorting Station Holy Stone Guardian
+Public Mining Field,Public Mining Field 1F,361111,50,1169,Sorting Station Holy Stone Sweeper
+Public Mining Field,Public Mining Field 1F,361101,50,1169,Sorting Station Silex
+Public Mining Field,Public Mining Field 1F,361103,50,1169,Sorting Station Heavy Scud
+Public Mining Field,Public Mining Field 1F,361109,50,1169,Nightmare Ghost
+Public Mining Field,Public Mining Field 1F,361139,54,1569,Nightmare Ghost
+Public Mining Field,Public Mining Field 1F,361136,54,1569,Refinery Arghol
+Public Mining Field,Public Mining Field 1F,361140,54,1569,Refinery Holy Stone Seeker
+Public Mining Field,Public Mining Field 1F,361132,54,1569,Refinery Gafftail
+Public Mining Field,Public Mining Field 1F,361134,54,1569,Refinery Grumble
+Public Mining Field,Public Mining Field 1F,361135,54,1569,Refinery Grumble Oul
+Public Mining Field,Public Mining Field 1F,361138,54,1569,Refinery Holy Stone Guardian
+Public Mining Field,Public Mining Field 1F,361141,54,1569,Refinery Holy Stone Sweeper
+Public Mining Field,Public Mining Field 1F,361133,54,1569,Refinery Heavy Scud
+Public Mining Field,Public Mining Field 1F,361131,54,1569,Refinery Silex
+Public Mining Field,Public Mining Field 1F,361137,54,1569,Refinery Clod
+Public Mining Field,Public Mining Field 1F,361169,58,2169,Nightmare Ghost
+Public Mining Field,Public Mining Field 1F,361166,58,2169,Smelter Arghol
+Public Mining Field,Public Mining Field 1F,361170,58,2169,Smelter Holy Stone Seeker
+Public Mining Field,Public Mining Field 1F,361164,58,2169,Smelter Grumble
+Public Mining Field,Public Mining Field 1F,361165,58,2169,Smelter Grumble Oul
+Public Mining Field,Public Mining Field 1F,361168,58,2169,Smelter Holy Stone Guardian
+Public Mining Field,Public Mining Field 1F,361171,58,2169,Smelter Holy Stone Sweeper
+Public Mining Field,Public Mining Field 1F,361162,58,2169,Smelter Gafftail
+Public Mining Field,Public Mining Field 1F,361163,58,2169,Smelter Heavy Scud
+Public Mining Field,Public Mining Field 1F,361161,58,2169,Smelter Silex
+Public Mining Field,Public Mining Field 1F,361167,58,2169,Smelter Clod
+Public Mining Field,Public Mining Field 2F,361206,62,3969,Sorting Station Arghol
+Public Mining Field,Public Mining Field 2F,361208,62,3969,Sorting Station Holy Stone Seeker
+Public Mining Field,Public Mining Field 2F,361207,62,3969,Sorting Station Clod
+Public Mining Field,Public Mining Field 2F,361202,62,3969,Sorting Station Gafftail
+Public Mining Field,Public Mining Field 2F,361204,62,3969,Sorting Station Grumble
+Public Mining Field,Public Mining Field 2F,361205,62,3969,Sorting Station Grumble Oul
+Public Mining Field,Public Mining Field 2F,361210,62,3969,Sorting Station Holy Stone Guardian
+Public Mining Field,Public Mining Field 2F,361211,62,3969,Sorting Station Holy Stone Sweeper
+Public Mining Field,Public Mining Field 2F,361201,62,3969,Sorting Station Silex
+Public Mining Field,Public Mining Field 2F,361203,62,3969,Sorting Station Heavy Scud
+Public Mining Field,Public Mining Field 2F,361209,62,3969,Nightmare Ghost
+Public Mining Field,Public Mining Field 2F,361239,66,6569,Nightmare Ghost
+Public Mining Field,Public Mining Field 2F,361236,66,6569,Refinery Arghol
+Public Mining Field,Public Mining Field 2F,361238,66,6569,Refinery Holy Stone Seeker
+Public Mining Field,Public Mining Field 2F,361232,66,6569,Refinery Gafftail
+Public Mining Field,Public Mining Field 2F,361234,66,6569,Refinery Grumble
+Public Mining Field,Public Mining Field 2F,361235,66,6569,Refinery Grumble Oul
+Public Mining Field,Public Mining Field 2F,361240,66,6569,Refinery Holy Stone Guardian
+Public Mining Field,Public Mining Field 2F,361241,66,6569,Refinery Holy Stone Sweeper
+Public Mining Field,Public Mining Field 2F,361233,66,6569,Refinery Heavy Scud
+Public Mining Field,Public Mining Field 2F,361231,66,6569,Refinery Silex
+Public Mining Field,Public Mining Field 2F,361237,66,6569,Refinery Clod
+Public Mining Field,Public Mining Field 2F,361269,70,9669,Nightmare Ghost
+Public Mining Field,Public Mining Field 2F,361266,70,9669,Smelter Arghol
+Public Mining Field,Public Mining Field 2F,361268,70,9669,Smelter Holy Stone Seeker
+Public Mining Field,Public Mining Field 2F,361265,70,9669,Smelter Grumble Oul
+Public Mining Field,Public Mining Field 2F,361270,70,9669,Smelter Holy Stone Guardian
+Public Mining Field,Public Mining Field 2F,361271,70,9669,Smelter Holy Stone Sweeper
+Public Mining Field,Public Mining Field 2F,361264,70,9669,Smelter Grumble
+Public Mining Field,Public Mining Field 2F,361262,70,9669,Smelter Gafftail
+Public Mining Field,Public Mining Field 2F,361263,70,9669,Smelter Heavy Scud
+Public Mining Field,Public Mining Field 2F,361261,70,9669,Smelter Silex
+Public Mining Field,Public Mining Field 2F,361267,70,9669,Smelter Clod
+Public Mining Field,Public Mining Field 3F,361306,74,14769,Sorting Station Arghol
+Public Mining Field,Public Mining Field 3F,361312,74,14769,Sorting Station Holy Stone Seeker
+Public Mining Field,Public Mining Field 3F,361307,74,14769,Sorting Station Clod
+Public Mining Field,Public Mining Field 3F,361302,74,14769,Sorting Station Gafftail
+Public Mining Field,Public Mining Field 3F,361304,74,14769,Sorting Station Grumble
+Public Mining Field,Public Mining Field 3F,361305,74,14769,Sorting Station Grumble Oul
+Public Mining Field,Public Mining Field 3F,361311,74,14769,Sorting Station Holy Stone Guardian
+Public Mining Field,Public Mining Field 3F,361308,74,14769,Sorting Station Holy Stone Sweeper
+Public Mining Field,Public Mining Field 3F,361301,74,14769,Sorting Station Silex
+Public Mining Field,Public Mining Field 3F,361303,74,14769,Sorting Station Heavy Scud
+Public Mining Field,Public Mining Field 3F,361310,74,14769,Nightmare Ghost
+Public Mining Field,Public Mining Field 3F,361340,77,18919,Nightmare Ghost
+Public Mining Field,Public Mining Field 3F,361332,77,18919,Refinery Gafftail
+Public Mining Field,Public Mining Field 3F,361336,77,18919,Refinery Arghol
+Public Mining Field,Public Mining Field 3F,361342,77,18919,Refinery Holy Stone Seeker
+Public Mining Field,Public Mining Field 3F,361334,77,18919,Refinery Grumble
+Public Mining Field,Public Mining Field 3F,361335,77,18919,Refinery Grumble Oul
+Public Mining Field,Public Mining Field 3F,361341,77,18919,Refinery Holy Stone Guardian
+Public Mining Field,Public Mining Field 3F,361338,77,18919,Refinery Holy Stone Sweeper
+Public Mining Field,Public Mining Field 3F,361331,77,18919,Refinery Silex
+Public Mining Field,Public Mining Field 3F,361333,77,18919,Refinery Heavy Scud
+Public Mining Field,Public Mining Field 3F,361337,77,18919,Refinery Clod
+Public Mining Field,Public Mining Field 3F,361370,80,23569,Nightmare Ghost
+Public Mining Field,Public Mining Field 3F,361366,80,23569,Smelter Arghol
+Public Mining Field,Public Mining Field 3F,361372,80,23569,Smelter Holy Stone Seeker
+Public Mining Field,Public Mining Field 3F,361364,80,23569,Smelter Grumble
+Public Mining Field,Public Mining Field 3F,361365,80,23569,Smelter Grumble Oul
+Public Mining Field,Public Mining Field 3F,361371,80,23569,Smelter Holy Stone Guardian
+Public Mining Field,Public Mining Field 3F,361368,80,23569,Smelter Holy Stone Sweeper
+Public Mining Field,Public Mining Field 3F,361362,80,23569,Smelter Gafftail
+Public Mining Field,Public Mining Field 3F,361363,80,23569,Smelter Heavy Scud
+Public Mining Field,Public Mining Field 3F,361361,80,23569,Smelter Silex
+Public Mining Field,Public Mining Field 3F,361367,80,23569,Smelter Clod
+Public Mining Field,Public Mining Field 4F,362006,84,30469,Sorting Station Arghol
+Public Mining Field,Public Mining Field 4F,362010,84,30469,Sorting Station Holy Stone Seeker
+Public Mining Field,Public Mining Field 4F,362007,84,30469,Sorting Station Clod
+Public Mining Field,Public Mining Field 4F,362002,84,30469,Sorting Station Gafftail
+Public Mining Field,Public Mining Field 4F,362004,84,30469,Sorting Station Grumble
+Public Mining Field,Public Mining Field 4F,362005,84,30469,Sorting Station Grumble Oul
+Public Mining Field,Public Mining Field 4F,362009,84,30469,Sorting Station Holy Stone Guardian
+Public Mining Field,Public Mining Field 4F,362008,84,30469,Sorting Station Holy Stone Sweeper
+Public Mining Field,Public Mining Field 4F,362003,84,30469,Sorting Station Heavy Scud
+Public Mining Field,Public Mining Field 4F,362001,84,30469,Sorting Station Silex
+Public Mining Field,Public Mining Field 4F,362019,84,30469,Nightmare Ghost
+Public Mining Field,Public Mining Field 4F,362049,88,38169,Nightmare Ghost
+Public Mining Field,Public Mining Field 4F,362036,88,38169,Refinery Arghol
+Public Mining Field,Public Mining Field 4F,362040,88,38169,Refinery Holy Stone Seeker
+Public Mining Field,Public Mining Field 4F,362032,88,38169,Refinery Gafftail
+Public Mining Field,Public Mining Field 4F,362034,88,38169,Refinery Grumble
+Public Mining Field,Public Mining Field 4F,362035,88,38169,Refinery Grumble Oul
+Public Mining Field,Public Mining Field 4F,362039,88,38169,Refinery Holy Stone Guardian
+Public Mining Field,Public Mining Field 4F,362038,88,38169,Refinery Holy Stone Sweeper
+Public Mining Field,Public Mining Field 4F,362033,88,38169,Refinery Heavy Scud
+Public Mining Field,Public Mining Field 4F,362031,88,38169,Refinery Silex
+Public Mining Field,Public Mining Field 4F,362037,88,38169,Refinery Clod
+Public Mining Field,Public Mining Field 4F,362079,92,46669,Nightmare Ghost
+Public Mining Field,Public Mining Field 4F,362066,92,46669,Smelter Arghol
+Public Mining Field,Public Mining Field 4F,362070,92,46669,Smelter Holy Stone Seeker
+Public Mining Field,Public Mining Field 4F,362064,92,46669,Smelter Grumble
+Public Mining Field,Public Mining Field 4F,362065,92,46669,Smelter Grumble Oul
+Public Mining Field,Public Mining Field 4F,362069,92,46669,Smelter Holy Stone Guardian
+Public Mining Field,Public Mining Field 4F,362068,92,46669,Smelter Holy Stone Sweeper
+Public Mining Field,Public Mining Field 4F,362062,92,46669,Smelter Gafftail
+Public Mining Field,Public Mining Field 4F,362063,92,46669,Smelter Heavy Scud
+Public Mining Field,Public Mining Field 4F,362061,92,46669,Smelter Silex
+Public Mining Field,Public Mining Field 4F,362067,92,46669,Smelter Clod
+Public Mining Field,Public Mining Field 5F,3462506,96,61519,Sorting Station Arghol
+Public Mining Field,Public Mining Field 5F,3462510,96,61519,Sorting Station Holy Stone Seeker
+Public Mining Field,Public Mining Field 5F,3462507,96,61519,Sorting Station Clod
+Public Mining Field,Public Mining Field 5F,3462502,96,61519,Sorting Station Gafftail
+Public Mining Field,Public Mining Field 5F,3462504,96,61519,Sorting Station Grumble
+Public Mining Field,Public Mining Field 5F,3462505,96,61519,Sorting Station Grumble Oul
+Public Mining Field,Public Mining Field 5F,3462509,96,61519,Sorting Station Holy Stone Guardian
+Public Mining Field,Public Mining Field 5F,3462508,96,61519,Sorting Station Holy Stone Sweeper
+Public Mining Field,Public Mining Field 5F,3462503,96,61519,Sorting Station Heavy Scud
+Public Mining Field,Public Mining Field 5F,3462501,96,61519,Sorting Station Silex
+Public Mining Field,Public Mining Field 5F,3462511,96,61519,Nightmare Ghost
+Public Mining Field,Public Mining Field 5F,3462531,101,84169,Nightmare Ghost
+Public Mining Field,Public Mining Field 5F,3462522,101,84169,Refinery Gafftail
+Public Mining Field,Public Mining Field 5F,3462526,101,84169,Refinery Arghol
+Public Mining Field,Public Mining Field 5F,3462530,101,84169,Refinery Holy Stone Seeker
+Public Mining Field,Public Mining Field 5F,3462524,101,84169,Refinery Grumble
+Public Mining Field,Public Mining Field 5F,3462525,101,84169,Refinery Grumble Oul
+Public Mining Field,Public Mining Field 5F,3462529,101,84169,Refinery Holy Stone Guardian
+Public Mining Field,Public Mining Field 5F,3462528,101,84169,Refinery Holy Stone Sweeper
+Public Mining Field,Public Mining Field 5F,3462523,101,84169,Refinery Heavy Scud
+Public Mining Field,Public Mining Field 5F,3462521,101,84169,Refinery Silex
+Public Mining Field,Public Mining Field 5F,3462527,101,84169,Refinery Clod
+Public Mining Field,Public Mining Field 5F,3462551,106,116669,Nightmare Ghost
+Public Mining Field,Public Mining Field 5F,3462546,106,116669,Smelter Arghol
+Public Mining Field,Public Mining Field 5F,3462550,106,116669,Smelter Holy Stone Seeker
+Public Mining Field,Public Mining Field 5F,3462544,106,116669,Smelter Grumble
+Public Mining Field,Public Mining Field 5F,3462545,106,116669,Smelter Grumble Oul
+Public Mining Field,Public Mining Field 5F,3462549,106,116669,Smelter Holy Stone Guardian
+Public Mining Field,Public Mining Field 5F,3462548,106,116669,Smelter Holy Stone Sweeper
+Public Mining Field,Public Mining Field 5F,3462542,106,116669,Smelter Gafftail
+Public Mining Field,Public Mining Field 5F,3462543,106,116669,Smelter Heavy Scud
+Public Mining Field,Public Mining Field 5F,3462541,106,116669,Smelter Silex
+Public Mining Field,Public Mining Field 5F,3462547,106,116669,Smelter Clod
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930201,45,2907,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930202,45,2907,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930206,45,2907,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930209,45,2907,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930204,45,2907,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930208,45,2907,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930207,45,2907,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930205,45,2907,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 2,3930203,45,2907,Ship Scrapper
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930301,55,6507,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930302,55,6507,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930306,55,6507,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930309,55,6507,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930304,55,6507,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930308,55,6507,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930307,55,6507,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930305,55,6507,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 3,3930303,55,6507,Ship Scrapper
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930501,75,61257,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930502,75,61257,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930506,75,61257,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930509,75,61257,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930504,75,61257,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930508,75,61257,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930507,75,61257,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930505,75,61257,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 5,3930503,75,61257,Ship Scrapper
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930601,85,120507,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930602,85,120507,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930606,85,120507,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930609,85,120507,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930604,85,120507,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930608,85,120507,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930607,85,120507,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930605,85,120507,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 6,3930603,85,120507,Ship Scrapper
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930701,90,159807,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930702,90,159807,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930706,90,159807,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930709,90,159807,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930704,90,159807,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930708,90,159807,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930707,90,159807,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930705,90,159807,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 7,3930703,90,159807,Ship Scrapper
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930801,95,220557,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930802,95,220557,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930806,95,220557,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930809,95,220557,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930804,95,220557,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930808,95,220557,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930807,95,220557,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930805,95,220557,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 8,3930803,95,220557,Ship Scrapper
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930101,35,627,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930102,35,627,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930106,35,627,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930109,35,627,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930104,35,627,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930108,35,627,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930107,35,627,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930105,35,627,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 1,3930103,35,627,Ship Scrapper
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930401,65,24207,Treasure Hunter
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930402,65,24207,Seaside Outlaw
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930406,65,24207,Deep-Sea Lizard
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930409,65,24207,Waterplay Armed Mule
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930404,65,24207,Jellyfish Novs
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930408,65,24207,Octolator
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930407,65,24207,Parasol Bork
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930405,65,24207,Unripe Tweezer
+Treasure Ship Coast,Treasure Ship Coast Lv. 4,3930403,65,24207,Ship Scrapper
+Android Junkyard,Android Junkyard 10F,344004,80,52407,Android Shocktrooper
+Android Junkyard,Android Junkyard 10F,344007,80,52407,Android Commander
+Android Junkyard,Android Junkyard 10F,344002,80,52407,Android Defender
+Android Junkyard,Android Junkyard 10F,344006,80,52407,Android Escort
+Android Junkyard,Android Junkyard 10F,344003,80,52407,Android Rifleman
+Android Junkyard,Android Junkyard 10F,344001,80,52407,Android Sentry
+Android Junkyard,Android Junkyard 10F,344005,80,52407,Android Sniper
+Android Junkyard,Android Junkyard 11F,3421104,85,75657,Android Shocktrooper
+Android Junkyard,Android Junkyard 11F,3421107,85,75657,Android Commander
+Android Junkyard,Android Junkyard 11F,3421102,85,75657,Android Defender
+Android Junkyard,Android Junkyard 11F,3421106,85,75657,Android Escort
+Android Junkyard,Android Junkyard 11F,3421103,85,75657,Android Rifleman
+Android Junkyard,Android Junkyard 11F,3421101,85,75657,Android Sentry
+Android Junkyard,Android Junkyard 11F,3421105,85,75657,Android Sniper
+Android Junkyard,Android Junkyard 12F,3421204,90,102657,Android Shocktrooper
+Android Junkyard,Android Junkyard 12F,3421207,90,102657,Android Commander
+Android Junkyard,Android Junkyard 12F,3421202,90,102657,Android Defender
+Android Junkyard,Android Junkyard 12F,3421206,90,102657,Android Escort
+Android Junkyard,Android Junkyard 12F,3421203,90,102657,Android Rifleman
+Android Junkyard,Android Junkyard 12F,3421201,90,102657,Android Sentry
+Android Junkyard,Android Junkyard 12F,3421205,90,102657,Android Sniper
+Android Junkyard,Android Junkyard 13F,3421304,95,133407,Android Shocktrooper
+Android Junkyard,Android Junkyard 13F,3421307,95,133407,Android Commander
+Android Junkyard,Android Junkyard 13F,3421302,95,133407,Android Defender
+Android Junkyard,Android Junkyard 13F,3421306,95,133407,Android Escort
+Android Junkyard,Android Junkyard 13F,3421303,95,133407,Android Rifleman
+Android Junkyard,Android Junkyard 13F,3421301,95,133407,Android Sentry
+Android Junkyard,Android Junkyard 13F,3421305,95,133407,Android Sniper
+Android Junkyard,Android Junkyard 14F,3421404,100,184557,Android Shocktrooper
+Android Junkyard,Android Junkyard 14F,3421407,100,184557,Android Commander
+Android Junkyard,Android Junkyard 14F,3421402,100,184557,Android Defender
+Android Junkyard,Android Junkyard 14F,3421406,100,184557,Android Escort
+Android Junkyard,Android Junkyard 14F,3421403,100,184557,Android Rifleman
+Android Junkyard,Android Junkyard 14F,3421401,100,184557,Android Sentry
+Android Junkyard,Android Junkyard 14F,3421405,100,184557,Android Sniper
+Android Junkyard,Android Junkyard 1F,343104,35,351,Android Shocktrooper
+Android Junkyard,Android Junkyard 1F,343107,35,351,Android Commander
+Android Junkyard,Android Junkyard 1F,343102,35,351,Android Defender
+Android Junkyard,Android Junkyard 1F,343106,35,351,Android Escort
+Android Junkyard,Android Junkyard 1F,343103,35,351,Android Rifleman
+Android Junkyard,Android Junkyard 1F,343101,35,351,Android Sentry
+Android Junkyard,Android Junkyard 1F,343105,35,351,Android Sniper
+Android Junkyard,Android Junkyard 2F,343204,40,477,Android Shocktrooper
+Android Junkyard,Android Junkyard 2F,343207,40,477,Android Commander
+Android Junkyard,Android Junkyard 2F,343202,40,477,Android Defender
+Android Junkyard,Android Junkyard 2F,343206,40,477,Android Escort
+Android Junkyard,Android Junkyard 2F,343203,40,477,Android Rifleman
+Android Junkyard,Android Junkyard 2F,343201,40,477,Android Sentry
+Android Junkyard,Android Junkyard 2F,343205,40,477,Android Sniper
+Android Junkyard,Android Junkyard 3F,343304,45,1077,Android Shocktrooper
+Android Junkyard,Android Junkyard 3F,343307,45,1077,Android Commander
+Android Junkyard,Android Junkyard 3F,343302,45,1077,Android Defender
+Android Junkyard,Android Junkyard 3F,343306,45,1077,Android Escort
+Android Junkyard,Android Junkyard 3F,343303,45,1077,Android Rifleman
+Android Junkyard,Android Junkyard 3F,343301,45,1077,Android Sentry
+Android Junkyard,Android Junkyard 3F,343305,45,1077,Android Sniper
+Android Junkyard,Android Junkyard 4F,343404,50,2337,Android Shocktrooper
+Android Junkyard,Android Junkyard 4F,343407,50,2337,Android Commander
+Android Junkyard,Android Junkyard 4F,343402,50,2337,Android Defender
+Android Junkyard,Android Junkyard 4F,343406,50,2337,Android Escort
+Android Junkyard,Android Junkyard 4F,343403,50,2337,Android Rifleman
+Android Junkyard,Android Junkyard 4F,343401,50,2337,Android Sentry
+Android Junkyard,Android Junkyard 4F,343405,50,2337,Android Sniper
+Android Junkyard,Android Junkyard 5F,343504,55,3807,Android Shocktrooper
+Android Junkyard,Android Junkyard 5F,343507,55,3807,Android Commander
+Android Junkyard,Android Junkyard 5F,343502,55,3807,Android Defender
+Android Junkyard,Android Junkyard 5F,343506,55,3807,Android Escort
+Android Junkyard,Android Junkyard 5F,343503,55,3807,Android Rifleman
+Android Junkyard,Android Junkyard 5F,343501,55,3807,Android Sentry
+Android Junkyard,Android Junkyard 5F,343505,55,3807,Android Sniper
+Android Junkyard,Android Junkyard 6F,343604,60,5307,Android Shocktrooper
+Android Junkyard,Android Junkyard 6F,343607,60,5307,Android Commander
+Android Junkyard,Android Junkyard 6F,343602,60,5307,Android Defender
+Android Junkyard,Android Junkyard 6F,343606,60,5307,Android Escort
+Android Junkyard,Android Junkyard 6F,343603,60,5307,Android Rifleman
+Android Junkyard,Android Junkyard 6F,343601,60,5307,Android Sentry
+Android Junkyard,Android Junkyard 6F,343605,60,5307,Android Sniper
+Android Junkyard,Android Junkyard 7F,343704,65,10107,Android Shocktrooper
+Android Junkyard,Android Junkyard 7F,343707,65,10107,Android Commander
+Android Junkyard,Android Junkyard 7F,343702,65,10107,Android Defender
+Android Junkyard,Android Junkyard 7F,343706,65,10107,Android Escort
+Android Junkyard,Android Junkyard 7F,343703,65,10107,Android Rifleman
+Android Junkyard,Android Junkyard 7F,343701,65,10107,Android Sentry
+Android Junkyard,Android Junkyard 7F,343705,65,10107,Android Sniper
+Android Junkyard,Android Junkyard 8F,343804,70,19707,Android Shocktrooper
+Android Junkyard,Android Junkyard 8F,343807,70,19707,Android Commander
+Android Junkyard,Android Junkyard 8F,343802,70,19707,Android Defender
+Android Junkyard,Android Junkyard 8F,343806,70,19707,Android Escort
+Android Junkyard,Android Junkyard 8F,343803,70,19707,Android Rifleman
+Android Junkyard,Android Junkyard 8F,343801,70,19707,Android Sentry
+Android Junkyard,Android Junkyard 8F,343805,70,19707,Android Sniper
+Android Junkyard,Android Junkyard 9F,343904,75,32607,Android Shocktrooper
+Android Junkyard,Android Junkyard 9F,343907,75,32607,Android Commander
+Android Junkyard,Android Junkyard 9F,343902,75,32607,Android Defender
+Android Junkyard,Android Junkyard 9F,343906,75,32607,Android Escort
+Android Junkyard,Android Junkyard 9F,343903,75,32607,Android Rifleman
+Android Junkyard,Android Junkyard 9F,343901,75,32607,Android Sentry
+Android Junkyard,Android Junkyard 9F,343905,75,32607,Android Sniper
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940106,45,2907,Nostalgic Karon Assassin
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940107,45,2907,Nostalgic Karon Shocktrooper
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940108,45,2907,Nostalgic Karon Executioner
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940103,45,2907,Purple Armored Ghost
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940101,45,2907,Purple Artillery Ghost
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940102,45,2907,Purple Ghost
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940112,45,2907,Purple Malpas
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940111,45,2907,Cherry Blossom Scented Meevlan
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940110,45,2907,Blighted Seedling
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940104,45,2907,Cherry Blossom Scented Nezad
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940105,45,2907,Nostalgic Karon Sniper
+Springtime Memories Lv. 1,Springtime Memories Lv. 1,3940109,45,2907,Nostalgic Karon Tactician
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940306,65,24207,Nostalgic Karon Assassin
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940308,65,24207,Nostalgic Karon Executioner
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940303,65,24207,Purple Armored Ghost
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940301,65,24207,Purple Artillery Ghost
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940302,65,24207,Purple Ghost
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940307,65,24207,Nostalgic Karon Shocktrooper
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940312,65,24207,Purple Malpas
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940311,65,24207,Cherry Blossom Scented Meevlan
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940310,65,24207,Blighted Seedling
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940304,65,24207,Cherry Blossom Scented Nezad
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940305,65,24207,Nostalgic Karon Sniper
+Springtime Memories Lv. 3,Springtime Memories Lv. 3,3940309,65,24207,Nostalgic Karon Tactician
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940406,75,61257,Nostalgic Karon Assassin
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940408,75,61257,Nostalgic Karon Executioner
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940403,75,61257,Purple Armored Ghost
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940401,75,61257,Purple Artillery Ghost
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940402,75,61257,Purple Ghost
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940412,75,61257,Purple Malpas
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940411,75,61257,Cherry Blossom Scented Meevlan
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940410,75,61257,Blighted Seedling
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940404,75,61257,Cherry Blossom Scented Nezad
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940405,75,61257,Nostalgic Karon Sniper
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940407,75,61257,Nostalgic Karon Shocktrooper
+Springtime Memories Lv. 4,Springtime Memories Lv. 4,3940409,75,61257,Nostalgic Karon Tactician
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940506,85,120507,Nostalgic Karon Assassin
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940507,85,120507,Nostalgic Karon Shocktrooper
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940508,85,120507,Nostalgic Karon Executioner
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940503,85,120507,Purple Armored Ghost
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940501,85,120507,Purple Artillery Ghost
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940502,85,120507,Purple Ghost
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940512,85,120507,Purple Malpas
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940511,85,120507,Cherry Blossom Scented Meevlan
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940510,85,120507,Blighted Seedling
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940504,85,120507,Cherry Blossom Scented Nezad
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940505,85,120507,Nostalgic Karon Sniper
+Springtime Memories Lv. 5,Springtime Memories Lv. 5,3940509,85,120507,Nostalgic Karon Tactician
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940606,90,159807,Nostalgic Karon Assassin
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940608,90,159807,Nostalgic Karon Executioner
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940603,90,159807,Purple Armored Ghost
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940601,90,159807,Purple Artillery Ghost
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940602,90,159807,Purple Ghost
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940607,90,159807,Nostalgic Karon Shocktrooper
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940612,90,159807,Purple Malpas
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940611,90,159807,Cherry Blossom Scented Meevlan
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940610,90,159807,Blighted Seedling
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940604,90,159807,Cherry Blossom Scented Nezad
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940605,90,159807,Nostalgic Karon Sniper
+Springtime Memories Lv. 6,Springtime Memories Lv. 6,3940609,90,159807,Nostalgic Karon Tactician
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940206,55,6507,Nostalgic Karon Assassin
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940208,55,6507,Nostalgic Karon Executioner
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940203,55,6507,Purple Armored Ghost
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940201,55,6507,Purple Artillery Ghost
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940202,55,6507,Purple Ghost
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940207,55,6507,Nostalgic Karon Shocktrooper
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940212,55,6507,Purple Malpas
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940211,55,6507,Cherry Blossom Scented Meevlan
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940210,55,6507,Blighted Seedling
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940204,55,6507,Cherry Blossom Scented Nezad
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940205,55,6507,Nostalgic Karon Sniper
+Springtime Memories Lv. 2,Springtime Memories Lv. 2,3940209,55,6507,Nostalgic Karon Tactician
+Corroded Ruins,Corroded Ruins Lv. 1,3920101,35,941,Eroded Temizl
+Corroded Ruins,Corroded Ruins Lv. 1,3920102,35,941,Eroded Splinter
+Corroded Ruins,Corroded Ruins Lv. 1,3920103,35,941,Eroded Gafftail
+Corroded Ruins,Corroded Ruins Lv. 1,3920104,35,941,Eroded Optic Larva
+Corroded Ruins,Corroded Ruins Lv. 2,3920201,45,4361,Eroded Temizl
+Corroded Ruins,Corroded Ruins Lv. 2,3920202,45,4361,Eroded Splinter
+Corroded Ruins,Corroded Ruins Lv. 2,3920203,45,4361,Eroded Gafftail
+Corroded Ruins,Corroded Ruins Lv. 2,3920204,45,4361,Eroded Optic Larva
+Corroded Ruins,Corroded Ruins Lv. 3,3920301,55,10411,Eroded Temizl
+Corroded Ruins,Corroded Ruins Lv. 3,3920302,55,10411,Eroded Splinter
+Corroded Ruins,Corroded Ruins Lv. 3,3920303,55,10411,Eroded Gafftail
+Corroded Ruins,Corroded Ruins Lv. 3,3920304,55,10411,Eroded Optic Larva
+Corroded Ruins,Corroded Ruins Lv. 4,3920401,65,41152,Eroded Temizl
+Corroded Ruins,Corroded Ruins Lv. 4,3920402,65,41152,Eroded Splinter
+Corroded Ruins,Corroded Ruins Lv. 4,3920403,65,41152,Eroded Gafftail
+Corroded Ruins,Corroded Ruins Lv. 4,3920404,65,41152,Eroded Optic Larva
+Corroded Ruins,Corroded Ruins Lv. 5,3920501,75,110263,Eroded Temizl
+Corroded Ruins,Corroded Ruins Lv. 5,3920502,75,110263,Eroded Splinter
+Corroded Ruins,Corroded Ruins Lv. 5,3920503,75,110263,Eroded Gafftail
+Corroded Ruins,Corroded Ruins Lv. 5,3920504,75,110263,Eroded Optic Larva
+Corroded Ruins,Corroded Ruins Lv. 6,3920601,85,228963,Eroded Temizl
+Corroded Ruins,Corroded Ruins Lv. 6,3920602,85,228963,Eroded Splinter
+Corroded Ruins,Corroded Ruins Lv. 6,3920603,85,228963,Eroded Gafftail
+Corroded Ruins,Corroded Ruins Lv. 6,3920604,85,228963,Eroded Optic Larva
+Corroded Ruins,Corroded Ruins Lv. 7,3920701,90,319614,Eroded Temizl
+Corroded Ruins,Corroded Ruins Lv. 7,3920702,90,319614,Eroded Splinter
+Corroded Ruins,Corroded Ruins Lv. 7,3920703,90,319614,Eroded Gafftail
+Corroded Ruins,Corroded Ruins Lv. 7,3920704,90,319614,Eroded Optic Larva
+Albern Crater,Grand Anchor,375108,82,23569,Dione Nether Annihilator
+Albern Crater,Grand Anchor,375168,82,23569,Nix Nether Annihilator
+Albern Crater,Grand Anchor,375115,82,23569,Rampaging Armored Ghost
+Albern Crater,Grand Anchor,375145,82,23569,Rampaging Armored Ghost
+Albern Crater,Grand Anchor,375160,82,23569,Rampaging Armored Ghost
+Albern Crater,Grand Anchor,375175,82,23569,Rampaging Armored Ghost
+Albern Crater,Grand Anchor,375190,82,23569,Rampaging Armored Ghost
+Albern Crater,Grand Anchor,375138,82,23569,Leah Nether Annihilator
+Albern Crater,Grand Anchor,375169,82,23569,Nix Nether Sentry
+Albern Crater,Grand Anchor,375184,82,23569,Remos Nether Sentry
+Albern Crater,Grand Anchor,375109,82,23569,Dione Nether Sentry
+Albern Crater,Grand Anchor,375154,82,23569,Tetos Nether Sentry
+Albern Crater,Dione Sector,375101,58,1669,Dione Glatt
+Albern Crater,Dione Sector,375102,58,1669,Dione Malpas Clutcher
+Albern Crater,Dione Sector,375112,58,1669,Savage Larva
+Albern Crater,Dione Sector,375104,66,4569,Dione Licker
+Albern Crater,Dione Sector,375103,66,4569,Dione Malpas Spitter
+Albern Crater,Dione Sector,375113,66,4569,Savage Lizard
+Albern Crater,Dione Sector,375106,74,12169,Dione Saura Sniper
+Albern Crater,Dione Sector,375105,74,12169,Dione Saura Heavy Warrior
+Albern Crater,Dione Sector,375114,74,12169,Rampaging Pathfinder
+Albern Crater,Dione Sector,375108,82,23569,Dione Nether Annihilator
+Albern Crater,Dione Sector,375107,82,23569,Dione Nether Warrior
+Albern Crater,Dione Sector,375115,82,23569,Rampaging Armored Ghost
+Albern Crater,Dione Sector,375109,82,23569,Dione Nether Sentry
+Albern Crater,Leah Sector,375142,58,1669,Savage Larva
+Albern Crater,Leah Sector,375131,58,1669,Leah Glatt
+Albern Crater,Leah Sector,375132,58,1669,Leah Malpas Clutcher
+Albern Crater,Leah Sector,375143,66,4569,Savage Lizard
+Albern Crater,Leah Sector,375134,66,4569,Leah Licker
+Albern Crater,Leah Sector,375133,66,4569,Leah Malpas Spitter
+Albern Crater,Leah Sector,375136,74,12169,Leah Saura Sniper
+Albern Crater,Leah Sector,375135,74,12169,Leah Saura Heavy Warrior
+Albern Crater,Leah Sector,375144,74,12169,Rampaging Pathfinder
+Albern Crater,Leah Sector,375145,82,23569,Rampaging Armored Ghost
+Albern Crater,Leah Sector,375138,82,23569,Leah Nether Annihilator
+Albern Crater,Leah Sector,375137,82,23569,Leah Nether Warrior
+Albern Crater,Leah Sector,375139,82,23569,Leah Nether Sentry
+Albern Crater,Nix Sector,375172,58,1669,Savage Larva
+Albern Crater,Nix Sector,375161,58,1669,Nix Glatt
+Albern Crater,Nix Sector,375162,58,1669,Nix Malpas Clutcher
+Albern Crater,Nix Sector,375173,66,4569,Savage Lizard
+Albern Crater,Nix Sector,375164,66,4569,Nix Licker
+Albern Crater,Nix Sector,375163,66,4569,Nix Malpas Spitter
+Albern Crater,Nix Sector,375178,66,4569,Remos Malpas Spitter
+Albern Crater,Nix Sector,375165,74,12169,Nix Saura Heavy Warrior
+Albern Crater,Nix Sector,375174,74,12169,Rampaging Pathfinder
+Albern Crater,Nix Sector,375166,74,12169,Nix Saura Sniper
+Albern Crater,Nix Sector,375168,82,23569,Nix Nether Annihilator
+Albern Crater,Nix Sector,375175,82,23569,Rampaging Armored Ghost
+Albern Crater,Nix Sector,375167,82,23569,Nix Nether Warrior
+Albern Crater,Nix Sector,375169,82,23569,Nix Nether Sentry
+Albern Crater,Remos Sector,375187,58,1669,Savage Larva
+Albern Crater,Remos Sector,375176,58,1669,Remos Glatt
+Albern Crater,Remos Sector,375177,58,1669,Remos Malpas Clutcher
+Albern Crater,Remos Sector,375188,66,4569,Savage Lizard
+Albern Crater,Remos Sector,375179,66,4569,Remos Licker
+Albern Crater,Remos Sector,375178,66,4569,Remos Malpas Spitter
+Albern Crater,Remos Sector,375189,74,12169,Rampaging Pathfinder
+Albern Crater,Remos Sector,375180,74,12169,Remos Saura Heavy Warrior
+Albern Crater,Remos Sector,375181,74,12169,Remos Saura Sniper
+Albern Crater,Remos Sector,375190,82,23569,Rampaging Armored Ghost
+Albern Crater,Remos Sector,375183,82,23569,Remos Nether Annihilator
+Albern Crater,Remos Sector,375182,82,23569,Remos Nether Warrior
+Albern Crater,Remos Sector,375184,82,23569,Remos Nether Sentry
+Albern Crater,Teia Sector,375127,58,1669,Savage Larva
+Albern Crater,Teia Sector,375116,58,1669,Teia Glatt
+Albern Crater,Teia Sector,375117,58,1669,Teia Malpas Clutcher
+Albern Crater,Teia Sector,375128,66,4569,Savage Lizard
+Albern Crater,Teia Sector,375119,66,4569,Teia Licker
+Albern Crater,Teia Sector,375118,66,4569,Teia Malpas Spitter
+Albern Crater,Teia Sector,375120,74,12169,Teia Saura Heavy Warrior
+Albern Crater,Teia Sector,375129,74,12169,Rampaging Pathfinder
+Albern Crater,Teia Sector,375121,74,12169,Teia Saura Sniper
+Albern Crater,Teia Sector,375130,82,23569,Rampaging Armored Ghost
+Albern Crater,Teia Sector,375123,82,23569,Teia Nether Annihilator
+Albern Crater,Teia Sector,375122,82,23569,Teia Nether Warrior
+Albern Crater,Teia Sector,375124,82,23569,Teia Nether Sentry
+Albern Crater,Tetos Sector,375147,58,1669,Tetos Malpas Clutcher
+Albern Crater,Tetos Sector,375157,58,1669,Savage Larva
+Albern Crater,Tetos Sector,375146,58,1669,Tetos Glatt
+Albern Crater,Tetos Sector,375148,66,4569,Tetos Malpas Spitter
+Albern Crater,Tetos Sector,375158,66,4569,Savage Lizard
+Albern Crater,Tetos Sector,375149,66,4569,Tetos Licker
+Albern Crater,Tetos Sector,375150,74,12169,Tetos Saura Heavy Warrior
+Albern Crater,Tetos Sector,375159,74,12169,Rampaging Pathfinder
+Albern Crater,Tetos Sector,375151,74,12169,Tetos Saura Sniper
+Albern Crater,Tetos Sector,375160,82,23569,Rampaging Armored Ghost
+Albern Crater,Tetos Sector,375153,82,23569,Tetos Nether Annihilator
+Albern Crater,Tetos Sector,375152,82,23569,Tetos Nether Warrior
+Albern Crater,Tetos Sector,375154,82,23569,Tetos Nether Sentry
+Albern Crater,Maia Sector,375272,86,30469,Savage Larva
+Albern Crater,Maia Sector,375261,86,30469,Maia Hound
+Albern Crater,Maia Sector,375262,86,30469,Maia Malpas Regenerator
+Albern Crater,Maia Sector,375263,91,40219,Maia Malpas Thrower
+Albern Crater,Maia Sector,375278,91,40219,Notos Malpas Thrower
+Albern Crater,Maia Sector,375273,91,40219,Savage Lizard
+Albern Crater,Maia Sector,375264,91,40219,Maia Licker
+Albern Crater,Maia Sector,375265,96,55919,Maia Vafer Heavy Warrior
+Albern Crater,Maia Sector,375266,96,55919,Maia Vafer Siege Trooper
+Albern Crater,Maia Sector,375274,96,55919,Rampaging Pathfinder
+Albern Crater,Maia Sector,375275,101,70669,Rampaging Armored Ghost
+Albern Crater,Maia Sector,375268,101,70669,Maia Nether Annihilator
+Albern Crater,Maia Sector,375267,101,70669,Maia Nether Warrior
+Albern Crater,Nike Sector,375227,86,30469,Savage Larva
+Albern Crater,Nike Sector,375216,86,30469,Nike Hound
+Albern Crater,Nike Sector,375217,86,30469,Nike Malpas Regenerator
+Albern Crater,Nike Sector,375218,91,40219,Nike Malpas Thrower
+Albern Crater,Nike Sector,375228,91,40219,Savage Lizard
+Albern Crater,Nike Sector,375219,91,40219,Nike Licker
+Albern Crater,Nike Sector,375220,96,55919,Nike Vafer Heavy Warrior
+Albern Crater,Nike Sector,375221,96,55919,Nike Vafer Siege Trooper
+Albern Crater,Nike Sector,375229,96,55919,Rampaging Pathfinder
+Albern Crater,Nike Sector,375230,101,70669,Rampaging Armored Ghost
+Albern Crater,Nike Sector,375223,101,70669,Nike Nether Annihilator
+Albern Crater,Nike Sector,375222,101,70669,Nike Nether Warrior
+Albern Crater,Notos Sector,375287,86,30469,Savage Larva
+Albern Crater,Notos Sector,375276,86,30469,Notos Hound
+Albern Crater,Notos Sector,375277,86,30469,Notos Malpas Regenerator
+Albern Crater,Notos Sector,375278,91,40219,Notos Malpas Thrower
+Albern Crater,Notos Sector,375288,91,40219,Savage Lizard
+Albern Crater,Notos Sector,375279,91,40219,Notos Licker
+Albern Crater,Notos Sector,375280,96,55919,Notos Vafer Heavy Warrior
+Albern Crater,Notos Sector,375289,96,55919,Rampaging Pathfinder
+Albern Crater,Notos Sector,375281,96,55919,Notos Vafer Siege Trooper
+Albern Crater,Notos Sector,375283,101,70669,Notos Nether Annihilator
+Albern Crater,Notos Sector,375290,101,70669,Rampaging Armored Ghost
+Albern Crater,Notos Sector,375282,101,70669,Notos Nether Warrior
+Albern Crater,Pallas Sector,375212,86,30469,Savage Larva
+Albern Crater,Pallas Sector,375201,86,30469,Pallas Hound
+Albern Crater,Pallas Sector,375202,86,30469,Pallas Malpas Regenerator
+Albern Crater,Pallas Sector,375203,91,40219,Pallas Malpas Thrower
+Albern Crater,Pallas Sector,375213,91,40219,Savage Lizard
+Albern Crater,Pallas Sector,375204,91,40219,Pallas Licker
+Albern Crater,Pallas Sector,375205,96,55919,Pallas Vafer Heavy Warrior
+Albern Crater,Pallas Sector,375214,96,55919,Rampaging Pathfinder
+Albern Crater,Pallas Sector,375206,96,55919,Pallas Vafer Siege Trooper
+Albern Crater,Pallas Sector,375208,101,70669,Pallas Nether Annihilator
+Albern Crater,Pallas Sector,375215,101,70669,Rampaging Armored Ghost
+Albern Crater,Pallas Sector,375207,101,70669,Pallas Nether Warrior
+Albern Crater,Phaenon Sector,375231,86,30469,Phaenon Hound
+Albern Crater,Phaenon Sector,375242,86,30469,Savage Larva
+Albern Crater,Phaenon Sector,375232,86,30469,Phaenon Malpas Regenerator
+Albern Crater,Phaenon Sector,375233,91,40219,Phaenon Malpas Thrower
+Albern Crater,Phaenon Sector,375243,91,40219,Savage Lizard
+Albern Crater,Phaenon Sector,375234,91,40219,Phaenon Licker
+Albern Crater,Phaenon Sector,375235,96,55919,Phaenon Vafer Heavy Warrior
+Albern Crater,Phaenon Sector,375244,96,55919,Rampaging Pathfinder
+Albern Crater,Phaenon Sector,375236,96,55919,Phaenon Vafer Siege Trooper
+Albern Crater,Phaenon Sector,375238,101,70669,Phaenon Nether Annihilator
+Albern Crater,Phaenon Sector,375245,101,70669,Rampaging Armored Ghost
+Albern Crater,Phaenon Sector,375237,101,70669,Phaenon Nether Warrior
+Albern Crater,Zelus Sector,375246,86,30469,Zelus Hound
+Albern Crater,Zelus Sector,375257,86,30469,Savage Larva
+Albern Crater,Zelus Sector,375247,86,30469,Zelus Malpas Regenerator
+Albern Crater,Zelus Sector,375248,91,40219,Zelus Malpas Thrower
+Albern Crater,Zelus Sector,375258,91,40219,Savage Lizard
+Albern Crater,Zelus Sector,375249,91,40219,Zelus Licker
+Albern Crater,Zelus Sector,375250,96,55919,Zelus Vafer Heavy Warrior
+Albern Crater,Zelus Sector,375259,96,55919,Rampaging Pathfinder
+Albern Crater,Zelus Sector,375251,96,55919,Zelus Vafer Siege Trooper
+Albern Crater,Zelus Sector,375253,101,70669,Zelus Nether Annihilator
+Albern Crater,Zelus Sector,375260,101,70669,Rampaging Armored Ghost
+Albern Crater,Zelus Sector,375252,101,70669,Zelus Nether Warrior
+Albern Crater,Basiir Sector,375346,104,90169,Basiir Infected
+Albern Crater,Basiir Sector,375357,104,90169,Savage Larva
+Albern Crater,Basiir Sector,375347,104,90169,Basiir Regenerator
+Albern Crater,Basiir Sector,375349,108,116669,Basiir Malpas
+Albern Crater,Basiir Sector,375348,108,116669,Basiir Thanat
+Albern Crater,Basiir Sector,375358,108,116669,Savage Lizard
+Albern Crater,Basiir Sector,375351,112,147169,Basiir Snatcher Raider
+Albern Crater,Basiir Sector,375359,112,147169,Rampaging Pathfinder
+Albern Crater,Basiir Sector,375350,112,147169,Basiir Snatcher Sniper
+Albern Crater,Basiir Sector,375354,116,181669,Basiir Nether Annihilator
+Albern Crater,Basiir Sector,375352,116,181669,Basiir Nether Warrior
+Albern Crater,Basiir Sector,375353,116,181669,Basiir Nether Sentry
+Albern Crater,Basiir Sector,375360,116,181669,Rampaging Armored Ghost
+Albern Crater,Hnos Sector,375316,104,90169,Hnos Infected
+Albern Crater,Hnos Sector,375327,104,90169,Savage Larva
+Albern Crater,Hnos Sector,375317,104,90169,Hnos Regenerator
+Albern Crater,Hnos Sector,375319,108,116669,Hnos Malpas
+Albern Crater,Hnos Sector,375318,108,116669,Hnos Thanat
+Albern Crater,Hnos Sector,375328,108,116669,Savage Lizard
+Albern Crater,Hnos Sector,375321,112,147169,Hnos Snatcher Raider
+Albern Crater,Hnos Sector,375320,112,147169,Hnos Snatcher Sniper
+Albern Crater,Hnos Sector,375329,112,147169,Rampaging Pathfinder
+Albern Crater,Hnos Sector,375330,116,181669,Rampaging Armored Ghost
+Albern Crater,Hnos Sector,375324,116,181669,Hnos Nether Annihilator
+Albern Crater,Hnos Sector,375322,116,181669,Hnos Nether Warrior
+Albern Crater,Hnos Sector,375323,116,181669,Hnos Nether Sentry
+Albern Crater,Magni Sector,375312,104,90169,Savage Larva
+Albern Crater,Magni Sector,375301,104,90169,Magni Infected
+Albern Crater,Magni Sector,375302,104,90169,Magni Regenerator
+Albern Crater,Magni Sector,375313,108,116669,Savage Lizard
+Albern Crater,Magni Sector,375304,108,116669,Magni Malpas
+Albern Crater,Magni Sector,375303,108,116669,Magni Thanat
+Albern Crater,Magni Sector,375306,112,147169,Magni Snatcher Raider
+Albern Crater,Magni Sector,375314,112,147169,Rampaging Pathfinder
+Albern Crater,Magni Sector,375305,112,147169,Magni Snatcher Sniper
+Albern Crater,Magni Sector,375309,116,181669,Magni Nether Annihilator
+Albern Crater,Magni Sector,375384,116,181669,Rimaud Nether Annihilator
+Albern Crater,Magni Sector,375315,116,181669,Rampaging Armored Ghost
+Albern Crater,Magni Sector,375330,116,181669,Rampaging Armored Ghost
+Albern Crater,Magni Sector,375390,116,181669,Rampaging Armored Ghost
+Albern Crater,Magni Sector,375324,116,181669,Hnos Nether Annihilator
+Albern Crater,Magni Sector,375307,116,181669,Magni Nether Warrior
+Albern Crater,Magni Sector,375308,116,181669,Magni Nether Sentry
+Albern Crater,Rimaud Sector,375387,104,90169,Savage Larva
+Albern Crater,Rimaud Sector,375377,104,90169,Rimaud Regenerator
+Albern Crater,Rimaud Sector,375376,104,90169,Rimaud Infected
+Albern Crater,Rimaud Sector,375388,108,116669,Savage Lizard
+Albern Crater,Rimaud Sector,375379,108,116669,Rimaud Malpas
+Albern Crater,Rimaud Sector,375378,108,116669,Rimaud Thanat
+Albern Crater,Rimaud Sector,375389,112,147169,Rampaging Pathfinder
+Albern Crater,Rimaud Sector,375381,112,147169,Rimaud Snatcher Raider
+Albern Crater,Rimaud Sector,375380,112,147169,Rimaud Snatcher Sniper
+Albern Crater,Rimaud Sector,375384,116,181669,Rimaud Nether Annihilator
+Albern Crater,Rimaud Sector,375390,116,181669,Rampaging Armored Ghost
+Albern Crater,Rimaud Sector,375382,116,181669,Rimaud Nether Warrior
+Albern Crater,Rimaud Sector,375383,116,181669,Rimaud Nether Sentry
+Albern Crater,Veig Sector,375342,104,90169,Savage Larva
+Albern Crater,Veig Sector,375332,104,90169,Veig Regenerator
+Albern Crater,Veig Sector,375331,104,90169,Veig Infected
+Albern Crater,Veig Sector,375343,108,116669,Savage Lizard
+Albern Crater,Veig Sector,375334,108,116669,Veig Malpas
+Albern Crater,Veig Sector,375333,108,116669,Veig Thanat
+Albern Crater,Veig Sector,375344,112,147169,Rampaging Pathfinder
+Albern Crater,Veig Sector,375335,112,147169,Veig Snatcher Sniper
+Albern Crater,Veig Sector,375336,112,147169,Veig Snatcher Raider
+Albern Crater,Veig Sector,375345,116,181669,Rampaging Armored Ghost
+Albern Crater,Veig Sector,375339,116,181669,Veig Nether Annihilator
+Albern Crater,Veig Sector,375337,116,181669,Veig Nether Warrior
+Albern Crater,Veig Sector,375338,116,181669,Veig Nether Sentry
+Albern Crater,Vidar Sector,375372,104,90169,Savage Larva
+Albern Crater,Vidar Sector,375362,104,90169,Vidar Regenerator
+Albern Crater,Vidar Sector,375361,104,90169,Vidar Infected
+Albern Crater,Vidar Sector,375373,108,116669,Savage Lizard
+Albern Crater,Vidar Sector,375364,108,116669,Vidar Malpas
+Albern Crater,Vidar Sector,375363,108,116669,Vidar Thanat
+Albern Crater,Vidar Sector,375366,112,147169,Vidar Snatcher Raider
+Albern Crater,Vidar Sector,375374,112,147169,Rampaging Pathfinder
+Albern Crater,Vidar Sector,375365,112,147169,Vidar Snatcher Sniper
+Albern Crater,Vidar Sector,375369,116,181669,Vidar Nether Annihilator
+Albern Crater,Vidar Sector,375375,116,181669,Rampaging Armored Ghost
+Albern Crater,Vidar Sector,375368,116,181669,Vidar Nether Sentry
+Albern Crater,Vidar Sector,375367,116,181669,Vidar Nether Warrior
+Albern Crater,Dread Anchor,375309,116,181669,Magni Nether Annihilator
+Albern Crater,Dread Anchor,375384,116,181669,Rimaud Nether Annihilator
+Albern Crater,Dread Anchor,375369,116,181669,Vidar Nether Annihilator
+Albern Crater,Dread Anchor,375354,116,181669,Basiir Nether Annihilator
+Albern Crater,Dread Anchor,375315,116,181669,Rampaging Armored Ghost
+Albern Crater,Dread Anchor,375330,116,181669,Rampaging Armored Ghost
+Albern Crater,Dread Anchor,375345,116,181669,Rampaging Armored Ghost
+Albern Crater,Dread Anchor,375360,116,181669,Rampaging Armored Ghost
+Albern Crater,Dread Anchor,375375,116,181669,Rampaging Armored Ghost
+Albern Crater,Dread Anchor,375390,116,181669,Rampaging Armored Ghost
+Albern Crater,Dread Anchor,375324,116,181669,Hnos Nether Annihilator
+Albern Crater,Dread Anchor,375339,116,181669,Veig Nether Annihilator
+Albern Crater,Dread Anchor,375367,116,181669,Vidar Nether Warrior
+Ushas Swarm,Bayav,6511612,84,26919,Savage Infected Splinter
+Ushas Swarm,Bayav,6511605,84,26919,Bayav Thanat Variant
+Ushas Swarm,Bayav,6511606,84,26919,Bayav Infernal Larva Variant
+Ushas Swarm,Bayav,6511604,92,45919,Bayav Licker
+Ushas Swarm,Bayav,6511603,92,45919,Bayav Malpas
+Ushas Swarm,Bayav,6511611,92,45919,Savage Infected Licker
+Ushas Swarm,Bayav,6511609,100,73519,Bayav Crimson Thrower
+Ushas Swarm,Bayav,6511607,100,73519,Bayav Crimson Hound
+Ushas Swarm,Bayav,6511613,100,73519,Savage Crimson Hound
+Ushas Swarm,Bayav,6511608,100,73519,Bayav Crimson Regenerator
+Ushas Swarm,Bayav,6511601,108,116669,Bayav Thanat
+Ushas Swarm,Bayav,6511610,108,116669,Savage Infected Lizard
+Ushas Swarm,Bayav,6511602,108,116669,Bayav Malpas Variant
+Ushas Swarm,Darv,6511112,84,26919,Savage Infected Splinter
+Ushas Swarm,Darv,6511105,84,26919,Darv Thanat Variant
+Ushas Swarm,Darv,6511106,84,26919,Darv Infernal Larva Variant
+Ushas Swarm,Darv,6511104,92,45919,Darv Licker
+Ushas Swarm,Darv,6511103,92,45919,Darv Malpas
+Ushas Swarm,Darv,6511111,92,45919,Savage Infected Licker
+Ushas Swarm,Darv,6511113,100,73519,Savage Crimson Hound
+Ushas Swarm,Darv,6511109,100,73519,Darv Crimson Thrower
+Ushas Swarm,Darv,6511107,100,73519,Darv Crimson Hound
+Ushas Swarm,Darv,6511108,100,73519,Darv Crimson Regenerator
+Ushas Swarm,Darv,6511101,108,116669,Darv Thanat
+Ushas Swarm,Darv,6511110,108,116669,Savage Infected Lizard
+Ushas Swarm,Darv,6511102,108,116669,Darv Malpas Variant
+Ushas Swarm,Dixif,6511212,84,26919,Savage Infected Splinter
+Ushas Swarm,Dixif,6511206,84,26919,Dixif Infernal Larva Variant
+Ushas Swarm,Dixif,6511205,84,26919,Dixif Thanat Variant
+Ushas Swarm,Dixif,6511203,92,45919,Dixif Malpas
+Ushas Swarm,Dixif,6511204,92,45919,Dixif Licker
+Ushas Swarm,Dixif,6511211,92,45919,Savage Infected Licker
+Ushas Swarm,Dixif,6511213,100,73519,Savage Crimson Hound
+Ushas Swarm,Dixif,6511209,100,73519,Dixif Crimson Thrower
+Ushas Swarm,Dixif,6511207,100,73519,Dixif Crimson Hound
+Ushas Swarm,Dixif,6511208,100,73519,Dixif Crimson Regenerator
+Ushas Swarm,Dixif,6511201,108,116669,Dixif Thanat
+Ushas Swarm,Dixif,6511210,108,116669,Savage Infected Lizard
+Ushas Swarm,Dixif,6511202,108,116669,Dixif Malpas Variant
+Ushas Swarm,Ishav,6511312,84,26919,Savage Infected Splinter
+Ushas Swarm,Ishav,6511306,84,26919,Ishav Infernal Larva Variant
+Ushas Swarm,Ishav,6511305,84,26919,Ishav Thanat Variant
+Ushas Swarm,Ishav,6511304,92,45919,Ishav Licker
+Ushas Swarm,Ishav,6511303,92,45919,Ishav Malpas
+Ushas Swarm,Ishav,6511311,92,45919,Savage Infected Licker
+Ushas Swarm,Ishav,6511313,100,73519,Savage Crimson Hound
+Ushas Swarm,Ishav,6511309,100,73519,Ishav Crimson Thrower
+Ushas Swarm,Ishav,6511307,100,73519,Ishav Crimson Hound
+Ushas Swarm,Ishav,6511308,100,73519,Ishav Crimson Regenerator
+Ushas Swarm,Ishav,6511301,108,116669,Ishav Thanat
+Ushas Swarm,Ishav,6511310,108,116669,Savage Infected Lizard
+Ushas Swarm,Ishav,6511302,108,116669,Ishav Malpas Variant
+Ushas Swarm,Naruuv,6511512,84,26919,Savage Infected Splinter
+Ushas Swarm,Naruuv,6511506,84,26919,Naruuv Infernal Larva Variant
+Ushas Swarm,Naruuv,6511505,84,26919,Naruuv Thanat Variant
+Ushas Swarm,Naruuv,6511511,92,45919,Savage Infected Licker
+Ushas Swarm,Naruuv,6511504,92,45919,Naruuv Licker
+Ushas Swarm,Naruuv,6511503,92,45919,Naruuv Malpas
+Ushas Swarm,Naruuv,6511513,100,73519,Savage Crimson Hound
+Ushas Swarm,Naruuv,6511509,100,73519,Naruuv Crimson Thrower
+Ushas Swarm,Naruuv,6511507,100,73519,Naruuv Crimson Hound
+Ushas Swarm,Naruuv,6511508,100,73519,Naruuv Crimson Regenerator
+Ushas Swarm,Naruuv,6511510,108,116669,Savage Infected Lizard
+Ushas Swarm,Naruuv,6511501,108,116669,Naruuv Thanat
+Ushas Swarm,Naruuv,6511502,108,116669,Naruuv Malpas Variant
+Ushas Swarm,Uterv,6511412,84,26919,Savage Infected Splinter
+Ushas Swarm,Uterv,6511406,84,26919,Uterv Infernal Larva Variant
+Ushas Swarm,Uterv,6511405,84,26919,Uterv Thanat Variant
+Ushas Swarm,Uterv,6511411,92,45919,Savage Infected Licker
+Ushas Swarm,Uterv,6511404,92,45919,Uterv Licker
+Ushas Swarm,Uterv,6511403,92,45919,Uterv Malpas
+Ushas Swarm,Uterv,6511413,100,73519,Savage Crimson Hound
+Ushas Swarm,Uterv,6511409,100,73519,Uterv Crimson Thrower
+Ushas Swarm,Uterv,6511407,100,73519,Uterv Crimson Hound
+Ushas Swarm,Uterv,6511408,100,73519,Uterv Crimson Regenerator
+Ushas Swarm,Uterv,6511410,108,116669,Savage Infected Lizard
+Ushas Swarm,Uterv,6511401,108,116669,Uterv Thanat
+Ushas Swarm,Uterv,6511402,108,116669,Uterv Malpas Variant

@@ -19,6 +19,7 @@ a = Analysis(
         (str(root / "core" / "biosuits.json"), "core"),
         (str(root / "core" / "rovers.json"), "core"),
         (str(root / "core" / "catalogo.csv"), "core"),
+        (str(root / "core" / "catalogo_en.csv"), "core"),
         (str(root / "core" / "collection_requirements.csv"), "core"),
         (str(root / "core" / "level_curve.json"), "core"),
         (str(root / "core" / "item_names.json"), "core"),

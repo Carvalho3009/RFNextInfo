@@ -20,6 +20,7 @@ from app.license import LicenseClient, _activation_error, verify_lease
 from app.main import (
     App,
     FARM_CATALOG,
+    FARM_CATALOG_EN,
     LEVEL_CURVE,
     _capture_prefix,
     _capture_summary,
@@ -451,6 +452,12 @@ class AppLogicTest(unittest.TestCase):
             ],
             (98,),
         )
+        self.assertEqual(
+            FARM_CATALOG_EN["Ruined City of Babylon"]["Area 4"][
+                "Crimson Thrower"
+            ],
+            (98,),
+        )
 
     def test_subsession_map_and_spot_filter_the_next_choices(self):
         app = Mock()
@@ -458,6 +465,7 @@ class AppLogicTest(unittest.TestCase):
             "Cidade Arruinada da Babilônia"
         )
         app.subsession_spot.get.return_value = "Área 4"
+        app._selected_farm_catalog.return_value = FARM_CATALOG
 
         App._subsession_map_changed(app, preferred_spot="Área 4")
 
@@ -486,6 +494,21 @@ class AppLogicTest(unittest.TestCase):
             list(
                 FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
             ),
+        )
+
+    def test_english_language_updates_map_and_spot_choices(self):
+        app = Mock()
+        app.item_name_language.get.return_value = "pt"
+        app.subsession_map.get.return_value = (
+            "Cidade Arruinada da Babilônia"
+        )
+        app.subsession_spot.get.return_value = "Área 4"
+
+        App._item_language_changed(app, "English")
+
+        app.item_name_language.set.assert_called_once_with("en")
+        app._refresh_farm_choices.assert_called_once_with(
+            "Ruined City of Babylon", "Area 4"
         )
 
     def test_market_window_builds_site_rows(self):
