@@ -39,7 +39,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.0b"
+VERSION = "2.0c"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -47,7 +47,6 @@ MACHINE_STATE_DIR = (
     else STATE_DIR / "machine"
 )
 CAPTURE_DIR = Path.home() / "Documents" / "Capturas"
-EXPORT_DIR = CAPTURE_DIR / "Exportados"
 ASSETS = ROOT / "assets"
 DB_PATH = STATE_DIR / "capture.sqlite3"
 PREFERENCES_PATH = STATE_DIR / "preferences.json"
@@ -73,6 +72,21 @@ RARITY_COLORS = {
     5: "#f0b84a",
     6: "#ff6547",
 }
+
+
+def _configured_capture_dir(
+    preferences_path: Path | None = None,
+) -> Path:
+    try:
+        preferences = json.loads(
+            (preferences_path or PREFERENCES_PATH).read_text(encoding="utf-8")
+        )
+        candidate = Path(str(preferences.get("capture_directory") or ""))
+        if candidate.is_absolute():
+            return candidate
+    except (OSError, ValueError, TypeError):
+        pass
+    return CAPTURE_DIR
 
 
 def _biosuit_catalog() -> dict[str, dict[str, Any]]:
@@ -199,6 +213,24 @@ def _item_names() -> dict[str, str]:
 ITEM_NAMES = _item_names()
 
 
+def _item_grades() -> dict[str, int]:
+    try:
+        return json.loads(
+            (ROOT / "core" / "item_grades.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return {}
+
+
+ITEM_GRADES = _item_grades()
+LOOT_RARITIES = {
+    1: ("common", "Comum"),
+    2: ("uncommon", "Incomum"),
+    3: ("rare", "Raro"),
+    4: ("epic", "Épico"),
+}
+
+
 def _format_bytes(value: int) -> str:
     number = float(value)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -313,8 +345,17 @@ def _capture_summary(
         "contribution": None,
         "market_events": 0,
         "kills": 0,
+        "finalizations": 0,
         "loot": [],
+        "loot_by_rarity": {
+            key: 0 for key, _label in LOOT_RARITIES.values()
+        },
     }
+    observed_exp_gained = 0
+    observed_finalizations = reward_finalizations = 0
+    reward_exp = reward_credits = reward_contribution = 0
+    reward_exp_seen = reward_credits_seen = reward_contribution_seen = False
+    contribution_totals = []
     for event in envelope.get("events", []):
         data = event.get("data") or {}
         fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
@@ -410,7 +451,9 @@ def _capture_summary(
                 summary["equipment"] = equipment
         if isinstance(fields.get("gain_exp"), (int, float)):
             gained = fields["gain_exp"]
-            summary["exp_gained"] += gained
+            observed_exp_gained += gained
+            if fields.get("action_code") == 1006:
+                observed_finalizations += 1
             gain_level = fields.get("level")
             gain_required = (
                 LEVEL_CURVE.get(gain_level + 1)
@@ -427,24 +470,53 @@ def _capture_summary(
                 summary["credits"] += fields[credit_key]
                 break
         if isinstance(fields.get("contribution_total"), (int, float)):
-            summary["contribution"] = fields["contribution_total"]
+            contribution_totals.append(fields["contribution_total"])
         kind = str(event.get("type", "")).lower()
         if "exchange" in kind or "market" in kind:
             summary["market_events"] += 1
         if event.get("type") == "drop_item_field":
-            summary["kills"] += 1
+            kill_reward = False
             for item in data.get("results", []):
+                item_index = item.get("item_index")
+                count = item.get("count")
+                if item_index == 900 and isinstance(count, (int, float)):
+                    kill_reward = True
+                    reward_exp += (
+                        count // 10
+                        if item.get("action_code") == 1006
+                        else count
+                    )
+                    reward_exp_seen = True
+                    if item.get("action_code") == 1006:
+                        reward_finalizations += 1
+                    continue
+                if item_index == 1 and isinstance(count, (int, float)):
+                    reward_credits += count
+                    reward_credits_seen = True
+                    continue
+                if item_index == 1701 and isinstance(count, (int, float)):
+                    reward_contribution += count
+                    reward_contribution_seen = True
+                    continue
+                grade = ITEM_GRADES.get(str(item_index))
+                rarity = LOOT_RARITIES.get(grade)
+                if rarity and isinstance(count, (int, float)):
+                    summary["loot_by_rarity"][rarity[0]] += count
                 summary["loot"].append(
                     {
+                        "item_index": item_index,
                         "item": (
                             item.get("item_name")
-                            or ITEM_NAMES.get(str(item.get("item_index")))
-                            or item.get("item_index")
+                            or ITEM_NAMES.get(str(item_index))
+                            or item_index
                         ),
-                        "count": item.get("count"),
+                        "count": count,
                         "gain_total": item.get("gain_total"),
+                        "grade": grade,
+                        "rarity": rarity[1] if rarity else None,
                     }
                 )
+            summary["kills"] += int(kill_reward)
     required = (
         LEVEL_CURVE.get(summary["level"] + 1)
         if isinstance(summary["level"], int)
@@ -452,6 +524,25 @@ def _capture_summary(
     )
     if required and isinstance(summary["exp"], (int, float)):
         summary["exp_missing"] = max(0, required - summary["exp"])
+    summary["exp_gained"] = (
+        reward_exp if reward_exp_seen else observed_exp_gained
+    )
+    summary["finalizations"] = reward_finalizations or observed_finalizations
+    if reward_exp_seen:
+        summary["exp_gained_percent"] = (
+            reward_exp * 100 / required if required else None
+        )
+    if reward_credits_seen:
+        summary["credits"] = reward_credits
+    if reward_contribution_seen:
+        summary["contribution"] = reward_contribution
+    elif len(contribution_totals) > 1:
+        summary["contribution"] = sum(
+            max(0, current - previous)
+            for previous, current in zip(
+                contribution_totals, contribution_totals[1:]
+            )
+        )
     loadout = {"equipment": summary["equipment"]}
     if summary["biosuit_item_index"]:
         loadout["biosuit"] = {
@@ -552,7 +643,14 @@ class App(tk.Tk):
         self.configure(bg="#070909")
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         MACHINE_STATE_DIR.mkdir(parents=True, exist_ok=True)
-        CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+        self.capture_dir = (
+            CAPTURE_DIR if ui_self_test else _configured_capture_dir()
+        )
+        try:
+            self.capture_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.capture_dir = CAPTURE_DIR
+            self.capture_dir.mkdir(parents=True, exist_ok=True)
         self.log = configure_log(
             STATE_DIR / "logs" / "self-test.log" if ui_self_test else LOG_PATH,
             VERSION,
@@ -571,7 +669,7 @@ class App(tk.Tk):
             self.license.load_status,
             bool(self.license.lease),
         )
-        self.capture = PktmonCapture(CAPTURE_DIR)
+        self.capture = PktmonCapture(self.capture_dir)
         self.store = CaptureStore(DB_PATH)
         self.last_files: list[Path] = []
         self.capture_allowed = False
@@ -1473,7 +1571,12 @@ class App(tk.Tk):
         self.quick_buttons = {}
         for column, (mode, label, shortcut, description) in enumerate(
             (
-                ("character", "Personagem", "F1", "Envie os dados detectados do personagem."),
+                (
+                    "character",
+                    "Personagem",
+                    "F1",
+                    "Envie o personagem e os equipamentos detectados.",
+                ),
                 ("market", "Mercado", "F2", "Envie os eventos de mercado já lidos."),
                 ("codex", "Codex", "F3", "Envie os dados de Codex já lidos."),
                 ("memory_chips", "Memory Chips", "F4", "Envie os Memory Chips já lidos."),
@@ -1895,6 +1998,8 @@ class App(tk.Tk):
                 "exp_hour",
                 "exp_hour_percent",
                 "credits_hour",
+                "contribution_total",
+                "contribution_hour",
                 "sent",
                 "actions",
             ),
@@ -1911,12 +2016,23 @@ class App(tk.Tk):
             ("exp_hour", "EXP/h", 100),
             ("exp_hour_percent", "EXP/h (%)", 90),
             ("credits_hour", "Crédito/h", 100),
+            ("contribution_total", "Contribuição", 110),
+            ("contribution_hour", "Contribuição/h", 110),
             ("sent", "Enviado", 70),
             ("actions", "Ações", 80),
         ):
             self.subsession_table.heading(column, text=label)
             self.subsession_table.column(column, width=width, anchor="w")
         self.subsession_table.pack(fill=BOTH, expand=True)
+        subsession_scroll = ttk.Scrollbar(
+            history,
+            orient="horizontal",
+            command=self.subsession_table.xview,
+        )
+        self.subsession_table.configure(
+            xscrollcommand=subsession_scroll.set
+        )
+        subsession_scroll.pack(fill=X)
         pagination = ttk.Frame(history, style="PanelBody.TFrame")
         pagination.pack(fill=X, pady=(8, 0))
         self.subsession_page = 1
@@ -2131,6 +2247,24 @@ class App(tk.Tk):
             wraplength=320,
         )
         self.settings_storage_state.pack(anchor="w", pady=(6, 14))
+        ttk.Label(
+            storage,
+            text="Pasta das capturas",
+            style="PanelMuted.TLabel",
+        ).pack(anchor="w")
+        self.capture_directory_state = ttk.Label(
+            storage,
+            text=str(self.capture_dir),
+            style="PanelMuted.TLabel",
+            wraplength=320,
+        )
+        self.capture_directory_state.pack(anchor="w", pady=(2, 6))
+        ttk.Button(
+            storage,
+            text="Escolher pasta",
+            style="Quiet.TButton",
+            command=self._choose_capture_directory,
+        ).pack(fill=X, pady=(0, 12))
         ttk.Label(
             storage,
             text="Retenção dos dados: até exclusão manual",
@@ -2440,10 +2574,14 @@ class App(tk.Tk):
         try:
             running = self.capture.system_running()
             prefix = str(self.prefs.get("capture_prefix") or "")
-            files = tuple(CAPTURE_DIR.glob(f"{prefix}*.etl")) if prefix else ()
+            files = (
+                tuple(self.capture_dir.glob(f"{prefix}*.etl"))
+                if prefix
+                else ()
+            )
             if running and not files:
                 candidates = sorted(
-                    CAPTURE_DIR.glob("rfnext-*.etl"),
+                    self.capture_dir.glob("rfnext-*.etl"),
                     key=lambda path: path.stat().st_mtime_ns,
                     reverse=True,
                 )
@@ -2459,7 +2597,7 @@ class App(tk.Tk):
                         )
                     prefix = match.group(1) if match else ""
                     files = (
-                        tuple(CAPTURE_DIR.glob(f"{prefix}*.etl"))
+                        tuple(self.capture_dir.glob(f"{prefix}*.etl"))
                         if prefix
                         else ()
                     )
@@ -2524,6 +2662,7 @@ class App(tk.Tk):
                 "channel": self.channel.get(),
                 "last_session": self.current_session,
                 "game_executable": self._selected_game_path,
+                "capture_directory": str(self.capture_dir),
                 "auto_subsession": self.auto_subsession.get(),
                 "auto_subsession_minutes": max(
                     5, min(240, int(self.auto_subsession_minutes.get()))
@@ -2550,6 +2689,39 @@ class App(tk.Tk):
             encoding="utf-8",
         )
         os.replace(temporary, PREFERENCES_PATH)
+
+    def _choose_capture_directory(self) -> None:
+        if self._capture_is_active() or self.prefs.get("capture_pending"):
+            return messagebox.showwarning(
+                "Pasta das capturas",
+                "Pare e conclua a leitura da captura atual antes de trocar a pasta.",
+            )
+        selected = filedialog.askdirectory(
+            title="Escolha a pasta das capturas",
+            initialdir=str(self.capture_dir),
+        )
+        if not selected:
+            return
+        try:
+            destination = Path(selected).resolve()
+            destination.mkdir(parents=True, exist_ok=True)
+            shutil.disk_usage(destination)
+        except OSError as error:
+            self.log.warning(
+                "capture_directory_rejected reason=%s",
+                _safe_error_code(error),
+            )
+            return messagebox.showerror(
+                "Pasta das capturas",
+                "Não foi possível usar a pasta selecionada.",
+            )
+        if destination == self.capture_dir:
+            return
+        self.capture_dir = destination
+        self.capture = PktmonCapture(destination)
+        self.capture_directory_state.configure(text=str(destination))
+        self._save_preferences()
+        self.log.info("capture_directory_changed")
 
     def _decode_interval_seconds(self) -> int:
         try:
@@ -2760,6 +2932,7 @@ class App(tk.Tk):
                 "metadata": metadata,
                 "profiles": [profile_data],
                 "capture": summary if mode == "character" else {},
+                "loadout": summary["loadout"] if mode == "character" else {},
                 "subsession_reports": [],
             }
         stable_payload = {
@@ -3242,6 +3415,12 @@ class App(tk.Tk):
                 else None
             )
             credits_hour = round(summary["credits"] / hours) if hours else 0
+            contribution_hour = (
+                round(summary["contribution"] / hours)
+                if hours
+                and isinstance(summary["contribution"], (int, float))
+                else None
+            )
             self.subsession_table.insert(
                 "",
                 END,
@@ -3265,6 +3444,16 @@ class App(tk.Tk):
                         else "—"
                     ),
                     f"{credits_hour:,.0f}".replace(",", "."),
+                    (
+                        f"{summary['contribution']:,.0f}".replace(",", ".")
+                        if isinstance(summary["contribution"], (int, float))
+                        else "—"
+                    ),
+                    (
+                        f"{contribution_hour:,.0f}".replace(",", ".")
+                        if isinstance(contribution_hour, (int, float))
+                        else "—"
+                    ),
                     "Sim" if item["upload_state"] == "sent" else "Não",
                     "Em andamento" if item["ended_ns"] is None else "Pronta",
                 ),
@@ -3454,6 +3643,9 @@ class App(tk.Tk):
                     "metadata": {**metadata, "marks_mode": "merge"},
                     "profiles": [profile_data],
                     "capture": summary if mode == "character" else {},
+                    "loadout": (
+                        summary["loadout"] if mode == "character" else {}
+                    ),
                     "subsession_reports": [],
                 }
             if not rows:
@@ -3544,7 +3736,9 @@ class App(tk.Tk):
             return messagebox.showwarning(
                 "Envio", "Valide o token do Profile antes de enviar."
             )
-        results = self._export_to(EXPORT_DIR, offer_cleanup=False)
+        results = self._export_to(
+            self.capture_dir / "Exportados", offer_cleanup=False
+        )
         if not results:
             return
         self.site_profile_status.configure(text="Enviando dados…")
@@ -3702,7 +3896,9 @@ class App(tk.Tk):
         if session_id:
             files.extend(self.store.session_sources(session_id))
             safe_session = _safe_name(session_id, "sessao")
-            files.extend(CAPTURE_DIR.glob(f"{safe_session}-cliente-*.pcap"))
+            files.extend(
+                self.capture_dir.glob(f"{safe_session}-cliente-*.pcap")
+            )
             files.extend(PREVIEW_DIR.glob(f"{safe_session}-live-*.pcap"))
         files = list(dict.fromkeys(path for path in files if path.exists()))
         if not session_id and not files:
@@ -3741,7 +3937,7 @@ class App(tk.Tk):
                 f"Os arquivos foram removidos, mas o histórico não: {error}",
             )
             return False
-        self.capture = PktmonCapture(CAPTURE_DIR)
+        self.capture = PktmonCapture(self.capture_dir)
         self.current_session = None
         self.last_files = []
         self._live_files = []
@@ -3995,7 +4191,9 @@ class App(tk.Tk):
                     or _capture_prefix(self.current_session)
                     or ""
                 )
-                if prefix and tuple(CAPTURE_DIR.glob(f"{prefix}*.etl")):
+                if prefix and tuple(
+                    self.capture_dir.glob(f"{prefix}*.etl")
+                ):
                     self.capture.attach(
                         prefix, tuple(self.prefs.get("capture_ports") or ())
                     )
@@ -4118,7 +4316,7 @@ class App(tk.Tk):
                 and not result[1]
                 and self.auto_export.get()
             ):
-                self._export_to(EXPORT_DIR)
+                self._export_to(self.capture_dir / "Exportados")
 
         self._run(ingest, ingest_done)
 
@@ -4462,7 +4660,8 @@ class App(tk.Tk):
                 "revisão. O site poderá recusar a importação.",
             )
         target = filedialog.askdirectory(
-            title="Escolha a pasta de exportação", initialdir=str(EXPORT_DIR)
+            title="Escolha a pasta de exportação",
+            initialdir=str(self.capture_dir / "Exportados"),
         )
         if target:
             self._export_to(Path(target))
@@ -4534,7 +4733,7 @@ class App(tk.Tk):
         session_id = f"suporte-{stamp}"
         try:
             diagnostic = self._diagnostic_file(
-                EXPORT_DIR,
+                self.capture_dir / "Exportados",
                 f"diagnostico-tecnico-{stamp}",
                 session_id,
                 include_logs=True,
@@ -4681,7 +4880,7 @@ class App(tk.Tk):
                 dict.fromkeys(
                     [
                         *self.store.session_sources(self.current_session),
-                        *CAPTURE_DIR.glob(
+                        *self.capture_dir.glob(
                             f"{_safe_name(self.current_session, 'sessao')}-cliente-*.pcap"
                         ),
                     ]
@@ -4861,6 +5060,11 @@ class App(tk.Tk):
             "diamonds": None,
             "contribution": None,
             "kills": 0,
+            "finalizations": 0,
+            "loot": [],
+            "loot_by_rarity": {
+                key: 0 for key, _label in LOOT_RARITIES.values()
+            },
         }
         overview_name = (
             self._client_display_name(self._active_client_index, profiles)
@@ -4892,11 +5096,18 @@ class App(tk.Tk):
                 else None
             ),
             "kills": summary["kills"],
-            "finalizations": None,
-            "loot": sum(
-                int(item.get("count") or 0) for item in summary.get("loot", [])
-            ),
+            "finalizations": summary["finalizations"],
+            "loot": "",
         }
+        rarity_totals = summary.get("loot_by_rarity") or {}
+        rarity_parts = [
+            f"{label} {int(rarity_totals.get(key, 0))}"
+            for key, label in LOOT_RARITIES.values()
+        ]
+        values["loot"] = "\n".join(
+            " · ".join(rarity_parts[index : index + 2])
+            for index in range(0, len(rarity_parts), 2)
+        )
         self.overview_character.configure(text=str(overview_name))
         class_icon = self.class_icons.get(
             (summary["character_class"], summary["biosuit_grade"] or 0)
@@ -4958,6 +5169,8 @@ class App(tk.Tk):
                     and isinstance(value, (int, float))
                     else f"{value:,.0f}".replace(",", ".")
                     if isinstance(value, (int, float))
+                    else value
+                    if isinstance(value, str) and value
                     else "—"
                 )
             )
@@ -5199,8 +5412,11 @@ class App(tk.Tk):
                 if packet_count is not None:
                     self._last_packet_count = packet_count
             self._maybe_decode_live()
-            total = sum(path.stat().st_size for path in CAPTURE_DIR.glob("*.etl"))
-            usage = shutil.disk_usage(CAPTURE_DIR)
+            total = sum(
+                path.stat().st_size
+                for path in self.capture_dir.glob("*.etl")
+            )
+            usage = shutil.disk_usage(self.capture_dir)
             percent_free = usage.free / usage.total if usage.total else 0
             level = (
                 "VERMELHO"
