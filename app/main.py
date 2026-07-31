@@ -39,7 +39,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.0c"
+VERSION = "2.0d"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -5551,6 +5551,7 @@ class App(tk.Tk):
             status = self.capture.status()
             active = self._capture_is_active()
             if active:
+                self.capture.heartbeat()
                 self._refresh_active_game_connections()
             if status.active:
                 packet_count = self.capture.packet_count()

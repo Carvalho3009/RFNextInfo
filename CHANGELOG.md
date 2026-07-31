@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0d — 2026-07-31
+
+- localização, spot e mobs podem ser exibidos em Português ou English;
+- a captura mantém um heartbeat supervisionado pela interface;
+- se o aplicativo encerrar ou parar de responder por 45 segundos, o vigia
+  local encerra o PktMon e remove os filtros para impedir arquivos excessivos.
+
 ## 2.0c — 2026-07-30
 
 - EXP, créditos e contribuição do farm passam a usar a recompensa-base do

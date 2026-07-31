@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -63,7 +65,8 @@ class PktmonCapture:
         segment_mb: int = 512,
         stop_free_bytes: int = 2 * GIB,
         poll_seconds: float = 2,
-        runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+        heartbeat_timeout_seconds: int = 45,
     ) -> None:
         if not ports or any(not 1 <= port <= 65535 for port in ports):
             raise ValueError("porta inválida")
@@ -74,12 +77,17 @@ class PktmonCapture:
         self.segment_mb = segment_mb
         self.stop_free_bytes = stop_free_bytes
         self.poll_seconds = poll_seconds
-        self._run = runner
+        self._run = runner or subprocess.run
+        self._watchdog_enabled = runner is None and os.name == "nt"
+        self._heartbeat_timeout_seconds = heartbeat_timeout_seconds
         self._active = False
         self._prefix: Path | None = None
         self._watcher: threading.Thread | None = None
         self._lock = threading.Lock()
         self._active_ports: set[int] = set()
+        self._heartbeat_path = self.output_dir / ".rfnext-info-heartbeat.json"
+        self._heartbeat_token = ""
+        self._watchdog: subprocess.Popen[str] | None = None
 
     @staticmethod
     def _validate_session_id(session_id: str) -> None:
@@ -128,10 +136,61 @@ class PktmonCapture:
                 raise
 
     def _reset_pktmon(self) -> None:
+        self._stop_watchdog()
         self._stop_pktmon()
         self._command("filter", "remove")
         self._active = False
         self._active_ports.clear()
+
+    def heartbeat(self) -> None:
+        """Confirma que a interface ainda supervisiona esta captura."""
+        if not self._active or not self._heartbeat_token:
+            return
+        temporary = self._heartbeat_path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps({"token": self._heartbeat_token, "pid": os.getpid()}),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self._heartbeat_path)
+
+    def _start_watchdog(self) -> None:
+        self._stop_watchdog()
+        self._heartbeat_token = uuid.uuid4().hex
+        self.heartbeat()
+        if not self._watchdog_enabled:
+            return
+        path = str(self._heartbeat_path).replace("'", "''")
+        token = self._heartbeat_token
+        timeout = self._heartbeat_timeout_seconds
+        script = (
+            "param([string]$Path,[string]$Token,[int]$Timeout,[int]$ParentPid) "
+            "while($true) { Start-Sleep -Seconds 5; "
+            "$file=Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue; "
+            "if($null -eq $file) { & pktmon stop 2>$null; & pktmon filter remove 2>$null; exit }; "
+            "try { $state=Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json } catch { continue }; "
+            "if($state.token -ne $Token) { exit }; "
+            "$alive=Get-Process -Id $ParentPid -ErrorAction SilentlyContinue; "
+            "if($null -eq $alive -or (([DateTime]::UtcNow-$file.LastWriteTimeUtc).TotalSeconds -gt $Timeout)) "
+            "{ & pktmon stop 2>$null; & pktmon filter remove 2>$null; exit } "
+            "}"
+        )
+        self._watchdog = subprocess.Popen(
+            [
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle",
+                "Hidden", "-Command", script, path, token, str(timeout), str(os.getpid()),
+            ],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    def _stop_watchdog(self) -> None:
+        watchdog, self._watchdog = self._watchdog, None
+        self._heartbeat_token = ""
+        try:
+            self._heartbeat_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        if watchdog and watchdog.poll() is None:
+            watchdog.terminate()
 
     def attach(
         self, session_id: str, ports: tuple[int, ...] = ()
@@ -151,6 +210,8 @@ class PktmonCapture:
                     target=self._watch_disk, daemon=True
                 )
                 self._watcher.start()
+            if self._active:
+                self._start_watchdog()
         return self.status()
 
     def start(self, session_id: str) -> Path:
@@ -226,6 +287,11 @@ class PktmonCapture:
                 raise
             self._active_ports = set(ports)
             self._active = True
+            try:
+                self._start_watchdog()
+            except OSError:
+                self._reset_pktmon()
+                raise RuntimeError("Não foi possível iniciar a proteção da captura")
             self._watcher = threading.Thread(target=self._watch_disk, daemon=True)
             self._watcher.start()
             return self._prefix
@@ -300,6 +366,7 @@ class PktmonCapture:
     def stop(self) -> CaptureStatus:
         with self._lock:
             try:
+                self._stop_watchdog()
                 self._stop_pktmon()
             finally:
                 self._active = False

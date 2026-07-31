@@ -27,6 +27,36 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_capture_heartbeat_is_atomic_and_removed_on_stop(self):
+        class Runner:
+            running = True
+
+            def __call__(self, args, **_kwargs):
+                if args[1] == "stop":
+                    self.running = False
+                running = self.running
+
+                class Result:
+                    returncode = 0
+                    stderr = ""
+                    stdout = (
+                        "Packet Monitor is running."
+                        if running
+                        else "Packet Monitor is not running."
+                    )
+
+                return Result()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = PktmonCapture(Path(tmp), runner=Runner())
+            capture._active = True
+            capture._start_watchdog()
+            self.assertTrue(capture._heartbeat_path.is_file())
+            self.assertEqual(
+                json.loads(capture._heartbeat_path.read_text())["pid"], os.getpid()
+            )
+            capture.stop()
+            self.assertFalse(capture._heartbeat_path.exists())
     def test_clear_session_removes_raw_and_decoded_state_only_for_target(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
