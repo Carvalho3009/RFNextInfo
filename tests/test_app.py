@@ -786,6 +786,7 @@ class AppLogicTest(unittest.TestCase):
         app = Mock()
         app.current_session = "session-1"
         app.active_character_uid = "uid-1"
+        app.auto_subsession.get.return_value = False
         app.store.subsessions.return_value = [
             {
                 "id": "sub-1",
@@ -804,11 +805,100 @@ class AppLogicTest(unittest.TestCase):
         )
         app.store.start_subsession.assert_not_called()
 
+    def test_expired_subsession_starts_next_when_auto_enabled(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "name": "Farm",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1_000_000_000,
+                "duration_minutes": 5,
+                "ended_ns": None,
+            },
+            {
+                "id": "sub-2",
+                "character_uid": "uid-2",
+                "name": "Farm B",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1_000_000_000,
+                "duration_minutes": 5,
+                "ended_ns": None,
+            },
+        ]
+
+        with patch(
+            "app.main.time.time_ns", return_value=301_000_000_001
+        ):
+            App._rotate_auto_subsession(app)
+
+        self.assertEqual(
+            [call.args for call in app.store.end_subsession.call_args_list],
+            [
+                ("sub-1", 301_000_000_001),
+                ("sub-2", 301_000_000_001),
+            ],
+        )
+        self.assertEqual(app.store.start_subsession.call_count, 2)
+        self.assertTrue(
+            all(
+                call.kwargs["duration_minutes"] == 10
+                for call in app.store.start_subsession.call_args_list
+            )
+        )
+
+    def test_auto_subsession_resumes_from_latest_ended_template(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "name": "Farm",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1,
+                "duration_minutes": 5,
+                "ended_ns": 2,
+            }
+        ]
+
+        with patch("app.main.time.time_ns", return_value=10**18):
+            App._rotate_auto_subsession(app)
+
+        app.store.start_subsession.assert_called_once()
+        self.assertEqual(
+            app.store.start_subsession.call_args.kwargs["character_uid"],
+            "uid-1",
+        )
+        self.assertEqual(
+            app.store.start_subsession.call_args.kwargs["duration_minutes"],
+            10,
+        )
+
     def test_zero_subsession_duration_waits_for_manual_end(self):
         app = Mock()
         app.current_session = "session-1"
         app.active_character_uid = "uid-1"
         app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
         app.store.subsessions.return_value = [
             {
                 "id": "sub-1",

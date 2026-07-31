@@ -3553,48 +3553,69 @@ class App(tk.Tk):
     def _rotate_auto_subsession(self) -> None:
         if not self.current_session:
             return
-        active = next(
-            (
-                item
-                for item in self.store.subsessions(self.current_session)
-                if item["ended_ns"] is None
-                and item["character_uid"] == self.active_character_uid
-            ),
-            None,
-        )
-        if not active:
-            return
-        elapsed_ns = time.time_ns() - active["started_ns"]
-        duration_minutes = int(active.get("duration_minutes") or 0)
-        if duration_minutes == 0:
-            return
-        if (
-            elapsed_ns >= duration_minutes * 60 * 1_000_000_000
-        ):
-            self.store.end_subsession(active["id"], time.time_ns())
-            self._refresh_subsessions()
-            return
-        if not self.auto_subsession.get():
-            return
-        limit = max(5, int(self.auto_subsession_minutes.get())) * 60
-        if elapsed_ns < limit * 1_000_000_000:
-            return
         now = time.time_ns()
-        self.store.end_subsession(active["id"], now)
-        self.store.start_subsession(
-            f"{_safe_name(self.current_session, 'sessao')}-sub-{now}",
-            self.current_session,
-            f"{active['name']} · automática",
-            character_uid=active["character_uid"],
-            location=active["location"],
-            map_name=active.get("map_name", ""),
-            spot_name=active.get("spot_name", ""),
-            mobs=active["mobs"],
-            mob_levels=active["mob_levels"],
-            duration_minutes=active["duration_minutes"],
-            started_ns=now,
+        automatic = bool(self.auto_subsession.get())
+        automatic_minutes = (
+            max(5, int(self.auto_subsession_minutes.get()))
+            if automatic
+            else 0
         )
-        self._refresh_subsessions()
+        items = self.store.subsessions(self.current_session)
+        latest_ended = {}
+        active_characters = {
+            item["character_uid"]
+            for item in items
+            if item["ended_ns"] is None
+        }
+        for item in items:
+            if item["ended_ns"] is not None:
+                latest_ended.setdefault(item["character_uid"], item)
+
+        def start_next(template: dict) -> None:
+            self.store.start_subsession(
+                f"{_safe_name(self.current_session, 'sessao')}-sub-"
+                f"{now}-{template['character_uid'] or 'geral'}",
+                self.current_session,
+                template["name"],
+                character_uid=template["character_uid"],
+                location=template["location"],
+                map_name=template.get("map_name", ""),
+                spot_name=template.get("spot_name", ""),
+                mobs=template["mobs"],
+                mob_levels=template["mob_levels"],
+                duration_minutes=automatic_minutes,
+                started_ns=now,
+            )
+
+        changed = False
+        restarted = set()
+        for active in items:
+            if active["ended_ns"] is not None:
+                continue
+            duration_minutes = int(active.get("duration_minutes") or 0)
+            if duration_minutes == 0:
+                continue
+            elapsed_ns = now - active["started_ns"]
+            if elapsed_ns < min(
+                duration_minutes,
+                automatic_minutes if automatic else duration_minutes,
+            ) * 60 * 1_000_000_000:
+                continue
+            self.store.end_subsession(active["id"], now)
+            changed = True
+            if automatic:
+                start_next(active)
+                restarted.add(active["character_uid"])
+        if automatic:
+            for character_uid, template in latest_ended.items():
+                if (
+                    character_uid not in active_characters
+                    and character_uid not in restarted
+                ):
+                    start_next(template)
+                    changed = True
+        if changed:
+            self._refresh_subsessions()
 
     def connect_site_profile(self) -> None:
         profile = self.site_profile_name.get().strip()
@@ -5565,7 +5586,8 @@ class App(tk.Tk):
                     f"{elapsed // 60 % 60:02d}:{elapsed % 60:02d}"
                 )
             )
-            self._rotate_auto_subsession()
+            if active:
+                self._rotate_auto_subsession()
             self.start_button.configure(
                 state="disabled"
                 if active
