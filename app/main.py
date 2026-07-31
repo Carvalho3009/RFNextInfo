@@ -201,16 +201,17 @@ def _enable_dpi_awareness() -> None:
         pass
 
 
-def _item_names() -> dict[str, str]:
+def _item_names(filename: str = "item_names.json") -> dict[str, str]:
     try:
         return json.loads(
-            (ROOT / "core" / "item_names.json").read_text(encoding="utf-8-sig")
+            (ROOT / "core" / filename).read_text(encoding="utf-8-sig")
         )
     except (OSError, ValueError):
         return {}
 
 
 ITEM_NAMES = _item_names()
+ITEM_NAMES_EN = _item_names("item_names_en.json")
 
 
 def _item_grades() -> dict[str, int]:
@@ -321,7 +322,9 @@ def _capture_summary(
     envelope: dict,
     character_uid: str | None = None,
     character_name: str = "",
+    item_names: dict[str, str] | None = None,
 ) -> tuple[dict, dict[str, list[int]]]:
+    item_names = ITEM_NAMES if item_names is None else item_names
     summary = {
         "character": "",
         "character_class": "",
@@ -506,8 +509,8 @@ def _capture_summary(
                     {
                         "item_index": item_index,
                         "item": (
-                            item.get("item_name")
-                            or ITEM_NAMES.get(str(item_index))
+                            item_names.get(str(item_index))
+                            or item.get("item_name")
                             or item_index
                         ),
                         "count": count,
@@ -590,12 +593,21 @@ def _collection_marks(
     return marks, sorted(seen_types)
 
 
-def _market_rows(envelope: dict) -> list[dict]:
+def _market_rows(
+    envelope: dict,
+    item_names: dict[str, str] | None = None,
+) -> list[dict]:
     infos = [
         {"exchange": event.get("data") or {}}
         for event in envelope.get("events", [])
     ]
-    return latest_market_rows(infos) + latest_market_offer_rows(infos)
+    rows = latest_market_rows(infos) + latest_market_offer_rows(infos)
+    if item_names:
+        for row in rows:
+            name = item_names.get(str(row.get("ItemIndex")))
+            if name:
+                row["Name"] = name
+    return rows
 
 
 def _recycle(paths: list[Path]) -> bool:
@@ -687,7 +699,6 @@ class App(tk.Tk):
         self._live_index = 0
         self._ingest_lock = threading.Lock()
         self._next_live_decode = time.monotonic() + 30
-        self._adaptive_live_interval = 0
         self._last_live_decode = "Ainda não executada"
         self._last_poll_error = ""
         self._last_packet_count: int | None = None
@@ -707,6 +718,7 @@ class App(tk.Tk):
         self._game_choices: dict[str, str] = {}
         self._selected_game_path = ""
         self.prefs: dict = {}
+        self.item_name_language = tk.StringVar(value="pt")
         self._style()
         self._build()
         self.bind_all("<MouseWheel>", self._scroll_active_page, add="+")
@@ -2116,6 +2128,26 @@ class App(tk.Tk):
             textvariable=self.decode_interval,
             command=self._decode_interval_changed,
         ).pack(side=RIGHT)
+        names = ttk.Frame(preferences, style="PanelBody.TFrame")
+        names.pack(fill=X, pady=(4, 0))
+        ttk.Label(
+            names,
+            text="Nomes dos itens",
+            style="PanelMuted.TLabel",
+        ).pack(side=LEFT)
+        item_language = ttk.Combobox(
+            names,
+            state="readonly",
+            width=12,
+            values=("Português", "English"),
+        )
+        item_language.set("Português")
+        item_language.pack(side=RIGHT)
+        item_language.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self._item_language_changed(item_language.get()),
+        )
+        self.item_language_field = item_language
         ttk.Label(
             preferences,
             text="Subsessões automáticas",
@@ -2557,6 +2589,13 @@ class App(tk.Tk):
         self._next_live_decode = (
             time.monotonic() + self.decode_interval.get()
         )
+        language = (
+            "en" if self.prefs.get("item_name_language") == "en" else "pt"
+        )
+        self.item_name_language.set(language)
+        self.item_language_field.set(
+            "English" if language == "en" else "Português"
+        )
         self.channel.set(
             self.prefs.get("channel")
             if self.prefs.get("channel") in {"stable", "beta"}
@@ -2659,6 +2698,7 @@ class App(tk.Tk):
                 "auto_export": self.auto_export.get(),
                 "delete_after_export": self.delete_after_export.get(),
                 "decode_interval_seconds": self._decode_interval_seconds(),
+                "item_name_language": self.item_name_language.get(),
                 "channel": self.channel.get(),
                 "last_session": self.current_session,
                 "game_executable": self._selected_game_path,
@@ -2732,9 +2772,33 @@ class App(tk.Tk):
     def _decode_interval_changed(self, _event=None) -> None:
         interval = self._decode_interval_seconds()
         self.decode_interval.set(interval)
-        self._adaptive_live_interval = 0
         self._next_live_decode = time.monotonic() + interval
         self._save_preferences()
+
+    def _item_language_changed(self, label: str) -> None:
+        self.item_name_language.set("en" if label == "English" else "pt")
+        self._save_preferences()
+        self._refresh_info()
+
+    def _capture_summary_for_language(
+        self,
+        envelope: dict,
+        character_uid: str | None = None,
+        character_name: str = "",
+    ) -> tuple[dict, dict[str, list[int]]]:
+        return _capture_summary(
+            envelope,
+            character_uid,
+            character_name,
+            item_names=self._selected_item_names(),
+        )
+
+    def _selected_item_names(self) -> dict[str, str]:
+        return (
+            ITEM_NAMES_EN
+            if self.item_name_language.get() == "en"
+            else ITEM_NAMES
+        )
 
     def _quick_capture_duration(self, mode: str) -> int:
         try:
@@ -2865,7 +2929,7 @@ class App(tk.Tk):
                 session_id, None, include_unassigned=True
             )
             try:
-                rows = _market_rows(envelope)
+                rows = _market_rows(envelope, self._selected_item_names())
             except DecodeError:
                 rows = []
             if not rows:
@@ -2902,7 +2966,9 @@ class App(tk.Tk):
                 bool(selected["include_unassigned"]),
                 bool(selected["only_unassigned"]),
             )
-            summary, _marks = _capture_summary(envelope, uid, character)
+            summary, _marks = self._capture_summary_for_language(
+                envelope, uid, character
+            )
             metadata["character_name"] = character
             metadata["marks_mode"] = "merge"
             profile_data = {
@@ -3181,7 +3247,9 @@ class App(tk.Tk):
             subsession["started_ns"],
             ended_ns,
         )
-        summary, _marks = _capture_summary(interval_envelope)
+        summary, _marks = self._capture_summary_for_language(
+            interval_envelope
+        )
         seconds = max(
             1,
             int(
@@ -3405,7 +3473,7 @@ class App(tk.Tk):
                 item["started_ns"],
                 end,
             )
-            summary, _marks = _capture_summary(envelope)
+            summary, _marks = self._capture_summary_for_language(envelope)
             hours = duration / 3600 if duration else 0
             exp_hour = round(summary["exp_gained"] / hours) if hours else 0
             exp_total_percent = summary["exp_gained_percent"]
@@ -3606,12 +3674,14 @@ class App(tk.Tk):
             }
             if mode == "market":
                 try:
-                    rows = _market_rows(envelope)
+                    rows = _market_rows(
+                        envelope, self._selected_item_names()
+                    )
                 except DecodeError:
                     rows = []
                 payload = {"metadata": metadata, "rows": rows}
             else:
-                summary, _marks = _capture_summary(
+                summary, _marks = self._capture_summary_for_language(
                     envelope,
                     str(uid),
                     character,
@@ -4058,7 +4128,6 @@ class App(tk.Tk):
         self._live_ports = tuple(
             dict.fromkeys((*DEFAULT_PORTS, *filter_ports))
         )
-        self._adaptive_live_interval = 0
         if resuming:
             self._client_pids, self._client_ports = _merge_client_routes(
                 self._client_pids,
@@ -4424,11 +4493,7 @@ class App(tk.Tk):
             or time.monotonic() < self._next_live_decode
         ):
             return
-        configured_interval = self._decode_interval_seconds()
-        interval = max(
-            configured_interval,
-            int(getattr(self, "_adaptive_live_interval", 0)),
-        )
+        interval = self._decode_interval_seconds()
         self._next_live_decode = time.monotonic() + interval
         try:
             capture = self._live_capture
@@ -4462,16 +4527,14 @@ class App(tk.Tk):
             self._live_ingesting = False
             elapsed = time.monotonic() - started_at
             self._last_live_decode = datetime.now().strftime("%H:%M:%S")
+            self._next_live_decode = (
+                time.monotonic() + self._decode_interval_seconds()
+            )
             self.log.info(
                 "live_decode_finished seconds=%.3f bytes=%d",
                 elapsed,
                 target.stat().st_size if target.exists() else 0,
             )
-            if elapsed > interval / 2:
-                self._adaptive_live_interval = min(
-                    300,
-                    max(interval * 2, int(elapsed * 2) + 1),
-                )
             def finish_requested_action():
                 if self._exit_after_live_ingest:
                     self._exit_after_live_ingest = False
@@ -4797,7 +4860,7 @@ class App(tk.Tk):
                     bool(character["include_unassigned"]),
                     bool(character["only_unassigned"]),
                 )
-                detected_summary, marks = _capture_summary(
+                detected_summary, marks = self._capture_summary_for_language(
                     preview,
                     str(character["uid"] or ""),
                     name,
@@ -5002,7 +5065,7 @@ class App(tk.Tk):
                     bool(character["include_unassigned"]),
                     bool(character["only_unassigned"]),
                 )
-                summary, _ = _capture_summary(
+                summary, _ = self._capture_summary_for_language(
                     envelope,
                     character["uid"],
                     character["name"],

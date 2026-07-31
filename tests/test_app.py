@@ -5,6 +5,7 @@ import logging
 import struct
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -262,6 +263,7 @@ class AppLogicTest(unittest.TestCase):
         }
         app.quick_mode_labels = {"character": Mock()}
         app.queue_mode_times = {"character": Mock()}
+        app._capture_summary_for_language.side_effect = _capture_summary
         app._run.side_effect = lambda job, done: done(job(), None)
 
         App._send_mode_snapshot(app, "character")
@@ -509,9 +511,11 @@ class AppLogicTest(unittest.TestCase):
                         }
                     }
                 ]
-            }
+            },
+            {"1000150": "English market item"},
         )
         self.assertEqual(rows[0]["ItemIndex"], 1000150)
+        self.assertEqual(rows[0]["Name"], "English market item")
         self.assertEqual(rows[0]["PricePerUnit"], 100)
 
     def test_summary_resolves_biosuit_name_and_class(self):
@@ -1135,7 +1139,7 @@ class AppLogicTest(unittest.TestCase):
             app._live_ingesting = False
             app._stop_after_live_ingest = False
             app._exit_after_live_ingest = False
-            app._adaptive_live_interval = 0
+            app._adaptive_live_interval = 180
             app.current_session = "session-1"
             app._next_live_decode = 0
             app._decode_interval_seconds.return_value = 30
@@ -1166,6 +1170,30 @@ class AppLogicTest(unittest.TestCase):
             self.assertFalse(app._live_ingesting)
             app._refresh_info.assert_called_once()
             app._upload_pending_quick_captures.assert_called_once()
+            self.assertLessEqual(
+                app._next_live_decode - time.monotonic(),
+                31,
+            )
+
+    def test_capture_summary_can_use_official_english_item_names(self):
+        self.assertEqual(main_module.ITEM_NAMES_EN["1"], "Credit")
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "drop_item_field",
+                        "data": {
+                            "results": [
+                                {"item_index": 123, "count": 2}
+                            ]
+                        },
+                    }
+                ]
+            },
+            item_names={"123": "English item"},
+        )
+
+        self.assertEqual(summary["loot"][0]["item"], "English item")
 
     @patch("app.main.messagebox.showwarning")
     def test_export_waits_for_complete_capture(self, warning):
