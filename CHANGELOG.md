@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0c — 2026-07-30
+
+- EXP, créditos e contribuição do farm passam a usar a recompensa-base do
+  monstro; o bônus de finalização não infla mais os totais nem as taxas.
+- Finalizações são contabilizadas separadamente e pacotes sem recompensa de
+  EXP não são considerados abates.
+- O loot é separado em comum, incomum, raro e épico usando os 8.192 itens da
+  base canônica 1.28.5.
+- A visão geral e as subsessões exibem os totais corrigidos, incluindo
+  contribuição total e por hora.
+- O envio de personagem inclui os equipamentos e a pasta das capturas pode
+  ser escolhida nas configurações.
+
 ## 2.0b — 2026-07-30
 
 - O catálogo de farm passa a usar seleção encadeada de mapa, spot e mobs.
