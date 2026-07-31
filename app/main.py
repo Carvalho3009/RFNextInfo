@@ -452,7 +452,7 @@ def _capture_summary(
         if isinstance(fields.get("gain_exp"), (int, float)):
             gained = fields["gain_exp"]
             observed_exp_gained += gained
-            if fields.get("action_code") in {1005, 1006}:
+            if fields.get("action_code") == 1006:
                 observed_finalizations += 1
             gain_level = fields.get("level")
             gain_required = (
@@ -475,14 +475,19 @@ def _capture_summary(
         if "exchange" in kind or "market" in kind:
             summary["market_events"] += 1
         if event.get("type") == "drop_item_field":
-            summary["kills"] += 1
+            kill_reward = False
             for item in data.get("results", []):
                 item_index = item.get("item_index")
                 count = item.get("count")
                 if item_index == 900 and isinstance(count, (int, float)):
-                    reward_exp += count
+                    kill_reward = True
+                    reward_exp += (
+                        count // 10
+                        if item.get("action_code") == 1006
+                        else count
+                    )
                     reward_exp_seen = True
-                    if item.get("action_code") in {1005, 1006}:
+                    if item.get("action_code") == 1006:
                         reward_finalizations += 1
                     continue
                 if item_index == 1 and isinstance(count, (int, float)):
@@ -511,6 +516,7 @@ def _capture_summary(
                         "rarity": rarity[1] if rarity else None,
                     }
                 )
+            summary["kills"] += int(kill_reward)
     required = (
         LEVEL_CURVE.get(summary["level"] + 1)
         if isinstance(summary["level"], int)

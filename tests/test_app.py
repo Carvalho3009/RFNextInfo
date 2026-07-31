@@ -362,7 +362,15 @@ class AppLogicTest(unittest.TestCase):
                         "type": "drop_item_field",
                         "data": {
                             "results": [
-                                {"item_index": 900, "count": 26_584},
+                                {
+                                    "item_index": 900,
+                                    "count": (
+                                        265_840 if index < 9 else 26_584
+                                    ),
+                                    "action_code": (
+                                        1006 if index < 9 else 1001
+                                    ),
+                                },
                                 {"item_index": 1, "count": 574},
                                 {"item_index": 1701, "count": 6_050},
                             ]
@@ -404,10 +412,10 @@ class AppLogicTest(unittest.TestCase):
                         "type": "drop_item_field",
                         "data": {
                             "results": [
-                                {"item_index": 1000000, "count": 2},
-                                {"item_index": 1000036, "count": 3},
-                                {"item_index": 1000078, "count": 4},
-                                {"item_index": 1000126, "count": 5},
+                                {"item_index": 149158, "count": 2},
+                                {"item_index": 149159, "count": 3},
+                                {"item_index": 149160, "count": 4},
+                                {"item_index": 154058, "count": 5},
                             ]
                         },
                     }
@@ -428,6 +436,7 @@ class AppLogicTest(unittest.TestCase):
             [item["rarity"] for item in summary["loot"]],
             ["Comum", "Incomum", "Raro", "Épico"],
         )
+        self.assertEqual(summary["kills"], 0)
 
     def test_farm_catalog_links_map_spot_mob_and_level(self):
         self.assertEqual(len(FARM_CATALOG), 25)
