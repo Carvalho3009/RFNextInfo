@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0f — 2026-07-31
+
+- a sessão anterior pendente relê os segmentos para recuperar o UID do
+  personagem, sem exigir uma nova entrada no jogo;
+- o bloco de nova subsessão pode ser recolhido, os mobs têm seleção total e
+  as listas suspensas usam texto preto sobre fundo claro.
+
 ## 2.0e — 2026-07-31
 
 - subsessões selecionadas podem ser renomeadas ou excluídas localmente;
