@@ -499,7 +499,7 @@ class AppLogicTest(unittest.TestCase):
         app._ingest_files.assert_called_once_with(
             (Path("retained.etl"),),
             "profile-20260731-001",
-            (12010,),
+            (12000, 12010, 12020, 12040),
             append_only=True,
         )
         app.capture_state.configure.assert_called_once()
@@ -1303,7 +1303,7 @@ class AppLogicTest(unittest.TestCase):
             app._ingest_files.assert_called_once_with(
                 (preview,),
                 "session-1",
-                (12010, 12020, 50100),
+                (12000, 12010, 12020, 12040),
                 append_only=True,
             )
             app.capture.stop.assert_not_called()

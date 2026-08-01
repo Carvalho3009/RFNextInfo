@@ -39,7 +39,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.0f"
+VERSION = "2.0g"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -4257,9 +4257,11 @@ class App(tk.Tk):
                 "Abra um cliente ProjectRF e entre no jogo.",
             )
         local_ports, remote_ports, clients = ports_for_executable(
-            self._selected_game_path
+            self._selected_game_path, DEFAULT_PORTS
         )
-        client_connections = clients_for_executable(self._selected_game_path)
+        client_connections = clients_for_executable(
+            self._selected_game_path, DEFAULT_PORTS
+        )
         if not local_ports:
             self.refresh_game_choices(False)
             return messagebox.showwarning(
@@ -4287,9 +4289,7 @@ class App(tk.Tk):
         filter_ports = tuple(
             dict.fromkeys((*local_ports, *remote_ports))
         )
-        decode_ports = tuple(
-            dict.fromkeys((*DEFAULT_PORTS, *remote_ports))
-        )
+        decode_ports = DEFAULT_PORTS
         try:
             self.capture.start_for_ports(capture_prefix, filter_ports)
         except Exception as error:
@@ -4470,9 +4470,7 @@ class App(tk.Tk):
         session_id = self.current_session
         files = tuple(self.last_files)
         preview_files = tuple(self._live_files)
-        decode_ports = tuple(
-            self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
-        )
+        decode_ports = DEFAULT_PORTS
 
         def progress(done: int, total: int) -> None:
             def update() -> None:
@@ -4633,9 +4631,7 @@ class App(tk.Tk):
             or self.store.session_profiles(self.current_session)
         ):
             return
-        decode_ports = tuple(
-            self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
-        )
+        decode_ports = DEFAULT_PORTS
 
         def recovered(result, error) -> None:
             if error:
@@ -4736,14 +4732,7 @@ class App(tk.Tk):
         self.live_decode_state.configure(text="Atualizando informações…")
         session_id = self.current_session
         started_at = time.monotonic()
-        decode_ports = tuple(
-            dict.fromkeys(
-                (
-                    *(self.prefs.get("capture_decode_ports") or DEFAULT_PORTS),
-                    *(self.prefs.get("capture_ports") or ()),
-                )
-            )
-        )
+        decode_ports = DEFAULT_PORTS
 
         def done(result, error):
             self._live_ingesting = False
@@ -5599,9 +5588,11 @@ class App(tk.Tk):
         if not self._selected_game_path:
             return
         local_ports, remote_ports, clients = ports_for_executable(
-            self._selected_game_path
+            self._selected_game_path, DEFAULT_PORTS
         )
-        client_connections = clients_for_executable(self._selected_game_path)
+        client_connections = clients_for_executable(
+            self._selected_game_path, DEFAULT_PORTS
+        )
         client_signature = tuple(
             (
                 int(item["pid"]),
@@ -5659,11 +5650,7 @@ class App(tk.Tk):
             self._live_ports = tuple(
                 sorted(set(self._live_ports) | set(filter_ports))
             )
-            decode_ports = set(
-                self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
-            )
-            decode_ports.update(remote_ports)
-            self.prefs["capture_decode_ports"] = sorted(decode_ports)
+            self.prefs["capture_decode_ports"] = list(DEFAULT_PORTS)
             self._save_preferences()
             self.log.info(
                 "capture_connections_added filters=%d live_filters=%d "

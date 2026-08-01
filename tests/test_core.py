@@ -18,6 +18,7 @@ from core.pktmon_realtime import (
     split_pcap_by_ports,
 )
 from core.connections import (
+    clients_for_executable,
     connected_processes,
     ports_for_executable,
 )
@@ -427,6 +428,21 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(remote_ports, (9000, 9001))
         self.assertEqual(clients, 2)
         self.assertEqual(ports_for_executable(paths[12]), ((), (), 0))
+
+    def test_connections_can_exclude_non_rf_remote_ports(self):
+        game = r"C:\Games\ProjectRF.exe"
+        rows = [(10, 50100, 12020), (10, 50101, 443)]
+        with patch("core.connections._tcp_rows", return_value=rows), patch(
+            "core.connections._process_path", return_value=game
+        ):
+            local_ports, remote_ports, clients = ports_for_executable(
+                game, (12000, 12010, 12020, 12040)
+            )
+            routes = clients_for_executable(
+                game, (12000, 12010, 12020, 12040)
+            )
+        self.assertEqual((local_ports, remote_ports, clients), ((50100,), (12020,), 1))
+        self.assertEqual(routes[0]["local_ports"], (50100,))
 
     def test_unidentified_flows_are_matched_to_closest_exp(self):
         with tempfile.TemporaryDirectory() as tmp:

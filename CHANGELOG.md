@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0g — 2026-07-31
+
+- a captura e o decoder usam exclusivamente as portas RF NEXT confirmadas;
+- portas HTTPS, efêmeras e históricas não são mais acumuladas entre
+  reconexões, reduzindo pacotes estranhos e eventos não decodificados.
+
 ## 2.0f — 2026-07-31
 
 - a sessão anterior pendente relê os segmentos para recuperar o UID do
