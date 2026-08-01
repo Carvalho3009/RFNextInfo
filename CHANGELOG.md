@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0e — 2026-07-31
+
+- subsessões selecionadas podem ser renomeadas ou excluídas localmente;
+- exclusão preserva os eventos da captura e dados já enviados ao site;
+- seleção de mobs usa caixas de marcação em três colunas e remove prefixos
+  técnicos dos nomes exibidos.
+
 ## 2.0d — 2026-07-31
 
 - localização, spot e mobs podem ser exibidos em Português ou English;
