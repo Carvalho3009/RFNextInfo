@@ -480,20 +480,10 @@ class AppLogicTest(unittest.TestCase):
         )
         app.subsession_spot.set.assert_called_once_with("Área 4")
 
-        app._subsession_spot_changed = App._subsession_spot_changed.__get__(
-            app
-        )
-        app.subsession_mobs.reset_mock()
+        app._subsession_spot_changed = App._subsession_spot_changed.__get__(app)
         app._subsession_spot_changed()
-
-        inserted = [
-            call.args[1] for call in app.subsession_mobs.insert.call_args_list
-        ]
-        self.assertEqual(
-            inserted,
-            list(
-                FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
-            ),
+        app._set_subsession_mob_choices.assert_called_once_with(
+            FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
         )
 
     def test_english_language_updates_map_and_spot_choices(self):

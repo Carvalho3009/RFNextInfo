@@ -90,6 +90,16 @@ class CoreTest(unittest.TestCase):
             self.assertEqual(store.subsessions("keep")[0]["sequence"], 2)
             store.close()
 
+    def test_subsession_can_be_renamed_and_deleted_without_events(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = CaptureStore(Path(folder) / "capture.sqlite3")
+            store.start_subsession("sub-1", "session", "Antes", started_ns=1)
+            store.rename_subsession("sub-1", "Depois")
+            self.assertEqual(store.subsessions("session")[0]["name"], "Depois")
+            self.assertEqual(store.delete_subsessions(("sub-1",)), 1)
+            self.assertEqual(store.subsessions("session"), [])
+            store.close()
+
     def test_capture_windows_and_subsessions_survive_restart(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "capture.sqlite3"

@@ -921,6 +921,28 @@ class CaptureStore:
                 (ended_ns, subsession_id),
             )
 
+    def rename_subsession(self, subsession_id: str, name: str) -> None:
+        name = name.strip()
+        if not subsession_id or not name:
+            raise ValueError("informe um nome para a subsessão")
+        with self.conn:
+            if not self.conn.execute(
+                "UPDATE subsessions SET name=? WHERE id=?",
+                (name, subsession_id),
+            ).rowcount:
+                raise ValueError("subsessão não encontrada")
+
+    def delete_subsessions(self, subsession_ids: Iterable[str]) -> int:
+        identifiers = tuple(dict.fromkeys(value for value in subsession_ids if value))
+        if not identifiers:
+            return 0
+        placeholders = ",".join("?" for _ in identifiers)
+        with self.conn:
+            return self.conn.execute(
+                f"DELETE FROM subsessions WHERE id IN ({placeholders})",
+                identifiers,
+            ).rowcount
+
     def subsessions(self, session_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """SELECT id,character_uid,name,location,map_name,spot_name,

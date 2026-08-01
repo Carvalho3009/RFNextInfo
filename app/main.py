@@ -1920,20 +1920,10 @@ class App(tk.Tk):
         self.subsession_spot = ttk.Combobox(
             form, width=30, state="readonly"
         )
-        self.subsession_mobs = tk.Listbox(
-            form,
-            height=5,
-            selectmode="multiple",
-            exportselection=False,
-            bg="#0a0d0c",
-            fg="#F4F2EB",
-            selectbackground="#6d5428",
-            selectforeground="#F4F2EB",
-            highlightbackground="#6d5428",
-            highlightcolor="#D4A64D",
-            relief="flat",
-            font=("Saira", 9),
-        )
+        self.subsession_mobs = ttk.Frame(form, style="PanelBody.TFrame")
+        for column in range(3):
+            self.subsession_mobs.columnconfigure(column, weight=1)
+        self.subsession_mob_vars: dict[str, tk.BooleanVar] = {}
         self.subsession_other_mob = ttk.Entry(form, width=30)
         level_range = ttk.Frame(form, style="PanelBody.TFrame")
         self.subsession_level = ttk.Spinbox(
@@ -1964,7 +1954,7 @@ class App(tk.Tk):
         for label, widget in (
             ("Mapa", self.subsession_map),
             ("Spot", self.subsession_spot),
-            ("Mobs do spot · multiseleção", self.subsession_mobs),
+            ("Mobs do spot", self.subsession_mobs),
             ("Mob extra", self.subsession_other_mob),
             ("Nível dos mobs", level_range),
             ("Duração (0 = encerrar manualmente)", duration),
@@ -1979,9 +1969,6 @@ class App(tk.Tk):
         )
         self.subsession_spot.bind(
             "<<ComboboxSelected>>", self._subsession_spot_changed
-        )
-        self.subsession_mobs.bind(
-            "<<ListboxSelect>>", self._subsession_mobs_changed
         )
         self.subsession_start_button = ttk.Button(
             form,
@@ -2086,6 +2073,18 @@ class App(tk.Tk):
             command=self.send_selected_subsessions,
         )
         self.subsession_upload_button.pack(side=LEFT, padx=(10, 0))
+        ttk.Button(
+            pagination,
+            text="Renomear",
+            style="Quiet.TButton",
+            command=self.rename_selected_subsession,
+        ).pack(side=LEFT, padx=(8, 0))
+        ttk.Button(
+            pagination,
+            text="Excluir",
+            style="Danger.TButton",
+            command=self.delete_selected_subsessions,
+        ).pack(side=LEFT, padx=(6, 0))
         page_controls = ttk.Frame(pagination, style="PanelBody.TFrame")
         page_controls.pack(side=RIGHT)
         ttk.Button(
@@ -3176,9 +3175,30 @@ class App(tk.Tk):
         mobs = self._selected_farm_catalog().get(
             self.subsession_map.get().strip(), {}
         ).get(self.subsession_spot.get().strip(), {})
-        self.subsession_mobs.delete(0, END)
-        for mob in mobs:
-            self.subsession_mobs.insert(END, mob)
+        self._set_subsession_mob_choices(mobs)
+
+    def _set_subsession_mob_choices(self, mobs) -> None:
+        for child in self.subsession_mobs.winfo_children():
+            child.destroy()
+        self.subsession_mob_vars = {}
+        for index, mob in enumerate(mobs):
+            name = re.sub(r"^\s*(?:\[?\d+\]?\s*[-:|]\s*)+", "", str(mob)).strip()
+            if not name:
+                continue
+            variable = tk.BooleanVar(value=False)
+            self.subsession_mob_vars[str(mob)] = variable
+            ttk.Checkbutton(
+                self.subsession_mobs,
+                text=name,
+                variable=variable,
+                command=self._subsession_mobs_changed,
+            ).grid(row=index // 3, column=index % 3, sticky="w", padx=(0, 10))
+
+    def _selected_subsession_mobs(self) -> list[str]:
+        return [
+            mob for mob, variable in self.subsession_mob_vars.items()
+            if variable.get()
+        ]
 
     def _subsession_mobs_changed(self, _event=None) -> None:
         spot_catalog = self._selected_farm_catalog().get(
@@ -3186,10 +3206,8 @@ class App(tk.Tk):
         ).get(self.subsession_spot.get().strip(), {})
         levels = [
             level
-            for index in self.subsession_mobs.curselection()
-            for level in spot_catalog.get(
-                str(self.subsession_mobs.get(index)), ()
-            )
+            for mob in self._selected_subsession_mobs()
+            for level in spot_catalog.get(mob, ())
         ]
         if not levels:
             return
@@ -3213,10 +3231,7 @@ class App(tk.Tk):
                 "Subsessão", "Selecione o mapa e o spot."
             )
         name = self.subsession_name.get().strip() or spot_name
-        mobs = [
-            self.subsession_mobs.get(index)
-            for index in self.subsession_mobs.curselection()
-        ]
+        mobs = self._selected_subsession_mobs()
         other_mob = self.subsession_other_mob.get().strip()
         if other_mob:
             mobs.append(other_mob)
@@ -3296,6 +3311,47 @@ class App(tk.Tk):
                 "Subsessão", "Não existe subsessão ativa neste personagem."
             )
         self.store.end_subsession(active["id"], time.time_ns())
+        self._refresh_subsessions()
+
+    def rename_selected_subsession(self) -> None:
+        selected = self.subsession_table.selection()
+        if len(selected) != 1:
+            return messagebox.showinfo(
+                "Subsessão", "Selecione uma única subsessão para renomear."
+            )
+        current = next(
+            (
+                item for item in self.store.subsessions(self.current_session or "")
+                if item["id"] == selected[0]
+            ),
+            None,
+        )
+        if not current:
+            return
+        name = simpledialog.askstring(
+            "Renomear subsessão", "Nome da subsessão:", initialvalue=current["name"]
+        )
+        if name is None:
+            return
+        try:
+            self.store.rename_subsession(selected[0], name)
+        except ValueError as error:
+            return messagebox.showwarning("Subsessão", str(error))
+        self._refresh_subsessions()
+
+    def delete_selected_subsessions(self) -> None:
+        selected = tuple(self.subsession_table.selection())
+        if not selected:
+            return messagebox.showinfo(
+                "Subsessão", "Selecione ao menos uma subsessão para excluir."
+            )
+        if not messagebox.askyesno(
+            "Excluir subsessões",
+            f"Excluir {len(selected)} subsessão(ões) localmente? "
+            "Os eventos da captura e dados já enviados ao site não serão apagados.",
+        ):
+            return
+        self.store.delete_subsessions(selected)
         self._refresh_subsessions()
 
     def _subsession_report(
