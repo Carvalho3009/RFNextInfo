@@ -486,6 +486,43 @@ class AppLogicTest(unittest.TestCase):
             FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
         )
 
+    def test_retained_capture_recovers_character_uid(self):
+        app = Mock()
+        app.current_session = "profile-20260731-001"
+        app.prefs = {"capture_decode_ports": [12010]}
+        app.store.session_profiles.side_effect = [[], [{"uid": "123"}]]
+        app._ingest_files.return_value = (3, [], 0)
+        app._run.side_effect = lambda job, done: done(job(), None)
+
+        App._recover_pending_character_uid(app, (Path("retained.etl"),))
+
+        app._ingest_files.assert_called_once_with(
+            (Path("retained.etl"),),
+            "profile-20260731-001",
+            (12010,),
+            append_only=True,
+        )
+        app.capture_state.configure.assert_called_once()
+        app._refresh_info.assert_called_once()
+
+    def test_subsession_form_toggle_hides_and_restores_form(self):
+        app = Mock()
+        app._subsession_form_visible = True
+
+        App._toggle_subsession_form(app)
+        self.assertFalse(app._subsession_form_visible)
+        app.subsession_form.pack_forget.assert_called_once()
+        app.subsession_form_toggle.configure.assert_called_once_with(text="▶")
+
+        App._toggle_subsession_form(app)
+        self.assertTrue(app._subsession_form_visible)
+        app.subsession_form.pack.assert_called_once_with(
+            side="left",
+            before=app.subsession_history,
+            fill="y",
+            padx=(0, 8),
+        )
+
     def test_english_language_updates_map_and_spot_choices(self):
         app = Mock()
         app.item_name_language.get.return_value = "pt"

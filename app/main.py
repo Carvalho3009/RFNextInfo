@@ -1046,6 +1046,10 @@ class App(tk.Tk):
             bordercolor="#6d5428",
             padding=5,
         )
+        self.option_add("*TCombobox*Listbox.background", "#F4F2EB")
+        self.option_add("*TCombobox*Listbox.foreground", "#070909")
+        self.option_add("*TCombobox*Listbox.selectBackground", "#D4A64D")
+        self.option_add("*TCombobox*Listbox.selectForeground", "#070909")
         style.configure(
             "Shortcut.TCombobox",
             fieldbackground="#111614",
@@ -1908,7 +1912,17 @@ class App(tk.Tk):
         content = ttk.Frame(self.subsessions_tab, style="Workspace.TFrame")
         content.pack(fill=BOTH, expand=True)
 
+        self.subsession_form_toggle = ttk.Button(
+            content,
+            text="◀",
+            width=3,
+            style="Quiet.TButton",
+            command=self._toggle_subsession_form,
+        )
+        self.subsession_form_toggle.pack(side=LEFT, fill=Y, padx=(0, 4))
         form = ttk.Frame(content, style="AccentPanel.TFrame", padding=10)
+        self.subsession_form = form
+        self._subsession_form_visible = True
         form.pack(side=LEFT, fill=Y, padx=(0, 8))
         ttk.Label(form, text="Nova subsessão", style="PanelTitle.TLabel").pack(
             anchor="w", pady=(0, 8)
@@ -1924,6 +1938,7 @@ class App(tk.Tk):
         for column in range(3):
             self.subsession_mobs.columnconfigure(column, weight=1)
         self.subsession_mob_vars: dict[str, tk.BooleanVar] = {}
+        self.subsession_select_all = tk.BooleanVar(value=False)
         self.subsession_other_mob = ttk.Entry(form, width=30)
         level_range = ttk.Frame(form, style="PanelBody.TFrame")
         self.subsession_level = ttk.Spinbox(
@@ -1964,6 +1979,12 @@ class App(tk.Tk):
                 anchor="w", pady=(6, 2)
             )
             widget.pack(fill=X)
+        ttk.Checkbutton(
+            form,
+            text="Selecionar todos os mobs",
+            variable=self.subsession_select_all,
+            command=self._toggle_all_subsession_mobs,
+        ).pack(anchor="w", pady=(4, 0))
         self.subsession_map.bind(
             "<<ComboboxSelected>>", self._subsession_map_changed
         )
@@ -1997,6 +2018,7 @@ class App(tk.Tk):
         history = ttk.Frame(
             content, style="AccentPanel.TFrame", padding=10
         )
+        self.subsession_history = history
         history.pack(side=LEFT, fill=BOTH, expand=True)
         history_heading = ttk.Frame(history, style="PanelBody.TFrame")
         history_heading.pack(fill=X, pady=(0, 8))
@@ -2705,6 +2727,7 @@ class App(tk.Tk):
                     status.active,
                     len(status.files),
                 )
+                self._recover_pending_character_uid(tuple(status.files))
         except Exception:
             self.log.exception("capture_recovery_failed")
         self._save_preferences()
@@ -3181,6 +3204,7 @@ class App(tk.Tk):
         for child in self.subsession_mobs.winfo_children():
             child.destroy()
         self.subsession_mob_vars = {}
+        self.subsession_select_all.set(False)
         for index, mob in enumerate(mobs):
             name = re.sub(r"^\s*(?:\[?\d+\]?\s*[-:|]\s*)+", "", str(mob)).strip()
             if not name:
@@ -3193,6 +3217,26 @@ class App(tk.Tk):
                 variable=variable,
                 command=self._subsession_mobs_changed,
             ).grid(row=index // 3, column=index % 3, sticky="w", padx=(0, 10))
+
+    def _toggle_all_subsession_mobs(self) -> None:
+        selected = self.subsession_select_all.get()
+        for variable in self.subsession_mob_vars.values():
+            variable.set(selected)
+        self._subsession_mobs_changed()
+
+    def _toggle_subsession_form(self) -> None:
+        if self._subsession_form_visible:
+            self.subsession_form.pack_forget()
+            self.subsession_form_toggle.configure(text="▶")
+        else:
+            self.subsession_form.pack(
+                side=LEFT,
+                before=self.subsession_history,
+                fill=Y,
+                padx=(0, 8),
+            )
+            self.subsession_form_toggle.configure(text="◀")
+        self._subsession_form_visible = not self._subsession_form_visible
 
     def _selected_subsession_mobs(self) -> list[str]:
         return [
@@ -4580,6 +4624,46 @@ class App(tk.Tk):
                 return added, failures, empty_count
             finally:
                 store.close()
+
+    def _recover_pending_character_uid(self, files: tuple[Path, ...]) -> None:
+        """Read a retained capture once so its durable character UID is usable."""
+        if (
+            not self.current_session
+            or not files
+            or self.store.session_profiles(self.current_session)
+        ):
+            return
+        decode_ports = tuple(
+            self.prefs.get("capture_decode_ports") or DEFAULT_PORTS
+        )
+
+        def recovered(result, error) -> None:
+            if error:
+                self.log.warning(
+                    "pending_uid_recovery_failed reason=%s",
+                    _safe_error_code(error),
+                )
+                return
+            profiles = self.store.session_profiles(self.current_session)
+            if not profiles:
+                return
+            self.log.info(
+                "pending_uid_recovered characters=%d", len(profiles)
+            )
+            self.capture_state.configure(
+                text=(
+                    f"Captura pendente recuperada · UID de {len(profiles)} "
+                    "personagem(ns) identificado(s)"
+                )
+            )
+            self._refresh_info()
+
+        self._run(
+            lambda: self._ingest_files(
+                files, self.current_session, decode_ports, append_only=True
+            ),
+            recovered,
+        )
 
     def _next_live_target(self) -> Path:
         PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
