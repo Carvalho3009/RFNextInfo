@@ -391,6 +391,13 @@ def _capture_summary(
         data = event.get("data") or {}
         fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
         observed_uid = fields.get("character_uid")
+        event_uid = event.get("character_uid")
+        target_uid = str(character_uid) if character_uid else ""
+        uid_matches = bool(
+            not target_uid
+            or str(event_uid if event_uid is not None else observed_uid)
+            == target_uid
+        )
         observed_name = str(fields.get("character_name") or "").strip()
         own_appearance = event.get("type") == "appear_player_prefix" and (
             (
@@ -439,10 +446,14 @@ def _capture_summary(
             if isinstance(fields.get("diamonds"), (int, float)):
                 summary["diamonds"] = fields["diamonds"]
         confirmed_rover = (
-            event.get("type") == "player_equip_update"
+            (
+                event.get("type") == "player_equip_update"
+                and uid_matches
+            )
             or (
                 event.get("type") == "change_rover_response"
                 and fields.get("result") == 0
+                and uid_matches
             )
             or (
                 event.get("type") == "appear_player_prefix"
@@ -457,7 +468,7 @@ def _capture_summary(
                 summary["rover_name"] = str(rover.get("name") or "")
                 summary["rover_grade"] = rover.get("grade")
         active_equipment = fields.get("active_equipment")
-        if isinstance(active_equipment, dict):
+        if isinstance(active_equipment, dict) and (uid_matches or own_appearance):
             equipment = []
             for slot in active_equipment.get("slots", []):
                 if not isinstance(slot, dict):
@@ -733,6 +744,7 @@ class App(tk.Tk):
         self._last_game_signature = None
         self._active_quick_mode: str | None = None
         self._pending_send_mode: str | None = None
+        self._pending_send_client_index: int | None = None
         self._send_uploading = False
         self._quick_uploading = False
         self._start_after_ingest = False
@@ -1401,7 +1413,20 @@ class App(tk.Tk):
         ) and index < len(profiles):
             profile = profiles[index]
         self.active_character_uid = profile["uid"] if profile else None
+        if hasattr(self, "subsession_client"):
+            self.subsession_client.set(f"Cliente {chr(65 + index)}")
         self._refresh_info()
+
+    def _client_uid(self, index: int) -> str | None:
+        client_key = f"client:{chr(97 + index)}"
+        profiles = getattr(self, "_current_profiles", [])
+        profile = next(
+            (item for item in profiles if item.get("client_key") == client_key),
+            None,
+        )
+        if profile is None and not any(item.get("client_key") for item in profiles):
+            profile = profiles[index] if index < len(profiles) else None
+        return str(profile["uid"]) if profile and profile.get("uid") else None
 
     def _rename_character(self, index: int) -> None:
         field = self.character1 if index == 0 else self.character2
@@ -1570,19 +1595,23 @@ class App(tk.Tk):
             continuous, text="Tempo decorrido\n00:00:00", style="PanelMuted.TLabel"
         )
         self.capture_elapsed.grid(row=0, column=2, rowspan=2, padx=16)
+        self.capture_size = ttk.Label(
+            continuous, text="Arquivo atual\n0 B", style="PanelMuted.TLabel"
+        )
+        self.capture_size.grid(row=0, column=3, rowspan=2, padx=(0, 16))
         self.start_button = ttk.Button(
             continuous,
             text="Iniciar · Ctrl+F8",
             command=self.start_capture,
         )
-        self.start_button.grid(row=0, column=3, rowspan=2, padx=(0, 8))
+        self.start_button.grid(row=0, column=4, rowspan=2, padx=(0, 8))
         self.pause_button = ttk.Button(
             continuous,
             text="Pausar",
             style="Quiet.TButton",
             command=self.pause_capture,
         )
-        self.pause_button.grid(row=0, column=3, rowspan=2, padx=(0, 8))
+        self.pause_button.grid(row=0, column=4, rowspan=2, padx=(0, 8))
         self.pause_button.grid_remove()
         self.stop_button = ttk.Button(
             continuous,
@@ -1590,7 +1619,7 @@ class App(tk.Tk):
             style="Danger.TButton",
             command=self.stop_capture,
         )
-        self.stop_button.grid(row=0, column=4, rowspan=2)
+        self.stop_button.grid(row=0, column=5, rowspan=2)
         continuous.columnconfigure(0, weight=1)
 
         content = ttk.Frame(self.capture_tab, style="Workspace.TFrame")
@@ -1654,17 +1683,33 @@ class App(tk.Tk):
                 wraplength=130,
             ).grid(row=1, column=0, sticky="nw", pady=(4, 6))
             state.grid(row=2, column=0, pady=(2, 6))
-            button = ttk.Button(
-                card,
-                text="Enviar agora",
-                command=lambda selected=mode: self.send_mode_now(selected),
-            )
-            button.grid(row=3, column=0, sticky="ew")
+            actions = ttk.Frame(card, style="PanelBody.TFrame")
+            actions.grid(row=3, column=0, sticky="ew")
+            if mode == "market":
+                button = ttk.Button(
+                    actions,
+                    text="Enviar geral",
+                    command=lambda selected=mode: self.send_mode_now(selected),
+                )
+                button.pack(fill=X)
+                self.quick_buttons[mode] = button
+            else:
+                for client_index in range(2):
+                    button = ttk.Button(
+                        actions,
+                        text=f"Cliente {chr(65 + client_index)}",
+                        command=lambda selected=mode, index=client_index: (
+                            self.send_mode_now(selected, index)
+                        ),
+                    )
+                    button.pack(side=LEFT, fill=X, expand=True, padx=(
+                        0 if client_index == 0 else 3, 0
+                    ))
+                    self.quick_buttons[f"{mode}:{client_index}"] = button
             card.columnconfigure(0, weight=1)
             card.rowconfigure(1, minsize=42)
             self.quick_mode_labels[mode] = state
             self.quick_shortcut_labels[mode] = shortcut_label
-            self.quick_buttons[mode] = button
             quick.columnconfigure(column, weight=1)
 
         queue = ttk.Frame(content, style="Panel.TFrame", padding=10)
@@ -1716,8 +1761,13 @@ class App(tk.Tk):
             style="Muted.TLabel",
         ).pack(anchor="w", pady=(2, 8))
 
+        self.overview_single = ttk.Frame(
+            self.info_tab, style="Workspace.TFrame"
+        )
+        self.overview_single.pack(fill=BOTH, expand=True)
+
         character = ttk.Frame(
-            self.info_tab, style="AccentPanel.TFrame", padding=(12, 9)
+            self.overview_single, style="AccentPanel.TFrame", padding=(12, 9)
         )
         character.pack(fill=X)
         rover_badge = ttk.Frame(
@@ -1788,7 +1838,7 @@ class App(tk.Tk):
         )
         character.columnconfigure(3, weight=1)
 
-        stats = ttk.Frame(self.info_tab, style="Workspace.TFrame")
+        stats = ttk.Frame(self.overview_single, style="Workspace.TFrame")
         stats.pack(fill=X, pady=(6, 6))
         self.overview_values = {}
         for column, (key, label) in enumerate(
@@ -1817,7 +1867,7 @@ class App(tk.Tk):
             stats.columnconfigure(column, weight=1)
 
         panel = ttk.Frame(
-            self.info_tab, style="AccentPanel.TFrame", padding=10
+            self.overview_single, style="AccentPanel.TFrame", padding=10
         )
         panel.pack(fill=BOTH, expand=True)
         session_heading = ttk.Frame(panel, style="PanelBody.TFrame")
@@ -1836,6 +1886,12 @@ class App(tk.Tk):
             panel, text="Desde 00:00:00", style="PanelMuted.TLabel"
         )
         self.session_since.pack(anchor="w", pady=(0, 6))
+        self.overview_active_subsession = ttk.Label(
+            panel,
+            text="Subsessão ativa: nenhuma",
+            style="Data.TLabel",
+        )
+        self.overview_active_subsession.pack(anchor="w", pady=(0, 6))
         session_stats = ttk.Frame(panel, style="PanelBody.TFrame")
         session_stats.pack(fill=X)
         for column, (key, label) in enumerate(
@@ -1874,6 +1930,57 @@ class App(tk.Tk):
             width=1,
             state="disabled",
         )
+        self.overview_split = ttk.Frame(
+            self.info_tab, style="Workspace.TFrame"
+        )
+        self.split_overviews = []
+        for index in range(2):
+            card = ttk.Frame(
+                self.overview_split,
+                style="AccentPanel.TFrame",
+                padding=14,
+            )
+            card.grid(
+                row=0,
+                column=index,
+                sticky="nsew",
+                padx=(0 if index == 0 else 5, 5 if index == 0 else 0),
+            )
+            name = ttk.Label(
+                card,
+                text=f"Cliente {chr(65 + index)} · aguardando personagem",
+                style="PanelTitle.TLabel",
+            )
+            name.pack(anchor="w")
+            equipment = ttk.Label(
+                card, text="Classe — · Rover —", style="PanelMuted.TLabel"
+            )
+            equipment.pack(anchor="w", pady=(4, 10))
+            progress = ttk.Progressbar(card, maximum=100, mode="determinate")
+            progress.pack(fill=X, pady=(0, 10))
+            metrics = ttk.Label(
+                card, text="Sem dados", style="Data.TLabel", justify=LEFT
+            )
+            metrics.pack(anchor="w")
+            subsession = ttk.Label(
+                card,
+                text="Subsessão ativa: nenhuma",
+                style="Confirmed.TLabel",
+            )
+            subsession.pack(anchor="w", pady=(12, 0))
+            self.split_overviews.append(
+                {
+                    "name": name,
+                    "equipment": equipment,
+                    "progress": progress,
+                    "metrics": metrics,
+                    "subsession": subsession,
+                }
+            )
+            self.overview_split.columnconfigure(index, weight=1)
+        self.overview_split.rowconfigure(0, weight=1)
+        self._overview_split_visible = False
+        self.bind("<Configure>", self._sync_overview_layout, add="+")
 
     def _subsessions_ui(self) -> None:
         heading = ttk.Frame(self.subsessions_tab, style="Workspace.TFrame")
@@ -1927,6 +2034,14 @@ class App(tk.Tk):
         ttk.Label(form, text="Nova subsessão", style="PanelTitle.TLabel").pack(
             anchor="w", pady=(0, 8)
         )
+        self._editing_subsession_id: str | None = None
+        self.subsession_client = ttk.Combobox(
+            form,
+            width=30,
+            state="readonly",
+            values=("Cliente A", "Cliente B"),
+        )
+        self.subsession_client.set("Cliente A")
         self.subsession_name = ttk.Entry(form, width=30)
         self.subsession_map = ttk.Combobox(
             form, width=30, state="readonly"
@@ -1967,6 +2082,7 @@ class App(tk.Tk):
             duration, text="min", style="PanelMuted.TLabel"
         ).pack(side=LEFT, padx=(6, 0))
         for label, widget in (
+            ("Cliente", self.subsession_client),
             ("Mapa", self.subsession_map),
             ("Spot", self.subsession_spot),
             ("Mobs do spot", self.subsession_mobs),
@@ -2039,6 +2155,7 @@ class App(tk.Tk):
         self.subsession_table = ttk.Treeview(
             history,
             columns=(
+                "client",
                 "character",
                 "location",
                 "duration",
@@ -2057,6 +2174,7 @@ class App(tk.Tk):
             selectmode="extended",
         )
         for column, label, width in (
+            ("client", "Cliente", 80),
             ("character", "Personagem", 120),
             ("location", "Localização", 160),
             ("duration", "Duração", 90),
@@ -2070,8 +2188,8 @@ class App(tk.Tk):
             ("sent", "Enviado", 70),
             ("actions", "Ações", 80),
         ):
-            self.subsession_table.heading(column, text=label)
-            self.subsession_table.column(column, width=width, anchor="w")
+            self.subsession_table.heading(column, text=label, anchor="center")
+            self.subsession_table.column(column, width=width, anchor="center")
         self.subsession_table.pack(fill=BOTH, expand=True)
         subsession_scroll = ttk.Scrollbar(
             history,
@@ -2095,6 +2213,18 @@ class App(tk.Tk):
             command=self.send_selected_subsessions,
         )
         self.subsession_upload_button.pack(side=LEFT, padx=(10, 0))
+        ttk.Button(
+            pagination,
+            text="Selecionar visíveis",
+            style="Quiet.TButton",
+            command=self.toggle_visible_subsessions,
+        ).pack(side=LEFT, padx=(8, 0))
+        ttk.Button(
+            pagination,
+            text="Editar",
+            style="Quiet.TButton",
+            command=self.edit_selected_subsession,
+        ).pack(side=LEFT, padx=(8, 0))
         ttk.Button(
             pagination,
             text="Renomear",
@@ -2963,7 +3093,9 @@ class App(tk.Tk):
             return
         self.send_mode_now(mode)
 
-    def send_mode_now(self, mode: str) -> None:
+    def send_mode_now(
+        self, mode: str, client_index: int | None = None
+    ) -> None:
         if mode not in self.quick_mode_labels:
             return
         if self._send_uploading or self._pending_send_mode:
@@ -2981,14 +3113,21 @@ class App(tk.Tk):
         self.quick_mode_labels[mode].configure(text="Atualizando…")
         if self._capture_is_active() and self._live_capture:
             self._pending_send_mode = mode
+            self._pending_send_client_index = client_index
             self._next_live_decode = 0
             self._maybe_decode_live()
             if self._live_ingesting:
                 return
             self._pending_send_mode = None
-        self._send_mode_snapshot(mode)
+            self._pending_send_client_index = None
+        if client_index is None:
+            self._send_mode_snapshot(mode)
+        else:
+            self._send_mode_snapshot(mode, client_index)
 
-    def _send_mode_snapshot(self, mode: str) -> None:
+    def _send_mode_snapshot(
+        self, mode: str, client_index: int | None = None
+    ) -> None:
         session_id = self.current_session
         if not session_id:
             return
@@ -3022,15 +3161,27 @@ class App(tk.Tk):
             candidates = [
                 item for item in self._character_exports() if item.get("uid")
             ]
-            client_key = f"client:{chr(97 + self._active_client_index)}"
+            selected_index = (
+                self._active_client_index
+                if client_index is None
+                else client_index
+            )
+            client_key = f"client:{chr(97 + selected_index)}"
             selected = next(
                 (
                     item
                     for item in candidates
-                    if item["uid"] == self.active_character_uid
-                    or item.get("client_key") == client_key
+                    if item.get("client_key") == client_key
                 ),
-                candidates[0] if len(candidates) == 1 else None,
+                next(
+                    (
+                        item
+                        for item in candidates
+                        if client_index is None
+                        and item["uid"] == self.active_character_uid
+                    ),
+                    candidates[0] if len(candidates) == 1 else None,
+                ),
             )
             if not selected:
                 self.quick_mode_labels[mode].configure(text="Sem personagem")
@@ -3318,12 +3469,14 @@ class App(tk.Tk):
             )
         except (tk.TclError, TypeError, ValueError):
             duration_minutes = 0
+        client_index = 1 if self.subsession_client.get().endswith("B") else 0
+        client_key = f"client:{chr(97 + client_index)}"
+        character_uid = self._client_uid(client_index)
         try:
-            self.store.start_subsession(
-                identifier,
-                self.current_session,
-                name,
-                character_uid=self.active_character_uid,
+            values = dict(
+                name=name,
+                character_uid=character_uid,
+                client_key=client_key,
                 location=" > ".join(
                     value for value in (map_name, spot_name) if value
                 ),
@@ -3332,30 +3485,103 @@ class App(tk.Tk):
                 mobs=mobs,
                 mob_levels=levels,
                 duration_minutes=duration_minutes,
-                started_ns=time.time_ns(),
             )
+            if self._editing_subsession_id:
+                self.store.update_subsession(
+                    self._editing_subsession_id, **values
+                )
+            else:
+                self.store.start_subsession(
+                    identifier,
+                    self.current_session,
+                    started_ns=time.time_ns(),
+                    **values,
+                )
         except ValueError as error:
             return messagebox.showwarning("Subsessão", str(error))
+        self._editing_subsession_id = None
+        self.subsession_start_button.configure(text="Iniciar subsessão")
         self.subsession_other_mob.delete(0, END)
         self._save_preferences()
         self._refresh_subsessions()
 
     def end_subsession(self) -> None:
+        client_index = 1 if self.subsession_client.get().endswith("B") else 0
+        client_key = f"client:{chr(97 + client_index)}"
         active = next(
             (
                 item
                 for item in self.store.subsessions(self.current_session or "")
                 if item["ended_ns"] is None
-                and item["character_uid"] == self.active_character_uid
+                and (
+                    item.get("client_key") == client_key
+                    or (
+                        not item.get("client_key")
+                        and item["character_uid"] == self._client_uid(client_index)
+                    )
+                )
             ),
             None,
         )
         if not active:
             return messagebox.showinfo(
-                "Subsessão", "Não existe subsessão ativa neste personagem."
+                "Subsessão", "Não existe subsessão ativa neste cliente."
             )
         self.store.end_subsession(active["id"], time.time_ns())
         self._refresh_subsessions()
+
+    def toggle_visible_subsessions(self) -> None:
+        visible = self.subsession_table.get_children()
+        if set(visible).issubset(set(self.subsession_table.selection())):
+            self.subsession_table.selection_remove(*visible)
+        else:
+            self.subsession_table.selection_set(visible)
+
+    def edit_selected_subsession(self) -> None:
+        selected = self.subsession_table.selection()
+        if len(selected) != 1:
+            return messagebox.showinfo(
+                "Subsessão", "Selecione uma única subsessão para editar."
+            )
+        item = next(
+            (
+                value
+                for value in self.store.subsessions(self.current_session or "")
+                if value["id"] == selected[0]
+            ),
+            None,
+        )
+        if not item:
+            return
+        self._editing_subsession_id = item["id"]
+        self.subsession_client.set(
+            "Cliente B" if item.get("client_key") == "client:b" else "Cliente A"
+        )
+        self.subsession_map.set(item.get("map_name") or "")
+        self._subsession_map_changed()
+        self.subsession_spot.set(item.get("spot_name") or "")
+        self._subsession_spot_changed()
+        selected_mobs = set(item.get("mobs") or [])
+        for mob, variable in self.subsession_mob_vars.items():
+            variable.set(mob in selected_mobs)
+        known_mobs = set(self.subsession_mob_vars)
+        self.subsession_other_mob.delete(0, END)
+        self.subsession_other_mob.insert(
+            0, ", ".join(sorted(selected_mobs - known_mobs))
+        )
+        levels = list((item.get("mob_levels") or {}).values())
+        numeric = [value for value in levels if isinstance(value, int)]
+        if numeric:
+            for field, value in (
+                (self.subsession_level, min(numeric)),
+                (self.subsession_level_to, max(numeric)),
+            ):
+                field.delete(0, END)
+                field.insert(0, str(value))
+        self.subsession_duration_minutes.set(item.get("duration_minutes") or 0)
+        self.subsession_name.delete(0, END)
+        self.subsession_name.insert(0, item["name"])
+        self.subsession_start_button.configure(text="Salvar alterações")
 
     def rename_selected_subsession(self) -> None:
         selected = self.subsession_table.selection()
@@ -3422,6 +3648,7 @@ class App(tk.Tk):
         exp_total_percent = summary["exp_gained_percent"]
         return {
             **subsession,
+            "character_uid": character_uid,
             "source_subsession_id": (
                 f"{self.license.installation_id}:{subsession['sequence']}"
             ),
@@ -3466,9 +3693,16 @@ class App(tk.Tk):
             str(item["uid"]): str(item.get("name") or "").strip()
             for item in self.store.session_profiles(self.current_session or "")
         }
+        client_uids = {
+            f"client:{chr(97 + index)}": self._client_uid(index)
+            for index in range(2)
+        }
         jobs = []
         for subsession in subsessions.values():
-            uid = subsession.get("character_uid")
+            uid = (
+                client_uids.get(subsession.get("client_key"))
+                or subsession.get("character_uid")
+            )
             report = self._subsession_report(subsession, uid)
             character = profiles.get(str(uid), "") or str(
                 report["summary"].get("character") or ""
@@ -3568,12 +3802,19 @@ class App(tk.Tk):
             for item in getattr(self, "_current_profiles", [])
         }
         items = self.store.subsessions(self.current_session or "")
+        active_client_key = f"client:{chr(97 + self._active_client_index)}"
         active = next(
             (
                 item
                 for item in items
                 if item["ended_ns"] is None
-                and item["character_uid"] == self.active_character_uid
+                and (
+                    item.get("client_key") == active_client_key
+                    or (
+                        not item.get("client_key")
+                        and item["character_uid"] == self.active_character_uid
+                    )
+                )
             ),
             None,
         )
@@ -3581,7 +3822,11 @@ class App(tk.Tk):
             (
                 item
                 for item in items
-                if item["character_uid"] == self.active_character_uid
+                if item.get("client_key") == active_client_key
+                or (
+                    not item.get("client_key")
+                    and item["character_uid"] == self.active_character_uid
+                )
             ),
             items[0] if items else None,
         )
@@ -3617,6 +3862,7 @@ class App(tk.Tk):
                         str(item.get("location") or ""),
                         " ".join(item.get("mobs") or []),
                         profile_names.get(item.get("character_uid"), ""),
+                        str(item.get("client_key") or ""),
                     )
                 ).casefold()
             ]
@@ -3628,11 +3874,21 @@ class App(tk.Tk):
         for item in visible:
             end = item["ended_ns"] or time.time_ns()
             duration = max(0, int((end - item["started_ns"]) / 1_000_000_000))
-            envelope = self.store.interval_envelope(
-                self.current_session or "",
-                item["character_uid"],
-                item["started_ns"],
-                end,
+            client_index = 1 if item.get("client_key") == "client:b" else 0
+            character_uid = (
+                self._client_uid(client_index)
+                if item.get("client_key")
+                else item["character_uid"]
+            )
+            envelope = (
+                self.store.interval_envelope(
+                    self.current_session or "",
+                    character_uid,
+                    item["started_ns"],
+                    end,
+                )
+                if character_uid or not item.get("client_key")
+                else {"events": []}
             )
             summary, _marks = self._capture_summary_for_language(envelope)
             hours = duration / 3600 if duration else 0
@@ -3655,7 +3911,12 @@ class App(tk.Tk):
                 END,
                 iid=item["id"],
                 values=(
-                    profile_names.get(item["character_uid"])
+                    (
+                        "Cliente B"
+                        if item.get("client_key") == "client:b"
+                        else "Cliente A"
+                    ),
+                    profile_names.get(character_uid)
                     or summary["character"]
                     or "Aguardando UID",
                     item["location"] or "—",
@@ -3686,6 +3947,19 @@ class App(tk.Tk):
                     "Sim" if item["upload_state"] == "sent" else "Não",
                     "Em andamento" if item["ended_ns"] is None else "Pronta",
                 ),
+            )
+        for column in self.subsession_table["columns"]:
+            heading = self.subsession_table.heading(column).get("text", "")
+            values = [
+                str(self.subsession_table.set(row, column))
+                for row in visible
+                if self.subsession_table.exists(row["id"])
+            ]
+            width = max([len(str(heading)), *(len(value) for value in values)])
+            self.subsession_table.column(
+                column,
+                width=max(70, min(230, width * 8 + 20)),
+                anchor="center",
             )
         shown_from = start + 1 if visible else 0
         shown_to = start + len(visible)
@@ -3724,13 +3998,15 @@ class App(tk.Tk):
         items = self.store.subsessions(self.current_session)
         latest_ended = {}
         active_characters = {
-            item["character_uid"]
+            item.get("client_key") or item["character_uid"]
             for item in items
             if item["ended_ns"] is None
         }
         for item in items:
             if item["ended_ns"] is not None:
-                latest_ended.setdefault(item["character_uid"], item)
+                latest_ended.setdefault(
+                    item.get("client_key") or item["character_uid"], item
+                )
 
         def start_next(template: dict) -> None:
             self.store.start_subsession(
@@ -3739,6 +4015,7 @@ class App(tk.Tk):
                 self.current_session,
                 template["name"],
                 character_uid=template["character_uid"],
+                client_key=template.get("client_key", ""),
                 location=template["location"],
                 map_name=template.get("map_name", ""),
                 spot_name=template.get("spot_name", ""),
@@ -3766,7 +4043,9 @@ class App(tk.Tk):
             changed = True
             if automatic:
                 start_next(active)
-                restarted.add(active["character_uid"])
+                restarted.add(
+                    active.get("client_key") or active["character_uid"]
+                )
         if automatic:
             for character_uid, template in latest_ended.items():
                 if (
@@ -4764,6 +5043,7 @@ class App(tk.Tk):
                 if self._pending_send_mode:
                     mode = self._pending_send_mode
                     self._pending_send_mode = None
+                    self._pending_send_client_index = None
                     self.quick_mode_labels[mode].configure(
                         text="Falha na leitura"
                     )
@@ -4791,9 +5071,14 @@ class App(tk.Tk):
             self._upload_pending_quick_captures()
             if self._pending_send_mode:
                 mode = self._pending_send_mode
+                client_index = self._pending_send_client_index
                 self._pending_send_mode = None
+                self._pending_send_client_index = None
                 self.after(
-                    0, lambda selected=mode: self._send_mode_snapshot(selected)
+                    0,
+                    lambda selected=mode, index=client_index: (
+                        self._send_mode_snapshot(selected, index)
+                    ),
                 )
             finish_requested_action()
 
@@ -5218,10 +5503,82 @@ class App(tk.Tk):
                 )
         return results
 
+    def _sync_overview_layout(self, _event=None) -> None:
+        if not hasattr(self, "overview_split"):
+            return
+        try:
+            split = self.state() == "zoomed" or bool(
+                self.attributes("-fullscreen")
+            )
+        except tk.TclError:
+            return
+        if split == self._overview_split_visible:
+            return
+        self._overview_split_visible = split
+        if split:
+            self.overview_single.pack_forget()
+            self.overview_split.pack(fill=BOTH, expand=True)
+        else:
+            self.overview_split.pack_forget()
+            self.overview_single.pack(fill=BOTH, expand=True)
+
+    def _active_subsession_for_client(self, index: int) -> dict | None:
+        client_key = f"client:{chr(97 + index)}"
+        uid = self._client_uid(index)
+        return next(
+            (
+                item
+                for item in self.store.subsessions(self.current_session or "")
+                if item["ended_ns"] is None
+                and (
+                    item.get("client_key") == client_key
+                    or (not item.get("client_key") and item["character_uid"] == uid)
+                )
+            ),
+            None,
+        )
+
+    def _render_split_overview(
+        self, index: int, name: str, summary: dict | None, duration: int
+    ) -> None:
+        if not hasattr(self, "split_overviews"):
+            return
+        widgets = self.split_overviews[index]
+        summary = summary or {}
+        hours = duration / 3600 if duration else 0
+        gained = int(summary.get("exp_gained") or 0)
+        credits = int(summary.get("credits") or 0)
+        contribution = summary.get("contribution")
+        widgets["name"].configure(
+            text=f"Cliente {chr(65 + index)} · {name or 'aguardando personagem'}"
+        )
+        widgets["equipment"].configure(
+            text=(
+                f"{summary.get('character_class') or 'Classe —'} · "
+                f"{summary.get('biosuit_name') or 'Biosuit —'} · "
+                f"{summary.get('rover_name') or 'Rover —'}"
+            )
+        )
+        widgets["progress"].configure(value=summary.get("exp_percent") or 0)
+        widgets["metrics"].configure(
+            text=(
+                f"EXP atual: {summary.get('exp') if summary.get('exp') is not None else '—'}\n"
+                f"EXP total: {gained:,} · EXP/h: {round(gained / hours) if hours else 0:,}\n"
+                f"Créditos: {credits:,} · Crédito/h: {round(credits / hours) if hours else 0:,}\n"
+                f"Contribuição: {contribution if contribution is not None else '—'} · "
+                f"Abates: {int(summary.get('kills') or 0)}"
+            ).replace(",", ".")
+        )
+        active = self._active_subsession_for_client(index)
+        widgets["subsession"].configure(
+            text=f"Subsessão ativa: {active['name'] if active else 'nenhuma'}"
+        )
+
     def _refresh_info(self) -> None:
         lines = []
         overview = None
         overview_name = "Aguardando personagem"
+        client_overviews: dict[int, tuple[str, dict]] = {}
         profiles: list[dict[str, str]] = []
         duration = 0
         if not self.current_session:
@@ -5289,6 +5646,10 @@ class App(tk.Tk):
                 if selected or (overview is None and not routed_characters):
                     overview = summary
                     overview_name = character["name"]
+                character_client_key = character.get("client_key")
+                if character_client_key in {"client:a", "client:b"}:
+                    index = 0 if character_client_key == "client:a" else 1
+                    client_overviews[index] = (character["name"], summary)
                 exp_percent = summary["exp_percent"]
                 exp_percent_text = (
                     f"{exp_percent:.2f}%"
@@ -5383,6 +5744,27 @@ class App(tk.Tk):
             for index in range(0, len(rarity_parts), 2)
         )
         self.overview_character.configure(text=str(overview_name))
+        active_subsession = self._active_subsession_for_client(
+            self._active_client_index
+        )
+        self.overview_active_subsession.configure(
+            text=(
+                f"Subsessão ativa: {active_subsession['name']}"
+                if active_subsession
+                else "Subsessão ativa: nenhuma"
+            )
+        )
+        for index in range(2):
+            client_name, client_summary = client_overviews.get(
+                index,
+                (
+                    self._client_display_name(index, profiles),
+                    None,
+                ),
+            )
+            self._render_split_overview(
+                index, client_name, client_summary, duration
+            )
         class_icon = self.class_icons.get(
             (summary["character_class"], summary["biosuit_grade"] or 0)
         ) or self.class_icons.get((summary["character_class"], 0))
@@ -5689,6 +6071,7 @@ class App(tk.Tk):
                 path.stat().st_size
                 for path in self.capture_dir.glob("*.etl")
             )
+            current_size = max(0, int(status.bytes_written or 0))
             usage = shutil.disk_usage(self.capture_dir)
             percent_free = usage.free / usage.total if usage.total else 0
             level = (
@@ -5700,12 +6083,19 @@ class App(tk.Tk):
             )
             self.settings_storage_state.configure(
                 text=(
-                    f"Tamanho atual: {_format_bytes(total)}\n"
+                    f"Arquivo da sessão: {_format_bytes(current_size)}\n"
+                    f"Total armazenado: {_format_bytes(total)}\n"
                     f"Espaço livre: {_format_bytes(usage.free)} · {level}"
                 )
             )
             self.top_storage.configure(
-                text=f"Armazenado: {_format_bytes(total)}"
+                text=(
+                    f"Sessão: {_format_bytes(current_size)} · "
+                    f"Total: {_format_bytes(total)}"
+                )
+            )
+            self.capture_size.configure(
+                text=f"Arquivo atual\n{_format_bytes(current_size)}"
             )
             self.top_capture.configure(
                 text=f"• Captura {'ativa' if active else 'parada'}",

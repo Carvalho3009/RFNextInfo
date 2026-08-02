@@ -243,6 +243,7 @@ class AppLogicTest(unittest.TestCase):
             "events": [
                 {
                     "type": "player_profile_info",
+                    "character_uid": "101",
                     "data": {
                         "fields": {
                             "active_equipment": {
@@ -267,7 +268,7 @@ class AppLogicTest(unittest.TestCase):
         app._capture_summary_for_language.side_effect = _capture_summary
         app._run.side_effect = lambda job, done: done(job(), None)
 
-        App._send_mode_snapshot(app, "character")
+        App._send_mode_snapshot(app, "character", 0)
 
         payload = app.site_profile.upload_live.call_args.args[1]
         equipment = [
@@ -732,6 +733,38 @@ class AppLogicTest(unittest.TestCase):
         self.assertEqual(summary["rover_item_index"], 4000002)
         self.assertEqual(summary["rover_name"], "Arcturus")
         self.assertEqual(summary["rover_grade"], 1)
+
+    def test_summary_never_uses_nearby_characters_rover(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "player_equip_update",
+                        "character_uid": "202",
+                        "data": {
+                            "fields": {
+                                "character_uid": "202",
+                                "rover_item_index": 4400011,
+                            }
+                        },
+                    },
+                    {
+                        "type": "player_equip_update",
+                        "character_uid": "101",
+                        "data": {
+                            "fields": {
+                                "character_uid": "101",
+                                "rover_item_index": 4000002,
+                            }
+                        },
+                    },
+                ]
+            },
+            character_uid="101",
+        )
+
+        self.assertEqual(summary["rover_item_index"], 4000002)
+        self.assertEqual(summary["rover_name"], "Arcturus")
 
     def test_summary_uses_rover_confirmed_in_own_entry(self):
         summary, _ = _capture_summary(

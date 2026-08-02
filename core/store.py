@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS capture_windows(
 );
 CREATE TABLE IF NOT EXISTS subsessions(
  id TEXT PRIMARY KEY, session_id TEXT NOT NULL, character_uid TEXT,
+ client_key TEXT NOT NULL DEFAULT '',
  name TEXT NOT NULL, location TEXT NOT NULL DEFAULT '',
  map_name TEXT NOT NULL DEFAULT '', spot_name TEXT NOT NULL DEFAULT '',
  mobs_json TEXT NOT NULL DEFAULT '[]',
@@ -214,6 +215,7 @@ class CaptureStore:
                     "duration_minutes INTEGER NOT NULL DEFAULT 0"
                 )
             for column, definition in (
+                ("client_key", "TEXT NOT NULL DEFAULT ''"),
                 ("map_name", "TEXT NOT NULL DEFAULT ''"),
                 ("spot_name", "TEXT NOT NULL DEFAULT ''"),
                 ("sequence", "INTEGER"),
@@ -830,6 +832,7 @@ class CaptureStore:
         name: str,
         *,
         character_uid: str | None = None,
+        client_key: str = "",
         location: str = "",
         map_name: str = "",
         spot_name: str = "",
@@ -839,6 +842,9 @@ class CaptureStore:
         started_ns: int,
     ) -> None:
         name, location = name.strip(), location.strip()
+        client_key = client_key.strip().casefold()
+        if client_key not in {"", "client:a", "client:b"}:
+            raise ValueError("cliente da subsessão inválido")
         map_name, spot_name = map_name.strip(), spot_name.strip()
         mobs = [str(mob).strip() for mob in (mobs or []) if str(mob).strip()]
         normalized_levels: dict[str, int | str] = {}
@@ -864,10 +870,12 @@ class CaptureStore:
         ):
             raise ValueError("subsessão inválida")
         with self.conn:
+            owner_column = "client_key" if client_key else "character_uid"
+            owner = client_key if client_key else character_uid
             active = self.conn.execute(
-                """SELECT 1 FROM subsessions WHERE session_id=?
-                   AND character_uid IS ? AND ended_ns IS NULL""",
-                (session_id, character_uid),
+                f"""SELECT 1 FROM subsessions WHERE session_id=?
+                   AND {owner_column} IS ? AND ended_ns IS NULL""",
+                (session_id, owner),
             ).fetchone()
             if active:
                 raise ValueError("já existe uma subsessão ativa")
@@ -884,14 +892,15 @@ class CaptureStore:
             )
             self.conn.execute(
                 """INSERT INTO subsessions
-                   (id,session_id,character_uid,name,location,map_name,
+                   (id,session_id,character_uid,client_key,name,location,map_name,
                      spot_name,mobs_json,mob_levels_json,duration_minutes,
                      started_ns,sequence)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     subsession_id,
                     session_id,
                     character_uid,
+                    client_key,
                     name,
                     location,
                     map_name,
@@ -932,6 +941,50 @@ class CaptureStore:
             ).rowcount:
                 raise ValueError("subsessão não encontrada")
 
+    def update_subsession(
+        self,
+        subsession_id: str,
+        *,
+        name: str,
+        character_uid: str | None,
+        client_key: str,
+        location: str,
+        map_name: str,
+        spot_name: str,
+        mobs: list[str],
+        mob_levels: dict[str, int | str],
+        duration_minutes: int,
+    ) -> None:
+        name = name.strip()
+        client_key = client_key.strip().casefold()
+        if (
+            not subsession_id
+            or not name
+            or client_key not in {"client:a", "client:b"}
+            or not 0 <= duration_minutes <= 1440
+        ):
+            raise ValueError("subsessão inválida")
+        with self.conn:
+            if not self.conn.execute(
+                """UPDATE subsessions SET character_uid=?,client_key=?,name=?,
+                   location=?,map_name=?,spot_name=?,mobs_json=?,
+                   mob_levels_json=?,duration_minutes=?,upload_state='pending',
+                   uploaded_at=NULL WHERE id=?""",
+                (
+                    character_uid,
+                    client_key,
+                    name,
+                    location.strip(),
+                    map_name.strip(),
+                    spot_name.strip(),
+                    json.dumps(mobs, ensure_ascii=False),
+                    json.dumps(mob_levels, ensure_ascii=False, sort_keys=True),
+                    duration_minutes,
+                    subsession_id,
+                ),
+            ).rowcount:
+                raise ValueError("subsessão não encontrada")
+
     def delete_subsessions(self, subsession_ids: Iterable[str]) -> int:
         identifiers = tuple(dict.fromkeys(value for value in subsession_ids if value))
         if not identifiers:
@@ -945,7 +998,7 @@ class CaptureStore:
 
     def subsessions(self, session_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            """SELECT id,character_uid,name,location,map_name,spot_name,
+            """SELECT id,character_uid,client_key,name,location,map_name,spot_name,
                       mobs_json,mob_levels_json,duration_minutes,started_ns,
                       ended_ns,sequence,upload_state,uploaded_at
                FROM subsessions WHERE session_id=? ORDER BY started_ns DESC""",
@@ -955,6 +1008,7 @@ class CaptureStore:
             {
                 "id": identifier,
                 "character_uid": character_uid,
+                "client_key": client_key,
                 "name": name,
                 "location": location,
                 "map_name": map_name,
@@ -971,6 +1025,7 @@ class CaptureStore:
             for (
                 identifier,
                 character_uid,
+                client_key,
                 name,
                 location,
                 map_name,

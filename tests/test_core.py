@@ -101,6 +101,35 @@ class CoreTest(unittest.TestCase):
             self.assertEqual(store.subsessions("session"), [])
             store.close()
 
+    def test_subsession_edit_preserves_selected_client(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = CaptureStore(Path(folder) / "capture.sqlite3")
+            store.start_subsession(
+                "sub-1",
+                "session",
+                "Antes",
+                client_key="client:a",
+                started_ns=1,
+            )
+            store.update_subsession(
+                "sub-1",
+                name="Depois",
+                character_uid="202",
+                client_key="client:b",
+                location="Mapa > Spot",
+                map_name="Mapa",
+                spot_name="Spot",
+                mobs=["Mob"],
+                mob_levels={"Mob": 10},
+                duration_minutes=30,
+            )
+            saved = store.subsessions("session")[0]
+            self.assertEqual(
+                (saved["name"], saved["client_key"], saved["character_uid"]),
+                ("Depois", "client:b", "202"),
+            )
+            store.close()
+
     def test_capture_windows_and_subsessions_survive_restart(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "capture.sqlite3"
@@ -148,6 +177,7 @@ class CoreTest(unittest.TestCase):
                 {
                     "id": "sub-1",
                     "character_uid": "uid-1",
+                    "client_key": "",
                     "name": "Farm da manhã",
                     "location": "Abismo > Câmara 3",
                     "map_name": "Abismo",
