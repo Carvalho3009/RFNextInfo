@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0h — 2026-08-02
+
+- a visão geral mostra a subsessão ativa e divide os dados entre Cliente A e
+  Cliente B quando a janela está maximizada;
+- Personagem, Codex e Memory Chips possuem envios separados por cliente, com
+  equipamentos incluídos no envio de personagem;
+- subsessões guardam o cliente, podem ser selecionadas, editadas, renomeadas,
+  excluídas ou enviadas ao site;
+- o histórico centraliza e ajusta automaticamente as colunas;
+- o tamanho do arquivo atual é atualizado separadamente do total armazenado;
+- Rover e equipamentos só aceitam eventos vinculados ao UID correspondente.
+
 ## 2.0g — 2026-07-31
 
 - a captura e o decoder usam exclusivamente as portas RF NEXT confirmadas;
