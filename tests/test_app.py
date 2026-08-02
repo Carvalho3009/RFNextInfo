@@ -5,6 +5,7 @@ import logging
 import struct
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -19,6 +20,7 @@ from app.license import LicenseClient, _activation_error, verify_lease
 from app.main import (
     App,
     FARM_CATALOG,
+    FARM_CATALOG_EN,
     LEVEL_CURVE,
     _capture_prefix,
     _capture_summary,
@@ -241,6 +243,7 @@ class AppLogicTest(unittest.TestCase):
             "events": [
                 {
                     "type": "player_profile_info",
+                    "character_uid": "101",
                     "data": {
                         "fields": {
                             "active_equipment": {
@@ -262,9 +265,10 @@ class AppLogicTest(unittest.TestCase):
         }
         app.quick_mode_labels = {"character": Mock()}
         app.queue_mode_times = {"character": Mock()}
+        app._capture_summary_for_language.side_effect = _capture_summary
         app._run.side_effect = lambda job, done: done(job(), None)
 
-        App._send_mode_snapshot(app, "character")
+        App._send_mode_snapshot(app, "character", 0)
 
         payload = app.site_profile.upload_live.call_args.args[1]
         equipment = [
@@ -449,6 +453,12 @@ class AppLogicTest(unittest.TestCase):
             ],
             (98,),
         )
+        self.assertEqual(
+            FARM_CATALOG_EN["Ruined City of Babylon"]["Area 4"][
+                "Crimson Thrower"
+            ],
+            (98,),
+        )
 
     def test_subsession_map_and_spot_filter_the_next_choices(self):
         app = Mock()
@@ -456,6 +466,7 @@ class AppLogicTest(unittest.TestCase):
             "Cidade Arruinada da Babilônia"
         )
         app.subsession_spot.get.return_value = "Área 4"
+        app._selected_farm_catalog.return_value = FARM_CATALOG
 
         App._subsession_map_changed(app, preferred_spot="Área 4")
 
@@ -470,20 +481,62 @@ class AppLogicTest(unittest.TestCase):
         )
         app.subsession_spot.set.assert_called_once_with("Área 4")
 
-        app._subsession_spot_changed = App._subsession_spot_changed.__get__(
-            app
-        )
-        app.subsession_mobs.reset_mock()
+        app._subsession_spot_changed = App._subsession_spot_changed.__get__(app)
         app._subsession_spot_changed()
+        app._set_subsession_mob_choices.assert_called_once_with(
+            FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
+        )
 
-        inserted = [
-            call.args[1] for call in app.subsession_mobs.insert.call_args_list
-        ]
-        self.assertEqual(
-            inserted,
-            list(
-                FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
-            ),
+    def test_retained_capture_recovers_character_uid(self):
+        app = Mock()
+        app.current_session = "profile-20260731-001"
+        app.prefs = {"capture_decode_ports": [12010]}
+        app.store.session_profiles.side_effect = [[], [{"uid": "123"}]]
+        app._ingest_files.return_value = (3, [], 0)
+        app._run.side_effect = lambda job, done: done(job(), None)
+
+        App._recover_pending_character_uid(app, (Path("retained.etl"),))
+
+        app._ingest_files.assert_called_once_with(
+            (Path("retained.etl"),),
+            "profile-20260731-001",
+            (12000, 12010, 12020, 12040),
+            append_only=True,
+        )
+        app.capture_state.configure.assert_called_once()
+        app._refresh_info.assert_called_once()
+
+    def test_subsession_form_toggle_hides_and_restores_form(self):
+        app = Mock()
+        app._subsession_form_visible = True
+
+        App._toggle_subsession_form(app)
+        self.assertFalse(app._subsession_form_visible)
+        app.subsession_form.pack_forget.assert_called_once()
+        app.subsession_form_toggle.configure.assert_called_once_with(text="▶")
+
+        App._toggle_subsession_form(app)
+        self.assertTrue(app._subsession_form_visible)
+        app.subsession_form.pack.assert_called_once_with(
+            side="left",
+            before=app.subsession_history,
+            fill="y",
+            padx=(0, 8),
+        )
+
+    def test_english_language_updates_map_and_spot_choices(self):
+        app = Mock()
+        app.item_name_language.get.return_value = "pt"
+        app.subsession_map.get.return_value = (
+            "Cidade Arruinada da Babilônia"
+        )
+        app.subsession_spot.get.return_value = "Área 4"
+
+        App._item_language_changed(app, "English")
+
+        app.item_name_language.set.assert_called_once_with("en")
+        app._refresh_farm_choices.assert_called_once_with(
+            "Ruined City of Babylon", "Area 4"
         )
 
     def test_market_window_builds_site_rows(self):
@@ -509,9 +562,11 @@ class AppLogicTest(unittest.TestCase):
                         }
                     }
                 ]
-            }
+            },
+            {"1000150": "English market item"},
         )
         self.assertEqual(rows[0]["ItemIndex"], 1000150)
+        self.assertEqual(rows[0]["Name"], "English market item")
         self.assertEqual(rows[0]["PricePerUnit"], 100)
 
     def test_summary_resolves_biosuit_name_and_class(self):
@@ -679,6 +734,38 @@ class AppLogicTest(unittest.TestCase):
         self.assertEqual(summary["rover_name"], "Arcturus")
         self.assertEqual(summary["rover_grade"], 1)
 
+    def test_summary_never_uses_nearby_characters_rover(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "player_equip_update",
+                        "character_uid": "202",
+                        "data": {
+                            "fields": {
+                                "character_uid": "202",
+                                "rover_item_index": 4400011,
+                            }
+                        },
+                    },
+                    {
+                        "type": "player_equip_update",
+                        "character_uid": "101",
+                        "data": {
+                            "fields": {
+                                "character_uid": "101",
+                                "rover_item_index": 4000002,
+                            }
+                        },
+                    },
+                ]
+            },
+            character_uid="101",
+        )
+
+        self.assertEqual(summary["rover_item_index"], 4000002)
+        self.assertEqual(summary["rover_name"], "Arcturus")
+
     def test_summary_uses_rover_confirmed_in_own_entry(self):
         summary, _ = _capture_summary(
             {
@@ -782,6 +869,7 @@ class AppLogicTest(unittest.TestCase):
         app = Mock()
         app.current_session = "session-1"
         app.active_character_uid = "uid-1"
+        app.auto_subsession.get.return_value = False
         app.store.subsessions.return_value = [
             {
                 "id": "sub-1",
@@ -800,11 +888,100 @@ class AppLogicTest(unittest.TestCase):
         )
         app.store.start_subsession.assert_not_called()
 
+    def test_expired_subsession_starts_next_when_auto_enabled(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "name": "Farm",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1_000_000_000,
+                "duration_minutes": 5,
+                "ended_ns": None,
+            },
+            {
+                "id": "sub-2",
+                "character_uid": "uid-2",
+                "name": "Farm B",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1_000_000_000,
+                "duration_minutes": 5,
+                "ended_ns": None,
+            },
+        ]
+
+        with patch(
+            "app.main.time.time_ns", return_value=301_000_000_001
+        ):
+            App._rotate_auto_subsession(app)
+
+        self.assertEqual(
+            [call.args for call in app.store.end_subsession.call_args_list],
+            [
+                ("sub-1", 301_000_000_001),
+                ("sub-2", 301_000_000_001),
+            ],
+        )
+        self.assertEqual(app.store.start_subsession.call_count, 2)
+        self.assertTrue(
+            all(
+                call.kwargs["duration_minutes"] == 10
+                for call in app.store.start_subsession.call_args_list
+            )
+        )
+
+    def test_auto_subsession_resumes_from_latest_ended_template(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "name": "Farm",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1,
+                "duration_minutes": 5,
+                "ended_ns": 2,
+            }
+        ]
+
+        with patch("app.main.time.time_ns", return_value=10**18):
+            App._rotate_auto_subsession(app)
+
+        app.store.start_subsession.assert_called_once()
+        self.assertEqual(
+            app.store.start_subsession.call_args.kwargs["character_uid"],
+            "uid-1",
+        )
+        self.assertEqual(
+            app.store.start_subsession.call_args.kwargs["duration_minutes"],
+            10,
+        )
+
     def test_zero_subsession_duration_waits_for_manual_end(self):
         app = Mock()
         app.current_session = "session-1"
         app.active_character_uid = "uid-1"
         app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
         app.store.subsessions.return_value = [
             {
                 "id": "sub-1",
@@ -1135,7 +1312,7 @@ class AppLogicTest(unittest.TestCase):
             app._live_ingesting = False
             app._stop_after_live_ingest = False
             app._exit_after_live_ingest = False
-            app._adaptive_live_interval = 0
+            app._adaptive_live_interval = 180
             app.current_session = "session-1"
             app._next_live_decode = 0
             app._decode_interval_seconds.return_value = 30
@@ -1159,13 +1336,37 @@ class AppLogicTest(unittest.TestCase):
             app._ingest_files.assert_called_once_with(
                 (preview,),
                 "session-1",
-                (12010, 12020, 50100),
+                (12000, 12010, 12020, 12040),
                 append_only=True,
             )
             app.capture.stop.assert_not_called()
             self.assertFalse(app._live_ingesting)
             app._refresh_info.assert_called_once()
             app._upload_pending_quick_captures.assert_called_once()
+            self.assertLessEqual(
+                app._next_live_decode - time.monotonic(),
+                31,
+            )
+
+    def test_capture_summary_can_use_official_english_item_names(self):
+        self.assertEqual(main_module.ITEM_NAMES_EN["1"], "Credit")
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "drop_item_field",
+                        "data": {
+                            "results": [
+                                {"item_index": 123, "count": 2}
+                            ]
+                        },
+                    }
+                ]
+            },
+            item_names={"123": "English item"},
+        )
+
+        self.assertEqual(summary["loot"][0]["item"], "English item")
 
     @patch("app.main.messagebox.showwarning")
     def test_export_waits_for_complete_capture(self, warning):

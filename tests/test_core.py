@@ -18,6 +18,7 @@ from core.pktmon_realtime import (
     split_pcap_by_ports,
 )
 from core.connections import (
+    clients_for_executable,
     connected_processes,
     ports_for_executable,
 )
@@ -27,6 +28,36 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_capture_heartbeat_is_atomic_and_removed_on_stop(self):
+        class Runner:
+            running = True
+
+            def __call__(self, args, **_kwargs):
+                if args[1] == "stop":
+                    self.running = False
+                running = self.running
+
+                class Result:
+                    returncode = 0
+                    stderr = ""
+                    stdout = (
+                        "Packet Monitor is running."
+                        if running
+                        else "Packet Monitor is not running."
+                    )
+
+                return Result()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = PktmonCapture(Path(tmp), runner=Runner())
+            capture._active = True
+            capture._start_watchdog()
+            self.assertTrue(capture._heartbeat_path.is_file())
+            self.assertEqual(
+                json.loads(capture._heartbeat_path.read_text())["pid"], os.getpid()
+            )
+            capture.stop()
+            self.assertFalse(capture._heartbeat_path.exists())
     def test_clear_session_removes_raw_and_decoded_state_only_for_target(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -58,6 +89,45 @@ class CoreTest(unittest.TestCase):
                 started_ns=400,
             )
             self.assertEqual(store.subsessions("keep")[0]["sequence"], 2)
+            store.close()
+
+    def test_subsession_can_be_renamed_and_deleted_without_events(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = CaptureStore(Path(folder) / "capture.sqlite3")
+            store.start_subsession("sub-1", "session", "Antes", started_ns=1)
+            store.rename_subsession("sub-1", "Depois")
+            self.assertEqual(store.subsessions("session")[0]["name"], "Depois")
+            self.assertEqual(store.delete_subsessions(("sub-1",)), 1)
+            self.assertEqual(store.subsessions("session"), [])
+            store.close()
+
+    def test_subsession_edit_preserves_selected_client(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = CaptureStore(Path(folder) / "capture.sqlite3")
+            store.start_subsession(
+                "sub-1",
+                "session",
+                "Antes",
+                client_key="client:a",
+                started_ns=1,
+            )
+            store.update_subsession(
+                "sub-1",
+                name="Depois",
+                character_uid="202",
+                client_key="client:b",
+                location="Mapa > Spot",
+                map_name="Mapa",
+                spot_name="Spot",
+                mobs=["Mob"],
+                mob_levels={"Mob": 10},
+                duration_minutes=30,
+            )
+            saved = store.subsessions("session")[0]
+            self.assertEqual(
+                (saved["name"], saved["client_key"], saved["character_uid"]),
+                ("Depois", "client:b", "202"),
+            )
             store.close()
 
     def test_capture_windows_and_subsessions_survive_restart(self):
@@ -107,6 +177,7 @@ class CoreTest(unittest.TestCase):
                 {
                     "id": "sub-1",
                     "character_uid": "uid-1",
+                    "client_key": "",
                     "name": "Farm da manhã",
                     "location": "Abismo > Câmara 3",
                     "map_name": "Abismo",
@@ -387,6 +458,21 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(remote_ports, (9000, 9001))
         self.assertEqual(clients, 2)
         self.assertEqual(ports_for_executable(paths[12]), ((), (), 0))
+
+    def test_connections_can_exclude_non_rf_remote_ports(self):
+        game = r"C:\Games\ProjectRF.exe"
+        rows = [(10, 50100, 12020), (10, 50101, 443)]
+        with patch("core.connections._tcp_rows", return_value=rows), patch(
+            "core.connections._process_path", return_value=game
+        ):
+            local_ports, remote_ports, clients = ports_for_executable(
+                game, (12000, 12010, 12020, 12040)
+            )
+            routes = clients_for_executable(
+                game, (12000, 12010, 12020, 12040)
+            )
+        self.assertEqual((local_ports, remote_ports, clients), ((50100,), (12020,), 1))
+        self.assertEqual(routes[0]["local_ports"], (50100,))
 
     def test_unidentified_flows_are_matched_to_closest_exp(self):
         with tempfile.TemporaryDirectory() as tmp:

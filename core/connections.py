@@ -117,8 +117,11 @@ def _process_path(pid: int) -> str | None:
         kernel.CloseHandle(handle)
 
 
-def connected_processes() -> dict[str, tuple[set[int], set[int], set[int]]]:
+def connected_processes(
+    allowed_remote_ports: tuple[int, ...] = (),
+) -> dict[str, tuple[set[int], set[int], set[int]]]:
     """Retorna caminho -> (PIDs, portas locais, portas remotas), sem IPs."""
+    allowed = set(allowed_remote_ports)
     result: dict[str, tuple[set[int], set[int], set[int]]] = {}
     paths: dict[int, str | None] = {}
     for pid, local_port, remote_port in _tcp_rows():
@@ -128,6 +131,8 @@ def connected_processes() -> dict[str, tuple[set[int], set[int], set[int]]]:
         if not path:
             continue
         if not os.path.basename(path).casefold().startswith("projectrf"):
+            continue
+        if allowed and remote_port not in allowed:
             continue
         key = os.path.normcase(os.path.abspath(path))
         pids, local_ports, remote_ports = result.setdefault(
@@ -140,10 +145,12 @@ def connected_processes() -> dict[str, tuple[set[int], set[int], set[int]]]:
 
 
 def ports_for_executable(
-    executable: str,
+    executable: str, allowed_remote_ports: tuple[int, ...] = ()
 ) -> tuple[tuple[int, ...], tuple[int, ...], int]:
     selected = os.path.normcase(os.path.abspath(executable))
-    pids, local_ports, remote_ports = connected_processes().get(
+    pids, local_ports, remote_ports = connected_processes(
+        allowed_remote_ports
+    ).get(
         selected, (set(), set(), set())
     )
     return (
@@ -153,9 +160,12 @@ def ports_for_executable(
     )
 
 
-def clients_for_executable(executable: str) -> list[dict[str, object]]:
+def clients_for_executable(
+    executable: str, allowed_remote_ports: tuple[int, ...] = ()
+) -> list[dict[str, object]]:
     """Agrupa portas por processo somente para roteamento da captura."""
     selected = os.path.normcase(os.path.abspath(executable))
+    allowed = set(allowed_remote_ports)
     clients: dict[int, tuple[set[int], set[int]]] = {}
     paths: dict[int, str | None] = {}
     for pid, local_port, remote_port in _tcp_rows():
@@ -163,6 +173,8 @@ def clients_for_executable(executable: str) -> list[dict[str, object]]:
             paths[pid] = _process_path(pid)
         path = paths[pid]
         if not path or os.path.normcase(os.path.abspath(path)) != selected:
+            continue
+        if allowed and remote_port not in allowed:
             continue
         local_ports, remote_ports = clients.setdefault(pid, (set(), set()))
         local_ports.add(local_port)

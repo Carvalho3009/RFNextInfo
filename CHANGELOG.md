@@ -1,5 +1,44 @@
 # Changelog
 
+## 2.0h — 2026-08-02
+
+- a visão geral mostra a subsessão ativa e divide os dados entre Cliente A e
+  Cliente B quando a janela está maximizada;
+- Personagem, Codex e Memory Chips possuem envios separados por cliente, com
+  equipamentos incluídos no envio de personagem;
+- subsessões guardam o cliente, podem ser selecionadas, editadas, renomeadas,
+  excluídas ou enviadas ao site;
+- o histórico centraliza e ajusta automaticamente as colunas;
+- o tamanho do arquivo atual é atualizado separadamente do total armazenado;
+- Rover e equipamentos só aceitam eventos vinculados ao UID correspondente.
+
+## 2.0g — 2026-07-31
+
+- a captura e o decoder usam exclusivamente as portas RF NEXT confirmadas;
+- portas HTTPS, efêmeras e históricas não são mais acumuladas entre
+  reconexões, reduzindo pacotes estranhos e eventos não decodificados.
+
+## 2.0f — 2026-07-31
+
+- a sessão anterior pendente relê os segmentos para recuperar o UID do
+  personagem, sem exigir uma nova entrada no jogo;
+- o bloco de nova subsessão pode ser recolhido, os mobs têm seleção total e
+  as listas suspensas usam texto preto sobre fundo claro.
+
+## 2.0e — 2026-07-31
+
+- subsessões selecionadas podem ser renomeadas ou excluídas localmente;
+- exclusão preserva os eventos da captura e dados já enviados ao site;
+- seleção de mobs usa caixas de marcação em três colunas e remove prefixos
+  técnicos dos nomes exibidos.
+
+## 2.0d — 2026-07-31
+
+- localização, spot e mobs podem ser exibidos em Português ou English;
+- a captura mantém um heartbeat supervisionado pela interface;
+- se o aplicativo encerrar ou parar de responder por 45 segundos, o vigia
+  local encerra o PktMon e remove os filtros para impedir arquivos excessivos.
+
 ## 2.0c — 2026-07-30
 
 - EXP, créditos e contribuição do farm passam a usar a recompensa-base do
