@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import ctypes.wintypes as wintypes
 import copy
 import csv
 import hashlib
@@ -53,6 +54,14 @@ DB_PATH = STATE_DIR / "capture.sqlite3"
 PREFERENCES_PATH = STATE_DIR / "preferences.json"
 LOG_PATH = MACHINE_STATE_DIR / "logs" / "rfnext-info.log"
 PREVIEW_DIR = STATE_DIR / "preview"
+WM_HOTKEY = 0x0312
+MOD_NOREPEAT = 0x4000
+GLOBAL_HOTKEY_BASE = 0x4B00
+
+
+def _function_key_vk(shortcut: str) -> int | None:
+    match = re.fullmatch(r"F([1-9]|1[0-2])", shortcut.upper())
+    return 0x6F + int(match.group(1)) if match else None
 
 CLASS_ICON_FILES = {
     "Punisher": "punisher.png",
@@ -805,6 +814,8 @@ class App(tk.Tk):
         self._paused_at: datetime | None = None
         self._paused_total_seconds = 0
         self._bound_shortcuts: dict[str, str] = {}
+        self._global_hotkey_ids: dict[int, str] = {}
+        self._global_hotkey_poll: str | None = None
         self.active_character_uid: str | None = None
         self._active_client_index = 0
         self._game_choices: dict[str, str] = {}
@@ -3219,6 +3230,7 @@ class App(tk.Tk):
         self._save_preferences()
 
     def _bind_shortcuts(self) -> None:
+        self._unregister_global_hotkeys()
         for sequence in self._bound_shortcuts.values():
             self.unbind(sequence)
         self._bound_shortcuts = {}
@@ -3236,6 +3248,57 @@ class App(tk.Tk):
                 if "Enviando" not in label.cget("text"):
                     label.configure(text="Pronto")
                 self.quick_shortcut_labels[mode].configure(text=value.get())
+        self._register_global_hotkeys()
+
+    def _register_global_hotkeys(self) -> None:
+        if os.name != "nt":
+            return
+        user32 = ctypes.windll.user32
+        for offset, (mode, value) in enumerate(self.shortcut_vars.items(), 1):
+            virtual_key = _function_key_vk(value.get())
+            identifier = GLOBAL_HOTKEY_BASE + offset
+            if virtual_key and user32.RegisterHotKey(
+                None, identifier, MOD_NOREPEAT, virtual_key
+            ):
+                self._global_hotkey_ids[identifier] = mode
+            else:
+                self.log.warning(
+                    "global_hotkey_registration_failed mode=%s shortcut=%s",
+                    mode,
+                    value.get(),
+                )
+        if self._global_hotkey_ids:
+            self._global_hotkey_poll = self.after(50, self._poll_global_hotkeys)
+
+    def _poll_global_hotkeys(self) -> None:
+        self._global_hotkey_poll = None
+        message = wintypes.MSG()
+        user32 = ctypes.windll.user32
+        while user32.PeekMessageW(
+            ctypes.byref(message), None, WM_HOTKEY, WM_HOTKEY, 1
+        ):
+            mode = self._global_hotkey_ids.get(int(message.wParam))
+            if mode:
+                self.send_mode_now(mode)
+        if self._global_hotkey_ids:
+            self._global_hotkey_poll = self.after(50, self._poll_global_hotkeys)
+
+    def _unregister_global_hotkeys(self) -> None:
+        callback = getattr(self, "_global_hotkey_poll", None)
+        if callback:
+            try:
+                self.after_cancel(callback)
+            except tk.TclError:
+                pass
+        self._global_hotkey_poll = None
+        if os.name == "nt":
+            for identifier in getattr(self, "_global_hotkey_ids", {}):
+                ctypes.windll.user32.UnregisterHotKey(None, identifier)
+        self._global_hotkey_ids = {}
+
+    def destroy(self) -> None:
+        self._unregister_global_hotkeys()
+        super().destroy()
 
     def _quick_shortcut(self, event, mode: str) -> None:
         if isinstance(

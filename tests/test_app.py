@@ -28,6 +28,7 @@ from app.main import (
     _collection_marks,
     _configured_capture_dir,
     _filter_subsessions,
+    _function_key_vk,
     _market_rows,
     _merge_client_routes,
     _safe_error_code,
@@ -44,6 +45,15 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_function_key_virtual_codes_for_global_shortcuts(self):
+        self.assertEqual(_function_key_vk("F1"), 0x70)
+        self.assertEqual(_function_key_vk("f12"), 0x7B)
+        self.assertIsNone(_function_key_vk("F13"))
+        self.assertIn(
+            "self._register_global_hotkeys()",
+            inspect.getsource(App._bind_shortcuts),
+        )
+
     def test_subsession_view_filters(self):
         items = [
             {"client_key": "client:a", "ended_ns": None, "upload_state": "pending"},
