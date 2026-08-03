@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima versão — não publicada
+## 2.0m — 2026-08-03
 
 - corrige os atalhos globais usando uma fila de mensagens própria, evitando que
   o loop da interface consuma `WM_HOTKEY` antes do envio ser acionado.
