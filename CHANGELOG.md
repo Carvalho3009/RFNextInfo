@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima versão — não publicada
+## 2.0l — 2026-08-03
 
 - registra os atalhos configuráveis dos envios rápidos como hotkeys globais do
   Windows, permitindo usá-los com o programa minimizado ou em segundo plano.
