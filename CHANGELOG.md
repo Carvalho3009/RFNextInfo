@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0l — 2026-08-03
+
+- registra os atalhos configuráveis dos envios rápidos como hotkeys globais do
+  Windows, permitindo usá-los com o programa minimizado ou em segundo plano.
+
 ## 2.0k — 2026-08-03
 
 - mostra na subsessão a quantidade estimada de mobs abatidos no intervalo e
