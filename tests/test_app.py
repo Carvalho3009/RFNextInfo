@@ -60,7 +60,7 @@ class AppLogicTest(unittest.TestCase):
         app._global_hotkey_events.put("market")
         app._global_hotkey_thread.is_alive.return_value = True
         App._poll_global_hotkeys(app)
-        app.send_mode_now.assert_called_once_with("market")
+        app.send_mode_now.assert_called_once_with("market", notify=False)
         app.after.assert_called_once_with(50, app._poll_global_hotkeys)
 
     def test_subsession_view_filters(self):
@@ -329,8 +329,23 @@ class AppLogicTest(unittest.TestCase):
 
         App.send_mode_now(app, "market")
 
-        app._send_mode_snapshot.assert_called_once_with("market")
+        app._send_mode_snapshot.assert_called_once_with("market", notify=True)
         app.after.assert_not_called()
+
+    @patch("app.main.messagebox.showwarning")
+    def test_global_hotkey_failure_does_not_take_focus_with_dialog(self, warning):
+        app = Mock()
+        app.quick_mode_labels = {"market": Mock()}
+        app._send_uploading = False
+        app._pending_send_mode = None
+        app.site_profile.connected = False
+
+        App.send_mode_now(app, "market", notify=False)
+
+        warning.assert_not_called()
+        app.quick_mode_labels["market"].configure.assert_called_once_with(
+            text="Token não validado"
+        )
 
     def test_character_send_includes_detected_equipment(self):
         app = Mock()
