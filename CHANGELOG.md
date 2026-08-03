@@ -1,5 +1,10 @@
 # Changelog
 
+## Próxima versão — não publicada
+
+- impede que atalhos globais tragam o programa ao primeiro plano; avisos desses
+  envios ficam somente no painel.
+
 ## 2.0m — 2026-08-03
 
 - corrige os atalhos globais usando uma fila de mensagens própria, evitando que

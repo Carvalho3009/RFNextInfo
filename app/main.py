@@ -808,6 +808,7 @@ class App(tk.Tk):
         self._active_quick_mode: str | None = None
         self._pending_send_mode: str | None = None
         self._pending_send_client_index: int | None = None
+        self._pending_send_notify = True
         self._send_uploading = False
         self._quick_uploading = False
         self._start_after_ingest = False
@@ -3325,7 +3326,7 @@ class App(tk.Tk):
             except queue.Empty:
                 break
             else:
-                self.send_mode_now(mode)
+                self.send_mode_now(mode, notify=False)
         if self._global_hotkey_thread and self._global_hotkey_thread.is_alive():
             self._global_hotkey_poll = self.after(50, self._poll_global_hotkeys)
 
@@ -3360,22 +3361,35 @@ class App(tk.Tk):
         self.send_mode_now(mode)
 
     def send_mode_now(
-        self, mode: str, client_index: int | None = None
+        self,
+        mode: str,
+        client_index: int | None = None,
+        *,
+        notify: bool = True,
     ) -> None:
         if mode not in self.quick_mode_labels:
             return
         if self._send_uploading or self._pending_send_mode:
-            return messagebox.showwarning(
-                "Envio", "Aguarde o envio atual terminar."
-            )
+            self.quick_mode_labels[mode].configure(text="Envio em andamento")
+            if notify:
+                return messagebox.showwarning(
+                    "Envio", "Aguarde o envio atual terminar."
+                )
+            return
         if not self.site_profile.connected:
-            return messagebox.showwarning(
-                "Envio", "Valide o token do Profile antes de enviar."
-            )
+            self.quick_mode_labels[mode].configure(text="Token não validado")
+            if notify:
+                return messagebox.showwarning(
+                    "Envio", "Valide o token do Profile antes de enviar."
+                )
+            return
         if not self.current_session:
-            return messagebox.showwarning(
-                "Envio", "Ainda não existem dados de uma sessão para enviar."
-            )
+            self.quick_mode_labels[mode].configure(text="Sem sessão")
+            if notify:
+                return messagebox.showwarning(
+                    "Envio", "Ainda não existem dados de uma sessão para enviar."
+                )
+            return
         target_index = self._active_client_index if client_index is None else client_index
         target_label = (
             "Mercado geral"
@@ -3388,19 +3402,25 @@ class App(tk.Tk):
         if self._capture_is_active() and self._live_capture:
             self._pending_send_mode = mode
             self._pending_send_client_index = client_index
+            self._pending_send_notify = notify
             self._next_live_decode = 0
             self._maybe_decode_live()
             if self._live_ingesting:
                 return
             self._pending_send_mode = None
             self._pending_send_client_index = None
+            self._pending_send_notify = True
         if client_index is None:
-            self._send_mode_snapshot(mode)
+            self._send_mode_snapshot(mode, notify=notify)
         else:
-            self._send_mode_snapshot(mode, client_index)
+            self._send_mode_snapshot(mode, client_index, notify=notify)
 
     def _send_mode_snapshot(
-        self, mode: str, client_index: int | None = None
+        self,
+        mode: str,
+        client_index: int | None = None,
+        *,
+        notify: bool = True,
     ) -> None:
         session_id = self.current_session
         if not session_id:
@@ -3427,9 +3447,11 @@ class App(tk.Tk):
                 rows = []
             if not rows:
                 self.quick_mode_labels[mode].configure(text="Sem dados")
-                return messagebox.showinfo(
-                    "Envio", "Ainda não existem eventos de Mercado para enviar."
-                )
+                if notify:
+                    return messagebox.showinfo(
+                        "Envio", "Ainda não existem eventos de Mercado para enviar."
+                    )
+                return
             payload = {"metadata": metadata, "rows": rows}
         else:
             candidates = [
@@ -3459,10 +3481,12 @@ class App(tk.Tk):
             )
             if not selected:
                 self.quick_mode_labels[mode].configure(text="Sem personagem")
-                return messagebox.showwarning(
-                    "Envio",
-                    "O cliente selecionado ainda não possui personagem identificado.",
-                )
+                if notify:
+                    return messagebox.showwarning(
+                        "Envio",
+                        "O cliente selecionado ainda não possui personagem identificado.",
+                    )
+                return
             uid = str(selected["uid"])
             character = str(selected["name"])
             envelope = self.store.session_envelope(
@@ -3491,10 +3515,12 @@ class App(tk.Tk):
                 )
                 if not marks:
                     self.quick_mode_labels[mode].configure(text="Sem dados")
-                    return messagebox.showinfo(
-                        "Envio",
-                        "Ainda não existem dados deste tipo para enviar.",
-                    )
+                    if notify:
+                        return messagebox.showinfo(
+                            "Envio",
+                            "Ainda não existem dados deste tipo para enviar.",
+                        )
+                    return
                 profile_data["marks"] = marks
                 profile_data["collection_types"] = sorted(
                     requested_types.intersection(seen_types)
@@ -3539,7 +3565,9 @@ class App(tk.Tk):
                     mode,
                     _safe_error_code(error),
                 )
-                return messagebox.showerror("Envio falhou", str(error))
+                if notify:
+                    return messagebox.showerror("Envio falhou", str(error))
+                return
             sent_at = datetime.now().strftime("%H:%M:%S")
             self.quick_mode_labels[mode].configure(text=f"{target_label} enviado")
             self.queue_mode_times[mode].configure(text=sent_at)
@@ -5350,6 +5378,7 @@ class App(tk.Tk):
                     mode = self._pending_send_mode
                     self._pending_send_mode = None
                     self._pending_send_client_index = None
+                    self._pending_send_notify = True
                     self.quick_mode_labels[mode].configure(
                         text="Falha na leitura"
                     )
@@ -5378,12 +5407,14 @@ class App(tk.Tk):
             if self._pending_send_mode:
                 mode = self._pending_send_mode
                 client_index = self._pending_send_client_index
+                notify = self._pending_send_notify
                 self._pending_send_mode = None
                 self._pending_send_client_index = None
+                self._pending_send_notify = True
                 self.after(
                     0,
-                    lambda selected=mode, index=client_index: (
-                        self._send_mode_snapshot(selected, index)
+                    lambda selected=mode, index=client_index, show=notify: (
+                        self._send_mode_snapshot(selected, index, notify=show)
                     ),
                 )
             finish_requested_action()
