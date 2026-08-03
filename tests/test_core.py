@@ -28,6 +28,47 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_capture_heartbeat_timeout_is_one_minute(self):
+        capture = PktmonCapture(Path("capture-test"), runner=lambda *_a, **_k: None)
+        self.assertEqual(capture._heartbeat_timeout_seconds, 60)
+
+    def test_ui_event_batch_is_incremental_and_readonly(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "state.sqlite3"
+            store = CaptureStore(path)
+            with store.conn:
+                for index in range(2):
+                    store.conn.execute(
+                        """INSERT INTO events
+                           (source,flow,stream_offset,bundle_seq,ts_ns,opcode,
+                            type,character_uid,data_json,session_id)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            "source",
+                            "flow",
+                            index,
+                            0,
+                            index + 1,
+                            0x0307,
+                            "update_exp",
+                            "uid-1",
+                            json.dumps({"fields": {"level": 1, "exp": index}}),
+                            "session-1",
+                        ),
+                    )
+            readonly = CaptureStore(path, readonly=True)
+            first, cursor = readonly.ui_event_batch("session-1", "uid-1")
+            second, same_cursor = readonly.ui_event_batch(
+                "session-1", "uid-1", after_id=cursor
+            )
+            self.assertEqual(len(first), 2)
+            self.assertEqual(second, [])
+            self.assertEqual(same_cursor, cursor)
+            with self.assertRaises(sqlite3.OperationalError):
+                readonly.conn.execute("DELETE FROM events")
+            readonly.close()
+            store.close()
+
     def test_capture_heartbeat_is_atomic_and_removed_on_stop(self):
         class Runner:
             running = True

@@ -66,7 +66,7 @@ class PktmonCapture:
         stop_free_bytes: int = 2 * GIB,
         poll_seconds: float = 2,
         runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
-        heartbeat_timeout_seconds: int = 45,
+        heartbeat_timeout_seconds: int = 60,
     ) -> None:
         if not ports or any(not 1 <= port <= 65535 for port in ports):
             raise ValueError("porta inválida")
@@ -88,6 +88,7 @@ class PktmonCapture:
         self._heartbeat_path = self.output_dir / ".rfnext-info-heartbeat.json"
         self._heartbeat_token = ""
         self._watchdog: subprocess.Popen[str] | None = None
+        self._last_status = CaptureStatus(False, 0, 0, False, ())
 
     @staticmethod
     def _validate_session_id(session_id: str) -> None:
@@ -351,17 +352,26 @@ class PktmonCapture:
     def attached(self) -> bool:
         return self._prefix is not None
 
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    @property
+    def cached_status(self) -> CaptureStatus:
+        return self._last_status
+
     def status(self) -> CaptureStatus:
         files = self.segment_files()
         size = sum(path.stat().st_size for path in files if path.exists())
         free = shutil.disk_usage(self.output_dir).free if self.output_dir.exists() else 0
-        return CaptureStatus(
+        self._last_status = CaptureStatus(
             self.system_running(),
             size,
             free,
             free < self.stop_free_bytes,
             files,
         )
+        return self._last_status
 
     def stop(self) -> CaptureStatus:
         with self._lock:

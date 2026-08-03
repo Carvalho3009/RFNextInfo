@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0i — 2026-08-02
+
+- abertura, troca de abas e troca de cliente deixam de reler o histórico na
+  thread visual; snapshots são calculados em segundo plano e resultados
+  obsoletos são descartados;
+- resumos da visão geral e das subsessões passam a processar somente eventos
+  novos em lotes limitados, mantendo exportação e envio no envelope canônico;
+- o ciclo visual de um segundo deixa de consultar banco, Pktmon e conexões de
+  rede sincronamente;
+- tela cheia passa a mostrar os cartões, classe, Rover e métricas dos dois
+  clientes; envios identificam Cliente A e Cliente B;
+- controles da captura ficam na barra superior, a aba passa a se chamar
+  Envios e os controles automáticos ficam no formulário de subsessão;
+- encerramento manual não recria subsessão automática, campos readonly ganham
+  contraste explícito e o watchdog usa timeout de heartbeat de 60 segundos.
+
 ## 2.0h — 2026-08-02
 
 - a visão geral mostra a subsessão ativa e divide os dados entre Cliente A e

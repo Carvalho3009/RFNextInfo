@@ -2,6 +2,7 @@ import base64
 import ast
 import json
 import logging
+import inspect
 import struct
 import tempfile
 import threading
@@ -42,6 +43,62 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_incremental_summary_matches_full_summary(self):
+        events = [
+            {
+                "type": "update_exp",
+                "character_uid": "uid-1",
+                "data": {"fields": {"level": 10, "exp": 100, "gain_exp": 25}},
+            },
+            {
+                "type": "drop_item_field",
+                "character_uid": "uid-1",
+                "data": {
+                    "results": [
+                        {"item_index": 900, "count": 40},
+                        {"item_index": 1, "count": 12},
+                    ]
+                },
+            },
+            {
+                "type": "update_exp",
+                "character_uid": "uid-1",
+                "data": {"fields": {"level": 10, "exp": 140, "gain_exp": 40}},
+            },
+        ]
+        full, full_marks = _capture_summary({"events": events}, "uid-1")
+        _first, _marks, state = _capture_summary(
+            {"events": events[:1]},
+            "uid-1",
+            _state={"loot_limit": 100},
+            _return_state=True,
+        )
+        incremental, incremental_marks, _state = _capture_summary(
+            {"events": events[1:]},
+            "uid-1",
+            _state=state,
+            _return_state=True,
+        )
+        self.assertEqual(incremental, full)
+        self.assertEqual(incremental_marks, full_marks)
+
+    def test_stale_info_result_is_discarded(self):
+        app = Mock()
+        app._info_refresh_running = True
+        app._info_refresh_pending = False
+        app._info_refresh_generation = 2
+
+        App._info_refresh_finished(app, 1, {"session_id": "old"}, None)
+
+        app._apply_info_snapshot.assert_not_called()
+        app._start_info_refresh.assert_called_once()
+
+    def test_poll_never_scans_event_store(self):
+        source = inspect.getsource(App._poll)
+        self.assertNotIn("self.store.", source)
+        self.assertNotIn("capture.status()", source)
+        self.assertNotIn("packet_count()", source)
+
     def test_configured_capture_dir_uses_saved_absolute_path(self):
         with tempfile.TemporaryDirectory() as folder:
             preferences = Path(folder) / "preferences.json"
@@ -942,7 +999,7 @@ class AppLogicTest(unittest.TestCase):
             )
         )
 
-    def test_auto_subsession_resumes_from_latest_ended_template(self):
+    def test_auto_subsession_does_not_resume_after_manual_end(self):
         app = Mock()
         app.current_session = "session-1"
         app.auto_subsession.get.return_value = True
@@ -966,15 +1023,7 @@ class AppLogicTest(unittest.TestCase):
         with patch("app.main.time.time_ns", return_value=10**18):
             App._rotate_auto_subsession(app)
 
-        app.store.start_subsession.assert_called_once()
-        self.assertEqual(
-            app.store.start_subsession.call_args.kwargs["character_uid"],
-            "uid-1",
-        )
-        self.assertEqual(
-            app.store.start_subsession.call_args.kwargs["duration_minutes"],
-            10,
-        )
+        app.store.start_subsession.assert_not_called()
 
     def test_zero_subsession_duration_waits_for_manual_end(self):
         app = Mock()
@@ -1078,12 +1127,13 @@ class AppLogicTest(unittest.TestCase):
             "capture_decode_ports": [12020],
         }
         app.capture.add_ports.return_value = 1
-        with patch(
-            "app.main.ports_for_executable",
-            return_value=((50100, 50101, 50200), (12020,), 2),
-        ), patch(
-            "app.main.clients_for_executable",
-            return_value=[
+        App._apply_active_game_connections(
+            app,
+            (
+                (50100, 50101, 50200),
+                (12020,),
+                2,
+                [
                 {
                     "pid": 10,
                     "local_ports": (50100, 50101),
@@ -1094,9 +1144,9 @@ class AppLogicTest(unittest.TestCase):
                     "local_ports": (50200,),
                     "remote_ports": (12020,),
                 },
-            ],
-        ):
-            App._refresh_active_game_connections(app)
+                ],
+            ),
+        )
         self.assertEqual(app._client_ports, [(50100, 50101), (50200,)])
         self.assertEqual(
             app.prefs["capture_client_ports"],

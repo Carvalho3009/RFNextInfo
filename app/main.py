@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import copy
 import csv
 import hashlib
 import json
@@ -39,7 +40,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.0h"
+VERSION = "2.0i"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -351,9 +352,12 @@ def _capture_summary(
     character_uid: str | None = None,
     character_name: str = "",
     item_names: dict[str, str] | None = None,
-) -> tuple[dict, dict[str, list[int]]]:
+    *,
+    _state: dict[str, Any] | None = None,
+    _return_state: bool = False,
+) -> tuple:
     item_names = ITEM_NAMES if item_names is None else item_names
-    summary = {
+    empty_summary = {
         "character": "",
         "character_class": "",
         "biosuit_item_index": None,
@@ -382,11 +386,20 @@ def _capture_summary(
             key: 0 for key, _label in LOOT_RARITIES.values()
         },
     }
-    observed_exp_gained = 0
-    observed_finalizations = reward_finalizations = 0
-    reward_exp = reward_credits = reward_contribution = 0
-    reward_exp_seen = reward_credits_seen = reward_contribution_seen = False
-    contribution_totals = []
+    state = _state or {}
+    summary = copy.deepcopy(state.get("summary", empty_summary))
+    observed_exp_gained = state.get("observed_exp_gained", 0)
+    observed_finalizations = state.get("observed_finalizations", 0)
+    reward_finalizations = state.get("reward_finalizations", 0)
+    reward_exp = state.get("reward_exp", 0)
+    reward_credits = state.get("reward_credits", 0)
+    reward_contribution = state.get("reward_contribution", 0)
+    reward_exp_seen = state.get("reward_exp_seen", False)
+    reward_credits_seen = state.get("reward_credits_seen", False)
+    reward_contribution_seen = state.get("reward_contribution_seen", False)
+    contribution_last = state.get("contribution_last")
+    contribution_delta = state.get("contribution_delta", 0)
+    contribution_samples = state.get("contribution_samples", 0)
     for event in envelope.get("events", []):
         data = event.get("data") or {}
         fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
@@ -512,7 +525,13 @@ def _capture_summary(
                 summary["credits"] += fields[credit_key]
                 break
         if isinstance(fields.get("contribution_total"), (int, float)):
-            contribution_totals.append(fields["contribution_total"])
+            current_contribution = fields["contribution_total"]
+            if contribution_last is not None:
+                contribution_delta += max(
+                    0, current_contribution - contribution_last
+                )
+            contribution_last = current_contribution
+            contribution_samples += 1
         kind = str(event.get("type", "")).lower()
         if "exchange" in kind or "market" in kind:
             summary["market_events"] += 1
@@ -544,8 +563,7 @@ def _capture_summary(
                 rarity = LOOT_RARITIES.get(grade)
                 if rarity and isinstance(count, (int, float)):
                     summary["loot_by_rarity"][rarity[0]] += count
-                summary["loot"].append(
-                    {
+                loot_item = {
                         "item_index": item_index,
                         "item": (
                             item_names.get(str(item_index))
@@ -557,8 +575,32 @@ def _capture_summary(
                         "grade": grade,
                         "rarity": rarity[1] if rarity else None,
                     }
-                )
+                loot_limit = state.get("loot_limit")
+                if loot_limit is None or len(summary["loot"]) < loot_limit:
+                    summary["loot"].append(loot_item)
             summary["kills"] += int(kill_reward)
+    marks = dict(state.get("marks", {}))
+    new_marks, _collection_types = _collection_marks(envelope)
+    marks.update(new_marks)
+    state.update(
+        {
+            "summary": copy.deepcopy(summary),
+            "observed_exp_gained": observed_exp_gained,
+            "observed_finalizations": observed_finalizations,
+            "reward_finalizations": reward_finalizations,
+            "reward_exp": reward_exp,
+            "reward_credits": reward_credits,
+            "reward_contribution": reward_contribution,
+            "reward_exp_seen": reward_exp_seen,
+            "reward_credits_seen": reward_credits_seen,
+            "reward_contribution_seen": reward_contribution_seen,
+            "contribution_last": contribution_last,
+            "contribution_delta": contribution_delta,
+            "contribution_samples": contribution_samples,
+            "marks": marks,
+        }
+    )
+    summary = copy.deepcopy(summary)
     required = (
         LEVEL_CURVE.get(summary["level"] + 1)
         if isinstance(summary["level"], int)
@@ -578,13 +620,8 @@ def _capture_summary(
         summary["credits"] = reward_credits
     if reward_contribution_seen:
         summary["contribution"] = reward_contribution
-    elif len(contribution_totals) > 1:
-        summary["contribution"] = sum(
-            max(0, current - previous)
-            for previous, current in zip(
-                contribution_totals, contribution_totals[1:]
-            )
-        )
+    elif contribution_samples > 1:
+        summary["contribution"] = contribution_delta
     loadout = {"equipment": summary["equipment"]}
     if summary["biosuit_item_index"]:
         loadout["biosuit"] = {
@@ -598,8 +635,7 @@ def _capture_summary(
         }
     if summary["equipment"] or len(loadout) > 1:
         summary["loadout"] = loadout
-    marks, _collection_types = _collection_marks(envelope)
-    return summary, marks
+    return (summary, marks, state) if _return_state else (summary, marks)
 
 
 def _collection_marks(
@@ -759,6 +795,29 @@ class App(tk.Tk):
         self._selected_game_path = ""
         self.prefs: dict = {}
         self.item_name_language = tk.StringVar(value="pt")
+        self.auto_subsession = tk.BooleanVar(value=False)
+        self.auto_subsession_minutes = tk.IntVar(value=30)
+        self._last_session_stats = {
+            "recognized": 0,
+            "unknown": 0,
+            "unassigned": 0,
+            "raw_bytes": 0,
+        }
+        self._last_kills = 0
+        self._info_refresh_generation = 0
+        self._info_refresh_running = False
+        self._info_refresh_pending = False
+        self._info_snapshot: dict[str, Any] | None = None
+        self._info_worker_cache: dict[str, Any] = {}
+        self._runtime_refresh_running = False
+        self._next_runtime_refresh = 0.0
+        self._runtime_snapshot = {
+            "total_bytes": 0,
+            "free_bytes": 0,
+            "disk_total": 0,
+            "packet_count": None,
+            "connections": None,
+        }
         self._style()
         self._build()
         self.bind_all("<MouseWheel>", self._scroll_active_page, add="+")
@@ -1058,6 +1117,13 @@ class App(tk.Tk):
             bordercolor="#6d5428",
             padding=5,
         )
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", "#F4F2EB")],
+            foreground=[("readonly", "#070909")],
+            selectbackground=[("readonly", "#F4F2EB")],
+            selectforeground=[("readonly", "#070909")],
+        )
         self.option_add("*TCombobox*Listbox.background", "#F4F2EB")
         self.option_add("*TCombobox*Listbox.foreground", "#070909")
         self.option_add("*TCombobox*Listbox.selectBackground", "#D4A64D")
@@ -1086,6 +1152,11 @@ class App(tk.Tk):
             arrowcolor="#D4A64D",
             bordercolor="#6d5428",
             padding=5,
+        )
+        style.map(
+            "TSpinbox",
+            fieldbackground=[("readonly", "#F4F2EB"), ("disabled", "#d8d5ce")],
+            foreground=[("readonly", "#070909"), ("disabled", "#353a38")],
         )
         style.configure(
             "TCheckbutton",
@@ -1172,6 +1243,29 @@ class App(tk.Tk):
             style="Topbar.TLabel",
         )
         self.top_storage.pack(side=LEFT)
+        top_controls = ttk.Frame(topbar, style="Topbar.TFrame", padding=(6, 5))
+        top_controls.pack(side=RIGHT)
+        self.start_button = ttk.Button(
+            top_controls,
+            text="Iniciar · Ctrl+F8",
+            command=self.start_capture,
+        )
+        self.start_button.grid(row=0, column=0, padx=(0, 5))
+        self.pause_button = ttk.Button(
+            top_controls,
+            text="Pausar",
+            style="Quiet.TButton",
+            command=self.pause_capture,
+        )
+        self.pause_button.grid(row=0, column=0, padx=(0, 5))
+        self.pause_button.grid_remove()
+        self.stop_button = ttk.Button(
+            top_controls,
+            text="Encerrar · Ctrl+F9",
+            style="Danger.TButton",
+            command=self.stop_capture,
+        )
+        self.stop_button.grid(row=0, column=1)
 
         body = ttk.Frame(self, style="Workspace.TFrame")
         body.pack(fill=BOTH, expand=True)
@@ -1285,7 +1379,7 @@ class App(tk.Tk):
         ]
         pages = (
             ("◉  Visão geral", scroll_pages[0][0]),
-            ("▣  Modos de captura", scroll_pages[1][0]),
+            ("▣  Envios", scroll_pages[1][0]),
             ("▤  Subsessões", scroll_pages[2][0]),
             ("⚙  Configurações", scroll_pages[3][0]),
             ("ⓘ  Licença e suporte", scroll_pages[4][0]),
@@ -1551,7 +1645,7 @@ class App(tk.Tk):
             style="Quiet.TButton",
             command=lambda: self._select_page(5),
         ).pack(side=RIGHT)
-        ttk.Label(heading, text="Modos de captura", style="Title.TLabel").pack(
+        ttk.Label(heading, text="Envios", style="Title.TLabel").pack(
             anchor="w"
         )
         ttk.Label(
@@ -1599,27 +1693,6 @@ class App(tk.Tk):
             continuous, text="Arquivo atual\n0 B", style="PanelMuted.TLabel"
         )
         self.capture_size.grid(row=0, column=3, rowspan=2, padx=(0, 16))
-        self.start_button = ttk.Button(
-            continuous,
-            text="Iniciar · Ctrl+F8",
-            command=self.start_capture,
-        )
-        self.start_button.grid(row=0, column=4, rowspan=2, padx=(0, 8))
-        self.pause_button = ttk.Button(
-            continuous,
-            text="Pausar",
-            style="Quiet.TButton",
-            command=self.pause_capture,
-        )
-        self.pause_button.grid(row=0, column=4, rowspan=2, padx=(0, 8))
-        self.pause_button.grid_remove()
-        self.stop_button = ttk.Button(
-            continuous,
-            text="Parar · Ctrl+F9",
-            style="Danger.TButton",
-            command=self.stop_capture,
-        )
-        self.stop_button.grid(row=0, column=5, rowspan=2)
         continuous.columnconfigure(0, weight=1)
 
         content = ttk.Frame(self.capture_tab, style="Workspace.TFrame")
@@ -1688,7 +1761,7 @@ class App(tk.Tk):
             if mode == "market":
                 button = ttk.Button(
                     actions,
-                    text="Enviar geral",
+                    text="Enviar Mercado · geral",
                     command=lambda selected=mode: self.send_mode_now(selected),
                 )
                 button.pack(fill=X)
@@ -1697,7 +1770,7 @@ class App(tk.Tk):
                 for client_index in range(2):
                     button = ttk.Button(
                         actions,
-                        text=f"Cliente {chr(65 + client_index)}",
+                        text=f"Enviar Cliente {chr(65 + client_index)}",
                         command=lambda selected=mode, index=client_index: (
                             self.send_mode_now(selected, index)
                         ),
@@ -1707,10 +1780,10 @@ class App(tk.Tk):
                     ))
                     self.quick_buttons[f"{mode}:{client_index}"] = button
             card.columnconfigure(0, weight=1)
-            card.rowconfigure(1, minsize=42)
+            card.rowconfigure(1, minsize=64)
             self.quick_mode_labels[mode] = state
             self.quick_shortcut_labels[mode] = shortcut_label
-            quick.columnconfigure(column, weight=1)
+            quick.columnconfigure(column, weight=1, uniform="quick-send")
 
         queue = ttk.Frame(content, style="Panel.TFrame", padding=10)
         queue.grid(row=0, column=1, sticky="nsew")
@@ -1946,22 +2019,63 @@ class App(tk.Tk):
                 sticky="nsew",
                 padx=(0 if index == 0 else 5, 5 if index == 0 else 0),
             )
+            header = ttk.Frame(card, style="PanelBody.TFrame")
+            header.pack(fill=X)
+            class_icon = ttk.Label(
+                header, text="—", style="Class.TLabel", anchor="center"
+            )
+            class_icon.pack(side=LEFT, padx=(0, 8))
+            rover_icon = ttk.Label(
+                header, text="", style="Class.TLabel", anchor="center"
+            )
+            rover_icon.pack(side=LEFT, padx=(0, 8))
+            identity = ttk.Frame(header, style="PanelBody.TFrame")
+            identity.pack(side=LEFT, fill=X, expand=True)
             name = ttk.Label(
-                card,
+                identity,
                 text=f"Cliente {chr(65 + index)} · aguardando personagem",
                 style="PanelTitle.TLabel",
             )
             name.pack(anchor="w")
             equipment = ttk.Label(
-                card, text="Classe — · Rover —", style="PanelMuted.TLabel"
+                identity, text="Classe — · Rover —", style="PanelMuted.TLabel"
             )
-            equipment.pack(anchor="w", pady=(4, 10))
+            equipment.pack(anchor="w", pady=(4, 0))
             progress = ttk.Progressbar(card, maximum=100, mode="determinate")
-            progress.pack(fill=X, pady=(0, 10))
-            metrics = ttk.Label(
-                card, text="Sem dados", style="Data.TLabel", justify=LEFT
-            )
-            metrics.pack(anchor="w")
+            progress.pack(fill=X, pady=(10, 8))
+            metrics_frame = ttk.Frame(card, style="PanelBody.TFrame")
+            metrics_frame.pack(fill=X)
+            metrics = {}
+            for position, (key, label) in enumerate(
+                (
+                    ("exp", "EXP atual"),
+                    ("exp_missing", "EXP faltante"),
+                    ("credits", "Créditos"),
+                    ("diamonds", "Diamantes"),
+                    ("contribution", "Contribuição"),
+                    ("kills", "Abates"),
+                    ("exp_hour", "EXP/h"),
+                    ("credits_hour", "Crédito/h"),
+                    ("contribution_hour", "Contribuição/h"),
+                    ("loot", "Loot por raridade"),
+                )
+            ):
+                metric = ttk.Frame(
+                    metrics_frame, style="Panel.TFrame", padding=(6, 5)
+                )
+                metric.grid(
+                    row=position // 2,
+                    column=position % 2,
+                    sticky="nsew",
+                    padx=(0 if position % 2 == 0 else 4, 0),
+                    pady=(0, 4),
+                )
+                ttk.Label(metric, text=label, style="PanelMuted.TLabel").pack()
+                value = ttk.Label(metric, text="—", style="Metric.TLabel")
+                value.pack(pady=(2, 0))
+                metrics[key] = value
+            metrics_frame.columnconfigure(0, weight=1, uniform="split-metric")
+            metrics_frame.columnconfigure(1, weight=1, uniform="split-metric")
             subsession = ttk.Label(
                 card,
                 text="Subsessão ativa: nenhuma",
@@ -1970,6 +2084,8 @@ class App(tk.Tk):
             subsession.pack(anchor="w", pady=(12, 0))
             self.split_overviews.append(
                 {
+                    "class_icon": class_icon,
+                    "rover_icon": rover_icon,
                     "name": name,
                     "equipment": equipment,
                     "progress": progress,
@@ -1987,29 +2103,6 @@ class App(tk.Tk):
         heading.pack(fill=X)
         ttk.Label(heading, text="Subsessões", style="Title.TLabel").pack(
             side=LEFT
-        )
-        automatic = ttk.Frame(heading, style="Workspace.TFrame")
-        automatic.pack(side=RIGHT)
-        ttk.Checkbutton(
-            automatic,
-            text="Criar automaticamente",
-            variable=self.auto_subsession,
-            command=self._save_preferences,
-        ).pack(side=LEFT)
-        ttk.Label(
-            automatic, text="Duração", style="Muted.TLabel"
-        ).pack(side=LEFT, padx=(14, 4))
-        ttk.Spinbox(
-            automatic,
-            from_=5,
-            to=240,
-            increment=5,
-            width=6,
-            textvariable=self.auto_subsession_minutes,
-            command=self._save_preferences,
-        ).pack(side=LEFT)
-        ttk.Label(automatic, text="min", style="Muted.TLabel").pack(
-            side=LEFT, padx=(4, 0)
         )
         ttk.Label(
             self.subsessions_tab,
@@ -2101,6 +2194,32 @@ class App(tk.Tk):
             variable=self.subsession_select_all,
             command=self._toggle_all_subsession_mobs,
         ).pack(anchor="w", pady=(4, 0))
+        automatic = ttk.Frame(form, style="PanelBody.TFrame")
+        ttk.Checkbutton(
+            automatic,
+            text="Criar a próxima automaticamente",
+            variable=self.auto_subsession,
+            command=self._save_preferences,
+        ).pack(side=LEFT)
+        ttk.Label(
+            automatic, text="a cada", style="PanelMuted.TLabel"
+        ).pack(side=LEFT, padx=(10, 4))
+        ttk.Spinbox(
+            automatic,
+            from_=5,
+            to=240,
+            increment=5,
+            width=6,
+            textvariable=self.auto_subsession_minutes,
+            command=self._save_preferences,
+        ).pack(side=LEFT)
+        ttk.Label(automatic, text="min", style="PanelMuted.TLabel").pack(
+            side=LEFT, padx=(4, 0)
+        )
+        ttk.Label(
+            form, text="Subsessão automática", style="PanelMuted.TLabel"
+        ).pack(anchor="w", pady=(8, 2))
+        automatic.pack(fill=X)
         self.subsession_map.bind(
             "<<ComboboxSelected>>", self._subsession_map_changed
         )
@@ -2327,36 +2446,6 @@ class App(tk.Tk):
             lambda _event: self._item_language_changed(item_language.get()),
         )
         self.item_language_field = item_language
-        ttk.Label(
-            preferences,
-            text="Subsessões automáticas",
-            style="PanelTitle.TLabel",
-        ).pack(anchor="w", pady=(18, 4))
-        self.auto_subsession = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            preferences,
-            text="Criar subsessões automaticamente",
-            variable=self.auto_subsession,
-            command=self._save_preferences,
-        ).pack(anchor="w", pady=(12, 4))
-        duration = ttk.Frame(preferences, style="PanelBody.TFrame")
-        duration.pack(fill=X)
-        ttk.Label(
-            duration,
-            text="Duração automática (min)",
-            style="PanelMuted.TLabel",
-        ).pack(side=LEFT)
-        self.auto_subsession_minutes = tk.IntVar(value=30)
-        ttk.Spinbox(
-            duration,
-            from_=5,
-            to=240,
-            increment=5,
-            width=6,
-            textvariable=self.auto_subsession_minutes,
-            command=self._save_preferences,
-        ).pack(side=RIGHT)
-
         self.quick_shortcuts_title = ttk.Label(
             preferences,
             text="Atalhos dos envios rápidos",
@@ -2643,7 +2732,7 @@ class App(tk.Tk):
             "1. Ative esta instalação na aba Licença. A ativação será lembrada nas próximas aberturas.\n\n"
             "2. Abra o RF NEXT. O programa detecta automaticamente até dois clientes e separa as conexões de cada um.\n\n"
             "3. Use os botões Cliente A e Cliente B para alternar a visão. Se o nome não for identificado, use o botão Renomear ao lado do cliente.\n\n"
-            "4. Em Modos de captura, inicie EXP e Loot contínuo. Os botões Personagem, Mercado, Codex e Memory Chips enviam ao site os dados já lidos; eles não iniciam outra captura.\n\n"
+            "4. Em Envios, use os botões Personagem, Mercado, Codex e Memory Chips para enviar ao site os dados já lidos; eles não iniciam outra captura.\n\n"
             "5. Em Configurações, informe o Profile e o token gerado pelo site. No histórico, selecione subsessões encerradas para enviá-las sem duplicidade.\n\n"
             "6. Cada parada encerra uma sessão independente. Confira o tamanho antes de exportar; depois da exportação validada, o programa pode enviar os segmentos brutos à Lixeira.\n\n"
             "Privacidade: captura passiva limitada às portas conhecidas do RF NEXT e às conexões detectadas do jogo, sem captura geral da rede, injeção, token de sessão, atualização silenciosa ou telemetria."
@@ -3026,8 +3115,6 @@ class App(tk.Tk):
         self.quick_shortcuts_title.configure(
             text="Atalhos dos envios rápidos"
         )
-        for button in self.quick_buttons.values():
-            button.configure(text="Enviar agora")
         for mode, label in (
             ("character", "Personagem"),
             ("market", "Mercado"),
@@ -3110,7 +3197,15 @@ class App(tk.Tk):
             return messagebox.showwarning(
                 "Envio", "Ainda não existem dados de uma sessão para enviar."
             )
-        self.quick_mode_labels[mode].configure(text="Atualizando…")
+        target_index = self._active_client_index if client_index is None else client_index
+        target_label = (
+            "Mercado geral"
+            if mode == "market"
+            else f"Cliente {chr(65 + target_index)}"
+        )
+        self.quick_mode_labels[mode].configure(
+            text=f"Atualizando {target_label}…"
+        )
         if self._capture_is_active() and self._live_capture:
             self._pending_send_mode = mode
             self._pending_send_client_index = client_index
@@ -3253,7 +3348,8 @@ class App(tk.Tk):
             ).encode()
         ).hexdigest()
         self._send_uploading = True
-        self.quick_mode_labels[mode].configure(text="Enviando…")
+        target_label = "Mercado geral" if mode == "market" else f"Cliente {chr(65 + selected_index)}"
+        self.quick_mode_labels[mode].configure(text=f"Enviando {target_label}…")
 
         def done(result, error):
             self._send_uploading = False
@@ -3266,7 +3362,7 @@ class App(tk.Tk):
                 )
                 return messagebox.showerror("Envio falhou", str(error))
             sent_at = datetime.now().strftime("%H:%M:%S")
-            self.quick_mode_labels[mode].configure(text="Enviado")
+            self.quick_mode_labels[mode].configure(text=f"{target_label} enviado")
             self.queue_mode_times[mode].configure(text=sent_at)
             self.log.info(
                 "snapshot_upload_completed mode=%s character_uid=%s receipt=%s",
@@ -3503,7 +3599,7 @@ class App(tk.Tk):
         self.subsession_start_button.configure(text="Iniciar subsessão")
         self.subsession_other_mob.delete(0, END)
         self._save_preferences()
-        self._refresh_subsessions()
+        self._refresh_info()
 
     def end_subsession(self) -> None:
         client_index = 1 if self.subsession_client.get().endswith("B") else 0
@@ -3528,7 +3624,7 @@ class App(tk.Tk):
                 "Subsessão", "Não existe subsessão ativa neste cliente."
             )
         self.store.end_subsession(active["id"], time.time_ns())
-        self._refresh_subsessions()
+        self._refresh_info()
 
     def toggle_visible_subsessions(self) -> None:
         visible = self.subsession_table.get_children()
@@ -3607,7 +3703,7 @@ class App(tk.Tk):
             self.store.rename_subsession(selected[0], name)
         except ValueError as error:
             return messagebox.showwarning("Subsessão", str(error))
-        self._refresh_subsessions()
+        self._refresh_info()
 
     def delete_selected_subsessions(self) -> None:
         selected = tuple(self.subsession_table.selection())
@@ -3622,7 +3718,7 @@ class App(tk.Tk):
         ):
             return
         self.store.delete_subsessions(selected)
-        self._refresh_subsessions()
+        self._refresh_info()
 
     def _subsession_report(
         self, subsession: dict, character_uid: str | None
@@ -3774,7 +3870,7 @@ class App(tk.Tk):
                     self.store.set_subsession_upload_state(
                         identifier, "sent"
                     )
-            self._refresh_subsessions()
+            self._refresh_info()
             if failures:
                 return messagebox.showwarning(
                     "Envio de subsessões",
@@ -3793,15 +3889,20 @@ class App(tk.Tk):
         self.subsession_page = max(1, page)
         self._refresh_subsessions()
 
-    def _refresh_subsessions(self) -> None:
+    def _refresh_subsessions(self, snapshot: dict | None = None) -> None:
         if not hasattr(self, "subsession_table"):
+            return
+        snapshot = snapshot or self._info_snapshot or {}
+        if snapshot.get("session_id") != self.current_session:
+            self._refresh_info()
             return
         self.subsession_table.delete(*self.subsession_table.get_children())
         profile_names = {
             item["uid"]: item["name"]
             for item in getattr(self, "_current_profiles", [])
         }
-        items = self.store.subsessions(self.current_session or "")
+        items = list(snapshot.get("subsessions") or [])
+        summaries = snapshot.get("subsession_summaries") or {}
         active_client_key = f"client:{chr(97 + self._active_client_index)}"
         active = next(
             (
@@ -3880,17 +3981,13 @@ class App(tk.Tk):
                 if item.get("client_key")
                 else item["character_uid"]
             )
-            envelope = (
-                self.store.interval_envelope(
-                    self.current_session or "",
-                    character_uid,
-                    item["started_ns"],
-                    end,
-                )
-                if character_uid or not item.get("client_key")
-                else {"events": []}
-            )
-            summary, _marks = self._capture_summary_for_language(envelope)
+            summary = summaries.get(item["id"]) or {
+                "character": "",
+                "exp_gained": 0,
+                "exp_gained_percent": None,
+                "credits": 0,
+                "contribution": None,
+            }
             hours = duration / 3600 if duration else 0
             exp_hour = round(summary["exp_gained"] / hours) if hours else 0
             exp_total_percent = summary["exp_gained_percent"]
@@ -3985,7 +4082,7 @@ class App(tk.Tk):
                 ),
             )
 
-    def _rotate_auto_subsession(self) -> None:
+    def _rotate_auto_subsession(self, items: list[dict] | None = None) -> None:
         if not self.current_session:
             return
         now = time.time_ns()
@@ -3995,19 +4092,11 @@ class App(tk.Tk):
             if automatic
             else 0
         )
-        items = self.store.subsessions(self.current_session)
-        latest_ended = {}
-        active_characters = {
-            item.get("client_key") or item["character_uid"]
-            for item in items
-            if item["ended_ns"] is None
-        }
-        for item in items:
-            if item["ended_ns"] is not None:
-                latest_ended.setdefault(
-                    item.get("client_key") or item["character_uid"], item
-                )
-
+        items = (
+            items
+            if items is not None
+            else self.store.subsessions(self.current_session)
+        )
         def start_next(template: dict) -> None:
             self.store.start_subsession(
                 f"{_safe_name(self.current_session, 'sessao')}-sub-"
@@ -4026,7 +4115,6 @@ class App(tk.Tk):
             )
 
         changed = False
-        restarted = set()
         for active in items:
             if active["ended_ns"] is not None:
                 continue
@@ -4043,19 +4131,8 @@ class App(tk.Tk):
             changed = True
             if automatic:
                 start_next(active)
-                restarted.add(
-                    active.get("client_key") or active["character_uid"]
-                )
-        if automatic:
-            for character_uid, template in latest_ended.items():
-                if (
-                    character_uid not in active_characters
-                    and character_uid not in restarted
-                ):
-                    start_next(template)
-                    changed = True
         if changed:
-            self._refresh_subsessions()
+            self._refresh_info()
 
     def connect_site_profile(self) -> None:
         profile = self.site_profile_name.get().strip()
@@ -4418,7 +4495,7 @@ class App(tk.Tk):
     def _capture_is_active(self) -> bool:
         if not self.current_session:
             return False
-        return self._live_capture is not None or self.capture.status().active
+        return self._live_capture is not None or self.capture.active
 
     def _discard_previous_capture(self) -> bool:
         session_id = self.current_session
@@ -5104,11 +5181,19 @@ class App(tk.Tk):
         )
 
     def _character_exports(
-        self, *, prompt_exp: bool = False
+        self,
+        *,
+        prompt_exp: bool = False,
+        store: CaptureStore | None = None,
+        session_id: str | None = None,
+        stats: dict[str, Any] | None = None,
+        detected: list[dict[str, str]] | None = None,
     ) -> list[dict[str, Any]]:
-        if not self.current_session:
+        database = store or self.store
+        session = session_id or self.current_session
+        if not session:
             return []
-        detected = self.store.session_profiles(self.current_session)
+        detected = detected if detected is not None else database.session_profiles(session)
         process_assigned = any(
             str(item["uid"]).startswith("client:") for item in detected
         )
@@ -5117,7 +5202,7 @@ class App(tk.Tk):
             and len(detected) == 1
             and not process_assigned
         ):
-            flows = self.store.unidentified_exp_flows(self.current_session)
+            flows = database.unidentified_exp_flows(session)
             if flows:
                 name = str(detected[0].get("name") or "personagem detectado")
                 value = simpledialog.askfloat(
@@ -5128,12 +5213,12 @@ class App(tk.Tk):
                     maxvalue=100.0,
                 )
                 if value is not None:
-                    self.store.assign_unidentified_to_uid_by_exp(
-                        self.current_session,
+                    database.assign_unidentified_to_uid_by_exp(
+                        session,
                         str(detected[0]["uid"]),
                         value,
                     )
-        stats = self.store.session_stats(self.current_session)
+        stats = stats or database.session_stats(session)
         if len(detected) > 2 or not detected:
             return [
                 {
@@ -5522,13 +5607,19 @@ class App(tk.Tk):
             self.overview_split.pack_forget()
             self.overview_single.pack(fill=BOTH, expand=True)
 
-    def _active_subsession_for_client(self, index: int) -> dict | None:
+    def _active_subsession_for_client(
+        self, index: int, items: list[dict] | None = None
+    ) -> dict | None:
         client_key = f"client:{chr(97 + index)}"
         uid = self._client_uid(index)
         return next(
             (
                 item
-                for item in self.store.subsessions(self.current_session or "")
+                for item in (
+                    items
+                    if items is not None
+                    else self.store.subsessions(self.current_session or "")
+                )
                 if item["ended_ns"] is None
                 and (
                     item.get("client_key") == client_key
@@ -5539,7 +5630,12 @@ class App(tk.Tk):
         )
 
     def _render_split_overview(
-        self, index: int, name: str, summary: dict | None, duration: int
+        self,
+        index: int,
+        name: str,
+        summary: dict | None,
+        duration: int,
+        active_subsession: dict | None = None,
     ) -> None:
         if not hasattr(self, "split_overviews"):
             return
@@ -5549,6 +5645,15 @@ class App(tk.Tk):
         gained = int(summary.get("exp_gained") or 0)
         credits = int(summary.get("credits") or 0)
         contribution = summary.get("contribution")
+        class_name = str(summary.get("character_class") or "")
+        class_icon = self.class_icons.get(
+            (class_name, summary.get("biosuit_grade") or 0)
+        ) or self.class_icons.get((class_name, 0))
+        rover_icon = self.rover_icons.get(summary.get("rover_grade") or 0)
+        widgets["class_icon"].configure(
+            image=class_icon or "", text="" if class_icon else (class_name or "—")
+        )
+        widgets["rover_icon"].configure(image=rover_icon or "")
         widgets["name"].configure(
             text=f"Cliente {chr(65 + index)} · {name or 'aguardando personagem'}"
         )
@@ -5560,126 +5665,345 @@ class App(tk.Tk):
             )
         )
         widgets["progress"].configure(value=summary.get("exp_percent") or 0)
-        widgets["metrics"].configure(
-            text=(
-                f"EXP atual: {summary.get('exp') if summary.get('exp') is not None else '—'}\n"
-                f"EXP total: {gained:,} · EXP/h: {round(gained / hours) if hours else 0:,}\n"
-                f"Créditos: {credits:,} · Crédito/h: {round(credits / hours) if hours else 0:,}\n"
-                f"Contribuição: {contribution if contribution is not None else '—'} · "
-                f"Abates: {int(summary.get('kills') or 0)}"
-            ).replace(",", ".")
-        )
-        active = self._active_subsession_for_client(index)
+        rarity_totals = summary.get("loot_by_rarity") or {}
+        values = {
+            "exp": summary.get("exp"),
+            "exp_missing": summary.get("exp_missing"),
+            "credits": credits,
+            "diamonds": summary.get("diamonds"),
+            "contribution": contribution,
+            "kills": int(summary.get("kills") or 0),
+            "exp_hour": round(gained / hours) if hours else None,
+            "credits_hour": round(credits / hours) if hours else None,
+            "contribution_hour": (
+                round(contribution / hours)
+                if hours and isinstance(contribution, (int, float))
+                else None
+            ),
+            "loot": " · ".join(
+                f"{label} {int(rarity_totals.get(key, 0))}"
+                for key, label in LOOT_RARITIES.values()
+            ),
+        }
+        for key, label in widgets["metrics"].items():
+            value = values[key]
+            label.configure(
+                text=(
+                    f"{value:,.0f}".replace(",", ".")
+                    if isinstance(value, (int, float))
+                    else value or "—"
+                )
+            )
         widgets["subsession"].configure(
-            text=f"Subsessão ativa: {active['name'] if active else 'nenhuma'}"
+            text=(
+                "Subsessão ativa: "
+                f"{active_subsession['name'] if active_subsession else 'nenhuma'}"
+            )
         )
 
     def _refresh_info(self) -> None:
-        lines = []
+        snapshot = self._info_snapshot
+        if snapshot and snapshot.get("session_id") == self.current_session:
+            self._apply_info_snapshot(snapshot)
+        self._info_refresh_generation += 1
+        self._info_refresh_pending = True
+        if self._info_refresh_running:
+            return
+        self._start_info_refresh()
+
+    def _start_info_refresh(self) -> None:
+        if not self._info_refresh_pending or self._info_refresh_running:
+            return
+        generation = self._info_refresh_generation
+        session_id = self.current_session
+        language = self.item_name_language.get()
+        database_path = self.store.path
+        self._info_refresh_pending = False
+        self._info_refresh_running = True
+
+        def worker() -> None:
+            database = None
+            try:
+                database = CaptureStore(database_path, readonly=True)
+                result = self._load_info_snapshot(
+                    database, session_id, language
+                )
+                self.after(
+                    0,
+                    lambda: self._info_refresh_finished(
+                        generation, result, None
+                    ),
+                )
+            except Exception as error:
+                self.after(
+                    0,
+                    lambda error=error: self._info_refresh_finished(
+                        generation, None, error
+                    ),
+                )
+            finally:
+                if database is not None:
+                    database.close()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _load_info_snapshot(
+        self,
+        database: CaptureStore,
+        session_id: str | None,
+        language: str,
+    ) -> dict[str, Any]:
+        if not session_id:
+            return {
+                "session_id": None,
+                "stats": dict(self._last_session_stats),
+                "profiles": [],
+                "characters": [],
+                "subsessions": [],
+                "subsession_summaries": {},
+            }
+        revision = database.event_revision()
+        maximum_id = database.max_event_id(session_id)
+        cache = self._info_worker_cache
+        rebuild = (
+            cache.get("session_id") != session_id
+            or cache.get("revision") != revision
+            or cache.get("language") != language
+            or maximum_id < int(cache.get("last_global_id") or 0)
+        )
+        if rebuild:
+            cache.clear()
+            cache.update(
+                {
+                    "session_id": session_id,
+                    "revision": revision,
+                    "language": language,
+                    "summaries": {},
+                    "subsession_summaries": {},
+                }
+            )
+        last_global_id = int(cache.get("last_global_id") or 0)
+        if "stats" not in cache:
+            cache["stats"] = database.session_stats(session_id)
+        else:
+            delta = database.session_stats_after(session_id, last_global_id)
+            stats = cache["stats"]
+            if maximum_id > last_global_id:
+                for key in ("recognized", "unknown", "unassigned"):
+                    stats[key] = int(stats.get(key) or 0) + int(delta.get(key) or 0)
+                for key, chooser in (("started_ns", min), ("ended_ns", max)):
+                    value = delta.get(key)
+                    if isinstance(value, int):
+                        current = stats.get(key)
+                        stats[key] = chooser(current, value) if isinstance(current, int) else value
+            stats["raw_bytes"] = int(delta.get("raw_bytes") or 0)
+        if rebuild or maximum_id > last_global_id or "profiles" not in cache:
+            cache["profiles"] = database.session_profiles(session_id)
+        profiles = cache["profiles"]
+        characters = self._character_exports(
+            store=database,
+            session_id=session_id,
+            stats=cache["stats"],
+            detected=profiles,
+        )
+        item_names = ITEM_NAMES_EN if language == "en" else ITEM_NAMES
+        summaries = cache["summaries"]
+
+        def update_summary_entry(
+            entry: dict[str, Any],
+            character_uid: str | None,
+            character_name: str,
+            **filters: Any,
+        ) -> None:
+            cursor = int(entry["last_id"])
+            while True:
+                events, next_cursor = database.ui_event_batch(
+                    session_id,
+                    character_uid,
+                    after_id=cursor,
+                    **filters,
+                )
+                if events or "summary" not in entry:
+                    summary, _marks, state = _capture_summary(
+                        {"events": events},
+                        character_uid,
+                        character_name,
+                        item_names,
+                        _state=entry["state"],
+                        _return_state=True,
+                    )
+                    entry.update(state=state, summary=summary)
+                if len(events) < 5000:
+                    break
+                cursor = next_cursor
+            entry["last_id"] = maximum_id
+
+        character_results = []
+        active_keys = set()
+        for character in characters:
+            key = (
+                str(character.get("uid") or ""),
+                bool(character.get("include_unassigned")),
+                bool(character.get("only_unassigned")),
+                str(character.get("name") or ""),
+            )
+            active_keys.add(key)
+            entry = summaries.get(key)
+            if entry is None:
+                entry = {"last_id": 0, "state": {"loot_limit": 100}}
+            update_summary_entry(
+                entry,
+                character.get("uid"),
+                str(character.get("name") or ""),
+                include_unassigned=bool(character.get("include_unassigned")),
+                only_unassigned=bool(character.get("only_unassigned")),
+            )
+            summaries[key] = entry
+            character_results.append({**character, "summary": entry["summary"]})
+        for key in tuple(summaries):
+            if key not in active_keys:
+                summaries.pop(key, None)
+
+        subsessions = database.subsessions(session_id)
+        uid_by_client = {
+            item.get("client_key"): item.get("uid")
+            for item in profiles
+            if item.get("client_key")
+        }
+        subsession_cache = cache["subsession_summaries"]
+        subsession_results = {}
+        active_subsession_ids = set()
+        for item in subsessions:
+            identifier = item["id"]
+            active_subsession_ids.add(identifier)
+            character_uid = (
+                uid_by_client.get(item.get("client_key"))
+                if item.get("client_key")
+                else item.get("character_uid")
+            )
+            entry = subsession_cache.get(identifier)
+            if (
+                entry is None
+                or entry.get("character_uid") != character_uid
+                or entry.get("started_ns") != item["started_ns"]
+            ):
+                entry = {
+                    "last_id": 0,
+                    "state": {"loot_limit": 50},
+                    "character_uid": character_uid,
+                    "started_ns": item["started_ns"],
+                }
+            update_summary_entry(
+                entry,
+                character_uid,
+                "",
+                started_ns=item["started_ns"],
+                ended_ns=item["ended_ns"],
+            )
+            entry["ended_ns"] = item["ended_ns"]
+            subsession_cache[identifier] = entry
+            subsession_results[identifier] = entry["summary"]
+        for identifier in tuple(subsession_cache):
+            if identifier not in active_subsession_ids:
+                subsession_cache.pop(identifier, None)
+        cache["last_global_id"] = maximum_id
+        return {
+            "session_id": session_id,
+            "stats": dict(cache["stats"]),
+            "profiles": profiles,
+            "characters": character_results,
+            "subsessions": subsessions,
+            "subsession_summaries": subsession_results,
+        }
+
+    def _info_refresh_finished(
+        self, generation: int, snapshot: dict | None, error: Exception | None
+    ) -> None:
+        self._info_refresh_running = False
+        if error is not None:
+            self.log.exception(
+                "info_refresh_failed reason=%s", _safe_error_code(error),
+                exc_info=(type(error), error, error.__traceback__),
+            )
+        elif generation == self._info_refresh_generation and snapshot is not None:
+            self._info_snapshot = snapshot
+            self._apply_info_snapshot(snapshot)
+        if self._info_refresh_pending or generation != self._info_refresh_generation:
+            self._info_refresh_pending = True
+            self._start_info_refresh()
+
+    def _apply_info_snapshot(self, snapshot: dict[str, Any]) -> None:
+        if snapshot.get("session_id") != self.current_session:
+            return
+        profiles = snapshot.get("profiles") or []
+        subsessions = snapshot.get("subsessions") or []
+        stats = snapshot.get("stats") or dict(self._last_session_stats)
+        self._last_session_stats = dict(stats)
+        self._refresh_client_buttons(profiles)
+        started, ended = stats.get("started_ns"), stats.get("ended_ns")
+        duration = (
+            max(0, int((ended - started) / 1_000_000_000))
+            if isinstance(started, int) and isinstance(ended, int)
+            else 0
+        )
+        if self._capture_is_active() and self.current_session:
+            duration = max(
+                duration,
+                _session_elapsed(self.current_session, True, datetime.now())
+                - self._paused_total_seconds,
+            )
+        lines = (
+            ["Nenhuma sessão disponível."]
+            if not self.current_session
+            else [
+                f"Sessão              {self.current_session}",
+                f"Tempo               {duration // 60}m {duration % 60}s",
+                f"Eventos reconhecidos {stats.get('recognized', 0)}",
+                f"Sem personagem       {stats.get('unassigned', 0)}",
+                f"Não decodificados   {stats.get('unknown', 0)}",
+                f"Dados brutos         {_format_bytes(int(stats.get('raw_bytes') or 0))}",
+                "",
+            ]
+        )
         overview = None
         overview_name = "Aguardando personagem"
         client_overviews: dict[int, tuple[str, dict]] = {}
-        profiles: list[dict[str, str]] = []
-        duration = 0
-        if not self.current_session:
-            lines = ["Nenhuma sessão disponível."]
-            self._refresh_client_buttons([])
-        else:
-            stats = self.store.session_stats(self.current_session)
-            started, ended = stats["started_ns"], stats["ended_ns"]
-            duration = (
-                max(0, int((ended - started) / 1_000_000_000))
-                if isinstance(started, int) and isinstance(ended, int)
-                else 0
+        characters = snapshot.get("characters") or []
+        routed = any(item.get("client_key") for item in characters)
+        active_client_key = f"client:{chr(97 + self._active_client_index)}"
+        session_kills = 0
+        for character in characters:
+            summary = character["summary"]
+            session_kills += int(summary.get("kills") or 0)
+            selected = (
+                character.get("client_key") == active_client_key
+                if routed
+                else character.get("uid") == self.active_character_uid
             )
-            if self._capture_is_active():
-                duration = max(
-                    duration,
-                    _session_elapsed(
-                        self.current_session,
-                        True,
-                        datetime.now(),
-                    )
-                    - self._paused_total_seconds,
-                )
-            profiles = self.store.session_profiles(self.current_session)
-            self._refresh_client_buttons(profiles)
+            if selected or (overview is None and not routed):
+                overview = summary
+                overview_name = character["name"]
+            if character.get("client_key") in {"client:a", "client:b"}:
+                index = 0 if character["client_key"] == "client:a" else 1
+                client_overviews[index] = (character["name"], summary)
+            exp_percent = summary.get("exp_percent")
             lines.extend(
                 [
-                    f"Sessão              {self.current_session}",
-                    f"Tempo               {duration // 60}m {duration % 60}s",
-                    f"Eventos reconhecidos {stats['recognized']}",
-                    f"Sem personagem       {stats['unassigned']}",
-                    f"Não decodificados   {stats['unknown']}",
-                    f"Dados brutos         {_format_bytes(int(stats['raw_bytes'] or 0))}",
+                    f"[{character['name']}]",
+                    f"UID                 {character.get('uid') or 'aguardando identificação'}",
+                    f"Level               {summary.get('level') if summary.get('level') is not None else '—'}",
+                    f"EXP                 {summary.get('exp') if summary.get('exp') is not None else '—'}",
+                    "EXP no level        " + (
+                        f"{exp_percent:.2f}%" if isinstance(exp_percent, (int, float)) else "—"
+                    ),
+                    f"EXP obtida          {summary.get('exp_gained', 0)}",
+                    f"Créditos            {summary.get('credits') or '—'}",
+                    f"Contribuição        {summary.get('contribution') if summary.get('contribution') is not None else '—'}",
+                    f"Mercado             {summary.get('market_events', 0)} evento(s)",
+                    f"Kills estimadas     {summary.get('kills', 0)} (proxy por recompensa)",
                     "",
                 ]
             )
-            try:
-                characters = self._character_exports()
-            except ValueError as error:
-                lines.extend([f"Separação pendente  {error}", ""])
-                characters = []
-            routed_characters = any(
-                character.get("client_key") for character in characters
-            )
-            active_client_key = (
-                f"client:{chr(97 + self._active_client_index)}"
-            )
-            for character in characters:
-                envelope = self.store.session_envelope(
-                    self.current_session,
-                    character["uid"],
-                    bool(character["include_unassigned"]),
-                    bool(character["only_unassigned"]),
-                )
-                summary, _ = self._capture_summary_for_language(
-                    envelope,
-                    character["uid"],
-                    character["name"],
-                )
-                selected = (
-                    character.get("client_key") == active_client_key
-                    if routed_characters
-                    else character["uid"] == self.active_character_uid
-                )
-                if selected or (overview is None and not routed_characters):
-                    overview = summary
-                    overview_name = character["name"]
-                character_client_key = character.get("client_key")
-                if character_client_key in {"client:a", "client:b"}:
-                    index = 0 if character_client_key == "client:a" else 1
-                    client_overviews[index] = (character["name"], summary)
-                exp_percent = summary["exp_percent"]
-                exp_percent_text = (
-                    f"{exp_percent:.2f}%"
-                    if isinstance(exp_percent, (int, float))
-                    else "—"
-                )
-                lines.extend(
-                    [
-                        f"[{character['name']}]",
-                        f"UID                 {character['uid'] or 'aguardando identificação'}",
-                        f"Level               {summary['level'] if summary['level'] is not None else '—'}",
-                        f"EXP                 {summary['exp'] if summary['exp'] is not None else '—'}",
-                        f"EXP no level        {exp_percent_text}",
-                        f"EXP obtida          {summary['exp_gained']}",
-                        f"Créditos            {summary['credits'] if summary['credits'] else '—'}",
-                        f"Contribuição        {summary['contribution'] if summary['contribution'] is not None else '—'}",
-                        f"Mercado             {summary['market_events']} evento(s)",
-                        f"Kills estimadas     {summary['kills']} (proxy por recompensa)",
-                        "Loot                "
-                        + (
-                            ", ".join(
-                                f"{item['item']} x{item['count']}"
-                                for item in summary["loot"][:10]
-                            )
-                            if summary["loot"]
-                            else "—"
-                        ),
-                        "",
-                    ]
-                )
         summary = overview or {
             "character_class": "",
             "biosuit_name": "",
@@ -5745,7 +6069,7 @@ class App(tk.Tk):
         )
         self.overview_character.configure(text=str(overview_name))
         active_subsession = self._active_subsession_for_client(
-            self._active_client_index
+            self._active_client_index, subsessions
         )
         self.overview_active_subsession.configure(
             text=(
@@ -5763,7 +6087,11 @@ class App(tk.Tk):
                 ),
             )
             self._render_split_overview(
-                index, client_name, client_summary, duration
+                index,
+                client_name,
+                client_summary,
+                duration,
+                self._active_subsession_for_client(index, subsessions),
             )
         class_icon = self.class_icons.get(
             (summary["character_class"], summary["biosuit_grade"] or 0)
@@ -5830,11 +6158,12 @@ class App(tk.Tk):
                     else "—"
                 )
             )
-        self._refresh_subsessions()
+        self._refresh_subsessions(snapshot=snapshot)
         self.info_text.configure(state="normal")
         self.info_text.delete("1.0", END)
         self.info_text.insert("1.0", "\n".join(lines))
         self.info_text.configure(state="disabled")
+        self._last_kills = session_kills
 
     def check_update(self) -> None:
         self.update_button.configure(state="disabled")
@@ -5966,15 +6295,71 @@ class App(tk.Tk):
         ):
             os.startfile(previous)
 
-    def _refresh_active_game_connections(self) -> None:
-        if not self._selected_game_path:
+    def _request_runtime_refresh(self, active: bool) -> None:
+        now = time.monotonic()
+        if self._runtime_refresh_running or now < self._next_runtime_refresh:
             return
-        local_ports, remote_ports, clients = ports_for_executable(
-            self._selected_game_path, DEFAULT_PORTS
-        )
-        client_connections = clients_for_executable(
-            self._selected_game_path, DEFAULT_PORTS
-        )
+        self._runtime_refresh_running = True
+        self._next_runtime_refresh = now + 5
+        selected_game_path = self._selected_game_path
+        capture_dir = self.capture_dir
+
+        def worker() -> None:
+            try:
+                total = sum(
+                    path.stat().st_size for path in capture_dir.glob("*.etl")
+                )
+                usage = shutil.disk_usage(capture_dir)
+                packet_count = self.capture.packet_count() if active else None
+                connections = None
+                if active and selected_game_path:
+                    local_ports, remote_ports, clients = ports_for_executable(
+                        selected_game_path, DEFAULT_PORTS
+                    )
+                    client_connections = clients_for_executable(
+                        selected_game_path, DEFAULT_PORTS
+                    )
+                    connections = (
+                        local_ports,
+                        remote_ports,
+                        clients,
+                        client_connections,
+                    )
+                result = {
+                    "total_bytes": total,
+                    "free_bytes": usage.free,
+                    "disk_total": usage.total,
+                    "packet_count": packet_count,
+                    "connections": connections,
+                }
+                self.after(0, lambda: self._runtime_refresh_finished(result, None))
+            except Exception as error:
+                self.after(
+                    0,
+                    lambda error=error: self._runtime_refresh_finished(None, error),
+                )
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _runtime_refresh_finished(
+        self, result: dict | None, error: Exception | None
+    ) -> None:
+        self._runtime_refresh_running = False
+        if error is not None:
+            self.log.error(
+                "runtime_refresh_failed reason=%s", _safe_error_code(error)
+            )
+            return
+        self._runtime_snapshot = result or self._runtime_snapshot
+        packet_count = self._runtime_snapshot.get("packet_count")
+        if packet_count is not None:
+            self._last_packet_count = int(packet_count)
+        connections = self._runtime_snapshot.get("connections")
+        if connections is not None:
+            self._apply_active_game_connections(connections)
+
+    def _apply_active_game_connections(self, result: tuple) -> None:
+        local_ports, remote_ports, clients, client_connections = result
         client_signature = tuple(
             (
                 int(item["pid"]),
@@ -6057,23 +6442,17 @@ class App(tk.Tk):
 
     def _poll(self) -> None:
         try:
-            status = self.capture.status()
+            status = self.capture.cached_status
             active = self._capture_is_active()
             if active:
                 self.capture.heartbeat()
-                self._refresh_active_game_connections()
-            if status.active:
-                packet_count = self.capture.packet_count()
-                if packet_count is not None:
-                    self._last_packet_count = packet_count
+            self._request_runtime_refresh(active)
             self._maybe_decode_live()
-            total = sum(
-                path.stat().st_size
-                for path in self.capture_dir.glob("*.etl")
-            )
+            total = int(self._runtime_snapshot.get("total_bytes") or 0)
             current_size = max(0, int(status.bytes_written or 0))
-            usage = shutil.disk_usage(self.capture_dir)
-            percent_free = usage.free / usage.total if usage.total else 0
+            free_bytes = int(self._runtime_snapshot.get("free_bytes") or 0)
+            disk_total = int(self._runtime_snapshot.get("disk_total") or 0)
+            percent_free = free_bytes / disk_total if disk_total else 0
             level = (
                 "VERMELHO"
                 if total >= 10 * GIB or percent_free < 0.10
@@ -6085,7 +6464,7 @@ class App(tk.Tk):
                 text=(
                     f"Arquivo da sessão: {_format_bytes(current_size)}\n"
                     f"Total armazenado: {_format_bytes(total)}\n"
-                    f"Espaço livre: {_format_bytes(usage.free)} · {level}"
+                    f"Espaço livre: {_format_bytes(free_bytes)} · {level}"
                 )
             )
             self.top_storage.configure(
@@ -6166,7 +6545,13 @@ class App(tk.Tk):
                 )
             )
             if active:
-                self._rotate_auto_subsession()
+                cached_subsessions = (
+                    self._info_snapshot.get("subsessions", [])
+                    if self._info_snapshot
+                    and self._info_snapshot.get("session_id") == self.current_session
+                    else []
+                )
+                self._rotate_auto_subsession(cached_subsessions)
             self.start_button.configure(
                 state="disabled"
                 if active
@@ -6204,20 +6589,8 @@ class App(tk.Tk):
                 self.start_button.grid()
             for button in self.quick_buttons.values():
                 button.configure(state="normal" if active else "disabled")
-            stats = (
-                self.store.session_stats(self.current_session)
-                if self.current_session
-                else {"recognized": 0, "unknown": 0, "unassigned": 0}
-            )
-            kills = (
-                self.store.conn.execute(
-                    """SELECT COUNT(*) FROM events
-                       WHERE session_id=? AND type='drop_item_field'""",
-                    (self.current_session,),
-                ).fetchone()[0]
-                if self.current_session
-                else 0
-            )
+            stats = self._last_session_stats
+            kills = self._last_kills
             lines = [
                 f"Captura ativa        {'SIM' if active else 'NÃO'}",
                 f"Sessão atual         {self.current_session or '—'}",
@@ -6241,8 +6614,6 @@ class App(tk.Tk):
             self.metrics.delete("1.0", END)
             self.metrics.insert("1.0", "\n".join(lines))
             self.metrics.configure(state="disabled")
-            if getattr(self, "_active_page_index", 0) == 2:
-                self._refresh_subsessions()
             self._last_poll_error = ""
         except Exception as error:
             if str(error) != self._last_poll_error:

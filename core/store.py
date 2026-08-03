@@ -149,8 +149,14 @@ def _add_exp_percent(data: dict[str, Any]) -> dict[str, Any]:
 
 
 class CaptureStore:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, readonly: bool = False) -> None:
         self.path = Path(path)
+        if readonly:
+            self.conn = sqlite3.connect(
+                f"file:{self.path.as_posix()}?mode=ro", uri=True
+            )
+            self.conn.execute("PRAGMA query_only=ON")
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.path)
         self.conn.executescript(SCHEMA)
@@ -250,6 +256,11 @@ class CaptureStore:
                    VALUES('subsession_sequence',0)"""
             )
             self.conn.execute(
+                """INSERT OR IGNORE INTO store_state(key,value)
+                   VALUES('event_revision',0)"""
+            )
+
+            self.conn.execute(
                 """UPDATE store_state
                    SET value=MAX(
                        value,
@@ -268,6 +279,17 @@ class CaptureStore:
                     "ALTER TABLE client_bindings ADD COLUMN "
                     "binding_source TEXT NOT NULL DEFAULT 'canonical'"
                 )
+
+    def _bump_event_revision(self) -> None:
+        self.conn.execute(
+            "UPDATE store_state SET value=value+1 WHERE key='event_revision'"
+        )
+
+    def event_revision(self) -> int:
+        row = self.conn.execute(
+            "SELECT value FROM store_state WHERE key='event_revision'"
+        ).fetchone()
+        return int(row[0]) if row else 0
 
     def close(self) -> None:
         self.conn.close()
@@ -416,6 +438,7 @@ class CaptureStore:
         }
 
         added = 0
+        rewritten = False
         with self.conn:
             bindings = {
                 client_key: (character_uid, binding_source)
@@ -458,15 +481,17 @@ class CaptureStore:
                             identity_source,
                         ),
                     )
-                    self.conn.execute(
+                    updated = self.conn.execute(
                         """UPDATE events SET character_uid=?
                            WHERE session_id=? AND character_uid=?""",
                         (uid, session_id, client_key),
                     )
+                    rewritten = rewritten or bool(updated.rowcount)
             if existing and not growing_source:
                 self.conn.execute(
                     "DELETE FROM events WHERE source=?", (str(source),)
                 )
+                rewritten = True
             for event, clean, uid, client_key, _binding_source in prepared:
                 cursor = self.conn.execute(
                     """INSERT OR IGNORE INTO events
@@ -513,6 +538,8 @@ class CaptureStore:
                     ingestion_key,
                 ),
             )
+            if rewritten:
+                self._bump_event_revision()
         return added
 
     def ingest(
@@ -558,6 +585,7 @@ class CaptureStore:
                     "DELETE FROM client_bindings WHERE session_id=?",
                     (session_id,),
                 )
+            self._bump_event_revision()
 
     def clear_session(self, session_id: str) -> None:
         with self.conn:
@@ -571,6 +599,7 @@ class CaptureStore:
                 self.conn.execute(
                     f"DELETE FROM {table} WHERE session_id=?", (session_id,)
                 )
+            self._bump_event_revision()
 
     def remove_sources(self, sources: Iterable[Path]) -> None:
         values = [(str(Path(source)),) for source in sources]
@@ -579,6 +608,7 @@ class CaptureStore:
         with self.conn:
             self.conn.executemany("DELETE FROM events WHERE source=?", values)
             self.conn.executemany("DELETE FROM captures WHERE source=?", values)
+            self._bump_event_revision()
 
     def latest_session(self) -> str | None:
         row = self.conn.execute(
@@ -588,27 +618,28 @@ class CaptureStore:
 
     def session_profiles(self, session_id: str) -> list[dict[str, str]]:
         rows = self.conn.execute(
-            """SELECT character_uid,type,data_json FROM events
-               WHERE session_id=? AND character_uid IS NOT NULL
-               AND type!='unparsed' ORDER BY id""",
-            (session_id,),
+            """WITH uids AS (
+                   SELECT DISTINCT character_uid AS uid FROM events
+                   WHERE session_id=? AND character_uid IS NOT NULL
+                   AND type!='unparsed'
+               ), latest_world AS (
+                   SELECT character_uid AS uid,MAX(id) AS event_id FROM events
+                   WHERE session_id=? AND character_uid IS NOT NULL
+                   AND type='world_info_prefix' GROUP BY character_uid
+               )
+               SELECT uids.uid,events.data_json FROM uids
+               LEFT JOIN latest_world ON latest_world.uid=uids.uid
+               LEFT JOIN events ON events.id=latest_world.event_id
+               ORDER BY uids.uid""",
+            (session_id, session_id),
         ).fetchall()
         profiles: dict[str, str] = {}
-        for uid, event_type, raw in rows:
-            data = json.loads(raw)
+        for uid, raw in rows:
+            data = json.loads(raw) if raw else {}
             fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
-            name = (
-                str(
-                    fields.get("character_name")
-                    or fields.get("character")
-                    or ""
-                ).strip()
-                if event_type == "world_info_prefix"
-                else ""
-            )
-            profiles.setdefault(uid, name)
-            if name:
-                profiles[uid] = name
+            profiles[uid] = str(
+                fields.get("character_name") or fields.get("character") or ""
+            ).strip()
         bindings = self.conn.execute(
             """SELECT client_key,character_uid,character_name
                FROM client_bindings WHERE session_id=? ORDER BY client_key""",
@@ -689,6 +720,7 @@ class CaptureStore:
                         "observed_percent": float(flow["exp_percent"]),
                     }
                 )
+            self._bump_event_revision()
         return matches
 
     def assign_unidentified_to_uid_by_exp(
@@ -708,6 +740,7 @@ class CaptureStore:
                    AND character_uid IS NULL AND type!='unparsed'""",
                 (uid, session_id, flow["flow"]),
             )
+            self._bump_event_revision()
         return {
             "uid": uid,
             "target_percent": target,
@@ -1055,6 +1088,85 @@ class CaptureStore:
                    WHERE id=?""",
                 (state, uploaded_at, subsession_id),
             )
+
+    def max_event_id(self, session_id: str) -> int:
+        return int(
+            self.conn.execute(
+                "SELECT COALESCE(MAX(id),0) FROM events WHERE session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+        )
+
+    def session_stats_after(self, session_id: str, after_id: int) -> dict[str, int | None]:
+        recognized, unknown, unassigned, started, ended, last_id = self.conn.execute(
+            """SELECT SUM(type!='unparsed'),SUM(type='unparsed'),
+                      SUM(type!='unparsed' AND character_uid IS NULL),
+                      MIN(ts_ns),MAX(ts_ns),MAX(id)
+               FROM events WHERE session_id=? AND id>?""",
+            (session_id, after_id),
+        ).fetchone()
+        raw_bytes = self.conn.execute(
+            "SELECT COALESCE(SUM(size),0) FROM captures WHERE session_id=?",
+            (session_id,),
+        ).fetchone()[0]
+        return {
+            "recognized": int(recognized or 0),
+            "unknown": int(unknown or 0),
+            "unassigned": int(unassigned or 0),
+            "started_ns": started,
+            "ended_ns": ended,
+            "last_id": int(last_id or after_id),
+            "raw_bytes": int(raw_bytes or 0),
+        }
+
+    def ui_event_batch(
+        self,
+        session_id: str,
+        character_uid: str | None,
+        *,
+        after_id: int = 0,
+        include_unassigned: bool = False,
+        only_unassigned: bool = False,
+        started_ns: int | None = None,
+        ended_ns: int | None = None,
+        limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], int]:
+        where = ["session_id=?", "type!='unparsed'", "id>?"]
+        values: list[Any] = [session_id, after_id]
+        if only_unassigned:
+            where.append("character_uid IS NULL")
+        elif character_uid is not None:
+            where.append(
+                "(character_uid=? OR character_uid IS NULL)"
+                if include_unassigned
+                else "character_uid=?"
+            )
+            values.append(character_uid)
+        if started_ns is not None:
+            where.append("ts_ns>=?")
+            values.append(started_ns)
+        if ended_ns is not None:
+            where.append("ts_ns<=?")
+            values.append(ended_ns)
+        values.append(max(1, min(50000, int(limit))))
+        rows = self.conn.execute(
+            f"""SELECT id,ts_ns,opcode,type,character_uid,data_json FROM events
+                WHERE {' AND '.join(where)} ORDER BY id LIMIT ?""",
+            values,
+        ).fetchall()
+        return (
+            [
+                {
+                    "ts_ns": ts_ns,
+                    "opcode": f"0x{opcode:04x}",
+                    "type": kind,
+                    "character_uid": uid,
+                    "data": _add_exp_percent(json.loads(data)),
+                }
+                for _id, ts_ns, opcode, kind, uid, data in rows
+            ],
+            max((int(row[0]) for row in rows), default=after_id),
+        )
 
     def session_envelope(
         self,
