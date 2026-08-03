@@ -294,6 +294,22 @@ def _session_elapsed(session_id: str, active: bool, now: datetime) -> int:
     return max(0, int((now - started).total_seconds()))
 
 
+def _filter_subsessions(items: list[dict], view: str) -> list[dict]:
+    if view == "Cliente A":
+        return [item for item in items if item.get("client_key") != "client:b"]
+    if view == "Cliente B":
+        return [item for item in items if item.get("client_key") == "client:b"]
+    if view == "Em andamento":
+        return [item for item in items if item.get("ended_ns") is None]
+    if view == "Encerradas":
+        return [item for item in items if item.get("ended_ns") is not None]
+    if view == "Enviadas":
+        return [item for item in items if item.get("upload_state") == "sent"]
+    if view == "Não enviadas":
+        return [item for item in items if item.get("upload_state") != "sent"]
+    return items
+
+
 def _merge_client_routes(
     pids: list[int],
     port_groups: list[tuple[int, ...]],
@@ -2271,6 +2287,44 @@ class App(tk.Tk):
         ttk.Label(
             history_heading, text="Buscar", style="PanelMuted.TLabel"
         ).pack(side=RIGHT, padx=(0, 6))
+        self.subsession_page_size = tk.IntVar(value=10)
+        page_size = ttk.Combobox(
+            history_heading,
+            width=4,
+            state="readonly",
+            textvariable=self.subsession_page_size,
+            values=(5, 10, 20, 50),
+        )
+        page_size.pack(side=RIGHT, padx=(0, 10))
+        page_size.bind(
+            "<<ComboboxSelected>>", lambda _event: self._set_subsession_page(1)
+        )
+        ttk.Label(
+            history_heading, text="Por página", style="PanelMuted.TLabel"
+        ).pack(side=RIGHT, padx=(0, 6))
+        self.subsession_filter = tk.StringVar(value="Todas")
+        subsession_filter = ttk.Combobox(
+            history_heading,
+            width=14,
+            state="readonly",
+            textvariable=self.subsession_filter,
+            values=(
+                "Todas",
+                "Cliente A",
+                "Cliente B",
+                "Em andamento",
+                "Encerradas",
+                "Enviadas",
+                "Não enviadas",
+            ),
+        )
+        subsession_filter.pack(side=RIGHT, padx=(0, 10))
+        subsession_filter.bind(
+            "<<ComboboxSelected>>", lambda _event: self._set_subsession_page(1)
+        )
+        ttk.Label(
+            history_heading, text="Exibir", style="PanelMuted.TLabel"
+        ).pack(side=RIGHT, padx=(0, 6))
         self.subsession_table = ttk.Treeview(
             history,
             columns=(
@@ -3954,6 +4008,7 @@ class App(tk.Tk):
                 else "Fim\n—"
             )
         )
+        items = _filter_subsessions(items, self.subsession_filter.get())
         query = self.subsession_search.get().strip().casefold()
         if query:
             items = [
@@ -3970,7 +4025,7 @@ class App(tk.Tk):
                     )
                 ).casefold()
             ]
-        page_size = 5
+        page_size = int(self.subsession_page_size.get())
         page_count = max(1, (len(items) + page_size - 1) // page_size)
         self.subsession_page = min(self.subsession_page, page_count)
         start = (self.subsession_page - 1) * page_size

@@ -4,6 +4,8 @@
 
 - mostra na subsessão a quantidade estimada de mobs abatidos no intervalo e
   inclui `mob_kills_estimated` no relatório enviado ao site.
+- adiciona filtros por cliente, andamento e envio e permite mostrar 5, 10, 20
+  ou 50 subsessões por página, com 10 como padrão.
 
 ## 2.0j — 2026-08-02
 

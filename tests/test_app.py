@@ -27,6 +27,7 @@ from app.main import (
     _capture_summary,
     _collection_marks,
     _configured_capture_dir,
+    _filter_subsessions,
     _market_rows,
     _merge_client_routes,
     _safe_error_code,
@@ -43,6 +44,19 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_subsession_view_filters(self):
+        items = [
+            {"client_key": "client:a", "ended_ns": None, "upload_state": "pending"},
+            {"client_key": "client:b", "ended_ns": 2, "upload_state": "sent"},
+        ]
+        self.assertEqual(_filter_subsessions(items, "Todas"), items)
+        self.assertEqual(_filter_subsessions(items, "Cliente A"), [items[0]])
+        self.assertEqual(_filter_subsessions(items, "Cliente B"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Em andamento"), [items[0]])
+        self.assertEqual(_filter_subsessions(items, "Encerradas"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Enviadas"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Não enviadas"), [items[0]])
+
     def test_subsession_autofit_reads_rows_by_tree_item_id(self):
         source = inspect.getsource(App._refresh_subsessions)
         self.assertIn('self.subsession_table.set(row["id"], column)', source)
