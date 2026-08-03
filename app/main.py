@@ -2325,9 +2325,11 @@ class App(tk.Tk):
         ttk.Label(
             history_heading, text="Exibir", style="PanelMuted.TLabel"
         ).pack(side=RIGHT, padx=(0, 6))
+        self._selected_subsession_ids: set[str] = set()
         self.subsession_table = ttk.Treeview(
             history,
             columns=(
+                "selected",
                 "client",
                 "character",
                 "location",
@@ -2348,6 +2350,7 @@ class App(tk.Tk):
             selectmode="extended",
         )
         for column, label, width in (
+            ("selected", "☐", 44),
             ("client", "Cliente", 80),
             ("character", "Personagem", 120),
             ("location", "Localização", 160),
@@ -2365,6 +2368,12 @@ class App(tk.Tk):
         ):
             self.subsession_table.heading(column, text=label, anchor="center")
             self.subsession_table.column(column, width=width, anchor="center")
+        self.subsession_table.bind(
+            "<Button-1>", self._toggle_subsession_checkbox, add="+"
+        )
+        self.subsession_table.bind(
+            "<<TreeviewSelect>>", self._sync_subsession_selection, add="+"
+        )
         self.subsession_table.pack(fill=BOTH, expand=True)
         subsession_scroll = ttk.Scrollbar(
             history,
@@ -3683,14 +3692,48 @@ class App(tk.Tk):
         self._refresh_info()
 
     def toggle_visible_subsessions(self) -> None:
-        visible = self.subsession_table.get_children()
-        if set(visible).issubset(set(self.subsession_table.selection())):
+        visible = set(self.subsession_table.get_children())
+        if not visible:
+            return
+        if visible.issubset(self._selected_subsession_ids):
+            self._selected_subsession_ids.difference_update(visible)
             self.subsession_table.selection_remove(*visible)
         else:
+            self._selected_subsession_ids.update(visible)
             self.subsession_table.selection_set(visible)
+        self._render_subsession_checks()
+
+    def _toggle_subsession_checkbox(self, event) -> str | None:
+        if self.subsession_table.identify_column(event.x) != "#1":
+            return None
+        identifier = self.subsession_table.identify_row(event.y)
+        if not identifier:
+            return "break"
+        if identifier in self._selected_subsession_ids:
+            self._selected_subsession_ids.remove(identifier)
+            self.subsession_table.selection_remove(identifier)
+        else:
+            self._selected_subsession_ids.add(identifier)
+            self.subsession_table.selection_add(identifier)
+        self._render_subsession_checks()
+        return "break"
+
+    def _sync_subsession_selection(self, _event=None) -> None:
+        visible = set(self.subsession_table.get_children())
+        self._selected_subsession_ids.difference_update(visible)
+        self._selected_subsession_ids.update(self.subsession_table.selection())
+        self._render_subsession_checks()
+
+    def _render_subsession_checks(self) -> None:
+        for identifier in self.subsession_table.get_children():
+            self.subsession_table.set(
+                identifier,
+                "selected",
+                "☑" if identifier in self._selected_subsession_ids else "☐",
+            )
 
     def edit_selected_subsession(self) -> None:
-        selected = self.subsession_table.selection()
+        selected = tuple(self._selected_subsession_ids)
         if len(selected) != 1:
             return messagebox.showinfo(
                 "Subsessão", "Selecione uma única subsessão para editar."
@@ -3736,7 +3779,7 @@ class App(tk.Tk):
         self.subsession_start_button.configure(text="Salvar alterações")
 
     def rename_selected_subsession(self) -> None:
-        selected = self.subsession_table.selection()
+        selected = tuple(self._selected_subsession_ids)
         if len(selected) != 1:
             return messagebox.showinfo(
                 "Subsessão", "Selecione uma única subsessão para renomear."
@@ -3762,7 +3805,7 @@ class App(tk.Tk):
         self._refresh_info()
 
     def delete_selected_subsessions(self) -> None:
-        selected = tuple(self.subsession_table.selection())
+        selected = tuple(self._selected_subsession_ids)
         if not selected:
             return messagebox.showinfo(
                 "Subsessão", "Selecione ao menos uma subsessão para excluir."
@@ -3774,6 +3817,7 @@ class App(tk.Tk):
         ):
             return
         self.store.delete_subsessions(selected)
+        self._selected_subsession_ids.difference_update(selected)
         self._refresh_info()
 
     def _subsession_report(
@@ -3827,7 +3871,7 @@ class App(tk.Tk):
             return messagebox.showwarning(
                 "Envio", "Valide o token do Profile antes de enviar."
             )
-        selected_ids = set(self.subsession_table.selection())
+        selected_ids = set(self._selected_subsession_ids)
         if not selected_ids:
             return messagebox.showinfo(
                 "Subsessões", "Selecione ao menos uma subsessão encerrada."
@@ -3960,6 +4004,9 @@ class App(tk.Tk):
         }
         items = list(snapshot.get("subsessions") or [])
         summaries = snapshot.get("subsession_summaries") or {}
+        self._selected_subsession_ids.intersection_update(
+            item["id"] for item in items
+        )
         active_client_key = f"client:{chr(97 + self._active_client_index)}"
         active = next(
             (
@@ -4067,6 +4114,7 @@ class App(tk.Tk):
                 END,
                 iid=item["id"],
                 values=(
+                    "☑" if item["id"] in self._selected_subsession_ids else "☐",
                     (
                         "Cliente B"
                         if item.get("client_key") == "client:b"
@@ -4105,6 +4153,13 @@ class App(tk.Tk):
                     "Em andamento" if item["ended_ns"] is None else "Pronta",
                 ),
             )
+        selected_visible = [
+            item["id"]
+            for item in visible
+            if item["id"] in self._selected_subsession_ids
+        ]
+        if selected_visible:
+            self.subsession_table.selection_set(selected_visible)
         for column in self.subsession_table["columns"]:
             heading = self.subsession_table.heading(column).get("text", "")
             values = [

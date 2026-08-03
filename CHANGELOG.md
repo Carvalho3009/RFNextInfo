@@ -6,6 +6,8 @@
   inclui `mob_kills_estimated` no relatório enviado ao site.
 - adiciona filtros por cliente, andamento e envio e permite mostrar 5, 10, 20
   ou 50 subsessões por página, com 10 como padrão.
+- adiciona caixas `☐/☑` e preserva a seleção de subsessões ao trocar página,
+  filtro ou atualizar as informações.
 
 ## 2.0j — 2026-08-02
 
