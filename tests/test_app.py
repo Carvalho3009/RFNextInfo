@@ -43,6 +43,10 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_subsession_autofit_reads_rows_by_tree_item_id(self):
+        source = inspect.getsource(App._refresh_subsessions)
+        self.assertIn('self.subsession_table.set(row["id"], column)', source)
+
     def test_incremental_summary_matches_full_summary(self):
         events = [
             {

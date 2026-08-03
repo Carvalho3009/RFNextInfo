@@ -1,5 +1,10 @@
 # Changelog
 
+## Próxima versão — não publicada
+
+- corrige a atualização automática da tabela de subsessões, usando o ID da
+  linha em vez do registro completo ao recalcular a largura das colunas.
+
 ## 2.0i — 2026-08-02
 
 - abertura, troca de abas e troca de cliente deixam de reler o histórico na

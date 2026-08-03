@@ -4048,7 +4048,7 @@ class App(tk.Tk):
         for column in self.subsession_table["columns"]:
             heading = self.subsession_table.heading(column).get("text", "")
             values = [
-                str(self.subsession_table.set(row, column))
+                str(self.subsession_table.set(row["id"], column))
                 for row in visible
                 if self.subsession_table.exists(row["id"])
             ]
