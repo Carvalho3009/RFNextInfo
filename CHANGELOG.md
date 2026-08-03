@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima versão — não publicada
+## 2.0n — 2026-08-03
 
 - impede que atalhos globais tragam o programa ao primeiro plano; avisos desses
   envios ficam somente no painel.
