@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0m — 2026-08-03
+
+- corrige os atalhos globais usando uma fila de mensagens própria, evitando que
+  o loop da interface consuma `WM_HOTKEY` antes do envio ser acionado.
+
 ## 2.0l — 2026-08-03
 
 - registra os atalhos configuráveis dos envios rápidos como hotkeys globais do
