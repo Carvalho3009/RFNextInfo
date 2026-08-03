@@ -40,7 +40,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.0i"
+VERSION = "2.0j"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -4048,7 +4048,7 @@ class App(tk.Tk):
         for column in self.subsession_table["columns"]:
             heading = self.subsession_table.heading(column).get("text", "")
             values = [
-                str(self.subsession_table.set(row, column))
+                str(self.subsession_table.set(row["id"], column))
                 for row in visible
                 if self.subsession_table.exists(row["id"])
             ]
