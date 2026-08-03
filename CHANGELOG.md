@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima versão — não publicada
+## 2.0j — 2026-08-02
 
 - corrige a atualização automática da tabela de subsessões, usando o ID da
   linha em vez do registro completo ao recalcular a largura das colunas.
