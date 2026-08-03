@@ -54,6 +54,15 @@ class AppLogicTest(unittest.TestCase):
             inspect.getsource(App._bind_shortcuts),
         )
 
+    def test_global_hotkey_queue_dispatches_on_ui_thread(self):
+        app = Mock()
+        app._global_hotkey_events = main_module.queue.SimpleQueue()
+        app._global_hotkey_events.put("market")
+        app._global_hotkey_thread.is_alive.return_value = True
+        App._poll_global_hotkeys(app)
+        app.send_mode_now.assert_called_once_with("market")
+        app.after.assert_called_once_with(50, app._poll_global_hotkeys)
+
     def test_subsession_view_filters(self):
         items = [
             {"client_key": "client:a", "ended_ns": None, "upload_state": "pending"},

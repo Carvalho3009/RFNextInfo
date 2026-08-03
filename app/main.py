@@ -7,6 +7,7 @@ import csv
 import hashlib
 import json
 import os
+import queue
 import re
 import shutil
 import sys
@@ -55,6 +56,7 @@ PREFERENCES_PATH = STATE_DIR / "preferences.json"
 LOG_PATH = MACHINE_STATE_DIR / "logs" / "rfnext-info.log"
 PREVIEW_DIR = STATE_DIR / "preview"
 WM_HOTKEY = 0x0312
+WM_QUIT = 0x0012
 MOD_NOREPEAT = 0x4000
 GLOBAL_HOTKEY_BASE = 0x4B00
 
@@ -816,6 +818,10 @@ class App(tk.Tk):
         self._bound_shortcuts: dict[str, str] = {}
         self._global_hotkey_ids: dict[int, str] = {}
         self._global_hotkey_poll: str | None = None
+        self._global_hotkey_events: queue.SimpleQueue[str] = queue.SimpleQueue()
+        self._global_hotkey_thread: threading.Thread | None = None
+        self._global_hotkey_thread_id = 0
+        self._global_hotkey_ready = threading.Event()
         self.active_character_uid: str | None = None
         self._active_client_index = 0
         self._game_choices: dict[str, str] = {}
@@ -3253,34 +3259,74 @@ class App(tk.Tk):
     def _register_global_hotkeys(self) -> None:
         if os.name != "nt":
             return
-        user32 = ctypes.windll.user32
+        if self._global_hotkey_thread and self._global_hotkey_thread.is_alive():
+            self.log.warning("global_hotkey_previous_thread_still_active")
+            return
+        shortcuts = []
         for offset, (mode, value) in enumerate(self.shortcut_vars.items(), 1):
             virtual_key = _function_key_vk(value.get())
             identifier = GLOBAL_HOTKEY_BASE + offset
-            if virtual_key and user32.RegisterHotKey(
-                None, identifier, MOD_NOREPEAT, virtual_key
-            ):
-                self._global_hotkey_ids[identifier] = mode
-            else:
-                self.log.warning(
-                    "global_hotkey_registration_failed mode=%s shortcut=%s",
-                    mode,
-                    value.get(),
-                )
+            if virtual_key:
+                shortcuts.append((identifier, mode, virtual_key, value.get()))
+        self._global_hotkey_events = queue.SimpleQueue()
+        self._global_hotkey_ready.clear()
+        self._global_hotkey_thread = threading.Thread(
+            target=self._global_hotkey_worker,
+            args=(shortcuts,),
+            daemon=True,
+            name="rfnext-global-hotkeys",
+        )
+        self._global_hotkey_thread.start()
+        self._global_hotkey_ready.wait(timeout=1)
         if self._global_hotkey_ids:
             self._global_hotkey_poll = self.after(50, self._poll_global_hotkeys)
 
+    def _global_hotkey_worker(self, shortcuts: list[tuple[int, str, int, str]]) -> None:
+        user32 = ctypes.windll.user32
+        message = wintypes.MSG()
+        user32.PeekMessageW(ctypes.byref(message), None, 0, 0, 0)
+        self._global_hotkey_thread_id = int(
+            ctypes.windll.kernel32.GetCurrentThreadId()
+        )
+        registered = {}
+        try:
+            for identifier, mode, virtual_key, shortcut in shortcuts:
+                if user32.RegisterHotKey(
+                    None, identifier, MOD_NOREPEAT, virtual_key
+                ):
+                    registered[identifier] = mode
+                else:
+                    self.log.warning(
+                        "global_hotkey_registration_failed mode=%s shortcut=%s",
+                        mode,
+                        shortcut,
+                    )
+            self._global_hotkey_ids = registered
+            self.log.info("global_hotkeys_registered count=%s", len(registered))
+            self._global_hotkey_ready.set()
+            while True:
+                result = user32.GetMessageW(ctypes.byref(message), None, 0, 0)
+                if result <= 0:
+                    break
+                if message.message == WM_HOTKEY:
+                    mode = registered.get(int(message.wParam))
+                    if mode:
+                        self._global_hotkey_events.put(mode)
+        finally:
+            for identifier in registered:
+                user32.UnregisterHotKey(None, identifier)
+            self._global_hotkey_ready.set()
+
     def _poll_global_hotkeys(self) -> None:
         self._global_hotkey_poll = None
-        message = wintypes.MSG()
-        user32 = ctypes.windll.user32
-        while user32.PeekMessageW(
-            ctypes.byref(message), None, WM_HOTKEY, WM_HOTKEY, 1
-        ):
-            mode = self._global_hotkey_ids.get(int(message.wParam))
-            if mode:
+        while True:
+            try:
+                mode = self._global_hotkey_events.get_nowait()
+            except queue.Empty:
+                break
+            else:
                 self.send_mode_now(mode)
-        if self._global_hotkey_ids:
+        if self._global_hotkey_thread and self._global_hotkey_thread.is_alive():
             self._global_hotkey_poll = self.after(50, self._poll_global_hotkeys)
 
     def _unregister_global_hotkeys(self) -> None:
@@ -3291,9 +3337,14 @@ class App(tk.Tk):
             except tk.TclError:
                 pass
         self._global_hotkey_poll = None
-        if os.name == "nt":
-            for identifier in getattr(self, "_global_hotkey_ids", {}):
-                ctypes.windll.user32.UnregisterHotKey(None, identifier)
+        thread = getattr(self, "_global_hotkey_thread", None)
+        if os.name == "nt" and thread and thread.is_alive():
+            ctypes.windll.user32.PostThreadMessageW(
+                self._global_hotkey_thread_id, WM_QUIT, 0, 0
+            )
+            thread.join(timeout=1)
+        self._global_hotkey_thread = thread if thread and thread.is_alive() else None
+        self._global_hotkey_thread_id = 0
         self._global_hotkey_ids = {}
 
     def destroy(self) -> None:
