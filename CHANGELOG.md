@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima versão — não publicada
+## 2.0k — 2026-08-03
 
 - mostra na subsessão a quantidade estimada de mobs abatidos no intervalo e
   inclui `mob_kills_estimated` no relatório enviado ao site.
