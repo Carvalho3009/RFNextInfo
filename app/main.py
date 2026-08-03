@@ -40,7 +40,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.0j"
+VERSION = "2.0k"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -292,6 +292,22 @@ def _session_elapsed(session_id: str, active: bool, now: datetime) -> int:
     except ValueError:
         return 0
     return max(0, int((now - started).total_seconds()))
+
+
+def _filter_subsessions(items: list[dict], view: str) -> list[dict]:
+    if view == "Cliente A":
+        return [item for item in items if item.get("client_key") != "client:b"]
+    if view == "Cliente B":
+        return [item for item in items if item.get("client_key") == "client:b"]
+    if view == "Em andamento":
+        return [item for item in items if item.get("ended_ns") is None]
+    if view == "Encerradas":
+        return [item for item in items if item.get("ended_ns") is not None]
+    if view == "Enviadas":
+        return [item for item in items if item.get("upload_state") == "sent"]
+    if view == "Não enviadas":
+        return [item for item in items if item.get("upload_state") != "sent"]
+    return items
 
 
 def _merge_client_routes(
@@ -2271,13 +2287,54 @@ class App(tk.Tk):
         ttk.Label(
             history_heading, text="Buscar", style="PanelMuted.TLabel"
         ).pack(side=RIGHT, padx=(0, 6))
+        self.subsession_page_size = tk.IntVar(value=10)
+        page_size = ttk.Combobox(
+            history_heading,
+            width=4,
+            state="readonly",
+            textvariable=self.subsession_page_size,
+            values=(5, 10, 20, 50),
+        )
+        page_size.pack(side=RIGHT, padx=(0, 10))
+        page_size.bind(
+            "<<ComboboxSelected>>", lambda _event: self._set_subsession_page(1)
+        )
+        ttk.Label(
+            history_heading, text="Por página", style="PanelMuted.TLabel"
+        ).pack(side=RIGHT, padx=(0, 6))
+        self.subsession_filter = tk.StringVar(value="Todas")
+        subsession_filter = ttk.Combobox(
+            history_heading,
+            width=14,
+            state="readonly",
+            textvariable=self.subsession_filter,
+            values=(
+                "Todas",
+                "Cliente A",
+                "Cliente B",
+                "Em andamento",
+                "Encerradas",
+                "Enviadas",
+                "Não enviadas",
+            ),
+        )
+        subsession_filter.pack(side=RIGHT, padx=(0, 10))
+        subsession_filter.bind(
+            "<<ComboboxSelected>>", lambda _event: self._set_subsession_page(1)
+        )
+        ttk.Label(
+            history_heading, text="Exibir", style="PanelMuted.TLabel"
+        ).pack(side=RIGHT, padx=(0, 6))
+        self._selected_subsession_ids: set[str] = set()
         self.subsession_table = ttk.Treeview(
             history,
             columns=(
+                "selected",
                 "client",
                 "character",
                 "location",
                 "duration",
+                "kills",
                 "exp_total",
                 "exp_total_percent",
                 "exp_hour",
@@ -2293,10 +2350,12 @@ class App(tk.Tk):
             selectmode="extended",
         )
         for column, label, width in (
+            ("selected", "☐", 44),
             ("client", "Cliente", 80),
             ("character", "Personagem", 120),
             ("location", "Localização", 160),
             ("duration", "Duração", 90),
+            ("kills", "Mobs (estim.)", 95),
             ("exp_total", "EXP total", 110),
             ("exp_total_percent", "EXP total (%)", 100),
             ("exp_hour", "EXP/h", 100),
@@ -2309,6 +2368,12 @@ class App(tk.Tk):
         ):
             self.subsession_table.heading(column, text=label, anchor="center")
             self.subsession_table.column(column, width=width, anchor="center")
+        self.subsession_table.bind(
+            "<Button-1>", self._toggle_subsession_checkbox, add="+"
+        )
+        self.subsession_table.bind(
+            "<<TreeviewSelect>>", self._sync_subsession_selection, add="+"
+        )
         self.subsession_table.pack(fill=BOTH, expand=True)
         subsession_scroll = ttk.Scrollbar(
             history,
@@ -3627,14 +3692,48 @@ class App(tk.Tk):
         self._refresh_info()
 
     def toggle_visible_subsessions(self) -> None:
-        visible = self.subsession_table.get_children()
-        if set(visible).issubset(set(self.subsession_table.selection())):
+        visible = set(self.subsession_table.get_children())
+        if not visible:
+            return
+        if visible.issubset(self._selected_subsession_ids):
+            self._selected_subsession_ids.difference_update(visible)
             self.subsession_table.selection_remove(*visible)
         else:
+            self._selected_subsession_ids.update(visible)
             self.subsession_table.selection_set(visible)
+        self._render_subsession_checks()
+
+    def _toggle_subsession_checkbox(self, event) -> str | None:
+        if self.subsession_table.identify_column(event.x) != "#1":
+            return None
+        identifier = self.subsession_table.identify_row(event.y)
+        if not identifier:
+            return "break"
+        if identifier in self._selected_subsession_ids:
+            self._selected_subsession_ids.remove(identifier)
+            self.subsession_table.selection_remove(identifier)
+        else:
+            self._selected_subsession_ids.add(identifier)
+            self.subsession_table.selection_add(identifier)
+        self._render_subsession_checks()
+        return "break"
+
+    def _sync_subsession_selection(self, _event=None) -> None:
+        visible = set(self.subsession_table.get_children())
+        self._selected_subsession_ids.difference_update(visible)
+        self._selected_subsession_ids.update(self.subsession_table.selection())
+        self._render_subsession_checks()
+
+    def _render_subsession_checks(self) -> None:
+        for identifier in self.subsession_table.get_children():
+            self.subsession_table.set(
+                identifier,
+                "selected",
+                "☑" if identifier in self._selected_subsession_ids else "☐",
+            )
 
     def edit_selected_subsession(self) -> None:
-        selected = self.subsession_table.selection()
+        selected = tuple(self._selected_subsession_ids)
         if len(selected) != 1:
             return messagebox.showinfo(
                 "Subsessão", "Selecione uma única subsessão para editar."
@@ -3680,7 +3779,7 @@ class App(tk.Tk):
         self.subsession_start_button.configure(text="Salvar alterações")
 
     def rename_selected_subsession(self) -> None:
-        selected = self.subsession_table.selection()
+        selected = tuple(self._selected_subsession_ids)
         if len(selected) != 1:
             return messagebox.showinfo(
                 "Subsessão", "Selecione uma única subsessão para renomear."
@@ -3706,7 +3805,7 @@ class App(tk.Tk):
         self._refresh_info()
 
     def delete_selected_subsessions(self) -> None:
-        selected = tuple(self.subsession_table.selection())
+        selected = tuple(self._selected_subsession_ids)
         if not selected:
             return messagebox.showinfo(
                 "Subsessão", "Selecione ao menos uma subsessão para excluir."
@@ -3718,6 +3817,7 @@ class App(tk.Tk):
         ):
             return
         self.store.delete_subsessions(selected)
+        self._selected_subsession_ids.difference_update(selected)
         self._refresh_info()
 
     def _subsession_report(
@@ -3750,6 +3850,7 @@ class App(tk.Tk):
             ),
             "ended_ns": ended_ns,
             "duration_seconds": seconds,
+            "mob_kills_estimated": int(summary.get("kills") or 0),
             "exp_total": summary["exp_gained"],
             "exp_total_percent": exp_total_percent,
             "exp_hour": round(summary["exp_gained"] / hours),
@@ -3770,7 +3871,7 @@ class App(tk.Tk):
             return messagebox.showwarning(
                 "Envio", "Valide o token do Profile antes de enviar."
             )
-        selected_ids = set(self.subsession_table.selection())
+        selected_ids = set(self._selected_subsession_ids)
         if not selected_ids:
             return messagebox.showinfo(
                 "Subsessões", "Selecione ao menos uma subsessão encerrada."
@@ -3903,6 +4004,9 @@ class App(tk.Tk):
         }
         items = list(snapshot.get("subsessions") or [])
         summaries = snapshot.get("subsession_summaries") or {}
+        self._selected_subsession_ids.intersection_update(
+            item["id"] for item in items
+        )
         active_client_key = f"client:{chr(97 + self._active_client_index)}"
         active = next(
             (
@@ -3951,6 +4055,7 @@ class App(tk.Tk):
                 else "Fim\n—"
             )
         )
+        items = _filter_subsessions(items, self.subsession_filter.get())
         query = self.subsession_search.get().strip().casefold()
         if query:
             items = [
@@ -3967,7 +4072,7 @@ class App(tk.Tk):
                     )
                 ).casefold()
             ]
-        page_size = 5
+        page_size = int(self.subsession_page_size.get())
         page_count = max(1, (len(items) + page_size - 1) // page_size)
         self.subsession_page = min(self.subsession_page, page_count)
         start = (self.subsession_page - 1) * page_size
@@ -3987,6 +4092,7 @@ class App(tk.Tk):
                 "exp_gained_percent": None,
                 "credits": 0,
                 "contribution": None,
+                "kills": 0,
             }
             hours = duration / 3600 if duration else 0
             exp_hour = round(summary["exp_gained"] / hours) if hours else 0
@@ -4008,6 +4114,7 @@ class App(tk.Tk):
                 END,
                 iid=item["id"],
                 values=(
+                    "☑" if item["id"] in self._selected_subsession_ids else "☐",
                     (
                         "Cliente B"
                         if item.get("client_key") == "client:b"
@@ -4018,6 +4125,7 @@ class App(tk.Tk):
                     or "Aguardando UID",
                     item["location"] or "—",
                     f"{duration // 60:02d}:{duration % 60:02d}",
+                    f"{int(summary.get('kills') or 0):,}".replace(",", "."),
                     f"{summary['exp_gained']:,.0f}".replace(",", "."),
                     (
                         f"{exp_total_percent:.2f}%".replace(".", ",")
@@ -4045,6 +4153,13 @@ class App(tk.Tk):
                     "Em andamento" if item["ended_ns"] is None else "Pronta",
                 ),
             )
+        selected_visible = [
+            item["id"]
+            for item in visible
+            if item["id"] in self._selected_subsession_ids
+        ]
+        if selected_visible:
+            self.subsession_table.selection_set(selected_visible)
         for column in self.subsession_table["columns"]:
             heading = self.subsession_table.heading(column).get("text", "")
             values = [

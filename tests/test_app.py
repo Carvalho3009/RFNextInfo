@@ -27,6 +27,7 @@ from app.main import (
     _capture_summary,
     _collection_marks,
     _configured_capture_dir,
+    _filter_subsessions,
     _market_rows,
     _merge_client_routes,
     _safe_error_code,
@@ -43,9 +44,39 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_subsession_view_filters(self):
+        items = [
+            {"client_key": "client:a", "ended_ns": None, "upload_state": "pending"},
+            {"client_key": "client:b", "ended_ns": 2, "upload_state": "sent"},
+        ]
+        self.assertEqual(_filter_subsessions(items, "Todas"), items)
+        self.assertEqual(_filter_subsessions(items, "Cliente A"), [items[0]])
+        self.assertEqual(_filter_subsessions(items, "Cliente B"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Em andamento"), [items[0]])
+        self.assertEqual(_filter_subsessions(items, "Encerradas"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Enviadas"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Não enviadas"), [items[0]])
+
     def test_subsession_autofit_reads_rows_by_tree_item_id(self):
         source = inspect.getsource(App._refresh_subsessions)
         self.assertIn('self.subsession_table.set(row["id"], column)', source)
+        self.assertIn("summary.get('kills') or 0", source)
+        self.assertIn('"☑" if item["id"]', source)
+        report_source = inspect.getsource(App._subsession_report)
+        self.assertIn('"mob_kills_estimated": int(summary.get("kills") or 0)', report_source)
+
+    def test_subsession_checkbox_updates_persistent_selection(self):
+        app = Mock()
+        app._selected_subsession_ids = set()
+        app.subsession_table.identify_column.return_value = "#1"
+        app.subsession_table.identify_row.return_value = "sub-1"
+        app._render_subsession_checks = Mock()
+        self.assertEqual(App._toggle_subsession_checkbox(app, Mock(x=1, y=1)), "break")
+        self.assertEqual(app._selected_subsession_ids, {"sub-1"})
+        app.subsession_table.selection_add.assert_called_once_with("sub-1")
+        App._toggle_subsession_checkbox(app, Mock(x=1, y=1))
+        self.assertEqual(app._selected_subsession_ids, set())
+        app.subsession_table.selection_remove.assert_called_once_with("sub-1")
 
     def test_incremental_summary_matches_full_summary(self):
         events = [

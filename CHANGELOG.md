@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0k — 2026-08-03
+
+- mostra na subsessão a quantidade estimada de mobs abatidos no intervalo e
+  inclui `mob_kills_estimated` no relatório enviado ao site.
+- adiciona filtros por cliente, andamento e envio e permite mostrar 5, 10, 20
+  ou 50 subsessões por página, com 10 como padrão.
+- adiciona caixas `☐/☑` e preserva a seleção de subsessões ao trocar página,
+  filtro ou atualizar as informações.
+
 ## 2.0j — 2026-08-02
 
 - corrige a atualização automática da tabela de subsessões, usando o ID da
