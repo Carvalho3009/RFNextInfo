@@ -2278,6 +2278,7 @@ class App(tk.Tk):
                 "character",
                 "location",
                 "duration",
+                "kills",
                 "exp_total",
                 "exp_total_percent",
                 "exp_hour",
@@ -2297,6 +2298,7 @@ class App(tk.Tk):
             ("character", "Personagem", 120),
             ("location", "Localização", 160),
             ("duration", "Duração", 90),
+            ("kills", "Mobs (estim.)", 95),
             ("exp_total", "EXP total", 110),
             ("exp_total_percent", "EXP total (%)", 100),
             ("exp_hour", "EXP/h", 100),
@@ -3750,6 +3752,7 @@ class App(tk.Tk):
             ),
             "ended_ns": ended_ns,
             "duration_seconds": seconds,
+            "mob_kills_estimated": int(summary.get("kills") or 0),
             "exp_total": summary["exp_gained"],
             "exp_total_percent": exp_total_percent,
             "exp_hour": round(summary["exp_gained"] / hours),
@@ -3987,6 +3990,7 @@ class App(tk.Tk):
                 "exp_gained_percent": None,
                 "credits": 0,
                 "contribution": None,
+                "kills": 0,
             }
             hours = duration / 3600 if duration else 0
             exp_hour = round(summary["exp_gained"] / hours) if hours else 0
@@ -4018,6 +4022,7 @@ class App(tk.Tk):
                     or "Aguardando UID",
                     item["location"] or "—",
                     f"{duration // 60:02d}:{duration % 60:02d}",
+                    f"{int(summary.get('kills') or 0):,}".replace(",", "."),
                     f"{summary['exp_gained']:,.0f}".replace(",", "."),
                     (
                         f"{exp_total_percent:.2f}%".replace(".", ",")

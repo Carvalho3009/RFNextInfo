@@ -46,6 +46,9 @@ class AppLogicTest(unittest.TestCase):
     def test_subsession_autofit_reads_rows_by_tree_item_id(self):
         source = inspect.getsource(App._refresh_subsessions)
         self.assertIn('self.subsession_table.set(row["id"], column)', source)
+        self.assertIn("summary.get('kills') or 0", source)
+        report_source = inspect.getsource(App._subsession_report)
+        self.assertIn('"mob_kills_estimated": int(summary.get("kills") or 0)', report_source)
 
     def test_incremental_summary_matches_full_summary(self):
         events = [
