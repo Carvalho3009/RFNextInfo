@@ -518,6 +518,23 @@ class CaptureStore:
                     ),
                 )
                 added += cursor.rowcount
+            for (flow,) in self.conn.execute(
+                """SELECT DISTINCT flow FROM events
+                   WHERE session_id=? AND character_uid IS NULL
+                   AND type!='unparsed'""",
+                (session_id,),
+            ):
+                client_key = _client_key(flow, client_ports)
+                binding = bindings.get(client_key) if client_key else None
+                if not binding:
+                    continue
+                updated = self.conn.execute(
+                    """UPDATE events SET character_uid=?
+                       WHERE session_id=? AND flow=?
+                       AND character_uid IS NULL AND type!='unparsed'""",
+                    (binding[0], session_id, flow),
+                )
+                rewritten = rewritten or bool(updated.rowcount)
             self.conn.execute(
                 """INSERT INTO captures
                 (source,size,mtime_ns,imported_at,events_added,session_id,
@@ -1096,6 +1113,24 @@ class CaptureStore:
                 (session_id,),
             ).fetchone()[0]
         )
+
+    def collection_type_counts(self, session_id: str) -> dict[int, int]:
+        counts: dict[int, int] = {}
+        for (raw,) in self.conn.execute(
+            """SELECT data_json FROM events
+               WHERE session_id=? AND type IN (
+                   'collection_snapshot_chunk','collection_add_request',
+                   'collection_add_response'
+               )""",
+            (session_id,),
+        ):
+            try:
+                kind = int(json.loads(raw).get("collection_type") or 0)
+            except (TypeError, ValueError):
+                continue
+            if kind:
+                counts[kind] = counts.get(kind, 0) + 1
+        return counts
 
     def session_stats_after(self, session_id: str, after_id: int) -> dict[str, int | None]:
         recognized, unknown, unassigned, started, ended, last_id = self.conn.execute(

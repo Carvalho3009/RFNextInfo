@@ -97,6 +97,9 @@ class CoreTest(unittest.TestCase):
             self.assertEqual(
                 json.loads(capture._heartbeat_path.read_text())["pid"], os.getpid()
             )
+            capture._active = False
+            capture.heartbeat()
+            self.assertTrue(capture._heartbeat_path.is_file())
             capture.stop()
             self.assertFalse(capture._heartbeat_path.exists())
     def test_clear_session_removes_raw_and_decoded_state_only_for_target(self):
@@ -1410,6 +1413,89 @@ class CoreTest(unittest.TestCase):
                 self.assertIn(("client:a", "update_exp"), owners)
                 self.assertIn(("client:a", "drop_item_field"), owners)
                 self.assertIn(("client:b", "collection_snapshot_chunk"), owners)
+            finally:
+                store.close()
+
+    def test_new_client_route_repairs_earlier_unassigned_flow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            identity, farm, refresh = (
+                root / "identity.pcap",
+                root / "farm.pcap",
+                root / "refresh.pcap",
+            )
+            identity.write_bytes(b"identity")
+            farm.write_bytes(b"farm")
+            refresh.write_bytes(b"refresh")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    identity,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": 101,
+                            "character_name": "Alice",
+                        }},
+                    }],
+                    "session",
+                    client_ports=((50000,),),
+                )
+                store.add_events(
+                    farm,
+                    [{
+                        "flow": "10.0.0.1:12010 -> 127.0.0.1:50001",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0307,
+                        "type": "update_exp",
+                        "data": {"fields": {"gain_exp": 10}},
+                    }],
+                    "session",
+                    client_ports=((50000,),),
+                )
+                self.assertEqual(store.session_stats("session")["unassigned"], 1)
+                store.add_events(
+                    refresh,
+                    [{
+                        "flow": "10.0.0.1:12010 -> 127.0.0.1:50001",
+                        "stream_offset": 2,
+                        "bundle_seq": 0,
+                        "opcode": 0x0307,
+                        "type": "update_exp",
+                        "data": {"fields": {"gain_exp": 10}},
+                    }],
+                    "session",
+                    client_ports=((50000, 50001),),
+                )
+                self.assertEqual(store.session_stats("session")["unassigned"], 0)
+            finally:
+                store.close()
+
+    def test_collection_type_counts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "collections.pcap"
+            source.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    source,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                        "stream_offset": index,
+                        "bundle_seq": 0,
+                        "opcode": 0x0419,
+                        "type": "collection_snapshot_chunk",
+                        "data": {"collection_type": kind, "records": []},
+                    } for index, kind in enumerate((1, 1, 2), 1)],
+                    "session",
+                )
+                self.assertEqual(store.collection_type_counts("session"), {1: 2, 2: 1})
             finally:
                 store.close()
 

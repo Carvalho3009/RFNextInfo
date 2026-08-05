@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import urllib.error
@@ -98,6 +99,36 @@ class SiteProfileClient:
             "subsession",
         }:
             raise ValueError("Tipo de envio inválido")
+        if mode == "market":
+            groups: dict[int, list[dict]] = {}
+            for row in payload.get("rows") or []:
+                groups.setdefault(int(row.get("ServerType", 0)), []).append(row)
+            responses = []
+            for server_type, rows in sorted(groups.items()):
+                grouped = {
+                    **payload,
+                    "metadata": {
+                        **(payload.get("metadata") or {}),
+                        "market_server_type": server_type,
+                    },
+                    "rows": rows,
+                }
+                key = hashlib.sha256(
+                    f"{idempotency_key}:{server_type}".encode()
+                ).hexdigest()
+                responses.append(self._request(
+                    "/api/import/market",
+                    json.dumps(grouped, ensure_ascii=False, separators=(",", ":")).encode(),
+                    self.state["token"],
+                    "application/json",
+                    key,
+                ))
+            if responses:
+                return {
+                    "receipt": ", ".join(str(item.get("receipt", "")) for item in responses),
+                    "server_types": sorted(groups),
+                    "responses": responses,
+                }
         return self._request(
             (
                 "/api/import/market"
@@ -151,7 +182,8 @@ class SiteProfileClient:
                 return result
         except urllib.error.HTTPError as error:
             try:
-                detail = json.loads(error.read(32 * 1024)).get("error", "")
+                response = json.loads(error.read(32 * 1024))
+                detail = response.get("error") or response.get("detail") or ""
             except (OSError, ValueError, AttributeError):
                 detail = ""
             raise ValueError(detail or f"Envio recusado (HTTP {error.code})") from None
