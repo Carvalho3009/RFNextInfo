@@ -765,9 +765,9 @@ class MainWindow(QtWidgets.QMainWindow):
         actions.addWidget(self.subsession_upload_button)
         layout.addLayout(actions)
 
-        self.subsession_table = QtWidgets.QTableWidget(0, 9)
+        self.subsession_table = QtWidgets.QTableWidget(0, 10)
         self.subsession_table.setHorizontalHeaderLabels((
-            "", "Subsessão", "Personagem", "Kills", "XP total", "XP %",
+            "", "Subsessão", "Personagem", "Tempo", "Kills", "XP total", "XP %",
             "XP/h", "XP/h %", "Contrib.",
         ))
         self.subsession_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
@@ -777,7 +777,7 @@ class MainWindow(QtWidgets.QMainWindow):
         header = self.subsession_table.horizontalHeader()
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
         header.sectionDoubleClicked.connect(self._autofit_subsession_column)
-        for column, width in enumerate((28, 210, 120, 58, 90, 66, 90, 72, 96)):
+        for column, width in enumerate((28, 210, 120, 82, 58, 90, 66, 90, 72, 96)):
             header.resizeSection(column, width)
         layout.addWidget(self.subsession_table, 1)
 
@@ -1126,8 +1126,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _subsession_spot_changed(self, spot_name: str) -> None:
         mobs = self.farm_catalog.get(self.subsession_map.currentText(), {}).get(spot_name, {})
         self.subsession_mobs.clear()
-        for mob in mobs:
-            item = QtWidgets.QListWidgetItem(mob)
+        for mob, levels in mobs.items():
+            level_text = (
+                str(levels[0]) if len(levels) == 1
+                else f"{levels[0]}–{levels[-1]}"
+            )
+            item = QtWidgets.QListWidgetItem(f"{mob} · Nv. {level_text}")
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, mob)
             item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(QtCore.Qt.CheckState.Unchecked)
             self.subsession_mobs.addItem(item)
@@ -1142,7 +1147,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _selected_mobs(self) -> list[str]:
         return [
-            self.subsession_mobs.item(row).text()
+            str(
+                self.subsession_mobs.item(row).data(
+                    QtCore.Qt.ItemDataRole.UserRole
+                )
+                or self.subsession_mobs.item(row).text()
+            )
             for row in range(self.subsession_mobs.count())
             if self.subsession_mobs.item(row).checkState() == QtCore.Qt.CheckState.Checked
         ]
@@ -1259,8 +1269,17 @@ class MainWindow(QtWidgets.QMainWindow):
         chosen = set(item.get("mobs") or [])
         for row in range(self.subsession_mobs.count()):
             mob = self.subsession_mobs.item(row)
-            mob.setCheckState(QtCore.Qt.CheckState.Checked if mob.text() in chosen else QtCore.Qt.CheckState.Unchecked)
-        extras = chosen - {self.subsession_mobs.item(row).text() for row in range(self.subsession_mobs.count())}
+            mob_name = str(mob.data(QtCore.Qt.ItemDataRole.UserRole) or mob.text())
+            mob.setCheckState(QtCore.Qt.CheckState.Checked if mob_name in chosen else QtCore.Qt.CheckState.Unchecked)
+        extras = chosen - {
+            str(
+                self.subsession_mobs.item(row).data(
+                    QtCore.Qt.ItemDataRole.UserRole
+                )
+                or self.subsession_mobs.item(row).text()
+            )
+            for row in range(self.subsession_mobs.count())
+        }
         self.subsession_other_mob.setText(", ".join(sorted(extras)))
         self.subsession_name.setText(str(item.get("name") or ""))
         self.subsession_duration.setValue(int(item.get("duration_minutes") or 0))
@@ -1423,6 +1442,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ("", item["id"]),
                 (str(item.get("name") or "—") + (f"\n{location}" if location else ""), None),
                 (character, None),
+                (f"{duration // 3600:02d}:{duration // 60 % 60:02d}:{duration % 60:02d}", None),
                 (self._format_value(int(summary.get("kills") or 0)), None),
                 (self._format_value(exp_total), None),
                 (self._format_value(exp_percent, "%"), None),
@@ -2039,6 +2059,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _reload_snapshot(self) -> None:
         self.overview_status.setText("Atualizando dados locais…")
+        session_id = str(self.snapshot.get("session_id") or "")
+        if session_id and self.database_path.exists():
+            store = CaptureStore(self.database_path, readonly=True)
+            try:
+                self.snapshot["subsessions"] = store.subsessions(session_id)
+                self._render_subsessions()
+            finally:
+                store.close()
         self._load_readonly_data()
 
     def _build_tutorial_page(self) -> QtWidgets.QWidget:

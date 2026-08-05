@@ -200,7 +200,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 2.1b")
+        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.1")
         self.assertEqual(result["page_count"], 5)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -240,10 +240,10 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 database_path=database_path,
                 preferences_path=preferences_path,
             )
-            self.assertEqual(window.subsession_table.columnCount(), 9)
+            self.assertEqual(window.subsession_table.columnCount(), 10)
             self.assertEqual(
-                [window.subsession_table.horizontalHeaderItem(index).text() for index in range(9)],
-                ["", "Subsessão", "Personagem", "Kills", "XP total", "XP %", "XP/h", "XP/h %", "Contrib."],
+                [window.subsession_table.horizontalHeaderItem(index).text() for index in range(10)],
+                ["", "Subsessão", "Personagem", "Tempo", "Kills", "XP total", "XP %", "XP/h", "XP/h %", "Contrib."],
             )
             self.assertGreaterEqual(window.subsession_mobs.minimumHeight(), 300)
             self.assertFalse(hasattr(window, "setting_quick_durations"))
@@ -269,16 +269,41 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 "subsessions": [], "subsession_summaries": {}, "stats": {},
             }
             window.preferences = {}
-            window._refresh_farm_catalog()
-            self.assertGreater(window.subsession_mobs.count(), 0)
+            window.farm_catalog = {
+                "Mapa": {"Spot": {"Mob A": (10, 12), "Mob B": (20,)}}
+            }
+            window.subsession_map.clear()
+            window.subsession_map.addItem("Mapa")
+            window._subsession_map_changed("Mapa")
+            self.assertEqual(window.subsession_mobs.count(), 2)
+            self.assertEqual(window.subsession_mobs.item(0).text(), "Mob A · Nv. 10–12")
+            self.assertEqual(window.subsession_mobs.item(1).text(), "Mob B · Nv. 20")
             window.subsession_mobs.item(0).setCheckState(QtCore.Qt.CheckState.Checked)
+            self.assertEqual(window._selected_mobs(), ["Mob A"])
             window.subsession_name.setText("Teste F3")
-            window._reload_snapshot = lambda: None
+            window._load_readonly_data = lambda: None
             window._save_subsession()
 
             store = CaptureStore(database_path, readonly=True)
             subsession = store.subsessions("session-f3")[0]
             self.assertEqual(subsession["name"], "Teste F3")
+            self.assertEqual(subsession["mobs"], ["Mob A"])
+            self.assertEqual(subsession["mob_levels"], {"Mob A": "10-12"})
+            store.close()
+
+            window.snapshot.update({
+                "session_id": "session-f3", "subsessions": [subsession],
+                "subsession_summaries": {},
+            })
+            window._render_subsessions()
+            window.editing_subsession_id = subsession["id"]
+            window.subsession_name.setText("Nome atualizado")
+            window._save_subsession()
+            self.assertTrue(
+                window.subsession_table.item(0, 1).text().startswith("Nome atualizado")
+            )
+            store = CaptureStore(database_path, readonly=True)
+            subsession = store.subsessions("session-f3")[0]
             store.close()
 
             subsession.update(started_ns=1_000_000_000, ended_ns=3_601_000_000_000)
@@ -298,8 +323,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
             })
             window._render_subsessions()
             self.assertEqual(
-                [window.subsession_table.item(0, column).text() for column in range(2, 9)],
-                ["Carvalho", "10", "1.000", "2,50%", "1.000", "2,50%", "60.500"],
+                [window.subsession_table.item(0, column).text() for column in range(2, 10)],
+                ["Carvalho", "01:00:00", "10", "1.000", "2,50%", "1.000", "2,50%", "60.500"],
             )
             self.assertTrue(window.subsession_table.item(0, 1).textAlignment() & QtCore.Qt.AlignmentFlag.AlignVCenter)
             window.subsession_table.horizontalHeader().resizeSection(1, 300)

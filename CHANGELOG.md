@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1 — 2026-08-05
+
+- exibe o tempo transcorrido de cada subsessão no histórico;
+- mostra os níveis mínimo e máximo ao lado de cada mob da localização;
+- atualiza imediatamente o nome da subsessão ativa após editar.
+
 ## 2.1b — 2026-08-05
 
 - substitui a interface principal pelo rework Qt, mantendo captura, licença,
