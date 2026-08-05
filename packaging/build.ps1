@@ -9,7 +9,9 @@ $Python = if ($env:RFNEXT_BUILD_PYTHON) {
     'python'
 }
 $Dependencies = Join-Path $Project '.deps313'
-if (Test-Path -LiteralPath $Dependencies) { $env:PYTHONPATH = $Dependencies }
+if (-not $env:RFNEXT_BUILD_PYTHON -and (Test-Path -LiteralPath $Dependencies)) {
+    $env:PYTHONPATH = $Dependencies
+}
 
 Push-Location $Project
 try {

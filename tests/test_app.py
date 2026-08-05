@@ -296,6 +296,44 @@ class AppLogicTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "página de acesso"):
                 client.connect("CarvalhoRF", "token-" + "a" * 32)
 
+    def test_site_profile_preserves_detail_from_http_error(self):
+        error = urllib.error.HTTPError(
+            "https://site/api/import/market", 422, "Unprocessable", {},
+            BytesIO(b'{"detail":"mercado invalido"}'),
+        )
+        client = SiteProfileClient(Path("."))
+        with patch("app.site_profile.urllib.request.urlopen", side_effect=error):
+            with self.assertRaisesRegex(ValueError, "mercado invalido"):
+                client._request("/api/import/market", b"{}", "token", "application/json")
+
+    def test_market_upload_is_split_by_server_type(self):
+        client = SiteProfileClient(Path("."))
+        client.state = {"profile": "Carvalho", "token": "token"}
+        with patch.object(
+            client,
+            "_request",
+            side_effect=({"receipt": "local"}, {"receipt": "global"}),
+        ) as request:
+            result = client.upload_live(
+                "market",
+                {
+                    "metadata": {"profile": "Carvalho"},
+                    "rows": [
+                        {"ServerType": 1, "ItemIndex": 10},
+                        {"ServerType": 0, "ItemIndex": 11},
+                        {"ServerType": 1, "ItemIndex": 12},
+                    ],
+                },
+                "a" * 64,
+            )
+
+        self.assertEqual(result["server_types"], [0, 1])
+        payloads = [json.loads(call.args[1]) for call in request.call_args_list]
+        self.assertEqual(
+            [(item["metadata"]["market_server_type"], len(item["rows"])) for item in payloads],
+            [(0, 1), (1, 2)],
+        )
+
     def test_quick_capture_accepts_app_live_session(self):
         app = Mock()
         app.current_session = "Profile-20260729-120000-001"
@@ -404,6 +442,34 @@ class AppLogicTest(unittest.TestCase):
             payload["profiles"][0]["loadout"]["equipment"], equipment
         )
         self.assertEqual(payload["loadout"]["equipment"], equipment)
+
+    def test_summary_uses_equipment_uid_when_event_route_is_missing(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "player_profile_info",
+                    "character_uid": None,
+                    "data": {"fields": {"active_equipment": {
+                        "character_uid": "101",
+                        "slots": [{
+                            "equip_part_type": 1,
+                            "resolved": True,
+                            "item": {
+                                "item_index": 1000078,
+                                "enchant_level": 7,
+                            },
+                        }],
+                    }}},
+                }]
+            },
+            character_uid="101",
+        )
+
+        self.assertEqual(summary["equipment"], [{
+            "item_index": 1000078,
+            "slot": 1,
+            "refinement": 7,
+        }])
 
     def test_client_tab_switch_does_not_ask_for_name(self):
         app = Mock()
@@ -676,12 +742,13 @@ class AppLogicTest(unittest.TestCase):
                             ),
                             "ret": 0,
                             "is_end": True,
+                            "exchange_server_type": 2,
                             "exchange_item_simple_infos": [
                                 {
                                     "item_index": 1000150,
                                     "enchant_level": 7,
                                     "lowest_price": 100,
-                                    "highest_price": 200,
+                                    "highest_price": 0,
                                     "number_of_registered_items": 3,
                                 }
                             ],
@@ -692,8 +759,10 @@ class AppLogicTest(unittest.TestCase):
             {"1000150": "English market item"},
         )
         self.assertEqual(rows[0]["ItemIndex"], 1000150)
+        self.assertEqual(rows[0]["ServerType"], 2)
         self.assertEqual(rows[0]["Name"], "English market item")
         self.assertEqual(rows[0]["PricePerUnit"], 100)
+        self.assertEqual(rows[0]["HighestPrice"], 100)
 
     def test_summary_resolves_biosuit_name_and_class(self):
         for item_index, name, class_name in (

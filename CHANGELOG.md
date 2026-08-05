@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1b — 2026-08-05
+
+- substitui a interface principal pelo rework Qt, mantendo captura, licença,
+  atualização, exportação, envios e atalhos da versão anterior;
+- exibe os dois clientes em cartões equivalentes na tela cheia e mantém um
+  cartão por linha no modo de janela;
+- mostra classe, Biosuit e a imagem real do Rover pelo `rover_item_index`;
+- corrige associação de personagem, Rover e equipamentos, leitura contínua,
+  envios de personagem/Codex/Memory Chips e separação de mercados por servidor;
+- preserva recuperação de sessões, subsessões, logs, atualização assinada e
+  rollback da instalação 2.0n.
+
 ## 2.0n — 2026-08-03
 
 - impede que atalhos globais tragam o programa ao primeiro plano; avisos desses

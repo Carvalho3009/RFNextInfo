@@ -42,7 +42,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.0n"
+VERSION = "2.1b"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -508,7 +508,14 @@ def _capture_summary(
                 summary["rover_name"] = str(rover.get("name") or "")
                 summary["rover_grade"] = rover.get("grade")
         active_equipment = fields.get("active_equipment")
-        if isinstance(active_equipment, dict) and (uid_matches or own_appearance):
+        equipment_uid_matches = bool(
+            isinstance(active_equipment, dict)
+            and target_uid
+            and str(active_equipment.get("character_uid")) == target_uid
+        )
+        if isinstance(active_equipment, dict) and (
+            uid_matches or own_appearance or equipment_uid_matches
+        ):
             equipment = []
             for slot in active_equipment.get("slots", []):
                 if not isinstance(slot, dict):
@@ -518,7 +525,7 @@ def _capture_summary(
                 item_index = item.get("item_index") if isinstance(item, dict) else None
                 if (
                     slot.get("resolved") is True
-                    and slot_id in {*range(1, 16), 18}
+                    and slot_id in {*range(1, 16), 17, 18}
                     and isinstance(item_index, int)
                     and item_index > 0
                 ):
@@ -704,8 +711,14 @@ def _market_rows(
         for event in envelope.get("events", [])
     ]
     rows = latest_market_rows(infos) + latest_market_offer_rows(infos)
-    if item_names:
-        for row in rows:
+    for row in rows:
+        price = row.get("PricePerUnit")
+        highest = row.get("HighestPrice")
+        if isinstance(price, (int, float)) and (
+            not isinstance(highest, (int, float)) or highest < price
+        ):
+            row["HighestPrice"] = price
+        if item_names:
             name = item_names.get(str(row.get("ItemIndex")))
             if name:
                 row["Name"] = name

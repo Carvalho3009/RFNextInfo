@@ -722,8 +722,9 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
         except UnicodeDecodeError:
             return None
         equipment_fields = {}
-        if len(payload) - name_end - 46 == 988:
-            refs_offset = len(payload) - 195
+        equipment_tail = len(payload) - name_end - 46
+        if equipment_tail in (988, 996):
+            refs_offset = len(payload) - 195 - (equipment_tail - 988)
             biosuit_offset = refs_offset - 10
             equipment_prefix = payload[biosuit_offset + 4:refs_offset]
             equipment_refs = []
@@ -1930,57 +1931,60 @@ def add_collection_catalog(
 
 
 def latest_market_rows(infos: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    current: list[dict[str, Any]] = []
-    latest: list[dict[str, Any]] | None = None
+    current: dict[int, list[dict[str, Any]]] = {}
+    latest: dict[int, list[dict[str, Any]]] = {}
     for info in infos:
         exchange = info.get("exchange", {})
         if exchange.get("message") != "FL2C_respond_purchase_list_on_exchange_Message":
             continue
         if exchange.get("ret") != 0:
             raise DecodeError(f"market list returned error {exchange.get('ret')}")
-        current.extend(exchange.get("exchange_item_simple_infos", []))
+        server_type = int(exchange.get("exchange_server_type", 0))
+        current.setdefault(server_type, []).extend(exchange.get("exchange_item_simple_infos", []))
         if exchange.get("is_end"):
-            latest, current = current, []
-    if latest is None:
+            latest[server_type] = current.pop(server_type)
+    if not latest:
         raise DecodeError("no complete market list found; start capture before opening Market")
 
-    rows: dict[tuple[int, int], dict[str, Any]] = {}
-    for entry in latest:
-        key = (entry["item_index"], entry["enchant_level"])
-        row = {
-            "RowType": "summary",
-            "ListingId": "",
-            "Name": entry.get("item_name", ""),
-            "ItemIndex": key[0],
-            "Enhance": key[1],
-            "PricePerUnit": entry["lowest_price"],
-            "Qty": entry["number_of_registered_items"],
-            "HighestPrice": entry["highest_price"],
-        }
-        if key in rows and rows[key] != row:
-            raise DecodeError(f"conflicting duplicate market row {key}")
-        rows[key] = row
+    rows: dict[tuple[int, int, int], dict[str, Any]] = {}
+    for server_type, entries in latest.items():
+        for entry in entries:
+            key = (server_type, entry["item_index"], entry["enchant_level"])
+            row = {
+                "RowType": "summary",
+                "ServerType": server_type,
+                "ListingId": "",
+                "Name": entry.get("item_name", ""),
+                "ItemIndex": key[1],
+                "Enhance": key[2],
+                "PricePerUnit": entry["lowest_price"],
+                "Qty": entry["number_of_registered_items"],
+                "HighestPrice": entry["highest_price"],
+            }
+            if key in rows and rows[key] != row:
+                raise DecodeError(f"conflicting duplicate market row {key}")
+            rows[key] = row
     if not rows:
         raise DecodeError("complete market list is empty")
     return [rows[key] for key in sorted(rows)]
 
 
 def latest_market_offer_rows(infos: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    partial: dict[int, list[dict[str, Any]]] = {}
-    latest: dict[int, tuple[str, list[dict[str, Any]]]] = {}
+    partial: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    latest: dict[tuple[int, int], tuple[str, list[dict[str, Any]]]] = {}
     for info in infos:
         exchange = info.get("exchange", {})
         if exchange.get("message") != "FL2C_respond_detailed_list_of_purchase_on_exchange_Message":
             continue
         if exchange.get("ret") != 0:
             raise DecodeError(f"detailed market list returned error {exchange.get('ret')}")
-        item_index = exchange["item_index"]
-        partial.setdefault(item_index, []).extend(exchange.get("detailed_list", []))
+        key = (int(exchange.get("exchange_server_type", 0)), exchange["item_index"])
+        partial.setdefault(key, []).extend(exchange.get("detailed_list", []))
         if exchange.get("is_end"):
-            latest[item_index] = (exchange.get("item_name", ""), partial.pop(item_index))
+            latest[key] = (exchange.get("item_name", ""), partial.pop(key))
 
     rows = []
-    for item_index, (item_name, entries) in latest.items():
+    for (server_type, item_index), (item_name, entries) in latest.items():
         for entry in entries:
             item = entry["item_info"]
             if item["index"] != item_index:
@@ -1989,6 +1993,7 @@ def latest_market_offer_rows(infos: list[dict[str, Any]]) -> list[dict[str, Any]
                 )
             rows.append({
                 "RowType": "offer",
+                "ServerType": server_type,
                 "ListingId": entry["exchange_index"],
                 "Name": item_name,
                 "ItemIndex": item_index,
@@ -2224,12 +2229,19 @@ def self_test() -> None:
     assert sold is not None and sold["exchange_indices"] == [44, 45]
     market_infos = [
         {"exchange": {"message": "FL2C_respond_purchase_list_on_exchange_Message", "ret": 0,
-                      "is_end": False, "exchange_item_simple_infos": [first_purchase]}},
+                      "is_end": False, "exchange_server_type": 0,
+                      "exchange_item_simple_infos": [first_purchase]}},
         {"exchange": {"message": "FL2C_respond_purchase_list_on_exchange_Message", "ret": 0,
-                      "is_end": True, "exchange_item_simple_infos": [{**first_purchase, "item_index": 11}]}},
+                      "is_end": True, "exchange_server_type": 1,
+                      "exchange_item_simple_infos": [{**first_purchase, "item_index": 11}]}},
+        {"exchange": {"message": "FL2C_respond_purchase_list_on_exchange_Message", "ret": 0,
+                      "is_end": True, "exchange_server_type": 0,
+                      "exchange_item_simple_infos": [{**first_purchase, "item_index": 12}]}},
     ]
     market_rows = latest_market_rows(market_infos)
-    assert [row["ItemIndex"] for row in market_rows] == [10, 11]
+    assert [(row["ServerType"], row["ItemIndex"]) for row in market_rows] == [
+        (0, 10), (0, 12), (1, 11)
+    ]
     assert market_rows[0]["PricePerUnit"] == 12.5 and market_rows[0]["Qty"] == 14
     # 0x1e06-0x1e08: progresso e recompensa de missao de evento.
     event_frame = bytearray(HEADER_SIZE + EVENT_MISSION_PROGRESS_UPDATE.size)
@@ -2340,9 +2352,9 @@ def self_test() -> None:
     player = parse_marked_gameplay_payload(bytes(player_frame), 12020)
     assert player["fields"]["diamonds"] == 3753
     equipped_uid = bytes.fromhex("a0250838d001")
-    full_player_payload = bytearray(player_payload[:26] + bytes(1034))
+    full_player_payload = bytearray(player_payload[:26] + bytes(1042))
     struct.pack_into("<Q", full_player_payload, 26 + 38, 3753)
-    refs_offset = len(full_player_payload) - 195
+    refs_offset = len(full_player_payload) - 203
     struct.pack_into("<I", full_player_payload, refs_offset - 10, 2_075_041)
     struct.pack_into("<I", full_player_payload, refs_offset - 5, 4_400_008)
     struct.pack_into("<H", full_player_payload, refs_offset, 15)
@@ -2354,6 +2366,14 @@ def self_test() -> None:
     assert full_player["fields"]["biosuit_item_index"] == 2_075_041
     assert full_player["fields"]["rover_item_index"] == 4_400_008
     assert full_player["fields"]["equipment_refs"][0]["item_uid_hex"] == equipped_uid.hex()
+    legacy_player_payload = bytearray(player_payload[:26] + bytes(1034))
+    legacy_refs_offset = len(legacy_player_payload) - 195
+    legacy_player_payload[legacy_refs_offset + 2:legacy_refs_offset + 8] = equipped_uid
+    legacy_player_frame = bytearray(HEADER_SIZE + len(legacy_player_payload))
+    legacy_player_frame[4:6] = (0x0305).to_bytes(2, "little")
+    legacy_player_frame[6:] = legacy_player_payload
+    legacy_player = parse_marked_gameplay_payload(bytes(legacy_player_frame), 12020)
+    assert legacy_player["fields"]["equipment_refs"][0]["item_uid_hex"] == equipped_uid.hex()
     profile_item = (
         struct.pack("<H", 15)
         + equipped_uid

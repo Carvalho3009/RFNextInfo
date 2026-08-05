@@ -145,7 +145,7 @@ class PktmonCapture:
 
     def heartbeat(self) -> None:
         """Confirma que a interface ainda supervisiona esta captura."""
-        if not self._active or not self._heartbeat_token:
+        if not self._heartbeat_token:
             return
         temporary = self._heartbeat_path.with_suffix(".tmp")
         temporary.write_text(
