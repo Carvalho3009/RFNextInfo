@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -14,18 +15,33 @@ from pathlib import Path
 from typing import Callable
 
 GIB = 1024**3
+LOGGER = logging.getLogger("rfnextinfo")
 
 
-def _pktmon_running(status: str) -> bool:
+def _pktmon_state(status: str) -> bool | None:
     status = " ".join(status.lower().split())
-    stopped = ("not running", "não está em execução", "nao esta em execucao")
-    return not any(marker in status for marker in stopped) and (
+    stopped = (
+        "not running", "não está em execução", "nao esta em execucao",
+        "inactive", "inativo", "stopped", "parado",
+    )
+    if any(marker in status for marker in stopped):
+        return False
+    if (
         "running" in status
         or "em execução" in status
         or "em execucao" in status
         or "already started" in status
         or "já foi iniciado" in status
-    )
+        or "status: active" in status
+        or "está ativo" in status
+        or "esta ativo" in status
+    ):
+        return True
+    return None
+
+
+def _pktmon_running(status: str) -> bool:
+    return _pktmon_state(status) is True
 
 
 def _packet_total(value: object) -> int:
@@ -89,6 +105,8 @@ class PktmonCapture:
         self._heartbeat_token = ""
         self._watchdog: subprocess.Popen[str] | None = None
         self._last_status = CaptureStatus(False, 0, 0, False, ())
+        self._last_system_state: bool | None = None
+        self._last_status_text = ""
 
     @staticmethod
     def _validate_session_id(session_id: str) -> None:
@@ -115,7 +133,16 @@ class PktmonCapture:
         return result
 
     def system_running(self) -> bool:
-        return _pktmon_running(self._command("status").stdout)
+        return self._system_state() is True
+
+    def _system_state(self) -> bool | None:
+        result = self._command("status")
+        raw = "\n".join(value for value in (result.stdout, result.stderr) if value).strip()
+        self._last_status_text = raw
+        self._last_system_state = _pktmon_state(raw)
+        if self._last_system_state is None:
+            LOGGER.warning("capture_status_unknown output=%r", raw[:500])
+        return self._last_system_state
 
     def packet_count(self) -> int | None:
         try:
@@ -328,11 +355,21 @@ class PktmonCapture:
             return len(ports)
 
     def _watch_disk(self) -> None:
+        stopped_checks = 0
         while self._active:
             status = self.status()
-            if not status.active:
-                self._active = False
-                return
+            if self._last_system_state is False:
+                stopped_checks += 1
+                if stopped_checks >= 3:
+                    LOGGER.warning(
+                        "capture_interrupted stopped_checks=%d output=%r",
+                        stopped_checks,
+                        self._last_status_text[:500],
+                    )
+                    self._active = False
+                    return
+            else:
+                stopped_checks = 0
             if status.safe_stop:
                 self.stop()
                 return
@@ -364,8 +401,9 @@ class PktmonCapture:
         files = self.segment_files()
         size = sum(path.stat().st_size for path in files if path.exists())
         free = shutil.disk_usage(self.output_dir).free if self.output_dir.exists() else 0
+        system_state = self._system_state()
         self._last_status = CaptureStatus(
-            self.system_running(),
+            self._active if system_state is None else system_state,
             size,
             free,
             free < self.stop_free_bytes,
