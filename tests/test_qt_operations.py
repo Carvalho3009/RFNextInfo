@@ -122,7 +122,71 @@ class CaptureEngineTest(unittest.TestCase):
 
             self.assertEqual(restored["session_id"], "Profile-20260805-120000-001")
             self.assertEqual(engine.current_session, "Profile-20260805-120000-001")
-            self.assertEqual(engine.client_ports, ((50000,),))
+            self.assertEqual(engine.client_ports, ())
+
+    def test_resume_preserves_uid_slots_without_retaining_old_ports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "rfnext-20260805-120000-001-01-001.etl").write_bytes(b"etl")
+            engine = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({10, 20}, {51000, 51001}, {12020})
+                },
+                client_reader=lambda *_args: [
+                    {"pid": 10, "local_ports": (51000,), "remote_ports": (12020,)},
+                    {"pid": 20, "local_ports": (51001,), "remote_ports": (12020,)},
+                ],
+            )
+            engine.restore({
+                "capture_pending": True,
+                "last_session": "Profile-20260805-120000-001",
+                "capture_prefix": "rfnext-20260805-120000-001-01",
+                "capture_ports": [12020],
+                "capture_client_ports": [[50000], [50001]],
+                "capture_client_pids": [10, 20],
+            })
+
+            started = engine.start()
+
+            self.assertEqual(started["session_id"], "Profile-20260805-120000-001")
+            self.assertEqual(engine.client_pids, [10, 20])
+            self.assertEqual(engine.client_ports, ((51000,), (51001,)))
+            self.assertNotIn(50000, started["capture_client_ports"][0])
+
+    def test_resume_with_restarted_clients_does_not_guess_uid_routes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "rfnext-20260805-120000-001-01-001.etl").write_bytes(b"etl")
+            engine = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({30, 40}, {52000, 52001}, {12020})
+                },
+                client_reader=lambda *_args: [
+                    {"pid": 30, "local_ports": (52000,), "remote_ports": (12020,)},
+                    {"pid": 40, "local_ports": (52001,), "remote_ports": (12020,)},
+                ],
+            )
+            engine.restore({
+                "capture_pending": True,
+                "last_session": "Profile-20260805-120000-001",
+                "capture_prefix": "rfnext-20260805-120000-001-01",
+                "capture_ports": [12020],
+                "capture_client_ports": [[50000], [50001]],
+                "capture_client_pids": [10, 20],
+            })
+
+            started = engine.start()
+
+            self.assertEqual(started["capture_client_ports"], [])
+            self.assertEqual(started["capture_client_pids"], [])
 
     def test_configured_send_hotkeys_are_global(self):
         definitions = GlobalHotkeys.definitions({
@@ -350,6 +414,72 @@ class SiteUploadEngineTest(unittest.TestCase):
             ])
             self.assertEqual(payload["metadata"]["installation_id"], "install-1")
             self.assertEqual(len(key), 64)
+
+    def test_subsession_send_recovers_character_from_saved_session(self):
+        class Site:
+            connected = True
+            profile = "Profile"
+
+            def upload_live(self, mode, payload, key):
+                self.sent = (mode, payload, key)
+                return {"receipt": "ok"}
+
+        class License:
+            installation_id = "install-1"
+            lease = "lease-1"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            started_ns = 1_780_000_000_000_000_000
+            source = root / "capture.pcap"
+            source.write_bytes(b"capture")
+            database = root / "capture.sqlite3"
+            store = CaptureStore(database)
+            try:
+                store.add_events(
+                    source,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "ts_ns": started_ns + 100,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": 101,
+                            "character_name": "Alice",
+                            "level": 68,
+                        }},
+                    }],
+                    "session",
+                    client_ports=((50000,),),
+                )
+                store.start_subsession(
+                    "sub-1",
+                    "session",
+                    "Farm",
+                    character_uid="101",
+                    client_key="client:a",
+                    mobs=["Mob"],
+                    mob_levels={"Mob": 68},
+                    started_ns=started_ns,
+                )
+                store.end_subsession("sub-1", started_ns + 1_000_000_000)
+            finally:
+                store.close()
+
+            site = Site()
+            result = SiteUploadEngine(database, site, License()).send_subsessions(
+                ["sub-1"], {"session_id": "session", "characters": []}, "pt"
+            )
+
+            self.assertEqual(result, {"sent": 1, "failures": []})
+            self.assertEqual(site.sent[1]["profiles"][0]["name"], "Alice")
+            store = CaptureStore(database, readonly=True)
+            try:
+                self.assertEqual(store.subsessions("session")[0]["upload_state"], "sent")
+            finally:
+                store.close()
 
 
 class ExportEngineTest(unittest.TestCase):

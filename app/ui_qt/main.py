@@ -33,7 +33,12 @@ from app.main import (
     _recycle,
 )
 from app.site_profile import SiteProfileClient
-from app.support_log import configure as configure_log, recent_lines, set_detailed
+from app.support_log import (
+    configure as configure_log,
+    install_exception_hooks,
+    recent_lines,
+    set_detailed,
+)
 from app.updater import download_verified, latest
 from app.ui_qt.operations import (
     CaptureEngine,
@@ -147,6 +152,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except OSError:
             self.log_path = STATE_DIR / "logs" / "rfnext-info.log"
             self.log = configure_log(self.log_path, VERSION)
+        install_exception_hooks(self.log)
         self.license_client = LicenseClient(
             STATE_DIR,
             version=VERSION,
@@ -162,6 +168,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.export_engine = ExportEngine(self.database_path, self.license_client)
         self.data_load_running = False
         self.data_load_pending = False
+        self.controls_initialized = False
         self.setObjectName("mainWindow")
         self.setWindowTitle(f"RF NEXT QOL — {VERSION}")
         self.setMinimumSize(1180, 664)
@@ -2189,10 +2196,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _send_selected_subsessions(self) -> None:
+        self._subsession_selection_changed()
         identifiers = sorted(self.selected_subsessions)
         if not identifiers:
             return
         self.send_selected_status.setText("Enviando subsessões selecionadas…")
+        self.subsession_upload_button.setText("Enviando…")
         language = str(self.preferences.get("item_name_language") or "pt")
         self._run_site_operation(
             "subsessions",
@@ -2250,17 +2259,30 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QMessageBox.warning(self, "Envio", str(error))
             self._load_readonly_data()
         elif name == "subsessions":
+            self.subsession_upload_button.setText("Enviar selecionadas")
             if error is not None:
                 self.send_selected_status.setText("Falha no envio")
                 QtWidgets.QMessageBox.warning(self, "Subsessões", str(error))
             else:
                 data = dict(result or {})
                 failures = list(data.get("failures") or [])
+                if failures:
+                    self.log.error(
+                        "subsession_upload_result failures=%s sent=%s",
+                        len(failures), data.get("sent", 0),
+                    )
                 self.send_selected_status.setText(
                     f"{data.get('sent', 0)} enviada(s)"
                     + (f" · {len(failures)} falha(s)" if failures else "")
                 )
                 self._load_readonly_data()
+                if failures:
+                    QtWidgets.QMessageBox.warning(
+                        self,
+                        "Envio de subsessões",
+                        f"{data.get('sent', 0)} enviada(s); "
+                        f"{len(failures)} falharam.\n\n" + "\n".join(failures),
+                    )
         elif name in {"export", "auto_export", "export_upload"}:
             if error is not None:
                 self.update_status.setText(f"Exportação falhou: {error}")
@@ -2396,6 +2418,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     "storage_bytes": self._stored_capture_bytes(capture_directory),
                 })
             except Exception as error:
+                self.log.exception("data_load_failed")
                 self.data_failed.emit(f"{type(error).__name__}: {error}")
             finally:
                 self.log.debug(
@@ -2423,9 +2446,11 @@ class MainWindow(QtWidgets.QMainWindow):
             int(payload.get("storage_bytes") or 0),
         )
         self._apply_license(dict(payload.get("license") or {}))
-        self._load_settings_fields()
-        self._sync_global_hotkeys()
-        self._refresh_farm_catalog()
+        if not self.controls_initialized:
+            self._load_settings_fields()
+            self._sync_global_hotkeys()
+            self._refresh_farm_catalog()
+            self.controls_initialized = True
         self._render_overview()
         self._render_subsessions()
         self._render_sends()
@@ -2608,6 +2633,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "capture_prefix": "",
                 "capture_ports": [],
                 "capture_client_ports": [],
+                "capture_client_pids": [],
             }, self.preferences_path)
             self.capture_engine = None
             self.capture_recovery_attempted = True
@@ -2699,6 +2725,8 @@ class MainWindow(QtWidgets.QMainWindow):
             len(data.get("files") or []),
             data.get("paused"),
         )
+        for failure in data.get("failures") or []:
+            self.log.error("capture_result_failure name=%s detail=%s", name, failure)
         engine = self._ensure_capture_engine()
         if name == "start":
             self.last_capture_session = str(data.get("session_id") or "")
@@ -2709,6 +2737,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "capture_prefix": data.get("capture_prefix"),
                 "capture_ports": data.get("capture_ports"),
                 "capture_client_ports": data.get("capture_client_ports"),
+                "capture_client_pids": data.get("capture_client_pids"),
             }, self.preferences_path)
             self.next_read_at = time.monotonic() + 3
             self.top_capture.setText(

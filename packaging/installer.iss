@@ -1,5 +1,5 @@
 #define AppName "RF NEXT QOL"
-#define AppVersion "2.1.7"
+#define AppVersion "2.1.8"
 #define AppPublisher "Karvalho"
 #define AppExeName "RFNextInfo.exe"
 
@@ -12,7 +12,7 @@ AppPublisherURL=https://karvalho.dev.br/
 DefaultDirName={autopf}\Karvalho\RF NEXT QOL
 DefaultGroupName=Karvalho
 OutputDir=..\dist
-OutputBaseFilename=RFNextQOL-Setup-2.1.7
+OutputBaseFilename=RFNextQOL-Setup-2.1.8
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin

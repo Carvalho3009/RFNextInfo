@@ -4,6 +4,7 @@ import re
 import ctypes
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
@@ -27,6 +28,10 @@ from core.capture import PktmonCapture
 from core.connections import clients_for_executable, connected_processes
 from core.pktmon_realtime import RealtimeCapture
 from core.store import CaptureStore
+
+
+LOG = logging.getLogger("rfnextinfo")
+LOG.addHandler(logging.NullHandler())
 
 
 class SiteUploadEngine:
@@ -163,11 +168,27 @@ class SiteUploadEngine:
                 for item in snapshot.get("characters", [])
                 if item.get("uid")
             }
+            stored_names = {
+                str(item.get("uid")): str(item.get("name") or "")
+                for item in store.session_profiles(session_id)
+                if item.get("uid")
+            }
             for item in selected.values():
                 character = characters.get(item.get("client_key"), {})
                 uid = str(character.get("uid") or item.get("character_uid") or "")
-                name = str(character.get("name") or names.get(uid) or "")
+                name = str(
+                    character.get("name")
+                    or names.get(uid)
+                    or stored_names.get(uid)
+                    or ""
+                )
                 if not uid or not name:
+                    store.set_subsession_upload_state(item["id"], "failed")
+                    LOG.error(
+                        "subsession_upload_rejected sequence=%s client=%s "
+                        "reason=character_not_identified",
+                        item.get("sequence"), item.get("client_key"),
+                    )
                     failures.append(f"{item['name']}: personagem não identificado")
                     continue
                 ended_ns = int(item["ended_ns"])
@@ -224,6 +245,11 @@ class SiteUploadEngine:
                     store.set_subsession_upload_state(item["id"], "sent")
                     sent += 1
                 except Exception as error:
+                    store.set_subsession_upload_state(item["id"], "failed")
+                    LOG.exception(
+                        "subsession_upload_failed sequence=%s client=%s",
+                        item.get("sequence"), item.get("client_key"),
+                    )
                     failures.append(f"{item['name']}: {error}")
         finally:
             store.close()
@@ -538,6 +564,7 @@ class CaptureEngine:
         self.live_index = 0
         self.capture_index = 0
         self.paused = False
+        self.route_identity_trusted = True
         self._lock = threading.RLock()
 
     def restore(self, preferences: dict[str, object]) -> dict[str, object] | None:
@@ -561,10 +588,12 @@ class CaptureEngine:
         self.current_session = session_id
         self.paused = not status.active
         self.pending_files = list(status.files)
-        self.client_ports = tuple(
-            tuple(int(port) for port in group)
-            for group in preferences.get("capture_client_ports") or ()
-        )
+        # Portas são transitórias; somente os PIDs preservam os slots A/B.
+        self.client_ports = ()
+        self.client_pids = [
+            int(pid) for pid in preferences.get("capture_client_pids") or ()
+        ][:2]
+        self.route_identity_trusted = bool(self.client_pids)
         return {
             "session_id": session_id,
             "files": len(status.files),
@@ -595,6 +624,7 @@ class CaptureEngine:
         with self._lock:
             if self.active:
                 raise RuntimeError("A captura já está ativa")
+            resuming = self.paused and bool(self.current_session)
             processes = self.process_reader(DEFAULT_PORTS)
             if not processes:
                 raise RuntimeError("Abra um cliente ProjectRF e entre no jogo")
@@ -605,9 +635,21 @@ class CaptureEngine:
                 raise RuntimeError("Foram encontrados mais de dois clientes ProjectRF")
             routes = self.client_reader(executable, DEFAULT_PORTS)
             self.executable = executable
-            self.client_pids, groups = _merge_client_routes([], [], routes)
-            self.client_ports = tuple(groups) or (tuple(sorted(local_ports)),)
-            resuming = self.paused and bool(self.current_session)
+            known_pids = list(self.client_pids)
+            self.route_identity_trusted = bool(
+                not resuming
+                or known_pids and set(known_pids).intersection(pids)
+            )
+            if self.route_identity_trusted:
+                self.client_pids, groups = _merge_client_routes(
+                    known_pids if resuming else [],
+                    [],
+                    routes,
+                )
+                self.client_ports = tuple(groups) or (tuple(sorted(local_ports)),)
+            else:
+                self.client_pids = []
+                self.client_ports = ()
             if not resuming:
                 self.session_counter += 1
                 stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -638,6 +680,7 @@ class CaptureEngine:
                 self.live_capture = live
             except Exception as error:
                 self.live_capture = None
+                LOG.exception("live_capture_start_failed")
                 live_error = f"{type(error).__name__}: {error}"
             self.paused = False
             return {
@@ -646,6 +689,7 @@ class CaptureEngine:
                 "capture_prefix": prefix,
                 "capture_ports": list(ports),
                 "capture_client_ports": [list(group) for group in self.client_ports],
+                "capture_client_pids": list(self.client_pids),
                 "clients": len(pids),
                 "connections": len(local_ports),
                 "live": self.live_capture is not None,
@@ -656,10 +700,20 @@ class CaptureEngine:
         if not self.executable:
             return
         routes = self.client_reader(self.executable, DEFAULT_PORTS)
-        self.client_pids, groups = _merge_client_routes(
-            self.client_pids, list(self.client_ports), routes
-        )
-        self.client_ports = tuple(groups)
+        active_pids = {int(route["pid"]) for route in routes}
+        if (
+            self.route_identity_trusted
+            and self.client_pids
+            and not active_pids.intersection(self.client_pids)
+        ):
+            self.route_identity_trusted = False
+            self.client_pids = []
+            self.client_ports = ()
+        if self.route_identity_trusted:
+            self.client_pids, groups = _merge_client_routes(
+                self.client_pids, list(self.client_ports), routes
+            )
+            self.client_ports = tuple(groups)
         ports = tuple(
             dict.fromkeys(
                 port
@@ -793,6 +847,10 @@ class CaptureEngine:
                             append_only=path in live_files,
                         )
                     except Exception as error:
+                        LOG.exception(
+                            "capture_ingest_failed session=%s source=%s",
+                            self.current_session, path.name,
+                        )
                         failures.append(f"{path.name}: {type(error).__name__}")
                 if not failures and not pause:
                     now = time.time_ns()

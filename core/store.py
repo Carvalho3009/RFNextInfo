@@ -1094,7 +1094,7 @@ class CaptureStore:
     def set_subsession_upload_state(
         self, subsession_id: str, state: str
     ) -> None:
-        if state not in {"pending", "sent"}:
+        if state not in {"pending", "sent", "failed"}:
             raise ValueError("estado de envio inválido")
         uploaded_at = (
             datetime.now(timezone.utc).isoformat() if state == "sent" else None

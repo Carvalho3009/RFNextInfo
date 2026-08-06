@@ -189,3 +189,8 @@ class SiteProfileClient:
             raise ValueError(detail or f"Envio recusado (HTTP {error.code})") from None
         except urllib.error.URLError as error:
             raise ValueError("Não foi possível alcançar o site") from error
+        except TimeoutError:
+            raise ValueError(
+                "O site não confirmou o envio em 20 segundos. "
+                "Os dados podem ter sido recebidos; aguarde antes de reenviar."
+            ) from None
