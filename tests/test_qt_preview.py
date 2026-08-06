@@ -223,7 +223,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
             database = root / "capture.sqlite3"
             preferences = root / "preferences.json"
             store = CaptureStore(database)
-            started = time.time_ns() - 6 * 60 * 1_000_000_000
+            started = 1_000_000_000
+            interval = 5 * 60 * 1_000_000_000
             store.start_subsession(
                 "sub-1", "session-1", "Farm",
                 client_key="client:a", duration_minutes=5, started_ns=started,
@@ -239,13 +240,26 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.auto_subsession.setChecked(True)
             window.auto_subsession_minutes.setValue(5)
             window._load_readonly_data = lambda: None
-            window._rotate_auto_subsessions()
+            with mock.patch(
+                "app.ui_qt.main.time.time_ns",
+                return_value=started + 2 * interval + 1,
+            ):
+                window._rotate_auto_subsessions()
             store = CaptureStore(database, readonly=True)
             entries = store.subsessions("session-1")
             store.close()
-            self.assertEqual(len(entries), 2)
-            self.assertEqual(sum(item["ended_ns"] is not None for item in entries), 1)
+            self.assertEqual(len(entries), 3)
+            self.assertEqual(sum(item["ended_ns"] is not None for item in entries), 2)
             self.assertEqual(sum(item["ended_ns"] is None for item in entries), 1)
+            ordered = sorted(entries, key=lambda item: item["started_ns"])
+            self.assertEqual(
+                [(item["started_ns"], item["ended_ns"]) for item in ordered],
+                [
+                    (started, started + interval),
+                    (started + interval, started + 2 * interval),
+                    (started + 2 * interval, None),
+                ],
+            )
             window.capture_engine = None
             window.close()
 
@@ -279,7 +293,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.9")
+        self.assertEqual(result["title"], "RF NEXT QOL — 2.2.0")
         self.assertEqual(result["page_count"], 5)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

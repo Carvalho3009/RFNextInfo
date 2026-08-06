@@ -1181,7 +1181,7 @@ class CaptureStore:
             where.append("ts_ns>=?")
             values.append(started_ns)
         if ended_ns is not None:
-            where.append("ts_ns<=?")
+            where.append("ts_ns<?")
             values.append(ended_ns)
         values.append(max(1, min(50000, int(limit))))
         rows = self.conn.execute(
@@ -1260,7 +1260,7 @@ class CaptureStore:
             where.append("ts_ns>=?")
             values.append(started_ns)
         if ended_ns is not None:
-            where.append("ts_ns<=?")
+            where.append("ts_ns<?")
             values.append(ended_ns)
         rows = self.conn.execute(
             f"""SELECT ts_ns,opcode,type,character_uid,data_json FROM events

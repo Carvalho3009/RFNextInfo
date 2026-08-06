@@ -1435,13 +1435,31 @@ class MainWindow(QtWidgets.QMainWindow):
                 if duration == 0:
                     continue
                 limit = min(duration, automatic_minutes or duration)
-                if now - int(active["started_ns"]) < limit * 60 * 1_000_000_000:
+                boundary_ns = (
+                    int(active["started_ns"])
+                    + limit * 60 * 1_000_000_000
+                )
+                if now < boundary_ns:
                     continue
-                store.end_subsession(str(active["id"]), now)
-                changed = True
-                if automatic:
+                while now >= boundary_ns:
+                    store.end_subsession(str(active["id"]), boundary_ns)
+                    self.log.info(
+                        "subsession_auto_ended id=%s boundary_ns=%s delay_ms=%s",
+                        active["id"],
+                        boundary_ns,
+                        max(0, (now - boundary_ns) // 1_000_000),
+                    )
+                    changed = True
+                    if not automatic:
+                        break
+                    owner = str(
+                        active.get("client_key")
+                        or active.get("character_uid")
+                        or "geral"
+                    ).replace(":", "-")
+                    next_id = f"{session_id}-sub-{boundary_ns}-{owner}"
                     store.start_subsession(
-                        f"{session_id}-sub-{now}-{active.get('character_uid') or 'geral'}",
+                        next_id,
                         session_id,
                         str(active.get("name") or active.get("spot_name") or "Subsessão"),
                         character_uid=active.get("character_uid"),
@@ -1452,8 +1470,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         mobs=list(active.get("mobs") or []),
                         mob_levels=dict(active.get("mob_levels") or {}),
                         duration_minutes=automatic_minutes,
-                        started_ns=now,
+                        started_ns=boundary_ns,
                     )
+                    active = {
+                        **active,
+                        "id": next_id,
+                        "duration_minutes": automatic_minutes,
+                        "started_ns": boundary_ns,
+                        "ended_ns": None,
+                    }
+                    boundary_ns += automatic_minutes * 60 * 1_000_000_000
         finally:
             store.close()
         if changed:
