@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.6 — 2026-08-06
+
+- adiciona a opção de log completo com registros detalhados e sanitizados;
+- corrige o contraste de todas as mensagens e traduz os botões para Português.
+
+## 2.1.5 — 2026-08-06
+
+- mantém a leitura durante a captura quando a prévia nativa do PktMon não inicia;
+- alterna segmentos ETL automaticamente e preserva o erro original no log.
+
 ## 2.1.4 — 2026-08-05
 
 - impede o watchdog de encerrar o PktMon por parâmetros vazios;

@@ -1,4 +1,5 @@
 import importlib.util
+import logging
 import tempfile
 import time
 import unittest
@@ -9,6 +10,29 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_message_boxes_use_dark_theme_and_portuguese_buttons(self):
+        from PySide6 import QtWidgets
+        from app.ui_qt.main import create_application
+
+        app = create_application(["message-box-theme-test"])
+        box = QtWidgets.QMessageBox(
+            QtWidgets.QMessageBox.Icon.Question,
+            "Descartar sessão anterior",
+            "Mover os arquivos para a Lixeira?",
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+        )
+
+        self.assertIn("QMessageBox { background: #081820; }", app.styleSheet())
+        self.assertEqual(
+            box.button(QtWidgets.QMessageBox.StandardButton.Yes).text().replace("&", ""),
+            "Sim",
+        )
+        self.assertEqual(
+            box.button(QtWidgets.QMessageBox.StandardButton.No).text().replace("&", ""),
+            "Não",
+        )
+
     def test_send_buttons_require_data_for_their_own_type(self):
         from app.ui_qt.main import MainWindow, create_application
 
@@ -200,7 +224,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.5")
+        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.6")
         self.assertEqual(result["page_count"], 5)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -412,12 +436,17 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
 
             window.setting_capture_directory.setText(str(root / "captures"))
+            window.setting_detailed_log.setChecked(True)
             with mock.patch.object(QtWidgets.QMessageBox, "information"):
                 window._save_settings()
-            self.assertEqual(
-                load_preferences(preferences_path)["capture_directory"],
-                str(root / "captures"),
-            )
+            saved_preferences = load_preferences(preferences_path)
+            self.assertEqual(saved_preferences["capture_directory"], str(root / "captures"))
+            self.assertTrue(saved_preferences["detailed_logging"])
+            self.assertTrue(window.log.isEnabledFor(logging.DEBUG))
+            window.preferences = saved_preferences
+            window.setting_detailed_log.setChecked(False)
+            window._load_settings_fields()
+            self.assertTrue(window.setting_detailed_log.isChecked())
             window.close()
 
 

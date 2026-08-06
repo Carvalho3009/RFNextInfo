@@ -33,7 +33,7 @@ from app.main import (
     _recycle,
 )
 from app.site_profile import SiteProfileClient
-from app.support_log import configure as configure_log, recent_lines
+from app.support_log import configure as configure_log, recent_lines, set_detailed
 from app.updater import download_verified, latest
 from app.ui_qt.operations import (
     CaptureEngine,
@@ -185,6 +185,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.site_operation_done.connect(self._site_operation_finished)
         self.global_hotkey_triggered.connect(self._global_hotkey_action)
         self.update_progress_changed.connect(self._update_progress)
+        self.page_stack.currentChanged.connect(
+            lambda index: self.log.debug("ui_page_changed index=%s", index)
+        )
         self.global_hotkeys = GlobalHotkeys(self.global_hotkey_triggered.emit)
         if load_data:
             self.global_hotkeys.start()
@@ -968,7 +971,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_minimize = QtWidgets.QCheckBox("Minimizar para a bandeja")
         self.setting_auto_export = QtWidgets.QCheckBox("Exportar automaticamente ao parar")
         self.setting_delete_export = QtWidgets.QCheckBox("Excluir após exportar")
-        behavior_layout.addWidget(self.setting_minimize); behavior_layout.addWidget(self.setting_auto_export); behavior_layout.addWidget(self.setting_delete_export); behavior_layout.addStretch(1)
+        self.setting_detailed_log = QtWidgets.QCheckBox("Ativar log completo (detalhado)")
+        self.setting_detailed_log.setToolTip(
+            "Registra ações e etapas internas. Pode aumentar o tamanho do arquivo; "
+            "chaves, tokens e conteúdo bruto de pacotes continuam removidos."
+        )
+        behavior_layout.addWidget(self.setting_minimize); behavior_layout.addWidget(self.setting_auto_export); behavior_layout.addWidget(self.setting_delete_export); behavior_layout.addWidget(self.setting_detailed_log); behavior_layout.addStretch(1)
         grid.addWidget(behavior, 2, 1)
 
         license_panel = QtWidgets.QFrame(objectName="accentPanel")
@@ -1060,6 +1068,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_minimize.setChecked(bool(preferences.get("minimize_to_tray", False)))
         self.setting_auto_export.setChecked(bool(preferences.get("auto_export", False)))
         self.setting_delete_export.setChecked(bool(preferences.get("delete_after_export", False)))
+        self.setting_detailed_log.setChecked(bool(preferences.get("detailed_logging", False)))
         self.subsession_duration.setValue(self._bounded(preferences.get("subsession_duration_minutes"), 0, 1440, 30))
         self.auto_subsession.setChecked(bool(preferences.get("auto_subsession", False)))
         self.auto_subsession_minutes.setValue(self._bounded(preferences.get("auto_subsession_minutes"), 5, 240, 30))
@@ -1086,8 +1095,19 @@ class MainWindow(QtWidgets.QMainWindow):
             "minimize_to_tray": self.setting_minimize.isChecked(),
             "auto_export": self.setting_auto_export.isChecked(),
             "delete_after_export": self.setting_delete_export.isChecked(),
+            "detailed_logging": self.setting_detailed_log.isChecked(),
             "channel": self.update_channel.currentData(),
         }, self.preferences_path)
+        set_detailed(self.log, self.setting_detailed_log.isChecked())
+        self.log.debug(
+            "settings_saved decode_interval=%s language=%s minimize=%s auto_export=%s "
+            "delete_after_export=%s",
+            self.setting_decode_interval.value(),
+            self.setting_language.currentData(),
+            self.setting_minimize.isChecked(),
+            self.setting_auto_export.isChecked(),
+            self.setting_delete_export.isChecked(),
+        )
         if not self.capture_engine or not self.capture_engine.current_session:
             self.capture_engine = None
             self._ensure_capture_engine()
@@ -1118,6 +1138,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(str)
     def _global_hotkey_action(self, action: str) -> None:
+        self.log.debug("global_hotkey_triggered action=%s", action)
         if action == "start":
             self._start_capture()
         elif action == "stop":
@@ -1762,16 +1783,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _run_site_operation(self, name: str, callback) -> None:
         if self.site_busy:
+            self.log.debug("site_operation_skipped name=%s reason=busy", name)
             return
         self.site_busy = True
         self._set_send_controls()
+        self.log.debug("site_operation_started name=%s", name)
 
         def worker() -> None:
+            started = time.perf_counter()
             try:
                 self.site_operation_done.emit(name, callback(), None)
             except Exception as error:
                 self.log.exception("background_operation_failed name=%s", name)
                 self.site_operation_done.emit(name, None, error)
+            finally:
+                self.log.debug(
+                    "site_operation_finished name=%s duration_ms=%s",
+                    name,
+                    round((time.perf_counter() - started) * 1000),
+                )
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2175,6 +2205,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def _site_operation_finished(
         self, name: str, result: object, error: object
     ) -> None:
+        self.log.debug(
+            "site_operation_applied name=%s success=%s error_type=%s",
+            name,
+            error is None,
+            type(error).__name__ if error is not None else "none",
+        )
         self.site_busy = False
         if name.startswith("license:"):
             self.license_refresh_running = False
@@ -2339,10 +2375,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_readonly_data(self) -> None:
         if self.data_load_running:
             self.data_load_pending = True
+            self.log.debug("data_load_queued")
             return
         self.data_load_running = True
+        self.log.debug("data_load_started")
 
         def worker() -> None:
+            started = time.perf_counter()
             try:
                 preferences = load_preferences(self.preferences_path)
                 language = str(preferences.get("item_name_language") or "pt")
@@ -2358,13 +2397,31 @@ class MainWindow(QtWidgets.QMainWindow):
                 })
             except Exception as error:
                 self.data_failed.emit(f"{type(error).__name__}: {error}")
+            finally:
+                self.log.debug(
+                    "data_load_worker_finished duration_ms=%s",
+                    round((time.perf_counter() - started) * 1000),
+                )
 
         threading.Thread(target=worker, daemon=True).start()
 
     @QtCore.Slot(object)
     def _apply_readonly_data(self, payload: dict[str, object]) -> None:
         self.preferences = dict(payload.get("preferences") or {})
+        set_detailed(self.log, bool(self.preferences.get("detailed_logging", False)))
         self.snapshot = dict(payload.get("snapshot") or {})
+        stats = dict(self.snapshot.get("stats") or {})
+        self.log.debug(
+            "data_load_applied session_available=%s characters=%s profiles=%s "
+            "subsessions=%s recognized=%s unknown=%s storage_bytes=%s",
+            bool(self.snapshot.get("session_id")),
+            len(self.snapshot.get("characters") or []),
+            len(self.snapshot.get("profiles") or []),
+            len(self.snapshot.get("subsessions") or []),
+            stats.get("recognized", 0),
+            stats.get("unknown", 0),
+            int(payload.get("storage_bytes") or 0),
+        )
         self._apply_license(dict(payload.get("license") or {}))
         self._load_settings_fields()
         self._sync_global_hotkeys()
@@ -2390,6 +2447,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(str)
     def _show_read_error(self, message: str) -> None:
+        self.log.error("data_load_failed error_type=%s", message.split(":", 1)[0])
         self.overview_status.setText(f"Não foi possível ler a sessão: {message}")
         self.license_title.setText("Não foi possível ler a licença local")
         self._finish_data_load()
@@ -2479,16 +2537,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _run_capture_operation(self, name: str, callback) -> None:
         if self.capture_busy:
+            self.log.debug("capture_operation_skipped name=%s reason=busy", name)
             return
         self.capture_busy = True
         self._set_capture_controls()
+        self.log.debug("capture_operation_started name=%s", name)
 
         def worker() -> None:
+            started = time.perf_counter()
             try:
                 self.capture_operation_done.emit(name, callback(), None)
             except Exception as error:
                 self.log.exception("capture_operation_failed name=%s", name)
                 self.capture_operation_done.emit(name, None, error)
+            finally:
+                self.log.debug(
+                    "capture_operation_finished name=%s duration_ms=%s",
+                    name,
+                    round((time.perf_counter() - started) * 1000),
+                )
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2593,6 +2660,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self, name: str, result: object, error: object
     ) -> None:
         self.capture_busy = False
+        self.log.debug(
+            "capture_operation_applied name=%s success=%s error_type=%s",
+            name,
+            error is None,
+            type(error).__name__ if error is not None else "none",
+        )
         if error is not None:
             self.top_capture.setText(f"Captura — falha: {error}")
             if name == "read":
@@ -2611,6 +2684,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtCore.QTimer.singleShot(0, self._stop_capture)
             return
         data = dict(result or {})
+        self.log.debug(
+            "capture_result name=%s live=%s clients=%s connections=%s available=%s "
+            "added=%s bytes=%s fallback=%s failures=%s files=%s paused=%s",
+            name,
+            data.get("live"),
+            data.get("clients"),
+            data.get("connections"),
+            data.get("available"),
+            data.get("added"),
+            data.get("bytes"),
+            data.get("fallback"),
+            len(data.get("failures") or []),
+            len(data.get("files") or []),
+            data.get("paused"),
+        )
         engine = self._ensure_capture_engine()
         if name == "start":
             self.last_capture_session = str(data.get("session_id") or "")
@@ -2703,7 +2791,9 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 engine.heartbeat()
                 self.last_heartbeat_at = now
+                self.log.debug("capture_heartbeat_ok")
             except OSError as error:
+                self.log.warning("capture_heartbeat_failed error_type=%s", type(error).__name__)
                 self.top_capture.setText(f"Captura — heartbeat falhou: {error}")
         if engine.active:
             if now - self.last_storage_scan_at >= 5:
@@ -2738,6 +2828,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _select_client(self, index: int) -> None:
         self.active_client = index
+        self.log.debug("ui_client_selected index=%s", index)
         self._render_overview()
 
     def _render_overview(self) -> None:
@@ -3012,6 +3103,9 @@ QPushButton:hover { border-color: #D4A64D; color: #FFFFFF; }
 QPushButton:focus { border: 2px solid #38BDF8; }
 QPushButton:checked { background: #3A301B; border-color: #D4A64D; color: #F6BE3B; }
 QPushButton:disabled { color: #6D7578; border-color: #26333A; background: #0A0E10; }
+QMessageBox { background: #081820; }
+QMessageBox QLabel { color: #F4F2EB; background: transparent; }
+QMessageBox QPushButton { color: #F4F2EB; min-width: 90px; }
 #sidebar QPushButton { text-align: left; border-color: transparent; padding-left: 18px; }
 #sidebar QPushButton:checked { border-left: 3px solid #F6BE3B; }
 QPushButton[client='true'] { min-width: 210px; }
@@ -3050,6 +3144,14 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 
 def create_application(argv: list[str] | None = None) -> QtWidgets.QApplication:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(argv or ["rf-next-qol-qt-preview"])
+    if not hasattr(app, "_rfnext_translator"):
+        translator = QtCore.QTranslator(app)
+        translator.load(
+            "qtbase_pt_BR",
+            QtCore.QLibraryInfo.path(QtCore.QLibraryInfo.LibraryPath.TranslationsPath),
+        )
+        app.installTranslator(translator)
+        app._rfnext_translator = translator
     _load_fonts()
     app.setStyleSheet(STYLE)
     return app
