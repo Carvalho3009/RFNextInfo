@@ -55,6 +55,38 @@ PAGES = (
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
 
+SUBSESSION_COLUMNS = (
+    ("select", "", 28, True),
+    ("name", "Subsessão", 210, True),
+    ("character", "Personagem", 120, True),
+    ("client", "Cliente", 72, False),
+    ("status", "Status", 90, False),
+    ("time", "Tempo", 82, True),
+    ("map", "Mapa", 130, False),
+    ("spot", "Spot", 150, False),
+    ("mobs", "Mobs", 220, False),
+    ("levels", "Níveis", 160, False),
+    ("kills", "Kills", 58, True),
+    ("finalizations", "Finaliz.", 72, False),
+    ("exp_total", "XP total", 90, True),
+    ("exp_percent", "XP %", 66, True),
+    ("exp_hour", "XP/h", 90, True),
+    ("exp_hour_percent", "XP/h %", 72, True),
+    ("credits", "Créditos", 96, False),
+    ("credits_hour", "Créditos/h", 100, False),
+    ("contribution", "Contrib.", 96, True),
+    ("contribution_hour", "Contrib./h", 100, False),
+    ("loot_total", "Loot", 64, False),
+    ("loot_common", "Comum", 64, False),
+    ("loot_uncommon", "Incomum", 72, False),
+    ("loot_rare", "Raro", 64, False),
+    ("loot_epic", "Épico", 64, False),
+    ("upload", "Envio", 88, False),
+)
+SUBSESSION_COLUMN_INDEX = {
+    key: index for index, (key, _label, _width, _visible) in enumerate(SUBSESSION_COLUMNS)
+}
+
 
 def _load_fonts() -> None:
     for name in ("Saira.ttf", "SairaSemiCondensed-Bold.ttf"):
@@ -759,26 +791,61 @@ class MainWindow(QtWidgets.QMainWindow):
             if text == "Excluir":
                 button.setProperty("danger", True)
             actions.addWidget(button)
+        self.subsession_columns_button = QtWidgets.QToolButton()
+        self.subsession_columns_button.setText("Colunas")
+        self.subsession_columns_button.setToolTip(
+            "Escolha as colunas e arraste os cabeçalhos para mudar a ordem."
+        )
+        self.subsession_columns_button.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        columns_menu = QtWidgets.QMenu(self.subsession_columns_button)
+        self.subsession_column_actions: dict[str, QtGui.QAction] = {}
+        for key, label_text, _width, visible in SUBSESSION_COLUMNS[1:]:
+            action = columns_menu.addAction(label_text)
+            action.setCheckable(True)
+            action.setChecked(visible)
+            action.toggled.connect(
+                lambda checked, selected=key: self._set_subsession_column_visible(
+                    selected, checked
+                )
+            )
+            self.subsession_column_actions[key] = action
+        columns_menu.addSeparator()
+        columns_menu.addAction("Restaurar padrão", self._reset_subsession_columns)
+        self.subsession_columns_button.setMenu(columns_menu)
+        actions.addWidget(self.subsession_columns_button)
         actions.addStretch(1)
         self.subsession_upload_button = QtWidgets.QPushButton("Enviar selecionadas")
         self.subsession_upload_button.clicked.connect(self._send_selected_subsessions)
         actions.addWidget(self.subsession_upload_button)
         layout.addLayout(actions)
 
-        self.subsession_table = QtWidgets.QTableWidget(0, 10)
-        self.subsession_table.setHorizontalHeaderLabels((
-            "", "Subsessão", "Personagem", "Tempo", "Kills", "XP total", "XP %",
-            "XP/h", "XP/h %", "Contrib.",
-        ))
+        self.subsession_table = QtWidgets.QTableWidget(0, len(SUBSESSION_COLUMNS))
+        self.subsession_table.setHorizontalHeaderLabels(
+            tuple(label for _key, label, _width, _visible in SUBSESSION_COLUMNS)
+        )
         self.subsession_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.subsession_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.subsession_table.verticalHeader().setVisible(False)
         self.subsession_table.itemChanged.connect(self._subsession_selection_changed)
         header = self.subsession_table.horizontalHeader()
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
+        header.setSectionsMovable(True)
         header.sectionDoubleClicked.connect(self._autofit_subsession_column)
-        for column, width in enumerate((28, 210, 120, 82, 58, 90, 66, 90, 72, 96)):
+        self._restoring_subsession_columns = True
+        for column, (_key, _label_text, width, visible) in enumerate(SUBSESSION_COLUMNS):
             header.resizeSection(column, width)
+            self.subsession_table.setColumnHidden(column, not visible)
+        self._restoring_subsession_columns = False
+        self.subsession_columns_timer = QtCore.QTimer(self)
+        self.subsession_columns_timer.setSingleShot(True)
+        self.subsession_columns_timer.setInterval(250)
+        self.subsession_columns_timer.timeout.connect(
+            self._save_subsession_columns
+        )
+        header.sectionMoved.connect(self._subsession_columns_changed)
+        header.sectionResized.connect(self._subsession_columns_changed)
         layout.addWidget(self.subsession_table, 1)
 
         pagination = QtWidgets.QHBoxLayout()
@@ -968,6 +1035,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _load_settings_fields(self) -> None:
         preferences = self.preferences
+        column_settings = preferences.get("subsession_columns")
+        self._apply_subsession_columns(
+            dict(column_settings) if isinstance(column_settings, dict) else {}
+        )
         self.setting_capture_directory.setText(str(
             preferences.get("capture_directory") or Path.home() / "Documents" / "Capturas"
         ))
@@ -1385,6 +1456,108 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_page = max(1, self.subsession_page + delta)
         self._render_subsessions()
 
+    def _set_subsession_column_visible(self, key: str, visible: bool) -> None:
+        column = SUBSESSION_COLUMN_INDEX[key]
+        self.subsession_table.setColumnHidden(column, not visible)
+        if not self._restoring_subsession_columns:
+            self.subsession_columns_timer.start()
+
+    def _subsession_columns_changed(self, *_args: object) -> None:
+        if self._restoring_subsession_columns:
+            return
+        header = self.subsession_table.horizontalHeader()
+        selection_position = header.visualIndex(SUBSESSION_COLUMN_INDEX["select"])
+        if selection_position != 0:
+            self._restoring_subsession_columns = True
+            header.moveSection(selection_position, 0)
+            self._restoring_subsession_columns = False
+        self.subsession_columns_timer.start()
+
+    def _save_subsession_columns(self) -> None:
+        header = self.subsession_table.horizontalHeader()
+        order = [
+            SUBSESSION_COLUMNS[header.logicalIndex(visual)][0]
+            for visual in range(header.count())
+        ]
+        visible = [
+            key
+            for key, _label, _width, _default in SUBSESSION_COLUMNS[1:]
+            if not self.subsession_table.isColumnHidden(
+                SUBSESSION_COLUMN_INDEX[key]
+            )
+        ]
+        widths = {
+            key: self.subsession_table.columnWidth(index)
+            for index, (key, _label, _width, _default) in enumerate(
+                SUBSESSION_COLUMNS
+            )
+        }
+        self.preferences = save_preferences(
+            {
+                "subsession_columns": {
+                    "order": order,
+                    "visible": visible,
+                    "widths": widths,
+                }
+            },
+            self.preferences_path,
+        )
+
+    def _apply_subsession_columns(self, settings: dict[str, object]) -> None:
+        if not hasattr(self, "subsession_table"):
+            return
+        known = set(SUBSESSION_COLUMN_INDEX)
+        configured_order = settings.get("order")
+        requested = [
+            str(key) for key in (
+                configured_order if isinstance(configured_order, list) else []
+            )
+            if str(key) in known and str(key) != "select"
+        ]
+        order = ["select", *dict.fromkeys(requested)]
+        order.extend(key for key in SUBSESSION_COLUMN_INDEX if key not in order)
+        configured_visible = settings.get("visible")
+        visible = (
+            {str(key) for key in configured_visible if str(key) in known}
+            if isinstance(configured_visible, list)
+            else {
+                key for key, _label, _width, default in SUBSESSION_COLUMNS
+                if default
+            }
+        )
+        configured_widths = settings.get("widths")
+        widths = dict(configured_widths) if isinstance(configured_widths, dict) else {}
+        header = self.subsession_table.horizontalHeader()
+        self._restoring_subsession_columns = True
+        try:
+            for visual, key in enumerate(order):
+                current = header.visualIndex(SUBSESSION_COLUMN_INDEX[key])
+                if current != visual:
+                    header.moveSection(current, visual)
+            for key, _label, default_width, _default in SUBSESSION_COLUMNS:
+                column = SUBSESSION_COLUMN_INDEX[key]
+                try:
+                    width = max(28, min(800, int(widths.get(key, default_width))))
+                except (TypeError, ValueError):
+                    width = default_width
+                header.resizeSection(column, width)
+                if key != "select":
+                    shown = key in visible
+                    self.subsession_table.setColumnHidden(column, not shown)
+                    action = self.subsession_column_actions[key]
+                    action.blockSignals(True)
+                    action.setChecked(shown)
+                    action.blockSignals(False)
+            self.subsession_table.setColumnHidden(
+                SUBSESSION_COLUMN_INDEX["select"], False
+            )
+        finally:
+            self._restoring_subsession_columns = False
+
+    def _reset_subsession_columns(self) -> None:
+        self._apply_subsession_columns({})
+        self._save_subsession_columns()
+
     def _filtered_subsessions(self) -> list[dict[str, object]]:
         items = list(self.snapshot.get("subsessions") or [])
         view = self.subsession_filter.currentText()
@@ -1431,6 +1604,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 exp_percent / hours
                 if hours and isinstance(exp_percent, (int, float)) else None
             )
+            credits = int(summary.get("credits") or 0)
+            contribution = summary.get("contribution")
+            rarity = dict(summary.get("loot_by_rarity") or {})
+            contribution_hour = (
+                round(contribution / hours)
+                if hours and isinstance(contribution, (int, float)) else None
+            )
             character = (
                 profiles_by_client.get(item.get("client_key"))
                 or profiles_by_uid.get(item.get("character_uid"))
@@ -1438,24 +1618,61 @@ class MainWindow(QtWidgets.QMainWindow):
                 or "Aguardando UID"
             )
             location = str(item.get("location") or "").strip()
-            values = (
-                ("", item["id"]),
-                (str(item.get("name") or "—") + (f"\n{location}" if location else ""), None),
-                (character, None),
-                (f"{duration // 3600:02d}:{duration // 60 % 60:02d}:{duration % 60:02d}", None),
-                (self._format_value(int(summary.get("kills") or 0)), None),
-                (self._format_value(exp_total), None),
-                (self._format_value(exp_percent, "%"), None),
-                (self._format_value(exp_hour), None),
-                (self._format_value(exp_hour_percent, "%"), None),
-                (self._format_value(summary.get("contribution")), None),
+            levels = " · ".join(
+                f"{mob}: {level}"
+                for mob, level in dict(item.get("mob_levels") or {}).items()
             )
-            for column, (text, identifier) in enumerate(values):
+            values = {
+                "select": "",
+                "name": str(item.get("name") or "—")
+                + (f"\n{location}" if location else ""),
+                "character": character,
+                "client": "Cliente B" if item.get("client_key") == "client:b" else "Cliente A",
+                "status": "Em andamento" if item.get("ended_ns") is None else "Encerrada",
+                "time": f"{duration // 3600:02d}:{duration // 60 % 60:02d}:{duration % 60:02d}",
+                "map": str(item.get("map_name") or "—"),
+                "spot": str(item.get("spot_name") or "—"),
+                "mobs": ", ".join(item.get("mobs") or []) or "—",
+                "levels": levels or "—",
+                "kills": self._format_value(int(summary.get("kills") or 0)),
+                "finalizations": self._format_value(
+                    int(summary.get("finalizations") or 0)
+                ),
+                "exp_total": self._format_value(exp_total),
+                "exp_percent": self._format_value(exp_percent, "%"),
+                "exp_hour": self._format_value(exp_hour),
+                "exp_hour_percent": self._format_value(exp_hour_percent, "%"),
+                "credits": self._format_value(credits),
+                "credits_hour": self._format_value(
+                    round(credits / hours) if hours else 0
+                ),
+                "contribution": self._format_value(contribution),
+                "contribution_hour": self._format_value(contribution_hour),
+                "loot_total": self._format_value(sum(
+                    int(rarity.get(key) or 0)
+                    for key in ("common", "uncommon", "rare", "epic")
+                )),
+                "loot_common": self._format_value(int(rarity.get("common") or 0)),
+                "loot_uncommon": self._format_value(int(rarity.get("uncommon") or 0)),
+                "loot_rare": self._format_value(int(rarity.get("rare") or 0)),
+                "loot_epic": self._format_value(int(rarity.get("epic") or 0)),
+                "upload": {
+                    "sent": "Enviada",
+                    "pending": "Pendente",
+                    "failed": "Falhou",
+                }.get(str(item.get("upload_state") or ""), "Não enviada"),
+            }
+            for column, (key, _label, _width, _visible) in enumerate(
+                SUBSESSION_COLUMNS
+            ):
+                text = values[key]
                 cell = QtWidgets.QTableWidgetItem(text)
-                if column == 0:
+                if key == "select":
                     cell.setFlags(cell.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
                     cell.setCheckState(QtCore.Qt.CheckState.Checked if item["id"] in self.selected_subsessions else QtCore.Qt.CheckState.Unchecked)
-                    cell.setData(QtCore.Qt.ItemDataRole.UserRole, identifier)
+                    cell.setData(QtCore.Qt.ItemDataRole.UserRole, item["id"])
+                elif key in {"name", "mobs", "levels"}:
+                    cell.setToolTip(text)
                 cell.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
                 self.subsession_table.setItem(row, column, cell)
             self.subsession_table.setRowHeight(row, 46 if location else 32)
