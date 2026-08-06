@@ -200,7 +200,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.1")
+        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.2")
         self.assertEqual(result["page_count"], 5)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -217,7 +217,13 @@ class QtPreviewSmokeTest(unittest.TestCase):
         from PySide6 import QtCore, QtGui, QtWidgets
 
         from app.ui_qt.data import load_preferences
-        from app.ui_qt.main import ASSETS, MainWindow, create_application
+        from app.ui_qt.main import (
+            ASSETS,
+            SUBSESSION_COLUMNS,
+            SUBSESSION_COLUMN_INDEX,
+            MainWindow,
+            create_application,
+        )
         from core.store import CaptureStore
 
         create_application(["f3-test"])
@@ -240,11 +246,19 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 database_path=database_path,
                 preferences_path=preferences_path,
             )
-            self.assertEqual(window.subsession_table.columnCount(), 10)
             self.assertEqual(
-                [window.subsession_table.horizontalHeaderItem(index).text() for index in range(10)],
-                ["", "Subsessão", "Personagem", "Tempo", "Kills", "XP total", "XP %", "XP/h", "XP/h %", "Contrib."],
+                window.subsession_table.columnCount(), len(SUBSESSION_COLUMNS)
             )
+            self.assertEqual(
+                [
+                    window.subsession_table.horizontalHeaderItem(index).text()
+                    for index in range(len(SUBSESSION_COLUMNS))
+                ],
+                [label for _key, label, _width, _visible in SUBSESSION_COLUMNS],
+            )
+            self.assertNotIn("Diamantes", {
+                action.text() for action in window.subsession_column_actions.values()
+            })
             self.assertGreaterEqual(window.subsession_mobs.minimumHeight(), 300)
             self.assertFalse(hasattr(window, "setting_quick_durations"))
             reader = window.snapshot_reader
@@ -317,15 +331,65 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 }],
                 "subsessions": [subsession],
                 "subsession_summaries": {subsession["id"]: {
-                    "kills": 10, "exp_gained": 1000,
-                    "exp_gained_percent": 2.5, "contribution": 60500,
+                    "kills": 10, "finalizations": 2, "exp_gained": 1000,
+                    "exp_gained_percent": 2.5, "credits": 5740,
+                    "contribution": 60500,
+                    "loot_by_rarity": {
+                        "common": 4, "uncommon": 3, "rare": 2, "epic": 1,
+                    },
                 }},
             })
             window._render_subsessions()
             self.assertEqual(
-                [window.subsession_table.item(0, column).text() for column in range(2, 10)],
+                [
+                    window.subsession_table.item(
+                        0, SUBSESSION_COLUMN_INDEX[key]
+                    ).text()
+                    for key in (
+                        "character", "time", "kills", "exp_total",
+                        "exp_percent", "exp_hour", "exp_hour_percent",
+                        "contribution",
+                    )
+                ],
                 ["Carvalho", "01:00:00", "10", "1.000", "2,50%", "1.000", "2,50%", "60.500"],
             )
+            self.assertEqual(
+                window.subsession_table.item(
+                    0, SUBSESSION_COLUMN_INDEX["finalizations"]
+                ).text(),
+                "2",
+            )
+            self.assertEqual(
+                [
+                    window.subsession_table.item(
+                        0, SUBSESSION_COLUMN_INDEX[key]
+                    ).text()
+                    for key in (
+                        "credits", "credits_hour", "contribution_hour",
+                        "loot_total", "loot_common", "loot_uncommon",
+                        "loot_rare", "loot_epic",
+                    )
+                ],
+                ["5.740", "5.740", "60.500", "10", "4", "3", "2", "1"],
+            )
+            credits_column = SUBSESSION_COLUMN_INDEX["credits"]
+            window.subsession_column_actions["credits"].setChecked(True)
+            self.assertFalse(window.subsession_table.isColumnHidden(credits_column))
+            header = window.subsession_table.horizontalHeader()
+            header.moveSection(header.visualIndex(credits_column), 0)
+            self.assertEqual(header.visualIndex(SUBSESSION_COLUMN_INDEX["select"]), 0)
+            self.assertEqual(header.visualIndex(credits_column), 1)
+            header.resizeSection(credits_column, 144)
+            window._save_subsession_columns()
+            saved_columns = load_preferences(preferences_path)["subsession_columns"]
+            self.assertEqual(saved_columns["order"][:2], ["select", "credits"])
+            self.assertIn("credits", saved_columns["visible"])
+            self.assertEqual(saved_columns["widths"]["credits"], 144)
+            window._reset_subsession_columns()
+            self.assertTrue(window.subsession_table.isColumnHidden(credits_column))
+            window._apply_subsession_columns(saved_columns)
+            self.assertFalse(window.subsession_table.isColumnHidden(credits_column))
+            self.assertEqual(header.visualIndex(credits_column), 1)
             self.assertTrue(window.subsession_table.item(0, 1).textAlignment() & QtCore.Qt.AlignmentFlag.AlignVCenter)
             window.subsession_table.horizontalHeader().resizeSection(1, 300)
             self.assertEqual(window.subsession_table.columnWidth(1), 300)

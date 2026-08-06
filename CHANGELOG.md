@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2 — 2026-08-05
+
+- permite escolher quais informações aparecem no histórico de subsessões;
+- permite reordenar e redimensionar as colunas, preservando a preferência;
+- mantém a seleção fixa na primeira coluna e remove Diamantes das opções.
+
 ## 2.1.1 — 2026-08-05
 
 - exibe o tempo transcorrido de cada subsessão no histórico;
