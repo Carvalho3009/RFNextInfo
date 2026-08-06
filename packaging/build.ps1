@@ -15,8 +15,29 @@ if (-not $env:RFNEXT_BUILD_PYTHON -and (Test-Path -LiteralPath $Dependencies)) {
 
 Push-Location $Project
 try {
+    & $Python -c 'import PySide6'
+    if ($LASTEXITCODE) {
+        throw 'PySide6 não está disponível no ambiente de build. Instale requirements.txt antes de empacotar.'
+    }
     & $Python -m PyInstaller --clean --noconfirm '.\packaging\RFNextInfo.spec'
     if ($LASTEXITCODE) { throw 'Falha ao gerar o executável.' }
+    $PreviousCompatLayer = $env:__COMPAT_LAYER
+    try {
+        $env:__COMPAT_LAYER = 'RunAsInvoker'
+        $SelfTest = Start-Process `
+            -FilePath '.\dist\RFNextInfo\RFNextInfo.exe' `
+            -ArgumentList '--self-test' `
+            -PassThru
+        if (-not $SelfTest.WaitForExit(60000)) {
+            Stop-Process -Id $SelfTest.Id -Force -ErrorAction SilentlyContinue
+            throw 'O autoteste do executável empacotado excedeu 60 segundos.'
+        }
+        if ($SelfTest.ExitCode) {
+            throw "O autoteste do executável empacotado falhou (código $($SelfTest.ExitCode))."
+        }
+    } finally {
+        $env:__COMPAT_LAYER = $PreviousCompatLayer
+    }
     $Inno = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if ($Inno) {
         & $Inno.Source '.\packaging\installer.iss'
