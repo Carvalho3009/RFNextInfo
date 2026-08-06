@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.4 — 2026-08-05
+
+- impede o watchdog de encerrar o PktMon por parâmetros vazios;
+- interpreta em UTF-8 e reconhece o status detalhado do PktMon em português;
+- evita repetir continuamente o mesmo aviso de status desconhecido no log.
+
 ## 2.1.3 — 2026-08-05
 
 - evita que respostas desconhecidas do `pktmon status` interrompam a captura;
