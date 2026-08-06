@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.capture import PktmonCapture, _pktmon_running
+from core.capture import PktmonCapture, _pktmon_running, _pktmon_state
 from core.pktmon_realtime import (
     RealtimeCapture,
     _DataSourceList,
@@ -479,6 +479,51 @@ class CoreTest(unittest.TestCase):
         self.assertFalse(_pktmon_running("Packet Monitor is not running."))
         self.assertFalse(_pktmon_running("O Monitor de Pacotes não está em execução."))
         self.assertTrue(_pktmon_running("Packet Monitor is running."))
+        self.assertTrue(_pktmon_running("Packet Monitor status: Active"))
+        self.assertTrue(_pktmon_running("O Monitor de Pacotes está ativo."))
+        self.assertIsNone(_pktmon_state("resposta ainda não disponível"))
+
+    def test_unknown_pktmon_status_keeps_capture_active_and_is_logged(self):
+        class Runner:
+            def __call__(self, _args, **_kwargs):
+                class Result:
+                    returncode = 0
+                    stdout = ""
+                    stderr = "resposta ainda não disponível"
+
+                return Result()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = PktmonCapture(Path(tmp), runner=Runner())
+            capture._active = True
+            with self.assertLogs("rfnextinfo", level="WARNING") as logged:
+                status = capture.status()
+            self.assertTrue(status.active)
+            self.assertIn("capture_status_unknown", "\n".join(logged.output))
+
+    def test_pktmon_watcher_requires_three_stopped_confirmations(self):
+        class Runner:
+            checks = 0
+
+            def __call__(self, args, **_kwargs):
+                class Result:
+                    returncode = 0
+                    stdout = "Packet Monitor is not running."
+                    stderr = ""
+
+                if args[1] == "status":
+                    self.checks += 1
+                return Result()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = Runner()
+            capture = PktmonCapture(Path(tmp), runner=runner, poll_seconds=0)
+            capture._active = True
+            with self.assertLogs("rfnextinfo", level="WARNING") as logged:
+                capture._watch_disk()
+            self.assertEqual(runner.checks, 3)
+            self.assertFalse(capture.active)
+            self.assertIn("capture_interrupted", "\n".join(logged.output))
 
     def test_connections_are_grouped_by_executable(self):
         paths = {

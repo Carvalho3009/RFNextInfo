@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.3 — 2026-08-05
+
+- evita que respostas desconhecidas do `pktmon status` interrompam a captura;
+- exige três confirmações consecutivas antes de considerar o PktMon encerrado;
+- registra no log a resposta desconhecida ou que confirmou a interrupção.
+
 ## 2.1.2 — 2026-08-05
 
 - permite escolher quais informações aparecem no histórico de subsessões;
