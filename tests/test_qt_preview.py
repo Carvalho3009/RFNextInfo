@@ -24,6 +24,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         )
 
         self.assertIn("QMessageBox { background: #081820; }", app.styleSheet())
+        self.assertIn("QMenu { background: #081820;", app.styleSheet())
         self.assertEqual(
             box.button(QtWidgets.QMessageBox.StandardButton.Yes).text().replace("&", ""),
             "Sim",
