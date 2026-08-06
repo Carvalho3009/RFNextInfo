@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.7 — 2026-08-06
+
+- corrige o contraste do seletor de colunas e dos demais menus Qt;
+- mantém fundo escuro, texto legível, seleção dourada e separadores visíveis.
+
 ## 2.1.6 — 2026-08-06
 
 - adiciona a opção de log completo com registros detalhados e sanitizados;

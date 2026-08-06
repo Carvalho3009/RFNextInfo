@@ -24,6 +24,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         )
 
         self.assertIn("QMessageBox { background: #081820; }", app.styleSheet())
+        self.assertIn("QMenu { background: #081820;", app.styleSheet())
         self.assertEqual(
             box.button(QtWidgets.QMessageBox.StandardButton.Yes).text().replace("&", ""),
             "Sim",
@@ -224,7 +225,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.6")
+        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.7")
         self.assertEqual(result["page_count"], 5)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

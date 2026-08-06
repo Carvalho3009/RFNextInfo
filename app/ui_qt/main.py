@@ -3106,6 +3106,11 @@ QPushButton:disabled { color: #6D7578; border-color: #26333A; background: #0A0E1
 QMessageBox { background: #081820; }
 QMessageBox QLabel { color: #F4F2EB; background: transparent; }
 QMessageBox QPushButton { color: #F4F2EB; min-width: 90px; }
+QMenu { background: #081820; color: #F4F2EB; border: 1px solid #314149; padding: 4px; }
+QMenu::item { background: transparent; padding: 7px 24px 7px 28px; }
+QMenu::item:selected { background: #3A301B; color: #F6BE3B; }
+QMenu::item:disabled { color: #6D7578; }
+QMenu::separator { background: #26333A; height: 1px; margin: 4px 8px; }
 #sidebar QPushButton { text-align: left; border-color: transparent; padding-left: 18px; }
 #sidebar QPushButton:checked { border-left: 3px solid #F6BE3B; }
 QPushButton[client='true'] { min-width: 210px; }
