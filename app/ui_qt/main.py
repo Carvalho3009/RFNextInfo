@@ -138,6 +138,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last_storage_scan_at = 0.0
         self.storage_bytes = 0
         self.last_capture_session = ""
+        self.live_preview_error = ""
         self.pending_export_cleanup = False
         self.snapshot_reader = ReadOnlySnapshotReader(self.database_path)
         try:
@@ -2594,6 +2595,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.capture_busy = False
         if error is not None:
             self.top_capture.setText(f"Captura — falha: {error}")
+            if name == "read":
+                self.next_read_at = (
+                    time.monotonic() + self.setting_decode_interval.value()
+                )
+                self.top_last_read.setText(
+                    f"Última leitura: falhou ({type(error).__name__}); captura continua"
+                )
+                self.top_last_read.setToolTip(str(error))
             self._set_capture_controls()
             pending, self.pending_capture_action = self.pending_capture_action, None
             if pending == "pause":
@@ -2619,21 +2628,37 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             if not data.get("live"):
                 live_error = str(data.get("live_error") or "leitura ao encerrar")
+                self.live_preview_error = live_error
+                self.log.warning("live_preview_start_failed error=%s", live_error)
                 self.top_last_read.setText(
                     f"Última leitura: prévia indisponível ({live_error.split(':', 1)[0]})"
                 )
                 self.top_last_read.setToolTip(live_error)
             else:
+                self.live_preview_error = ""
                 self.top_last_read.setText("Última leitura: primeira em 3 s")
                 self.top_last_read.setToolTip("")
             self._capture_tick()
         elif name == "read":
             now = datetime.now().strftime("%H:%M:%S")
-            self.top_last_read.setText(
-                f"Última leitura: {now} · {data.get('added', 0)} evento(s)"
-                if data.get("available")
-                else "Última leitura: prévia indisponível; ao encerrar"
-            )
+            if data.get("available"):
+                suffix = " · modo compatível" if data.get("fallback") else ""
+                self.top_last_read.setText(
+                    f"Última leitura: {now} · {data.get('added', 0)} evento(s){suffix}"
+                )
+                self.top_last_read.setToolTip(self.live_preview_error)
+            else:
+                error_type = self.live_preview_error.split(":", 1)[0]
+                self.top_last_read.setText(
+                    f"Última leitura: prévia indisponível ({error_type})"
+                    if error_type else "Última leitura: prévia indisponível"
+                )
+                self.top_last_read.setToolTip(self.live_preview_error)
+            if data.get("capture_prefix"):
+                self.preferences = save_preferences({
+                    "capture_prefix": data.get("capture_prefix"),
+                    "capture_ports": data.get("capture_ports"),
+                }, self.preferences_path)
             self.next_read_at = time.monotonic() + self.setting_decode_interval.value()
             self._load_readonly_data()
         elif name == "pause":
