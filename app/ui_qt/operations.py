@@ -534,6 +534,7 @@ class CaptureEngine:
         self.client_ports: tuple[tuple[int, ...], ...] = ()
         self.live_files: list[Path] = []
         self.pending_files: list[Path] = []
+        self.capture_ports: tuple[int, ...] = ()
         self.live_index = 0
         self.capture_index = 0
         self.paused = False
@@ -552,6 +553,9 @@ class CaptureEngine:
         if not files:
             return None
         ports = tuple(int(value) for value in preferences.get("capture_ports") or ())
+        self.capture_ports = ports
+        match = re.search(r"-(\d+)$", prefix)
+        self.capture_index = int(match.group(1)) if match else 0
         status = capture.attach(prefix, ports)
         self.capture = capture
         self.current_session = session_id
@@ -579,6 +583,14 @@ class CaptureEngine:
         directory.mkdir(parents=True, exist_ok=True)
         return directory / f"{_safe_name(self.current_session or 'sessao', 'sessao')}-live-{self.live_index:04d}.pcap"
 
+    def _next_capture_prefix(self) -> str:
+        self.capture_index += 1
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return (
+            f"rfnext-{stamp}-{self.session_counter:03d}"
+            f"-{self.capture_index:02d}"
+        )
+
     def start(self) -> dict[str, object]:
         with self._lock:
             if self.active:
@@ -605,13 +617,9 @@ class CaptureEngine:
                 self.live_index = 0
                 self.capture_index = 0
                 self.pending_files.clear()
-            self.capture_index += 1
-            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            prefix = (
-                f"rfnext-{stamp}-{self.session_counter:03d}"
-                f"-{self.capture_index:02d}"
-            )
+            prefix = self._next_capture_prefix()
             ports = tuple(dict.fromkeys((*local_ports, *remote_ports)))
+            self.capture_ports = ports
             capture = self.capture_factory(self.capture_directory)
             if capture.system_running():
                 raise RuntimeError(
@@ -662,6 +670,7 @@ class CaptureEngine:
         )
         if ports and self.capture:
             self.capture.add_ports(ports)
+            self.capture_ports = tuple(dict.fromkeys((*self.capture_ports, *ports)))
         if ports and self.live_capture:
             self.live_capture.add_ports(ports)
 
@@ -678,9 +687,41 @@ class CaptureEngine:
 
     def read_live(self) -> dict[str, object]:
         with self._lock:
-            if not self.live_capture or not self.current_session:
+            if not self.current_session:
                 return {"added": 0, "available": False}
             self._refresh_routes()
+            if not self.live_capture:
+                if not self.capture or not self.capture.active:
+                    return {"added": 0, "available": False}
+                completed = self.capture.stop().files
+                prefix = self._next_capture_prefix()
+                capture = self.capture_factory(self.capture_directory)
+                capture.start_for_ports(prefix, self.capture_ports)
+                self.capture = capture
+                self.pending_files.extend(
+                    path for path in completed if path not in self.pending_files
+                )
+                store = CaptureStore(self.database_path)
+                try:
+                    added = sum(
+                        store.ingest(
+                            path,
+                            session_id=self.current_session,
+                            ports=DEFAULT_PORTS,
+                            client_ports=self.client_ports,
+                        )
+                        for path in completed
+                        if path.exists()
+                    )
+                finally:
+                    store.close()
+                return {
+                    "added": added,
+                    "available": True,
+                    "fallback": True,
+                    "capture_prefix": prefix,
+                    "capture_ports": list(self.capture_ports),
+                }
             target = self.live_capture.rotate(self._next_live_target())
             if not target.exists() or target.stat().st_size <= 24:
                 target.unlink(missing_ok=True)

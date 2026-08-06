@@ -79,6 +79,11 @@ class _FakeLive:
         pass
 
 
+class _BrokenLive(_FakeLive):
+    def start(self) -> None:
+        raise RuntimeError("Pktmonapi.dll não está disponível")
+
+
 class _FakeStore:
     def __init__(self, _path: Path) -> None:
         pass
@@ -206,6 +211,35 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertEqual(engine.start()["session_id"], session)
             self.assertFalse(engine.stop()["paused"])
             self.assertIsNone(engine.current_session)
+
+    def test_falls_back_to_rotating_etl_when_realtime_api_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "app.ui_qt.operations.CaptureStore", _FakeStore
+        ):
+            engine = CaptureEngine(
+                Path(directory),
+                Path(directory) / "capture.sqlite3",
+                capture_factory=_FakeCapture,
+                live_factory=_BrokenLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({10}, {50000}, {12020})
+                },
+                client_reader=lambda *_args: [{
+                    "pid": 10, "local_ports": (50000,),
+                    "remote_ports": (12020,),
+                }],
+            )
+
+            started = engine.start()
+            result = engine.read_live()
+
+            self.assertFalse(started["live"])
+            self.assertIn("Pktmonapi.dll", started["live_error"])
+            self.assertTrue(result["available"])
+            self.assertTrue(result["fallback"])
+            self.assertEqual(result["added"], 1)
+            self.assertTrue(engine.capture.active)
+            self.assertNotEqual(result["capture_prefix"], started["capture_prefix"])
 
     def test_stop_preserves_live_events_instead_of_replacing_them_with_etl(self):
         ingested = []
