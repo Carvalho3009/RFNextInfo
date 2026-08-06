@@ -10,6 +10,60 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_live_refresh_preserves_unsaved_subsession_form(self):
+        from PySide6 import QtCore, QtWidgets
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["subsession-draft-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            window._ensure_capture_engine = lambda: SimpleNamespace(
+                current_session="", active=False
+            )
+            payload = {
+                "preferences": {"subsession_duration_minutes": 30},
+                "license": {"active": False, "message": "Licença indisponível"},
+                "snapshot": {"session_id": None, "subsessions": [], "stats": {}},
+                "storage_bytes": 0,
+            }
+            window._apply_readonly_data(payload)
+            window.subsession_duration.setValue(77)
+            window.auto_subsession.setChecked(True)
+            window.subsession_name.setText("Rascunho")
+            window.subsession_map.blockSignals(True)
+            window.subsession_map.clear()
+            window.subsession_map.addItem("Mapa rascunho")
+            window.subsession_map.blockSignals(False)
+            window.subsession_spot.blockSignals(True)
+            window.subsession_spot.clear()
+            window.subsession_spot.addItem("Spot rascunho")
+            window.subsession_spot.blockSignals(False)
+            window.subsession_mobs.clear()
+            mob = QtWidgets.QListWidgetItem("Mob rascunho")
+            mob.setFlags(mob.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
+            mob.setCheckState(QtCore.Qt.CheckState.Checked)
+            window.subsession_mobs.addItem(mob)
+
+            window._apply_readonly_data(payload)
+
+            self.assertEqual(window.subsession_duration.value(), 77)
+            self.assertTrue(window.auto_subsession.isChecked())
+            self.assertEqual(window.subsession_name.text(), "Rascunho")
+            self.assertEqual(window.subsession_map.currentText(), "Mapa rascunho")
+            self.assertEqual(window.subsession_spot.currentText(), "Spot rascunho")
+            self.assertEqual(window.subsession_mobs.count(), 1)
+            self.assertEqual(
+                window.subsession_mobs.item(0).checkState(),
+                QtCore.Qt.CheckState.Checked,
+            )
+            window.close()
+
     def test_message_boxes_use_dark_theme_and_portuguese_buttons(self):
         from PySide6 import QtWidgets
         from app.ui_qt.main import create_application
@@ -225,7 +279,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.7")
+        self.assertEqual(result["title"], "RF NEXT QOL — 2.1.8")
         self.assertEqual(result["page_count"], 5)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

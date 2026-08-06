@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
+import threading
 import traceback
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -12,6 +14,8 @@ MAX_UPLOAD_LINES = 2_000
 STANDARD_LOG_BYTES = 1024 * 1024
 DETAILED_LOG_BYTES = 10 * 1024 * 1024
 DETAILED_LOG_BACKUPS = 5
+
+_HOOKS_INSTALLED = False
 
 _REDACTIONS = (
     (re.compile(r"KRV(?:-[A-Z2-7]{5}){6}", re.IGNORECASE), "<LICENCA>"),
@@ -92,6 +96,44 @@ def set_detailed(logger: logging.Logger, enabled: bool) -> None:
             handler.backupCount = DETAILED_LOG_BACKUPS if enabled else 3
     if changed:
         logger.info("detailed_logging_changed enabled=%s", enabled)
+
+
+def install_exception_hooks(logger: logging.Logger) -> None:
+    """Registra exceções que escapam da interface ou de threads."""
+    global _HOOKS_INSTALLED
+    if _HOOKS_INSTALLED:
+        return
+    _HOOKS_INSTALLED = True
+    previous_sys = sys.excepthook
+    previous_thread = threading.excepthook
+    previous_unraisable = sys.unraisablehook
+
+    def system_hook(exc_type, exc_value, exc_traceback) -> None:
+        logger.critical(
+            "unhandled_exception",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+        previous_sys(exc_type, exc_value, exc_traceback)
+
+    def thread_hook(args: threading.ExceptHookArgs) -> None:
+        logger.critical(
+            "unhandled_thread_exception thread=%s",
+            getattr(args.thread, "name", "unknown"),
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+        previous_thread(args)
+
+    def unraisable_hook(args) -> None:
+        logger.error(
+            "unraisable_exception object_type=%s",
+            type(args.object).__name__,
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+        previous_unraisable(args)
+
+    sys.excepthook = system_hook
+    threading.excepthook = thread_hook
+    sys.unraisablehook = unraisable_hook
 
 
 def recent_lines(path: Path) -> list[str]:

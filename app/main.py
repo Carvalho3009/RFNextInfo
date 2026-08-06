@@ -42,7 +42,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "2.1.7"
+VERSION = "2.1.8"
 STATE_DIR = Path(os.getenv("LOCALAPPDATA", Path.home())) / "Karvalho" / "RFNextInfo"
 MACHINE_STATE_DIR = (
     Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RFNextInfo"
@@ -488,7 +488,11 @@ def _capture_summary(
         confirmed_rover = (
             (
                 event.get("type") == "player_equip_update"
-                and uid_matches
+                and (
+                    not target_uid
+                    or observed_uid is not None
+                    and str(observed_uid) == target_uid
+                )
             )
             or (
                 event.get("type") == "change_rover_response"

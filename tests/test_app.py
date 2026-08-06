@@ -35,7 +35,14 @@ from app.main import (
     _session_elapsed,
 )
 from app.site_profile import SiteProfileClient
-from app.support_log import LOGGER_NAME, configure, recent_lines, set_detailed
+from app.support_log import (
+    LOGGER_NAME,
+    configure,
+    install_exception_hooks,
+    recent_lines,
+    set_detailed,
+)
+import app.support_log as support_log_module
 from app.updater import UPDATE_SIGNATURE_CONTEXT, download_verified, verify_manifest
 import app.main as main_module
 
@@ -305,6 +312,16 @@ class AppLogicTest(unittest.TestCase):
         with patch("app.site_profile.urllib.request.urlopen", side_effect=error):
             with self.assertRaisesRegex(ValueError, "mercado invalido"):
                 client._request("/api/import/market", b"{}", "token", "application/json")
+
+    def test_site_profile_reports_uncertain_timeout_without_claiming_rejection(self):
+        client = SiteProfileClient(Path("."))
+        with patch(
+            "app.site_profile.urllib.request.urlopen", side_effect=TimeoutError
+        ):
+            with self.assertRaisesRegex(ValueError, "podem ter sido recebidos"):
+                client._request(
+                    "/api/import/market", b"{}", "token", "application/json"
+                )
 
     def test_market_upload_is_split_by_server_type(self):
         client = SiteProfileClient(Path("."))
@@ -935,11 +952,11 @@ class AppLogicTest(unittest.TestCase):
                 "events": [
                     {
                         "type": "player_equip_update",
-                        "character_uid": "202",
+                        "character_uid": "101",
                         "data": {
                             "fields": {
-                                "character_uid": "202",
-                                "rover_item_index": 4400011,
+                                "character_uid": "101",
+                                "rover_item_index": 4000002,
                             }
                         },
                     },
@@ -948,8 +965,8 @@ class AppLogicTest(unittest.TestCase):
                         "character_uid": "101",
                         "data": {
                             "fields": {
-                                "character_uid": "101",
-                                "rover_item_index": 4000002,
+                                "character_uid": "202",
+                                "rover_item_index": 4400011,
                             }
                         },
                     },
@@ -1789,6 +1806,34 @@ class AppLogicTest(unittest.TestCase):
                 self.assertIn("detailed_event", detailed_lines)
                 self.assertNotIn("segredo", detailed_lines)
             finally:
+                for handler in list(logging.getLogger(LOGGER_NAME).handlers):
+                    logging.getLogger(LOGGER_NAME).removeHandler(handler)
+                    handler.close()
+
+    def test_unhandled_exception_hook_writes_to_support_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rfnext-info.log"
+            logger = configure(path, "test")
+            previous_installed = support_log_module._HOOKS_INSTALLED
+            support_log_module._HOOKS_INSTALLED = False
+            try:
+                with (
+                    patch.object(support_log_module.sys, "excepthook", Mock()),
+                    patch.object(support_log_module.threading, "excepthook", Mock()),
+                    patch.object(support_log_module.sys, "unraisablehook", Mock()),
+                ):
+                    install_exception_hooks(logger)
+                    try:
+                        raise RuntimeError("erro não tratado")
+                    except RuntimeError:
+                        support_log_module.sys.excepthook(
+                            *support_log_module.sys.exc_info()
+                        )
+                lines = "\n".join(recent_lines(path))
+                self.assertIn("unhandled_exception", lines)
+                self.assertIn("RuntimeError", lines)
+            finally:
+                support_log_module._HOOKS_INSTALLED = previous_installed
                 for handler in list(logging.getLogger(LOGGER_NAME).handlers):
                     logging.getLogger(LOGGER_NAME).removeHandler(handler)
                     handler.close()
