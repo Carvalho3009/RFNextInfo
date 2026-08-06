@@ -1,7 +1,7 @@
 Unicode True
 RequestExecutionLevel admin
 Name "RF NEXT QOL"
-OutFile "..\dist\RFNextQOL-Setup-2.1.3.exe"
+OutFile "..\dist\RFNextQOL-Setup-2.1.4.exe"
 InstallDir "$PROGRAMFILES64\Karvalho\RF NEXT QOL"
 InstallDirRegKey HKLM "Software\Karvalho\RFNextInfo" "InstallDir"
 
@@ -48,7 +48,7 @@ self_test_exec_failed:
   StrCpy $0 -1
 self_test_log:
   FileOpen $1 "$APPDATA\Karvalho\RFNextInfo\logs\install.log" a
-  FileWrite $1 "version=2.1.3 self_test=$0$\r$\n"
+  FileWrite $1 "version=2.1.4 self_test=$0$\r$\n"
   FileClose $1
   SetShellVarContext current
   StrCmp $0 0 self_test_ok

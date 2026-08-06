@@ -27,6 +27,11 @@ def _pktmon_state(status: str) -> bool | None:
     if any(marker in status for marker in stopped):
         return False
     if (
+        all(marker in status for marker in ("dados coletados:", "filtros de pacote:"))
+        or all(marker in status for marker in ("collected data:", "packet filters:"))
+    ):
+        return True
+    if (
         "running" in status
         or "em execução" in status
         or "em execucao" in status
@@ -107,6 +112,7 @@ class PktmonCapture:
         self._last_status = CaptureStatus(False, 0, 0, False, ())
         self._last_system_state: bool | None = None
         self._last_status_text = ""
+        self._last_unknown_status_text = ""
 
     @staticmethod
     def _validate_session_id(session_id: str) -> None:
@@ -123,6 +129,8 @@ class PktmonCapture:
                 ["pktmon", *args],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -140,8 +148,14 @@ class PktmonCapture:
         raw = "\n".join(value for value in (result.stdout, result.stderr) if value).strip()
         self._last_status_text = raw
         self._last_system_state = _pktmon_state(raw)
-        if self._last_system_state is None:
+        if (
+            self._last_system_state is None
+            and raw != self._last_unknown_status_text
+        ):
             LOGGER.warning("capture_status_unknown output=%r", raw[:500])
+            self._last_unknown_status_text = raw
+        elif self._last_system_state is not None:
+            self._last_unknown_status_text = ""
         return self._last_system_state
 
     def packet_count(self) -> int | None:
@@ -187,11 +201,12 @@ class PktmonCapture:
         self.heartbeat()
         if not self._watchdog_enabled:
             return
-        path = str(self._heartbeat_path).replace("'", "''")
-        token = self._heartbeat_token
         timeout = self._heartbeat_timeout_seconds
         script = (
-            "param([string]$Path,[string]$Token,[int]$Timeout,[int]$ParentPid) "
+            "$Path=$env:RFNEXT_HEARTBEAT_PATH; "
+            "$Token=$env:RFNEXT_HEARTBEAT_TOKEN; "
+            "$Timeout=[int]$env:RFNEXT_HEARTBEAT_TIMEOUT; "
+            "$ParentPid=[int]$env:RFNEXT_HEARTBEAT_PARENT_PID; "
             "while($true) { Start-Sleep -Seconds 5; "
             "$file=Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue; "
             "if($null -eq $file) { & pktmon stop 2>$null; & pktmon filter remove 2>$null; exit }; "
@@ -202,11 +217,19 @@ class PktmonCapture:
             "{ & pktmon stop 2>$null; & pktmon filter remove 2>$null; exit } "
             "}"
         )
+        environment = os.environ.copy()
+        environment.update({
+            "RFNEXT_HEARTBEAT_PATH": str(self._heartbeat_path),
+            "RFNEXT_HEARTBEAT_TOKEN": self._heartbeat_token,
+            "RFNEXT_HEARTBEAT_TIMEOUT": str(timeout),
+            "RFNEXT_HEARTBEAT_PARENT_PID": str(os.getpid()),
+        })
         self._watchdog = subprocess.Popen(
             [
                 "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle",
-                "Hidden", "-Command", script, path, token, str(timeout), str(os.getpid()),
+                "Hidden", "-Command", script,
             ],
+            env=environment,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 

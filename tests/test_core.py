@@ -481,6 +481,10 @@ class CoreTest(unittest.TestCase):
         self.assertTrue(_pktmon_running("Packet Monitor is running."))
         self.assertTrue(_pktmon_running("Packet Monitor status: Active"))
         self.assertTrue(_pktmon_running("O Monitor de Pacotes está ativo."))
+        self.assertTrue(_pktmon_running(
+            "Dados Coletados: Contadores de pacotes, captura de pacotes "
+            "Filtros de Pacote: 1 RFNextInfo1 TCP 12000"
+        ))
         self.assertIsNone(_pktmon_state("resposta ainda não disponível"))
 
     def test_unknown_pktmon_status_keeps_capture_active_and_is_logged(self):
@@ -498,8 +502,51 @@ class CoreTest(unittest.TestCase):
             capture._active = True
             with self.assertLogs("rfnextinfo", level="WARNING") as logged:
                 status = capture.status()
+                capture.status()
             self.assertTrue(status.active)
+            self.assertEqual(len(logged.output), 1)
             self.assertIn("capture_status_unknown", "\n".join(logged.output))
+
+    def test_pktmon_command_decodes_utf8_output(self):
+        class Runner:
+            kwargs = {}
+
+            def __call__(self, _args, **kwargs):
+                self.kwargs = kwargs
+
+                class Result:
+                    returncode = 0
+                    stdout = "O Monitor de Pacotes não está em execução."
+                    stderr = ""
+
+                return Result()
+
+        runner = Runner()
+        capture = PktmonCapture(Path("capture-test"), runner=runner)
+        self.assertFalse(capture.system_running())
+        self.assertEqual(runner.kwargs["encoding"], "utf-8")
+        self.assertEqual(runner.kwargs["errors"], "replace")
+
+    def test_watchdog_receives_heartbeat_values_through_environment(self):
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "core.capture.subprocess.Popen"
+        ) as popen:
+            capture = PktmonCapture(Path(tmp), runner=lambda *_a, **_k: None)
+            capture._watchdog_enabled = True
+            capture._start_watchdog()
+
+        command = popen.call_args.args[0]
+        environment = popen.call_args.kwargs["env"]
+        self.assertEqual(command[-2], "-Command")
+        self.assertNotIn("param(", command[-1])
+        self.assertEqual(
+            environment["RFNEXT_HEARTBEAT_PATH"], str(capture._heartbeat_path)
+        )
+        self.assertEqual(
+            environment["RFNEXT_HEARTBEAT_TOKEN"], capture._heartbeat_token
+        )
+        self.assertEqual(environment["RFNEXT_HEARTBEAT_TIMEOUT"], "60")
+        self.assertEqual(environment["RFNEXT_HEARTBEAT_PARENT_PID"], str(os.getpid()))
 
     def test_pktmon_watcher_requires_three_stopped_confirmations(self):
         class Runner:
