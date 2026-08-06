@@ -69,6 +69,38 @@ class CoreTest(unittest.TestCase):
             readonly.close()
             store.close()
 
+    def test_subsession_intervals_use_event_time_without_overlap(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = CaptureStore(Path(folder) / "state.sqlite3")
+
+            def add_event(offset: int, timestamp: int) -> None:
+                with store.conn:
+                    store.conn.execute(
+                        """INSERT INTO events
+                           (source,flow,stream_offset,bundle_seq,ts_ns,opcode,
+                            type,character_uid,data_json,session_id)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            "source", "flow", offset, 0, timestamp, 0x0307,
+                            "update_exp", "uid-1", "{}", "session-1",
+                        ),
+                    )
+
+            add_event(1, 199)
+            add_event(2, 200)
+            first = store.interval_envelope("session-1", "uid-1", 100, 200)
+            second = store.interval_envelope("session-1", "uid-1", 200, 300)
+            self.assertEqual([event["ts_ns"] for event in first["events"]], [199])
+            self.assertEqual([event["ts_ns"] for event in second["events"]], [200])
+
+            add_event(3, 150)
+            refreshed = store.interval_envelope("session-1", "uid-1", 100, 200)
+            self.assertEqual(
+                [event["ts_ns"] for event in refreshed["events"]],
+                [150, 199],
+            )
+            store.close()
+
     def test_capture_heartbeat_is_atomic_and_removed_on_stop(self):
         class Runner:
             running = True
