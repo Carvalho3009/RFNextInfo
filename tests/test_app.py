@@ -35,7 +35,7 @@ from app.main import (
     _session_elapsed,
 )
 from app.site_profile import SiteProfileClient
-from app.support_log import LOGGER_NAME, configure, recent_lines
+from app.support_log import LOGGER_NAME, configure, recent_lines, set_detailed
 from app.updater import UPDATE_SIGNATURE_CONTEXT, download_verified, verify_manifest
 import app.main as main_module
 
@@ -1781,6 +1781,13 @@ class AppLogicTest(unittest.TestCase):
                 self.assertNotIn("123e4567-e89b-12d3-a456-426614174000", lines)
                 self.assertNotIn("PersonagemSecreto", lines)
                 self.assertIn("<LICENCA>", lines)
+                logger.debug("hidden_debug")
+                self.assertNotIn("hidden_debug", "\n".join(recent_lines(path)))
+                set_detailed(logger, True)
+                logger.debug("detailed_event token=segredo")
+                detailed_lines = "\n".join(recent_lines(path))
+                self.assertIn("detailed_event", detailed_lines)
+                self.assertNotIn("segredo", detailed_lines)
             finally:
                 for handler in list(logging.getLogger(LOGGER_NAME).handlers):
                     logging.getLogger(LOGGER_NAME).removeHandler(handler)

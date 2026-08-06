@@ -9,6 +9,9 @@ from pathlib import Path
 LOGGER_NAME = "rfnextinfo"
 MAX_UPLOAD_BYTES = 256 * 1024
 MAX_UPLOAD_LINES = 2_000
+STANDARD_LOG_BYTES = 1024 * 1024
+DETAILED_LOG_BYTES = 10 * 1024 * 1024
+DETAILED_LOG_BACKUPS = 5
 
 _REDACTIONS = (
     (re.compile(r"KRV(?:-[A-Z2-7]{5}){6}", re.IGNORECASE), "<LICENCA>"),
@@ -52,11 +55,11 @@ class _LocalRedactingFormatter(logging.Formatter):
         return f"{stack}\n{exc_info[0].__name__}"
 
 
-def configure(path: Path, version: str) -> logging.Logger:
+def configure(path: Path, version: str, *, detailed: bool = False) -> logging.Logger:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger(LOGGER_NAME)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG if detailed else logging.INFO)
     logger.propagate = False
     for handler in list(logger.handlers):
         if getattr(handler, "_rfnext_handler", False):
@@ -64,8 +67,8 @@ def configure(path: Path, version: str) -> logging.Logger:
             handler.close()
     handler = RotatingFileHandler(
         path,
-        maxBytes=1024 * 1024,
-        backupCount=3,
+        maxBytes=DETAILED_LOG_BYTES if detailed else STANDARD_LOG_BYTES,
+        backupCount=DETAILED_LOG_BACKUPS if detailed else 3,
         encoding="utf-8",
     )
     handler._rfnext_handler = True
@@ -76,15 +79,26 @@ def configure(path: Path, version: str) -> logging.Logger:
         )
     )
     logger.addHandler(handler)
-    logger.info("app_started version=%s", version)
+    logger.info("app_started version=%s detailed_logging=%s", version, detailed)
     return logger
+
+
+def set_detailed(logger: logging.Logger, enabled: bool) -> None:
+    changed = logger.isEnabledFor(logging.DEBUG) != enabled
+    logger.setLevel(logging.DEBUG if enabled else logging.INFO)
+    for handler in logger.handlers:
+        if getattr(handler, "_rfnext_handler", False):
+            handler.maxBytes = DETAILED_LOG_BYTES if enabled else STANDARD_LOG_BYTES
+            handler.backupCount = DETAILED_LOG_BACKUPS if enabled else 3
+    if changed:
+        logger.info("detailed_logging_changed enabled=%s", enabled)
 
 
 def recent_lines(path: Path) -> list[str]:
     path = Path(path)
     files = [
         path.with_name(f"{path.name}.{index}")
-        for index in range(3, 0, -1)
+        for index in range(DETAILED_LOG_BACKUPS, 0, -1)
     ] + [path]
     lines: list[str] = []
     for candidate in files:
