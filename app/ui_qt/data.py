@@ -66,6 +66,11 @@ class ReadOnlySnapshotReader:
                 database.collection_type_counts(self.current_session)
                 if self.current_session else {}
             )
+            snapshot["character_history"] = database.character_history()
+            snapshot["client_bindings"] = (
+                database.client_bindings(self.current_session)
+                if self.current_session else []
+            )
             snapshot["combat_monitors"] = []
             if self.current_session:
                 names = load_npc_names(language)
@@ -191,6 +196,8 @@ class ReadOnlySnapshotReader:
             "capture_windows": [],
             "collection_type_counts": {},
             "combat_monitors": [],
+            "character_history": [],
+            "client_bindings": [],
         }
 
 

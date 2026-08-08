@@ -1499,6 +1499,123 @@ class CoreTest(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_confirmed_uid_history_survives_session_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "identity.pcap"
+            source.write_bytes(b"identity")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    source,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": 101,
+                            "character_name": "Alice",
+                        }},
+                    }],
+                    "old-session",
+                    client_ports=((50001,),),
+                )
+                self.assertEqual(
+                    store.character_history()[0]["uid"],
+                    "101",
+                )
+                store.clear_exported("old-session")
+                history = store.character_history()
+                self.assertEqual(
+                    (history[0]["uid"], history[0]["name"]),
+                    ("101", "Alice"),
+                )
+            finally:
+                store.close()
+
+    def test_historical_uid_routes_client_until_canonical_identity_arrives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            identity = root / "identity.pcap"
+            exp = root / "exp.pcap"
+            canonical = root / "canonical.pcap"
+            identity.write_bytes(b"identity")
+            exp.write_bytes(b"exp")
+            canonical.write_bytes(b"canonical")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    identity,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": 101,
+                            "character_name": "Alice",
+                        }},
+                    }],
+                    "old-session",
+                    client_ports=((50001,),),
+                )
+                store.select_client_uid("new-session", "client:a", "101")
+                with self.assertRaisesRegex(ValueError, "outro cliente"):
+                    store.select_client_uid("new-session", "client:b", "101")
+                store.add_events(
+                    exp,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0307,
+                        "type": "update_exp",
+                        "data": {"fields": {"gain_exp": 10}},
+                    }],
+                    "new-session",
+                    client_ports=((50001,),),
+                )
+                self.assertEqual(
+                    store.conn.execute(
+                        "SELECT character_uid FROM events WHERE session_id='new-session'"
+                    ).fetchone()[0],
+                    "101",
+                )
+                store.add_events(
+                    canonical,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": 202,
+                            "character_name": "Bob",
+                        }},
+                    }],
+                    "new-session",
+                    client_ports=((50001,),),
+                )
+                self.assertEqual(
+                    {
+                        row[0] for row in store.conn.execute(
+                            "SELECT DISTINCT character_uid FROM events "
+                            "WHERE session_id='new-session'"
+                        )
+                    },
+                    {"202"},
+                )
+                self.assertEqual(
+                    store.client_bindings("new-session")[0]["source"],
+                    "canonical",
+                )
+            finally:
+                store.close()
+
     def test_marked_entry_bundle_binds_appear_player_to_client(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -174,6 +174,8 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         ensure_runtime_layout()
         self.database_path = Path(database_path)
+        database = CaptureStore(self.database_path)
+        database.close()
         self.knowledge_path = (
             KNOWLEDGE_DB_PATH
             if self.database_path == DB_PATH
@@ -494,6 +496,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.client_group = QtWidgets.QButtonGroup(bar)
         self.client_group.setExclusive(True)
         self.client_buttons: list[QtWidgets.QPushButton] = []
+        self.client_uid_buttons: list[QtWidgets.QToolButton] = []
         for index, name in enumerate(("Cliente A · Definir nome", "Cliente B · Definir nome")):
             button = QtWidgets.QPushButton(name)
             button.setProperty("client", True)
@@ -510,6 +513,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 lambda checked=False, client=index: self._rename_client(client)
             )
             row.addWidget(rename)
+            uid = QtWidgets.QToolButton()
+            uid.setText("UID: Auto")
+            uid.setToolTip(
+                f"Escolher um personagem confirmado para o Cliente {chr(65 + index)}"
+            )
+            uid.clicked.connect(
+                lambda checked=False, client=index: self._choose_client_uid(client)
+            )
+            self.client_uid_buttons.append(uid)
+            row.addWidget(uid)
         row.addStretch(1)
         return bar
 
@@ -1821,6 +1834,129 @@ class MainWindow(QtWidgets.QMainWindow):
             profile = profiles[index] if index < len(profiles) else None
         return str(profile.get("uid")) if profile and profile.get("uid") else None
 
+    def _uid_selections(self) -> dict[str, str]:
+        value = self.preferences.get("client_uid_selections")
+        return {
+            str(key): str(uid)
+            for key, uid in (value.items() if isinstance(value, dict) else ())
+            if key in {"client:a", "client:b"} and uid
+        }
+
+    def _refresh_client_uid_buttons(self) -> None:
+        history = {
+            str(item.get("uid")): str(item.get("name") or "")
+            for item in self.snapshot.get("character_history") or []
+            if item.get("uid")
+        }
+        selections = self._uid_selections()
+        for index, button in enumerate(self.client_uid_buttons):
+            uid = selections.get(f"client:{chr(97 + index)}")
+            button.setText(
+                f"UID: {history.get(uid) or uid}" if uid else "UID: Auto"
+            )
+            button.setToolTip(
+                f"Vínculo do Cliente {chr(65 + index)}: "
+                + (f"{history.get(uid) or 'personagem conhecido'} · UID {uid}" if uid else "detecção automática")
+            )
+
+    def _choose_client_uid(self, index: int) -> None:
+        history = list(self.snapshot.get("character_history") or [])
+        choices = [("Automático · detectar pelo jogo", None)]
+        choices.extend(
+            (
+                " · ".join(
+                    value for value in (
+                        str(item.get("name") or "Sem nome"),
+                        f"UID {item['uid']}",
+                        str(item.get("last_seen_at") or "").replace("T", " ")[:16],
+                    ) if value
+                ),
+                str(item["uid"]),
+            )
+            for item in history if item.get("uid")
+        )
+        labels = [label for label, _uid in choices]
+        current_uid = self._uid_selections().get(f"client:{chr(97 + index)}")
+        current = next(
+            (position for position, (_label, uid) in enumerate(choices) if uid == current_uid),
+            0,
+        )
+        selected, accepted = QtWidgets.QInputDialog.getItem(
+            self,
+            f"UID do Cliente {chr(65 + index)}",
+            "Escolha um personagem confirmado anteriormente:",
+            labels,
+            current,
+            False,
+        )
+        if not accepted:
+            return
+        uid = choices[labels.index(selected)][1]
+        try:
+            self._set_client_uid_selection(index, uid)
+        except ValueError as error:
+            QtWidgets.QMessageBox.warning(self, "Vínculo de UID", str(error))
+
+    def _set_client_uid_selection(self, index: int, uid: str | None) -> None:
+        key = f"client:{chr(97 + index)}"
+        other = "client:b" if key == "client:a" else "client:a"
+        selections = self._uid_selections()
+        if uid and selections.get(other) == uid:
+            raise ValueError("O UID já está selecionado no outro cliente")
+        session_id = str(
+            (self.capture_engine.current_session if self.capture_engine else None)
+            or self.snapshot.get("session_id")
+            or ""
+        )
+        if session_id:
+            store = CaptureStore(self.database_path)
+            try:
+                store.select_client_uid(session_id, key, uid)
+            finally:
+                store.close()
+        if uid:
+            selections[key] = uid
+        else:
+            selections.pop(key, None)
+        self.preferences = save_preferences(
+            {"client_uid_selections": selections}, self.preferences_path
+        )
+        self._refresh_client_uid_buttons()
+        if session_id:
+            self._load_readonly_data()
+
+    def _apply_uid_selections(self, session_id: str) -> None:
+        store = CaptureStore(self.database_path)
+        try:
+            for key, uid in self._uid_selections().items():
+                try:
+                    store.select_client_uid(session_id, key, uid)
+                except ValueError as error:
+                    self.log.warning(
+                        "uid_history_binding_rejected client=%s error=%s", key, error
+                    )
+        finally:
+            store.close()
+
+    def _reconcile_uid_selections(self) -> None:
+        selections = self._uid_selections()
+        corrected = []
+        for binding in self.snapshot.get("client_bindings") or []:
+            key = str(binding.get("client_key") or "")
+            confirmed = str(binding.get("uid") or "")
+            selected = selections.get(key)
+            if binding.get("source") == "canonical" and selected and selected != confirmed:
+                selections.pop(key, None)
+                corrected.append(key)
+        if corrected:
+            self.preferences = save_preferences(
+                {"client_uid_selections": selections}, self.preferences_path
+            )
+            self.top_last_read.setText(
+                "Vínculo histórico ajustado pela identificação confirmada do jogo"
+            )
+            self.log.warning("uid_history_selection_reconciled clients=%s", corrected)
+
     def _save_subsession(self) -> None:
         session_id = str(self.snapshot.get("session_id") or "")
         if not session_id:
@@ -3058,6 +3194,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preferences = dict(payload.get("preferences") or {})
         set_detailed(self.log, bool(self.preferences.get("detailed_logging", False)))
         self.snapshot = dict(payload.get("snapshot") or {})
+        self._reconcile_uid_selections()
         stats = dict(self.snapshot.get("stats") or {})
         self.log.debug(
             "data_load_applied session_available=%s characters=%s profiles=%s "
@@ -3678,6 +3815,7 @@ class MainWindow(QtWidgets.QMainWindow):
         engine = self._ensure_capture_engine()
         if name == "start":
             self.last_capture_session = str(data.get("session_id") or "")
+            self._apply_uid_selections(self.last_capture_session)
             self.preferences = save_preferences({
                 "session_counter": data.get("session_counter"),
                 "last_session": data.get("session_id"),
@@ -4277,6 +4415,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 for folded in names
             )
             button.setText(f"Cliente {chr(65 + index)} · {display or 'Definir nome'}")
+        self._refresh_client_uid_buttons()
 
         key = f"client:{chr(97 + self.active_client)}"
         routed = any(item.get("client_key") for item in characters)

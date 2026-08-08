@@ -410,7 +410,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.0")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.1")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -727,6 +727,107 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertEqual(
                 load_preferences(preferences_path)["subsession_favorites"], {}
             )
+            window.close()
+
+    def test_uid_history_can_be_selected_independently_per_client(self):
+        from app.ui_qt.data import load_preferences
+        from app.ui_qt.main import MainWindow, create_application
+        from core.store import CaptureStore
+
+        create_application(["uid-history-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database_path = root / "capture.sqlite3"
+            preferences_path = root / "preferences.json"
+            store = CaptureStore(database_path)
+            with store.conn:
+                store.conn.execute(
+                    """INSERT INTO character_history
+                       (character_uid,character_name,last_seen_at,
+                        last_session_id,last_client_key)
+                       VALUES('101','Alice','2026-08-08T12:00:00Z','old','client:a')"""
+                )
+            store.close()
+
+            window = MainWindow(
+                load_data=False,
+                database_path=database_path,
+                preferences_path=preferences_path,
+            )
+            window.capture_timer.stop()
+            window.snapshot = {
+                "session_id": "session",
+                "character_history": [{
+                    "uid": "101", "name": "Alice",
+                    "last_seen_at": "2026-08-08T12:00:00Z",
+                }],
+                "client_bindings": [],
+            }
+            window._load_readonly_data = lambda: None
+            window._set_client_uid_selection(0, "101")
+
+            self.assertEqual(
+                load_preferences(preferences_path)["client_uid_selections"],
+                {"client:a": "101"},
+            )
+            self.assertEqual(window.client_uid_buttons[0].text(), "UID: Alice")
+            store = CaptureStore(database_path, readonly=True)
+            self.assertEqual(
+                store.client_bindings("session")[0],
+                {
+                    "client_key": "client:a", "uid": "101",
+                    "name": "Alice", "source": "manual",
+                },
+            )
+            store.close()
+            with self.assertRaisesRegex(ValueError, "outro cliente"):
+                window._set_client_uid_selection(1, "101")
+
+            window._set_client_uid_selection(0, None)
+            self.assertEqual(
+                load_preferences(preferences_path)["client_uid_selections"], {}
+            )
+            window.close()
+
+    def test_uid_history_schema_is_created_before_first_read(self):
+        from app.ui_qt.main import MainWindow, create_application
+        from core.store import CaptureStore
+
+        create_application(["uid-history-migration-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database_path = root / "capture.sqlite3"
+            store = CaptureStore(database_path)
+            with store.conn:
+                store.conn.execute(
+                    """INSERT INTO captures
+                       (source,size,mtime_ns,imported_at,events_added,
+                        session_id,ingestion_key)
+                       VALUES('old.pcap',1,1,'2026-08-01T12:00:00+00:00',
+                              0,'old','test')"""
+                )
+                store.conn.execute(
+                    """INSERT INTO client_bindings
+                       (session_id,client_key,character_uid,
+                        character_name,binding_source)
+                       VALUES('old','client:a','101','Alice','canonical')"""
+                )
+                store.conn.execute("DROP TABLE character_history")
+            store.close()
+
+            window = MainWindow(
+                load_data=False,
+                database_path=database_path,
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            store = CaptureStore(database_path, readonly=True)
+            self.assertEqual(
+                (store.character_history()[0]["uid"],
+                 store.character_history()[0]["name"]),
+                ("101", "Alice"),
+            )
+            store.close()
             window.close()
 
 

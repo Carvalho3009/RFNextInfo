@@ -1,7 +1,13 @@
 Unicode True
 RequestExecutionLevel admin
 Name "RF NEXT QOL"
-OutFile "..\dist\RFNextQOL-Setup-3.0.0.exe"
+!ifndef APP_VERSION
+!define APP_VERSION "3.0.1"
+!endif
+!ifndef APP_SOURCE
+!define APP_SOURCE "..\dist\RFNextInfo"
+!endif
+OutFile "..\dist\RFNextQOL-Setup-${APP_VERSION}.exe"
 InstallDir "$PROGRAMFILES64\Karvalho\RF NEXT QOL"
 InstallDirRegKey HKLM "Software\Karvalho\RFNextInfo" "InstallDir"
 
@@ -36,7 +42,7 @@ Section "RF NEXT QOL" SEC_APP
   Sleep 1500
   RMDir /r "$INSTDIR\_internal"
   SetOutPath "$INSTDIR"
-  File /r "..\dist\RFNextInfo\*.*"
+  File /r "${APP_SOURCE}\*.*"
   SetShellVarContext all
   CreateDirectory "$INSTDIR\data"
   CreateDirectory "$INSTDIR\database"
@@ -53,7 +59,7 @@ self_test_exec_failed:
   StrCpy $0 -1
 self_test_log:
   FileOpen $1 "$INSTDIR\logs\install.log" a
-  FileWrite $1 "version=3.0.0 self_test=$0$\r$\n"
+  FileWrite $1 "version=${APP_VERSION} self_test=$0$\r$\n"
   FileClose $1
   SetShellVarContext current
   StrCmp $0 0 self_test_ok

@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.1 — beta
+
+- mantém um histórico persistente dos UIDs canônicos reconhecidos;
+- permite selecionar por cliente um personagem conhecido anteriormente;
+- impede que o mesmo UID seja vinculado simultaneamente aos dois clientes;
+- corrige automaticamente uma seleção manual quando a captura confirma outro UID.
+
 ## 3.0.0 — beta
 
 - mostra o consumo atual de memória RAM no topo;
