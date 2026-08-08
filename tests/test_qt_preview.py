@@ -127,6 +127,57 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(window.combat_widgets["boss"][1]["boss_layout"].count(), 0)
         window.close()
 
+    def test_combat_cards_keep_their_height_and_scroll_instead_of_overlapping(self):
+        from PySide6 import QtWidgets
+        from app.ui_qt.main import MainWindow, create_application
+
+        app = create_application(["combat-card-layout-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            entities = [
+                {"npc_index": index, "name": f"Mob {index}", "hp_percent": 100.0}
+                for index in range(8)
+            ]
+            window.snapshot = {"combat_monitors": [{
+                "client_key": "client:a",
+                "character_name": "Carvalho",
+                "nearby_monsters": entities,
+                "nearby_players": [
+                    {"name": f"Jogador {index}", "hp_percent": 100.0}
+                    for index in range(8)
+                ],
+            }]}
+            window._render_combat()
+            window.show()
+            for mode, page_index in (("pve", 2), ("pvp", 3)):
+                with self.subTest(mode=mode):
+                    window.page_stack.setCurrentIndex(page_index)
+                    app.processEvents()
+                    layout = window.combat_widgets[mode][0]["nearby_layout"]
+                    rows = [
+                        layout.itemAt(index).widget()
+                        for index in range(layout.count())
+                    ]
+                    self.assertTrue(
+                        window.page_stack.currentWidget().findChild(
+                            QtWidgets.QScrollArea
+                        )
+                    )
+                    self.assertTrue(all(row.height() >= 64 for row in rows))
+                    self.assertTrue(
+                        all(
+                            current.geometry().bottom() < following.geometry().top()
+                            for current, following in zip(rows, rows[1:])
+                        )
+                    )
+            window.close()
+
     def test_live_refresh_preserves_unsaved_subsession_form(self):
         from PySide6 import QtCore, QtWidgets
         from app.ui_qt.main import MainWindow, create_application
