@@ -176,6 +176,34 @@ class QtPreviewSmokeTest(unittest.TestCase):
                             for current, following in zip(rows, rows[1:])
                         )
                     )
+            for mode in ("pve", "pvp"):
+                page = window.combat_page_layouts[mode]
+                self.assertEqual(
+                    [
+                        page["layout"].getItemPosition(
+                            page["layout"].indexOf(card)
+                        )
+                        for card in page["cards"]
+                    ],
+                    [(0, 0, 1, 2), (1, 0, 1, 2)],
+                )
+            window.showMaximized()
+            app.processEvents()
+            window._sync_responsive_layouts()
+            for mode in ("pve", "pvp"):
+                page = window.combat_page_layouts[mode]
+                self.assertEqual(
+                    [
+                        page["layout"].getItemPosition(
+                            page["layout"].indexOf(card)
+                        )
+                        for card in page["cards"]
+                    ],
+                    [(0, 0, 1, 1), (0, 1, 1, 1)],
+                )
+            window.showNormal()
+            app.processEvents()
+            window._sync_responsive_layouts()
             window.close()
 
     def test_live_refresh_preserves_unsaved_subsession_form(self):

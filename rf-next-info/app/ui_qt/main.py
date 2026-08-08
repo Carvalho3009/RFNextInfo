@@ -291,12 +291,16 @@ class MainWindow(QtWidgets.QMainWindow):
             ctypes.windll.dwmapi.DwmSetWindowAttribute(
                 int(self.winId()), 20, ctypes.byref(enabled), ctypes.sizeof(enabled)
             )
-        self._sync_overview_layout()
+        self._sync_responsive_layouts()
 
     def changeEvent(self, event: QtCore.QEvent) -> None:
         super().changeEvent(event)
         if event.type() == QtCore.QEvent.Type.WindowStateChange:
-            QtCore.QTimer.singleShot(0, self._sync_overview_layout)
+            QtCore.QTimer.singleShot(0, self._sync_responsive_layouts)
+
+    def _sync_responsive_layouts(self) -> None:
+        self._sync_overview_layout()
+        self._sync_combat_layout()
 
     def _sync_overview_layout(self) -> None:
         if hasattr(self, "overview_secondary"):
@@ -324,6 +328,28 @@ class MainWindow(QtWidgets.QMainWindow):
                     sum(heights)
                     + self.primary_metric_grid.verticalSpacing() * (len(heights) - 1)
                 )
+
+    def _sync_combat_layout(self) -> None:
+        expanded = self.isMaximized() or self.isFullScreen()
+        for page in getattr(self, "combat_page_layouts", {}).values():
+            layout = page["layout"]
+            cards = page["cards"]
+            for card in cards:
+                layout.removeWidget(card)
+            for row in range(3):
+                layout.setRowStretch(row, 0)
+            if expanded:
+                for index, card in enumerate(cards):
+                    layout.addWidget(card, 0, index)
+                layout.setRowStretch(1, 1)
+                layout.setColumnStretch(0, 1)
+                layout.setColumnStretch(1, 1)
+            else:
+                for index, card in enumerate(cards):
+                    layout.addWidget(card, index, 0, 1, 2)
+                layout.setRowStretch(2, 1)
+                layout.setColumnStretch(0, 1)
+                layout.setColumnStretch(1, 0)
 
     def _build_tray(self, icon: QtGui.QIcon) -> QtWidgets.QSystemTrayIcon | None:
         if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
@@ -546,6 +572,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_combat_page(self, mode: str) -> QtWidgets.QWidget:
         if not hasattr(self, "combat_widgets"):
             self.combat_widgets: dict[str, list[dict[str, Any]]] = {}
+            self.combat_page_layouts: dict[str, dict[str, Any]] = {}
         title = {"pve": "Monitor PvE", "pvp": "Monitor PvP", "boss": "Boss"}[mode]
         page = QtWidgets.QWidget(objectName=f"pageCombat{mode.upper()}")
         column = QtWidgets.QVBoxLayout(page)
@@ -603,13 +630,14 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         content = QtWidgets.QWidget(objectName="scrollContent")
-        content_layout = QtWidgets.QVBoxLayout(content)
+        content_layout = QtWidgets.QGridLayout(content)
         content_layout.setContentsMargins(0, 0, 8, 0)
         content_layout.setSpacing(12)
         content_layout.setSizeConstraint(
             QtWidgets.QLayout.SizeConstraint.SetMinimumSize
         )
         widgets = []
+        cards = []
         for index in range(2):
             card = QtWidgets.QFrame(objectName="panel")
             layout = QtWidgets.QVBoxLayout(card)
@@ -676,7 +704,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.addWidget(progress)
                 layout.addLayout(stats)
             layout.addWidget(status)
-            content_layout.addWidget(card)
+            content_layout.addWidget(card, index, 0, 1, 2)
+            cards.append(card)
             widgets.append(
                 {
                     "heading": heading,
@@ -691,7 +720,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 }
             )
         self.combat_widgets[mode] = widgets
-        content_layout.addStretch(1)
+        content_layout.setRowStretch(2, 1)
+        self.combat_page_layouts[mode] = {
+            "layout": content_layout,
+            "cards": cards,
+        }
         scroll.setWidget(content)
         column.addWidget(scroll, 1)
         return page
