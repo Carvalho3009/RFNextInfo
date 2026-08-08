@@ -635,6 +635,100 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertTrue(window.setting_detailed_log.isChecked())
             window.close()
 
+    def test_subsession_level_filter_and_full_favorites(self):
+        from PySide6 import QtCore, QtWidgets
+
+        from app.ui_qt.data import load_preferences
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["subsession-favorites-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preferences_path = root / "preferences.json"
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=preferences_path,
+            )
+            window.capture_timer.stop()
+            window.preferences = {}
+            window.farm_catalog = {
+                "Mapa": {"Spot": {"Mob A": (10, 12), "Mob B": (20,)}}
+            }
+            window.subsession_map.addItem("Mapa")
+            window._subsession_map_changed("Mapa")
+
+            window.subsession_filter_level_from.setValue(15)
+            self.assertEqual(window.subsession_mobs.count(), 1)
+            self.assertEqual(
+                window.subsession_mobs.item(0).data(
+                    QtCore.Qt.ItemDataRole.UserRole
+                ),
+                "Mob B",
+            )
+            window.subsession_filter_level_from.setValue(0)
+            window.subsession_mobs.item(0).setCheckState(
+                QtCore.Qt.CheckState.Checked
+            )
+            window.subsession_filter_level_from.setValue(15)
+            self.assertEqual(window._selected_mobs(), ["Mob A"])
+
+            window.subsession_client.setCurrentIndex(1)
+            window.subsession_other_mob.setText("Mob extra")
+            window.subsession_level_from.setValue(60)
+            window.subsession_level_to.setValue(70)
+            window.subsession_duration.setValue(45)
+            window.subsession_name.setText("Farm favorito")
+            window.auto_subsession.setChecked(True)
+            window.auto_subsession_minutes.setValue(20)
+            with mock.patch.object(
+                QtWidgets.QInputDialog,
+                "getText",
+                return_value=("Favorito completo", True),
+            ):
+                window._save_subsession_favorite()
+
+            saved = load_preferences(preferences_path)["subsession_favorites"]
+            self.assertEqual(saved["Favorito completo"]["client"], 1)
+            self.assertEqual(saved["Favorito completo"]["mobs"], ["Mob A"])
+            self.assertEqual(saved["Favorito completo"]["filter_level_from"], 15)
+            self.assertEqual(saved["Favorito completo"]["other_mob"], "Mob extra")
+            self.assertEqual(saved["Favorito completo"]["duration"], 45)
+            self.assertTrue(saved["Favorito completo"]["automatic"])
+
+            window.subsession_client.setCurrentIndex(0)
+            window.subsession_other_mob.clear()
+            window.subsession_level_from.setValue(0)
+            window.subsession_level_to.setValue(0)
+            window.subsession_duration.setValue(0)
+            window.subsession_name.clear()
+            window.auto_subsession.setChecked(False)
+            window.subsession_filter_level_from.setValue(0)
+            window._toggle_all_mobs(False)
+            window._load_subsession_favorite()
+
+            self.assertEqual(window.subsession_client.currentIndex(), 1)
+            self.assertEqual(window._selected_mobs(), ["Mob A"])
+            self.assertEqual(window.subsession_filter_level_from.value(), 15)
+            self.assertEqual(window.subsession_other_mob.text(), "Mob extra")
+            self.assertEqual(window.subsession_level_from.value(), 60)
+            self.assertEqual(window.subsession_level_to.value(), 70)
+            self.assertEqual(window.subsession_duration.value(), 45)
+            self.assertEqual(window.subsession_name.text(), "Farm favorito")
+            self.assertTrue(window.auto_subsession.isChecked())
+            self.assertEqual(window.auto_subsession_minutes.value(), 20)
+
+            with mock.patch.object(
+                QtWidgets.QMessageBox,
+                "question",
+                return_value=QtWidgets.QMessageBox.StandardButton.Yes,
+            ):
+                window._delete_subsession_favorite()
+            self.assertEqual(
+                load_preferences(preferences_path)["subsession_favorites"], {}
+            )
+            window.close()
+
 
 if __name__ == "__main__":
     unittest.main()
