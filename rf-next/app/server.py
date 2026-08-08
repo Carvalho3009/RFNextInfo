@@ -1095,13 +1095,17 @@ def market_data():
         total_registered = sum(summary["totalRegistered"] for summary in server_summaries.values())
         if snapshot:
             rows = db.execute(
-                "WITH ranked AS (SELECT p.*, s.captured_at, "
+                "WITH latest_snapshots AS (SELECT id FROM (SELECT id, "
+                "ROW_NUMBER() OVER (PARTITION BY server_type ORDER BY captured_at DESC, id DESC) position "
+                "FROM market_snapshots) WHERE position=1), "
+                "ranked AS (SELECT p.*, s.captured_at, "
                 "s.server_type, "
                 "ROW_NUMBER() OVER (PARTITION BY s.server_type, p.item_id, p.refinement ORDER BY s.captured_at DESC, s.id DESC) position, "
                 "COUNT(*) OVER (PARTITION BY s.server_type, p.item_id, p.refinement) capture_count "
                 "FROM market_prices p JOIN market_snapshots s ON s.id = p.snapshot_id) "
                 "SELECT server_type, item_id, item_name, category, subcategory, refinement, lowest_price, highest_price, "
-                "registered_items, grade, captured_at, capture_count FROM ranked WHERE position = 1 "
+                "registered_items, grade, captured_at, capture_count FROM ranked "
+                "WHERE position = 1 AND snapshot_id IN (SELECT id FROM latest_snapshots) "
                 "ORDER BY server_type, item_id, refinement"
             ).fetchall()
             history = {}
@@ -5692,6 +5696,15 @@ if __name__ == "__main__":
             assert combined_market["priceLevels"] == [
                 {"price": 100, "quantity": 1}, {"price": 110, "quantity": 2}, {"price": 120, "quantity": 2},
             ]
+            with database() as db:
+                newer_global_snapshot = db.execute(
+                    "INSERT INTO market_snapshots (captured_at, imported_at, source_id, row_count, total_registered, profile, server_type) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    ("2026-07-21T22:00:00+00:00", datetime.now(timezone.utc).isoformat(), "self-test-global-newer", 0, 0, "carvalho", 1),
+                ).lastrowid
+            assert not any(listing["serverType"] == 1 and listing["itemId"] == "1000150" for listing in market_data()["listings"])
+            with database() as db:
+                db.execute("DELETE FROM market_snapshots WHERE id=?", (newer_global_snapshot,))
             with database() as db:
                 db.execute("DELETE FROM market_price_levels WHERE snapshot_id=?", (global_snapshot,))
                 db.execute("DELETE FROM market_prices WHERE snapshot_id=?", (global_snapshot,))
