@@ -23,6 +23,9 @@
   com a fonte, margens internas e espaçamento vertical suficientes; textos e
   valores não podem ficar cortados ou sobrepostos, e a rolagem preserva o
   espaço entre cartões quando a lista ultrapassar a janela.
+- Em janela, os monitores exibem os Clientes A e B em linhas separadas; quando
+  maximizado ou em tela cheia, dividem a área igualmente em duas colunas, como
+  na Visão geral.
 - Monitor PvP lista jogadores visíveis com nome, level, classe confirmada e
   guilda; relações não confirmadas nunca recebem o rótulo de inimigo.
 - Na próxima versão, a leitura PvP não mantém cartões de jogadores sem
