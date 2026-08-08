@@ -2477,6 +2477,50 @@ def database():
             imported_at TEXT NOT NULL,
             PRIMARY KEY (profile, idempotency_key)
         );
+        CREATE TABLE IF NOT EXISTS character_observations (
+            profile TEXT NOT NULL,
+            character_uid TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '',
+            level INTEGER,
+            biosuit_item_index INTEGER,
+            rover_item_index INTEGER,
+            guild_id TEXT,
+            guild_name TEXT NOT NULL DEFAULT '',
+            protocol_version TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            PRIMARY KEY (profile, character_uid)
+        );
+        CREATE TABLE IF NOT EXISTS mob_observations (
+            npc_index INTEGER NOT NULL,
+            protocol_version TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '',
+            level INTEGER,
+            max_hp INTEGER,
+            location TEXT NOT NULL DEFAULT '',
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            last_profile TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (npc_index, protocol_version)
+        );
+        CREATE TABLE IF NOT EXISTS profile_monitor_alerts (
+            profile TEXT PRIMARY KEY,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS boss_rewards (
+            profile TEXT NOT NULL,
+            event_id TEXT NOT NULL,
+            protocol_version TEXT NOT NULL,
+            boss_id TEXT,
+            boss_name TEXT NOT NULL DEFAULT '',
+            recipient_uid TEXT,
+            recipient_name TEXT NOT NULL DEFAULT '',
+            reward_item_index INTEGER,
+            reward_quantity INTEGER,
+            observed_at TEXT NOT NULL,
+            PRIMARY KEY (profile, event_id)
+        );
         CREATE TABLE IF NOT EXISTS market_snapshots (
             id INTEGER PRIMARY KEY,
             captured_at TEXT NOT NULL,
@@ -3954,6 +3998,17 @@ def farm_loot_list(raw):
                 )
             }
     result = []
+    rarity_labels = {
+        "comum": 1,
+        "common": 1,
+        "incomum": 2,
+        "uncommon": 2,
+        "raro": 3,
+        "rare": 3,
+        "épico": 4,
+        "epico": 4,
+        "epic": 4,
+    }
     for item in raw:
         if not isinstance(item, dict):
             continue
@@ -3961,7 +4016,10 @@ def farm_loot_list(raw):
         name = str(item.get("name") or item.get("item") or item.get("nome") or (f"Item {item_id}" if item_id else "Item")).strip()[:160]
         try:
             quantity = int(item.get("quantity") or item.get("count") or 0)
-            rarity = int(item.get("rarity") or item.get("grade") or grades.get(item_id) or 0)
+            raw_rarity = item.get("rarity")
+            if isinstance(raw_rarity, str) and not raw_rarity.strip().isdigit():
+                raw_rarity = rarity_labels.get(raw_rarity.strip().casefold())
+            rarity = int(raw_rarity or item.get("grade") or grades.get(item_id) or 0)
         except (TypeError, ValueError):
             raise ValueError("Item de loot inválido.") from None
         if quantity < 1 or quantity > 1_000_000_000 or rarity not in range(7):
@@ -4284,6 +4342,150 @@ def import_farm_session(profile, payload, idempotency_key):
     return {"ok": True, "duplicate": False, "records": len(fresh)}
 
 
+def _observation_int(value, label, minimum=0, maximum=10**18):
+    if value in (None, ""):
+        return None
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} inválido.") from None
+    if not minimum <= result <= maximum:
+        raise ValueError(f"{label} inválido.")
+    return result
+
+
+def import_observations(profile, payload, idempotency_key):
+    if not re.fullmatch(r"[A-Fa-f0-9]{64}", idempotency_key or ""):
+        raise ValueError("Chave de idempotência inválida.")
+    if not isinstance(payload, dict):
+        raise ValueError("Observações inválidas.")
+    characters = payload.get("characters") or []
+    mobs = payload.get("mobs") or []
+    if not isinstance(characters, list) or not isinstance(mobs, list):
+        raise ValueError("Observações inválidas.")
+    if len(characters) > 5_000 or len(mobs) > 5_000:
+        raise ValueError("Lote de observações excede o limite.")
+    clean_characters = []
+    for item in characters:
+        if not isinstance(item, dict):
+            raise ValueError("Personagem observado inválido.")
+        uid = str(item.get("character_uid") or "").strip()
+        if not uid.isdigit() or not 1 <= len(uid) <= 20:
+            raise ValueError("UID observado inválido.")
+        clean_characters.append({
+            "uid": uid,
+            "name": str(item.get("name") or "").strip()[:80],
+            "level": _observation_int(item.get("level"), "Level", 1, 999),
+            "biosuit": _observation_int(item.get("biosuit_item_index"), "Biosuit", 1, 2**32 - 1),
+            "rover": _observation_int(item.get("rover_item_index"), "Rover", 1, 2**32 - 1),
+            "guild_id": str(item.get("guild_id") or "").strip()[:40] or None,
+            "guild_name": str(item.get("guild_name") or "").strip()[:80],
+            "version": str(item.get("protocol_version") or "1.28.5")[:20],
+            "first": str(item.get("first_seen_at") or datetime.now(timezone.utc).isoformat())[:40],
+            "last": str(item.get("last_seen_at") or datetime.now(timezone.utc).isoformat())[:40],
+        })
+    clean_mobs = []
+    for item in mobs:
+        if not isinstance(item, dict):
+            raise ValueError("Mob observado inválido.")
+        npc = _observation_int(item.get("npc_index"), "NPC", 1, 2**32 - 1)
+        clean_mobs.append({
+            "npc": npc,
+            "name": str(item.get("name") or "").strip()[:100],
+            "level": _observation_int(item.get("level"), "Level", 1, 999),
+            "max_hp": _observation_int(item.get("max_hp"), "HP máximo", 1, 10**18),
+            "location": str(item.get("location") or "").strip()[:160],
+            "version": str(item.get("protocol_version") or "1.28.5")[:20],
+            "first": str(item.get("first_seen_at") or datetime.now(timezone.utc).isoformat())[:40],
+            "last": str(item.get("last_seen_at") or datetime.now(timezone.utc).isoformat())[:40],
+        })
+    received_at = datetime.now(timezone.utc).isoformat()
+    with database() as db:
+        if db.execute(
+            "SELECT 1 FROM profile_imports WHERE profile=? AND idempotency_key=?",
+            (profile, idempotency_key),
+        ).fetchone():
+            return {"ok": True, "duplicate": True, "characters": 0, "mobs": 0}
+        for item in clean_characters:
+            db.execute(
+                """INSERT INTO character_observations
+                   (profile,character_uid,name,level,biosuit_item_index,
+                    rover_item_index,guild_id,guild_name,protocol_version,
+                    first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(profile,character_uid) DO UPDATE SET
+                    name=CASE WHEN excluded.name!='' THEN excluded.name ELSE name END,
+                    level=COALESCE(excluded.level,level),
+                    biosuit_item_index=COALESCE(excluded.biosuit_item_index,biosuit_item_index),
+                    rover_item_index=COALESCE(excluded.rover_item_index,rover_item_index),
+                    guild_id=COALESCE(excluded.guild_id,guild_id),
+                    guild_name=CASE WHEN excluded.guild_name!='' THEN excluded.guild_name ELSE guild_name END,
+                    last_seen_at=excluded.last_seen_at""",
+                (profile, item["uid"], item["name"], item["level"], item["biosuit"],
+                 item["rover"], item["guild_id"], item["guild_name"], item["version"],
+                 item["first"], item["last"]),
+            )
+        for item in clean_mobs:
+            db.execute(
+                """INSERT INTO mob_observations
+                   (npc_index,protocol_version,name,level,max_hp,location,
+                    first_seen_at,last_seen_at,last_profile) VALUES(?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(npc_index,protocol_version) DO UPDATE SET
+                    name=CASE WHEN excluded.name!='' THEN excluded.name ELSE name END,
+                    level=COALESCE(excluded.level,level),
+                    max_hp=COALESCE(excluded.max_hp,max_hp),
+                    location=CASE WHEN excluded.location!='' THEN excluded.location ELSE location END,
+                    last_seen_at=excluded.last_seen_at,last_profile=excluded.last_profile""",
+                (item["npc"], item["version"], item["name"], item["level"],
+                 item["max_hp"], item["location"], item["first"], item["last"], profile),
+            )
+        db.execute(
+            "INSERT INTO profile_imports(profile,idempotency_key,imported_at) VALUES(?,?,?)",
+            (profile, idempotency_key, received_at),
+        )
+    return {
+        "ok": True,
+        "duplicate": False,
+        "characters": len(clean_characters),
+        "mobs": len(clean_mobs),
+        "receipt": idempotency_key[:16],
+    }
+
+
+def save_monitor_alerts(profile, payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Configuração de alertas inválida.")
+    allowed = {
+        "characters_enabled": bool(payload.get("characters_enabled")),
+        "characters": [str(value).strip()[:80] for value in payload.get("characters") or [] if str(value).strip()],
+        "guilds_enabled": bool(payload.get("guilds_enabled")),
+        "guilds": [str(value).strip()[:80] for value in payload.get("guilds") or [] if str(value).strip()],
+        "pvp_hit": bool(payload.get("pvp_hit")),
+        "boss_detected": bool(payload.get("boss_detected")),
+        "low_hp": bool(payload.get("low_hp")),
+        "low_hp_percent": _observation_int(payload.get("low_hp_percent", 30), "Percentual de HP", 1, 99),
+        "sound": bool(payload.get("sound", True)),
+    }
+    if len(allowed["characters"]) > 200 or len(allowed["guilds"]) > 200:
+        raise ValueError("Lista de alertas excede o limite.")
+    updated = datetime.now(timezone.utc).isoformat()
+    with database() as db:
+        db.execute(
+            """INSERT INTO profile_monitor_alerts(profile,config_json,updated_at)
+               VALUES(?,?,?) ON CONFLICT(profile) DO UPDATE SET
+               config_json=excluded.config_json,updated_at=excluded.updated_at""",
+            (profile, json.dumps(allowed, ensure_ascii=False, separators=(",", ":")), updated),
+        )
+    return {"ok": True, "profile": profile, "alerts": allowed, "updated_at": updated}
+
+
+class ApplicationHTTPServer(ThreadingHTTPServer):
+    """Fila maior e threads descartáveis para picos de uploads dos clientes."""
+
+    request_queue_size = 128
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 class Handler(SimpleHTTPRequestHandler):
     def actor_identity(self):
         username = normalize_user(self.headers.get("X-Karvalho-User", ""))
@@ -4412,6 +4614,21 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         request_url = urlparse(self.path)
         path = request_url.path.rstrip("/")
+        if path == "/api/monitor-alerts":
+            profile = self.bearer_profile()
+            if not profile:
+                return self.send_json(401, {"error": "Token inválido ou revogado."})
+            with database() as db:
+                row = db.execute(
+                    "SELECT config_json,updated_at FROM profile_monitor_alerts WHERE profile=?",
+                    (profile,),
+                ).fetchone()
+            return self.send_json(200, {
+                "ok": True,
+                "profile": profile,
+                "alerts": json.loads(row["config_json"]) if row else {},
+                "updated_at": row["updated_at"] if row else None,
+            })
         if path == "/account/switch":
             self.send_response(302)
             self.send_header("Location", ACCOUNT_SWITCH_URL)
@@ -4802,6 +5019,33 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path.rstrip("/")
+        if path == "/api/import/observations":
+            profile = self.bearer_profile()
+            if not profile:
+                return self.send_json(401, {"error": "Token inválido ou revogado."})
+            try:
+                result = import_observations(
+                    profile,
+                    self.read_json(),
+                    self.headers.get("Idempotency-Key", ""),
+                )
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                return self.send_json(422, {"error": str(error)})
+            except sqlite3.Error:
+                return self.send_json(503, {"error": "Banco de observações indisponível."})
+            return self.send_json(200, result)
+
+        if path == "/api/monitor-alerts":
+            profile = self.bearer_profile()
+            if not profile:
+                return self.send_json(401, {"error": "Token inválido ou revogado."})
+            try:
+                return self.send_json(200, save_monitor_alerts(profile, self.read_json()))
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                return self.send_json(422, {"error": str(error)})
+            except sqlite3.Error:
+                return self.send_json(503, {"error": "Alertas indisponíveis."})
+
         if path == "/api/alerts/preview":
             profile = self.require_identity()
             if not profile:
@@ -5480,7 +5724,7 @@ if __name__ == "__main__":
                                 "credits": 200,
                                 "contribution": 50,
                                 "kills": 3,
-                                "loot": [{"item_index": 42, "item": "Loot teste", "count": 2, "rarity": 4}],
+                                "loot": [{"item_index": 42, "item": "Loot teste", "count": 2, "rarity": "Épico", "grade": 4}],
                             },
                         }
                     ],
@@ -5889,4 +6133,4 @@ if __name__ == "__main__":
         raise SystemExit
     with database():
         pass
-    ThreadingHTTPServer(("0.0.0.0", 80), Handler).serve_forever()
+    ApplicationHTTPServer(("0.0.0.0", 80), Handler).serve_forever()
