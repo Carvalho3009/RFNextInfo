@@ -18,7 +18,8 @@
   nativo é único e distribui snapshots e deltas aos monitores sem reiniciar o
   Pktmon.
 - Monitor PvE lista um cartão por tipo de mob visível, além do alvo atual, com
-  imagem, nome, level e HP confirmado.
+  imagem, nome, level e HP atual bruto confirmado; o cartão não substitui o
+  valor bruto por percentual.
 - Na próxima versão, os cartões dos monitores usam altura mínima compatível
   com a fonte, margens internas e espaçamento vertical suficientes; textos e
   valores não podem ficar cortados ou sobrepostos, e a rolagem preserva o
