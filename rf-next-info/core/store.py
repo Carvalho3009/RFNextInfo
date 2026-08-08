@@ -87,7 +87,9 @@ CREATE TABLE IF NOT EXISTS character_history(
  character_name TEXT NOT NULL DEFAULT '',
  last_seen_at TEXT NOT NULL,
  last_session_id TEXT NOT NULL DEFAULT '',
- last_client_key TEXT NOT NULL DEFAULT ''
+ last_client_key TEXT NOT NULL DEFAULT '',
+ biosuit_item_index INTEGER,
+ rover_item_index INTEGER
 );
 CREATE TABLE IF NOT EXISTS store_state(
  key TEXT PRIMARY KEY, value INTEGER NOT NULL
@@ -286,6 +288,17 @@ class CaptureStore:
                     "ALTER TABLE client_bindings ADD COLUMN "
                     "binding_source TEXT NOT NULL DEFAULT 'canonical'"
                 )
+            history_columns = {
+                row[1]
+                for row in self.conn.execute(
+                    "PRAGMA table_info(character_history)"
+                )
+            }
+            for column in ("biosuit_item_index", "rover_item_index"):
+                if column not in history_columns:
+                    self.conn.execute(
+                        f"ALTER TABLE character_history ADD COLUMN {column} INTEGER"
+                    )
             known_uids: set[str] = set()
             for uid, name, session_id, client_key, last_seen_at in self.conn.execute(
                 """SELECT bindings.character_uid,bindings.character_name,
@@ -549,6 +562,40 @@ class CaptureStore:
                         (uid, session_id, client_key),
                     )
                     rewritten = rewritten or bool(updated.rowcount)
+            # O histórico de equipamento só aceita o world_info canônico ou a
+            # aparência de entrada vinculada ao mesmo UID. Aparições de
+            # personagens próximos nunca passam por este caminho.
+            for event, clean, uid, client_key, binding_source in prepared:
+                binding = bindings.get(client_key) if client_key else None
+                if not binding or binding[1] != "canonical":
+                    continue
+                fields = clean.get("fields") or {}
+                observed_uid = fields.get("character_uid")
+                own_world_info = (
+                    event.get("type") == "world_info_prefix"
+                    and binding_source == "canonical"
+                    and uid == binding[0]
+                )
+                own_appearance = (
+                    event.get("type") == "appear_player_prefix"
+                    and observed_uid is not None
+                    and str(observed_uid) == binding[0]
+                )
+                if not (own_world_info or own_appearance):
+                    continue
+                biosuit = fields.get("biosuit_item_index")
+                rover = fields.get("rover_item_index")
+                biosuit = biosuit if isinstance(biosuit, int) else None
+                rover = rover if isinstance(rover, int) else None
+                if biosuit is None and rover is None:
+                    continue
+                self.conn.execute(
+                    """UPDATE character_history SET
+                       biosuit_item_index=COALESCE(?,biosuit_item_index),
+                       rover_item_index=COALESCE(?,rover_item_index)
+                       WHERE character_uid=?""",
+                    (biosuit, rover, binding[0]),
+                )
             if existing and not growing_source:
                 self.conn.execute(
                     "DELETE FROM events WHERE source=?", (str(source),)
@@ -695,7 +742,7 @@ class CaptureStore:
         ).fetchone()
         return row[0] if row else None
 
-    def character_history(self) -> list[dict[str, str]]:
+    def character_history(self) -> list[dict[str, Any]]:
         return [
             {
                 "uid": uid,
@@ -703,11 +750,22 @@ class CaptureStore:
                 "last_seen_at": last_seen_at,
                 "last_session_id": last_session_id,
                 "last_client_key": last_client_key,
+                "biosuit_item_index": biosuit_item_index,
+                "rover_item_index": rover_item_index,
             }
-            for uid, name, last_seen_at, last_session_id, last_client_key
+            for (
+                uid,
+                name,
+                last_seen_at,
+                last_session_id,
+                last_client_key,
+                biosuit_item_index,
+                rover_item_index,
+            )
             in self.conn.execute(
                 """SELECT character_uid,character_name,last_seen_at,
-                          last_session_id,last_client_key
+                          last_session_id,last_client_key,
+                          biosuit_item_index,rover_item_index
                    FROM character_history
                    ORDER BY last_seen_at DESC,character_name,character_uid"""
             )
