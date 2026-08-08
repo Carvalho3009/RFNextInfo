@@ -1,0 +1,1 @@
+"""Aplicativo RF NEXT QOL."""
