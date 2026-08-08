@@ -82,6 +82,13 @@ CREATE TABLE IF NOT EXISTS client_bindings(
  binding_source TEXT NOT NULL DEFAULT 'canonical',
  PRIMARY KEY(session_id, client_key)
 );
+CREATE TABLE IF NOT EXISTS character_history(
+ character_uid TEXT PRIMARY KEY,
+ character_name TEXT NOT NULL DEFAULT '',
+ last_seen_at TEXT NOT NULL,
+ last_session_id TEXT NOT NULL DEFAULT '',
+ last_client_key TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS store_state(
  key TEXT PRIMARY KEY, value INTEGER NOT NULL
 );
@@ -278,6 +285,28 @@ class CaptureStore:
                 self.conn.execute(
                     "ALTER TABLE client_bindings ADD COLUMN "
                     "binding_source TEXT NOT NULL DEFAULT 'canonical'"
+                )
+            known_uids: set[str] = set()
+            for uid, name, session_id, client_key, last_seen_at in self.conn.execute(
+                """SELECT bindings.character_uid,bindings.character_name,
+                          bindings.session_id,bindings.client_key,
+                          COALESCE(MAX(captures.imported_at),'1970-01-01T00:00:00+00:00')
+                   FROM client_bindings AS bindings
+                   LEFT JOIN captures ON captures.session_id=bindings.session_id
+                   WHERE bindings.binding_source='canonical'
+                   GROUP BY bindings.character_uid,bindings.character_name,
+                            bindings.session_id,bindings.client_key
+                   ORDER BY MAX(captures.imported_at) DESC"""
+            ):
+                if uid in known_uids:
+                    continue
+                known_uids.add(uid)
+                self.conn.execute(
+                    """INSERT OR IGNORE INTO character_history
+                       (character_uid,character_name,last_seen_at,
+                        last_session_id,last_client_key)
+                       VALUES(?,?,?,?,?)""",
+                    (uid, name, last_seen_at, session_id, client_key),
                 )
 
     def _bump_event_revision(self) -> None:
@@ -481,6 +510,39 @@ class CaptureStore:
                             identity_source,
                         ),
                     )
+                    if (
+                        identity_source == "canonical"
+                        and current
+                        and current[1] == "manual"
+                        and current[0] != uid
+                    ):
+                        self.conn.execute(
+                            """UPDATE events SET character_uid=?
+                               WHERE session_id=? AND character_uid=?""",
+                            (uid, session_id, current[0]),
+                        )
+                    if identity_source == "canonical":
+                        self.conn.execute(
+                            """INSERT INTO character_history
+                               (character_uid,character_name,last_seen_at,
+                                last_session_id,last_client_key)
+                               VALUES(?,?,?,?,?)
+                               ON CONFLICT(character_uid) DO UPDATE SET
+                               character_name=CASE
+                                   WHEN excluded.character_name!=''
+                                   THEN excluded.character_name
+                                   ELSE character_history.character_name END,
+                               last_seen_at=excluded.last_seen_at,
+                               last_session_id=excluded.last_session_id,
+                               last_client_key=excluded.last_client_key""",
+                            (
+                                uid,
+                                name,
+                                datetime.now(timezone.utc).isoformat(),
+                                session_id,
+                                client_key,
+                            ),
+                        )
                     updated = self.conn.execute(
                         """UPDATE events SET character_uid=?
                            WHERE session_id=? AND character_uid=?""",
@@ -632,6 +694,97 @@ class CaptureStore:
             "SELECT session_id FROM captures ORDER BY imported_at DESC LIMIT 1"
         ).fetchone()
         return row[0] if row else None
+
+    def character_history(self) -> list[dict[str, str]]:
+        return [
+            {
+                "uid": uid,
+                "name": name,
+                "last_seen_at": last_seen_at,
+                "last_session_id": last_session_id,
+                "last_client_key": last_client_key,
+            }
+            for uid, name, last_seen_at, last_session_id, last_client_key
+            in self.conn.execute(
+                """SELECT character_uid,character_name,last_seen_at,
+                          last_session_id,last_client_key
+                   FROM character_history
+                   ORDER BY last_seen_at DESC,character_name,character_uid"""
+            )
+        ]
+
+    def client_bindings(self, session_id: str) -> list[dict[str, str]]:
+        return [
+            {
+                "client_key": client_key,
+                "uid": uid,
+                "name": name,
+                "source": source,
+            }
+            for client_key, uid, name, source in self.conn.execute(
+                """SELECT client_key,character_uid,character_name,binding_source
+                   FROM client_bindings WHERE session_id=? ORDER BY client_key""",
+                (session_id,),
+            )
+        ]
+
+    def select_client_uid(
+        self,
+        session_id: str,
+        client_key: str,
+        character_uid: str | None,
+    ) -> None:
+        if not session_id or client_key not in {"client:a", "client:b"}:
+            raise ValueError("Sessão ou cliente inválido")
+        with self.conn:
+            current = self.conn.execute(
+                """SELECT character_uid,binding_source FROM client_bindings
+                   WHERE session_id=? AND client_key=?""",
+                (session_id, client_key),
+            ).fetchone()
+            if character_uid is None:
+                if current and current[1] == "manual":
+                    self.conn.execute(
+                        "DELETE FROM client_bindings WHERE session_id=? AND client_key=?",
+                        (session_id, client_key),
+                    )
+                return
+            uid = str(character_uid).strip()
+            history = self.conn.execute(
+                """SELECT character_name FROM character_history
+                   WHERE character_uid=?""",
+                (uid,),
+            ).fetchone()
+            if not history:
+                raise ValueError("UID não existe no histórico confirmado")
+            duplicate = self.conn.execute(
+                """SELECT client_key FROM client_bindings
+                   WHERE session_id=? AND character_uid=? AND client_key!=?""",
+                (session_id, uid, client_key),
+            ).fetchone()
+            if duplicate:
+                raise ValueError("O UID já está vinculado ao outro cliente")
+            if current and current[1] == "canonical" and current[0] != uid:
+                raise ValueError(
+                    "O jogo já confirmou outro UID para este cliente nesta sessão"
+                )
+            if current and current[1] == "canonical":
+                return
+            self.conn.execute(
+                """INSERT INTO client_bindings
+                   (session_id,client_key,character_uid,character_name,binding_source)
+                   VALUES(?,?,?,?, 'manual')
+                   ON CONFLICT(session_id,client_key) DO UPDATE SET
+                   character_uid=excluded.character_uid,
+                   character_name=excluded.character_name,
+                   binding_source='manual'""",
+                (session_id, client_key, uid, history[0]),
+            )
+            self.conn.execute(
+                """UPDATE events SET character_uid=?
+                   WHERE session_id=? AND character_uid=?""",
+                (uid, session_id, client_key),
+            )
 
     def session_profiles(self, session_id: str) -> list[dict[str, str]]:
         rows = self.conn.execute(

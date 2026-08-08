@@ -60,6 +60,10 @@
 - Um Profile com até dois personagens simultâneos, separados por UID confirmado.
 - PID, porta e ordem do processo nunca são identidade definitiva de personagem;
   sem UID confirmado, o cliente recebe apenas um nome manual temporário.
+- A beta mantém um histórico local dos UIDs confirmados por `0x0106` e permite
+  escolher `Automático` ou um personagem conhecido separadamente para os
+  Clientes A e B. O mesmo UID não pode ocupar os dois clientes e uma identidade
+  canônica posterior substitui e corrige o vínculo manual divergente.
 - Cada parada cria uma sessão; JSON/CSV são separados por personagem e sessão.
 - EXP/Loot permite subsessões manuais ou automáticas por personagem, com
   localização, mobs em multiseleção, nível por mob e opção Outro.
