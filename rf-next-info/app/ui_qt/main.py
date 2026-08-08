@@ -599,6 +599,16 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         description.setWordWrap(True)
         column.addWidget(description)
+        scroll = QtWidgets.QScrollArea(objectName="pageScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        content = QtWidgets.QWidget(objectName="scrollContent")
+        content_layout = QtWidgets.QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 8, 0)
+        content_layout.setSpacing(12)
+        content_layout.setSizeConstraint(
+            QtWidgets.QLayout.SizeConstraint.SetMinimumSize
+        )
         widgets = []
         for index in range(2):
             card = QtWidgets.QFrame(objectName="panel")
@@ -666,7 +676,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.addWidget(progress)
                 layout.addLayout(stats)
             layout.addWidget(status)
-            column.addWidget(card)
+            content_layout.addWidget(card)
             widgets.append(
                 {
                     "heading": heading,
@@ -681,7 +691,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 }
             )
         self.combat_widgets[mode] = widgets
-        column.addStretch(1)
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        column.addWidget(scroll, 1)
         return page
 
     def _build_alerts_page(self) -> QtWidgets.QWidget:
