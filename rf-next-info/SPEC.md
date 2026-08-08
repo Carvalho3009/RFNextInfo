@@ -68,6 +68,11 @@
   escolher `Automático` ou um personagem conhecido separadamente para os
   Clientes A e B. O mesmo UID não pode ocupar os dois clientes e uma identidade
   canônica posterior substitui e corrige o vínculo manual divergente.
+- Na próxima versão, o histórico do UID também preserva a última classe
+  confirmada pelo Biosuit e o último Rover confirmado do próprio personagem.
+  Ao selecionar um UID antigo, esses dados aparecem como estado histórico até
+  uma captura atual confirmá-los ou substituí-los; Rover de personagens
+  próximos nunca pode atualizar esse histórico.
 - Cada parada cria uma sessão; JSON/CSV são separados por personagem e sessão.
 - EXP/Loot permite subsessões manuais ou automáticas por personagem, com
   localização, mobs em multiseleção, nível por mob e opção Outro.
