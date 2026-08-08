@@ -32,6 +32,7 @@ from app.main import (
     DEFAULT_PORTS,
     LOG_PATH,
     MACHINE_STATE_DIR,
+    ROVERS,
     STATE_DIR,
     VERSION,
     _recycle,
@@ -1878,6 +1879,77 @@ class MainWindow(QtWidgets.QMainWindow):
         if profile is None and not any(item.get("client_key") for item in profiles):
             profile = profiles[index] if index < len(profiles) else None
         return str(profile.get("uid")) if profile and profile.get("uid") else None
+
+    def _overview_character(
+        self, index: int
+    ) -> tuple[dict[str, Any] | None, dict[str, Any], bool]:
+        """Retorna o personagem atual com fallback seguro do histórico."""
+        key = f"client:{chr(97 + index)}"
+        characters = list(self.snapshot.get("characters") or [])
+        routed = any(item.get("client_key") for item in characters)
+        character = next(
+            (item for item in characters if item.get("client_key") == key), None
+        )
+        if character is None and not routed and index < len(characters):
+            character = characters[index]
+        summary = dict(character.get("summary") or {}) if character else {}
+
+        binding = next(
+            (
+                item
+                for item in self.snapshot.get("client_bindings") or []
+                if item.get("client_key") == key
+            ),
+            None,
+        )
+        selected_uid = self._uid_selections().get(key)
+        historical = next(
+            (
+                item
+                for item in self.snapshot.get("character_history") or []
+                if str(item.get("uid") or "") == str(selected_uid or "")
+            ),
+            None,
+        )
+        use_history = bool(
+            historical
+            and (
+                character is None
+                or not binding
+                or binding.get("source") == "manual"
+            )
+        )
+        if not use_history:
+            return character, summary, False
+
+        if character is None:
+            character = {
+                "uid": str(historical.get("uid") or ""),
+                "name": str(historical.get("name") or ""),
+                "client_key": key,
+            }
+        used = False
+        biosuit_index = historical.get("biosuit_item_index")
+        if not summary.get("biosuit_item_index") and isinstance(biosuit_index, int):
+            biosuit = BIOSUITS.get(str(biosuit_index), {})
+            summary.update(
+                biosuit_item_index=biosuit_index,
+                biosuit_name=str(biosuit.get("name") or ""),
+                biosuit_type=biosuit.get("biosuit_type"),
+                biosuit_grade=biosuit.get("grade"),
+                character_class=str(biosuit.get("class_name") or ""),
+            )
+            used = True
+        rover_index = historical.get("rover_item_index")
+        if not summary.get("rover_item_index") and isinstance(rover_index, int):
+            rover = ROVERS.get(str(rover_index), {})
+            summary.update(
+                rover_item_index=rover_index,
+                rover_name=str(rover.get("name") or ""),
+                rover_grade=rover.get("grade"),
+            )
+            used = True
+        return character, summary, used
 
     def _uid_selections(self) -> dict[str, str]:
         value = self.preferences.get("client_uid_selections")
@@ -4465,11 +4537,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_client_uid_buttons()
 
         key = f"client:{chr(97 + self.active_client)}"
-        routed = any(item.get("client_key") for item in characters)
-        character = next((item for item in characters if item.get("client_key") == key), None)
-        if character is None and not routed and self.active_client < len(characters):
-            character = characters[self.active_client]
-        summary = dict(character.get("summary") or {}) if character else {}
+        character, summary, historical_identity = self._overview_character(
+            self.active_client
+        )
         captured_name = str(character.get("name") or "").strip() if character else ""
         manual_name = str(self.preferences.get(f"character{self.active_client + 1}") or "").strip()
         name = (
@@ -4502,6 +4572,8 @@ class MainWindow(QtWidgets.QMainWindow):
             str(summary.get("character_class") or "Classe —"),
             str(summary.get("biosuit_name") or "Biosuit —"),
         ]
+        if historical_identity:
+            details.append("Último estado conhecido")
         self.character_details.setText(" · ".join(details))
         self.rover_name.setText(str(summary.get("rover_name") or "Rover —"))
         percent = summary.get("exp_percent")
@@ -4543,15 +4615,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _render_secondary_overview(self, index: int, duration: int) -> None:
         if not hasattr(self, "overview_secondary"):
             return
-        characters = list(self.snapshot.get("characters") or [])
         key = f"client:{chr(97 + index)}"
-        routed = any(item.get("client_key") for item in characters)
-        character = next(
-            (item for item in characters if item.get("client_key") == key), None
-        )
-        if character is None and not routed and index < len(characters):
-            character = characters[index]
-        summary = dict(character.get("summary") or {}) if character else {}
+        character, summary, historical_identity = self._overview_character(index)
         captured = str(character.get("name") or "").strip() if character else ""
         manual = str(self.preferences.get(f"character{index + 1}") or "").strip()
         name = (
@@ -4562,11 +4627,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.secondary_character_name.setText(
             f"Cliente {chr(65 + index)} · {name}"
         )
-        self.secondary_character_details.setText(" · ".join((
+        details = [
             f"Nível {summary['level']}" if summary.get("level") is not None else "Nível —",
             str(summary.get("character_class") or "Classe —"),
             str(summary.get("biosuit_name") or "Biosuit —"),
-        )))
+        ]
+        if historical_identity:
+            details.append("Último estado conhecido")
+        self.secondary_character_details.setText(" · ".join(details))
         self.secondary_rover_name.setText(str(summary.get("rover_name") or "Rover —"))
         percent = summary.get("exp_percent")
         self.secondary_exp_progress.setValue(

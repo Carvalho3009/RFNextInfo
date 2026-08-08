@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.3 — beta
+
+- preserva o último Biosuit/classe e Rover confirmados para cada UID;
+- restaura esse estado histórico ao selecionar um personagem conhecido;
+- substitui o estado histórico assim que uma captura atual confirma novos dados;
+- impede que o Rover de personagens próximos atualize o histórico do UID.
+
 ## 3.0.2 — beta
 
 - impede corte e sobreposição nos cartões dos monitores PvE e PvP;

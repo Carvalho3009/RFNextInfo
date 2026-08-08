@@ -1517,6 +1517,7 @@ class CoreTest(unittest.TestCase):
                         "data": {"fields": {
                             "character_uid": 101,
                             "character_name": "Alice",
+                            "biosuit_item_index": 2075041,
                         }},
                     }],
                     "old-session",
@@ -1529,9 +1530,115 @@ class CoreTest(unittest.TestCase):
                 store.clear_exported("old-session")
                 history = store.character_history()
                 self.assertEqual(
-                    (history[0]["uid"], history[0]["name"]),
-                    ("101", "Alice"),
+                    (
+                        history[0]["uid"],
+                        history[0]["name"],
+                        history[0]["biosuit_item_index"],
+                    ),
+                    ("101", "Alice", 2075041),
                 )
+            finally:
+                store.close()
+
+    def test_confirmed_history_uses_only_own_entry_rover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "entry.pcap"
+            source.write_bytes(b"entry")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                flow = "10.0.0.1:12020 -> 127.0.0.1:50001"
+                events = [
+                    {
+                        "flow": flow,
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "ts_ns": 1,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": 101,
+                            "character_name": "Alice",
+                            "biosuit_item_index": 2075041,
+                        }},
+                    },
+                    {
+                        "flow": flow, "stream_offset": 2, "bundle_seq": 1,
+                        "ts_ns": 2, "opcode": 0x0202, "type": "unparsed",
+                        "data": {},
+                    },
+                    {
+                        "flow": flow, "stream_offset": 3, "bundle_seq": 2,
+                        "ts_ns": 2, "opcode": 0x0323, "type": "unparsed",
+                        "data": {},
+                    },
+                    {
+                        "flow": flow,
+                        "stream_offset": 4,
+                        "bundle_seq": 3,
+                        "ts_ns": 2,
+                        "opcode": 0x0305,
+                        "type": "appear_player_prefix",
+                        "data": {"fields": {
+                            "character_uid": 101,
+                            "character_name": "Alice",
+                            "biosuit_item_index": 2075041,
+                            "rover_item_index": 4000000,
+                        }},
+                    },
+                    {
+                        "flow": flow,
+                        "stream_offset": 5,
+                        "bundle_seq": 4,
+                        "ts_ns": 3,
+                        "opcode": 0x0305,
+                        "type": "appear_player_prefix",
+                        "data": {"fields": {
+                            "character_uid": 999,
+                            "character_name": "Nearby",
+                            "rover_item_index": 4400011,
+                        }},
+                    },
+                ]
+                store.add_events(
+                    source,
+                    events,
+                    "session",
+                    client_ports=((50001,),),
+                )
+                history = store.character_history()[0]
+                self.assertEqual(history["biosuit_item_index"], 2075041)
+                self.assertEqual(history["rover_item_index"], 4000000)
+                refreshed = root / "refreshed.pcap"
+                refreshed.write_bytes(b"refreshed")
+                store.add_events(
+                    refreshed,
+                    [
+                        {
+                            "flow": flow, "stream_offset": 1, "bundle_seq": 0,
+                            "opcode": 0x0106, "type": "world_info_prefix",
+                            "data": {"fields": {
+                                "character_uid": 101,
+                                "character_name": "Alice",
+                                "biosuit_item_index": 2085031,
+                            }},
+                        },
+                        {
+                            "flow": flow, "stream_offset": 2, "bundle_seq": 1,
+                            "opcode": 0x0305, "type": "appear_player_prefix",
+                            "data": {"fields": {
+                                "character_uid": 101,
+                                "character_name": "Alice",
+                                "rover_item_index": 4400008,
+                            }},
+                        },
+                    ],
+                    "new-session",
+                    client_ports=((50001,),),
+                )
+                history = store.character_history()[0]
+                self.assertEqual(history["biosuit_item_index"], 2085031)
+                self.assertEqual(history["rover_item_index"], 4400008)
             finally:
                 store.close()
 

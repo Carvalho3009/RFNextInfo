@@ -503,7 +503,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.2")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.3")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -837,8 +837,10 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 store.conn.execute(
                     """INSERT INTO character_history
                        (character_uid,character_name,last_seen_at,
-                        last_session_id,last_client_key)
-                       VALUES('101','Alice','2026-08-08T12:00:00Z','old','client:a')"""
+                        last_session_id,last_client_key,
+                        biosuit_item_index,rover_item_index)
+                       VALUES('101','Alice','2026-08-08T12:00:00Z','old',
+                              'client:a',2075041,4000000)"""
                 )
             store.close()
 
@@ -853,6 +855,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 "character_history": [{
                     "uid": "101", "name": "Alice",
                     "last_seen_at": "2026-08-08T12:00:00Z",
+                    "biosuit_item_index": 2075041,
+                    "rover_item_index": 4000000,
                 }],
                 "client_bindings": [],
             }
@@ -864,7 +868,23 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 {"client:a": "101"},
             )
             self.assertEqual(window.client_uid_buttons[0].text(), "UID: Alice")
+            window.snapshot["client_bindings"] = [{
+                "client_key": "client:a", "uid": "101",
+                "name": "Alice", "source": "manual",
+            }]
+            window._render_overview()
+            self.assertEqual(window.character_name.text(), "Alice")
+            self.assertIn("Arbiter", window.character_details.text())
+            self.assertIn("Último estado conhecido", window.character_details.text())
+            self.assertEqual(window.rover_name.text(), "Sirius")
+            self.assertEqual(window.rover_icon.toolTip(), "Sirius")
             store = CaptureStore(database_path, readonly=True)
+            columns = {
+                row[1]
+                for row in store.conn.execute("PRAGMA table_info(character_history)")
+            }
+            self.assertIn("biosuit_item_index", columns)
+            self.assertIn("rover_item_index", columns)
             self.assertEqual(
                 store.client_bindings("session")[0],
                 {
