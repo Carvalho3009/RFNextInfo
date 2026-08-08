@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.2 — beta
+
+- impede corte e sobreposição nos cartões dos monitores PvE e PvP;
+- divide os Clientes A e B em duas colunas no modo maximizado ou tela cheia;
+- mostra o HP atual bruto, em vez do percentual, nos mobs próximos.
+
 ## 3.0.1 — beta
 
 - mantém um histórico persistente dos UIDs canônicos reconhecidos;

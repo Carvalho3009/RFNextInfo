@@ -141,7 +141,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
             window.capture_timer.stop()
             entities = [
-                {"npc_index": index, "name": f"Mob {index}", "hp_percent": 100.0}
+                {
+                    "npc_index": index,
+                    "name": f"Mob {index}",
+                    "current_hp": 17_802 + index,
+                    "hp_percent": 100.0,
+                }
                 for index in range(8)
             ]
             window.snapshot = {"combat_monitors": [{
@@ -170,6 +175,15 @@ class QtPreviewSmokeTest(unittest.TestCase):
                         )
                     )
                     self.assertTrue(all(row.height() >= 64 for row in rows))
+                    values = [
+                        row.findChildren(QtWidgets.QLabel)[-1].text()
+                        for row in rows
+                    ]
+                    if mode == "pve":
+                        self.assertEqual(values[0], "17.802 HP")
+                        self.assertTrue(all("%" not in value for value in values))
+                    else:
+                        self.assertTrue(all(value.endswith("%") for value in values))
                     self.assertTrue(
                         all(
                             current.geometry().bottom() < following.geometry().top()
@@ -489,7 +503,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.1")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.2")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

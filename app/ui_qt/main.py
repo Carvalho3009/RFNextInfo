@@ -4242,13 +4242,15 @@ class MainWindow(QtWidgets.QMainWindow):
             level = f" · Nv. {entity['level']}" if entity.get("level") else ""
             horizontal.addWidget(_label(f"{name}{level}", "subtitle"), 1)
             percent = entity.get("hp_percent")
+            value = (
+                f"{self._format_count(entity.get('current_hp'))} HP"
+                if mode == "pve" and entity.get("current_hp") is not None
+                else f"{float(percent):.2f}%".replace(".", ",")
+                if isinstance(percent, (int, float))
+                else "HP —"
+            )
             horizontal.addWidget(
-                _label(
-                    f"{float(percent):.2f}%".replace(".", ",")
-                    if isinstance(percent, (int, float))
-                    else "HP —",
-                    "data",
-                )
+                _label(value, "data")
             )
             layout.addWidget(row)
 
