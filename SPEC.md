@@ -63,6 +63,13 @@
 - Cada parada cria uma sessão; JSON/CSV são separados por personagem e sessão.
 - EXP/Loot permite subsessões manuais ou automáticas por personagem, com
   localização, mobs em multiseleção, nível por mob e opção Outro.
+- Na próxima versão, a criação de novas subsessões terá filtro de level para
+  reduzir as opções de mobs exibidas. O formato do filtro (valor, faixa ou
+  multiseleção) será fechado na proposta visual antes do código, sem alterar
+  ou perder seleções já feitas.
+- Na próxima versão, as configurações de subsessão terão opção de favoritos.
+  Cada favorito representa a configuração completa da subsessão, formada pela
+  soma de todas as opções configuradas, e não um mob, mapa ou spot isolado.
 - Na próxima versão, o envio de subsessões deve usar exatamente o contrato
   aceito pelo site, com os mesmos campos, tipos e identificador idempotente.
   A correção só é considerada concluída após uma subsessão selecionada ser

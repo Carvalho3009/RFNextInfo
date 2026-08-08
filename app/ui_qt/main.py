@@ -1175,10 +1175,42 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.setSpacing(10)
         self.subsession_client = QtWidgets.QComboBox()
         self.subsession_client.addItems(("Cliente A", "Cliente B"))
+        self.subsession_favorite = QtWidgets.QComboBox()
+        load_favorite = QtWidgets.QPushButton("Carregar")
+        load_favorite.clicked.connect(self._load_subsession_favorite)
+        save_favorite = QtWidgets.QPushButton("Salvar favorito")
+        save_favorite.clicked.connect(self._save_subsession_favorite)
+        delete_favorite = QtWidgets.QPushButton("Excluir")
+        delete_favorite.clicked.connect(self._delete_subsession_favorite)
+        favorites = QtWidgets.QWidget()
+        favorites_layout = QtWidgets.QHBoxLayout(favorites)
+        favorites_layout.setContentsMargins(0, 0, 0, 0)
+        favorites_layout.addWidget(self.subsession_favorite, 1)
+        favorites_layout.addWidget(load_favorite)
+        favorites_layout.addWidget(save_favorite)
+        favorites_layout.addWidget(delete_favorite)
         self.subsession_map = QtWidgets.QComboBox()
         self.subsession_map.currentTextChanged.connect(self._subsession_map_changed)
         self.subsession_spot = QtWidgets.QComboBox()
         self.subsession_spot.currentTextChanged.connect(self._subsession_spot_changed)
+        filter_levels = QtWidgets.QWidget()
+        filter_levels_layout = QtWidgets.QHBoxLayout(filter_levels)
+        filter_levels_layout.setContentsMargins(0, 0, 0, 0)
+        self.subsession_filter_level_from = QtWidgets.QSpinBox()
+        self.subsession_filter_level_from.setRange(0, 999)
+        self.subsession_filter_level_from.setSpecialValueText("mínimo")
+        self.subsession_filter_level_to = QtWidgets.QSpinBox()
+        self.subsession_filter_level_to.setRange(0, 999)
+        self.subsession_filter_level_to.setSpecialValueText("máximo")
+        self.subsession_filter_level_from.valueChanged.connect(
+            self._refilter_subsession_mobs
+        )
+        self.subsession_filter_level_to.valueChanged.connect(
+            self._refilter_subsession_mobs
+        )
+        filter_levels_layout.addWidget(self.subsession_filter_level_from)
+        filter_levels_layout.addWidget(_label("até", "muted"))
+        filter_levels_layout.addWidget(self.subsession_filter_level_to)
         self.subsession_mobs = QtWidgets.QListWidget()
         self.subsession_mobs.setMinimumHeight(300)
         self.subsession_select_all = QtWidgets.QCheckBox("Selecionar todos os mobs")
@@ -1197,8 +1229,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.auto_subsession_minutes = QtWidgets.QSpinBox(); self.auto_subsession_minutes.setRange(5, 240); self.auto_subsession_minutes.setSuffix(" min")
         automatic = QtWidgets.QWidget(); automatic_layout = QtWidgets.QHBoxLayout(automatic); automatic_layout.setContentsMargins(0,0,0,0); automatic_layout.addWidget(self.auto_subsession); automatic_layout.addWidget(self.auto_subsession_minutes); automatic_layout.addStretch(1)
         for label_text, widget in (
-            ("Cliente", self.subsession_client), ("Mapa", self.subsession_map),
+            ("Favorito", favorites), ("Cliente", self.subsession_client),
+            ("Mapa", self.subsession_map),
             ("Spot", self.subsession_spot), ("Mobs", self.subsession_mobs),
+            ("Filtrar mobs por level", filter_levels),
             ("", self.subsession_select_all),
             ("Mob extra", self.subsession_other_mob), ("Nível dos mobs", levels),
             ("Duração (0 = manual)", self.subsession_duration),
@@ -1394,6 +1428,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_duration.setValue(self._bounded(preferences.get("subsession_duration_minutes"), 0, 1440, 30))
         self.auto_subsession.setChecked(bool(preferences.get("auto_subsession", False)))
         self.auto_subsession_minutes.setValue(self._bounded(preferences.get("auto_subsession_minutes"), 5, 240, 30))
+        self._refresh_subsession_favorites()
         channel = str(preferences.get("channel") or "stable")
         index = self.update_channel.findData(channel)
         self.update_channel.setCurrentIndex(max(0, index))
@@ -1607,9 +1642,29 @@ class MainWindow(QtWidgets.QMainWindow):
         self._subsession_spot_changed(self.subsession_spot.currentText())
 
     def _subsession_spot_changed(self, spot_name: str) -> None:
+        self._populate_subsession_mobs(spot_name)
+
+    def _refilter_subsession_mobs(self, _value: int = 0) -> None:
+        self._populate_subsession_mobs(
+            self.subsession_spot.currentText(), set(self._selected_mobs())
+        )
+
+    def _populate_subsession_mobs(
+        self, spot_name: str, selected: set[str] | None = None
+    ) -> None:
+        selected = selected or set()
         mobs = self.farm_catalog.get(self.subsession_map.currentText(), {}).get(spot_name, {})
         self.subsession_mobs.clear()
         for mob, levels in mobs.items():
+            minimum = self.subsession_filter_level_from.value()
+            maximum = self.subsession_filter_level_to.value()
+            matches = any(
+                (not minimum or level >= minimum)
+                and (not maximum or level <= maximum)
+                for level in levels
+            )
+            if not matches and mob not in selected:
+                continue
             level_text = (
                 str(levels[0]) if len(levels) == 1
                 else f"{levels[0]}–{levels[-1]}"
@@ -1617,7 +1672,11 @@ class MainWindow(QtWidgets.QMainWindow):
             item = QtWidgets.QListWidgetItem(f"{mob} · Nv. {level_text}")
             item.setData(QtCore.Qt.ItemDataRole.UserRole, mob)
             item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(QtCore.Qt.CheckState.Unchecked)
+            item.setCheckState(
+                QtCore.Qt.CheckState.Checked
+                if mob in selected
+                else QtCore.Qt.CheckState.Unchecked
+            )
             self.subsession_mobs.addItem(item)
         self.subsession_select_all.blockSignals(True)
         self.subsession_select_all.setChecked(False)
@@ -1639,6 +1698,120 @@ class MainWindow(QtWidgets.QMainWindow):
             for row in range(self.subsession_mobs.count())
             if self.subsession_mobs.item(row).checkState() == QtCore.Qt.CheckState.Checked
         ]
+
+    def _subsession_favorites(self) -> dict[str, dict[str, object]]:
+        value = self.preferences.get("subsession_favorites")
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(name): dict(options)
+            for name, options in value.items()
+            if isinstance(options, dict)
+        }
+
+    def _refresh_subsession_favorites(self, selected: str = "") -> None:
+        selected = selected or str(self.subsession_favorite.currentData() or "")
+        self.subsession_favorite.blockSignals(True)
+        self.subsession_favorite.clear()
+        self.subsession_favorite.addItem("Selecione um favorito", "")
+        for name in sorted(self._subsession_favorites(), key=str.casefold):
+            self.subsession_favorite.addItem(name, name)
+        index = self.subsession_favorite.findData(selected)
+        self.subsession_favorite.setCurrentIndex(max(0, index))
+        self.subsession_favorite.blockSignals(False)
+
+    def _subsession_favorite_values(self) -> dict[str, object]:
+        return {
+            "client": self.subsession_client.currentIndex(),
+            "map": self.subsession_map.currentText(),
+            "spot": self.subsession_spot.currentText(),
+            "mobs": self._selected_mobs(),
+            "other_mob": self.subsession_other_mob.text(),
+            "filter_level_from": self.subsession_filter_level_from.value(),
+            "filter_level_to": self.subsession_filter_level_to.value(),
+            "level_from": self.subsession_level_from.value(),
+            "level_to": self.subsession_level_to.value(),
+            "duration": self.subsession_duration.value(),
+            "name": self.subsession_name.text(),
+            "automatic": self.auto_subsession.isChecked(),
+            "automatic_minutes": self.auto_subsession_minutes.value(),
+        }
+
+    def _save_subsession_favorite(self) -> None:
+        default = self.subsession_name.text().strip() or " · ".join(
+            value
+            for value in (
+                self.subsession_map.currentText(),
+                self.subsession_spot.currentText(),
+            )
+            if value
+        )
+        name, accepted = QtWidgets.QInputDialog.getText(
+            self, "Salvar favorito", "Nome do favorito:", text=default
+        )
+        name = name.strip()
+        if not accepted or not name:
+            return
+        favorites = self._subsession_favorites()
+        if name in favorites and QtWidgets.QMessageBox.question(
+            self,
+            "Salvar favorito",
+            f"Substituir o favorito {name}?",
+        ) != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        favorites[name] = self._subsession_favorite_values()
+        self.preferences = save_preferences(
+            {"subsession_favorites": favorites}, self.preferences_path
+        )
+        self._refresh_subsession_favorites(name)
+
+    def _load_subsession_favorite(self) -> None:
+        name = str(self.subsession_favorite.currentData() or "")
+        values = self._subsession_favorites().get(name)
+        if not values:
+            return
+        for control, key in (
+            (self.subsession_filter_level_from, "filter_level_from"),
+            (self.subsession_filter_level_to, "filter_level_to"),
+        ):
+            control.blockSignals(True)
+            control.setValue(self._bounded(values.get(key), 0, 999, 0))
+            control.blockSignals(False)
+        self.subsession_client.setCurrentIndex(
+            self._bounded(values.get("client"), 0, 1, 0)
+        )
+        self.subsession_map.setCurrentText(str(values.get("map") or ""))
+        self.subsession_spot.setCurrentText(str(values.get("spot") or ""))
+        chosen = {str(value) for value in values.get("mobs", [])}
+        self._populate_subsession_mobs(self.subsession_spot.currentText(), chosen)
+        self.subsession_other_mob.setText(str(values.get("other_mob") or ""))
+        self.subsession_level_from.setValue(
+            self._bounded(values.get("level_from"), 0, 999, 0)
+        )
+        self.subsession_level_to.setValue(
+            self._bounded(values.get("level_to"), 0, 999, 0)
+        )
+        self.subsession_duration.setValue(
+            self._bounded(values.get("duration"), 0, 1440, 0)
+        )
+        self.subsession_name.setText(str(values.get("name") or ""))
+        self.auto_subsession.setChecked(bool(values.get("automatic")))
+        self.auto_subsession_minutes.setValue(
+            self._bounded(values.get("automatic_minutes"), 5, 240, 30)
+        )
+
+    def _delete_subsession_favorite(self) -> None:
+        name = str(self.subsession_favorite.currentData() or "")
+        if not name or QtWidgets.QMessageBox.question(
+            self, "Excluir favorito", f"Excluir o favorito {name}?"
+        ) != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        favorites = self._subsession_favorites()
+        favorites.pop(name, None)
+        self.preferences = save_preferences(
+            {"subsession_favorites": favorites}, self.preferences_path
+        )
+        self._refresh_subsession_favorites()
 
     def _client_uid_for(self, index: int) -> str | None:
         key = f"client:{chr(97 + index)}"
@@ -1750,10 +1923,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_map.setCurrentText(str(item.get("map_name") or ""))
         self.subsession_spot.setCurrentText(str(item.get("spot_name") or ""))
         chosen = set(item.get("mobs") or [])
-        for row in range(self.subsession_mobs.count()):
-            mob = self.subsession_mobs.item(row)
-            mob_name = str(mob.data(QtCore.Qt.ItemDataRole.UserRole) or mob.text())
-            mob.setCheckState(QtCore.Qt.CheckState.Checked if mob_name in chosen else QtCore.Qt.CheckState.Unchecked)
+        self._populate_subsession_mobs(self.subsession_spot.currentText(), chosen)
         extras = chosen - {
             str(
                 self.subsession_mobs.item(row).data(
