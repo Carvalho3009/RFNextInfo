@@ -97,6 +97,10 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
   resultado registrado como `sem resultado`, sem substituir por outro modelo
   e sem alterar ou promover a chave. Custo da assinatura: `unknown`.
+- Após a indisponibilidade do Fable, o owner decidiu prosseguir sem esse
+  parecer automatizado. A dispensa se limita ao Fable: testemunha humana,
+  backup de recuperação, chave offline de update, testes RC e G4 permanecem
+  como gates obrigatórios antes de promoção ou publicação.
 - Integração real em staging: o verificador do cliente recebeu a pública de
   staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
   e rejeitou instalação divergente e lease revogada.
