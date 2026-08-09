@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -149,41 +148,6 @@ def verify_downloaded(installer: Path, manifest: dict) -> Path:
     if _sha256(installer).casefold() != manifest["sha256"].casefold():
         raise ValueError("SHA-256 do instalador não confere")
     return installer
-
-
-def verify_authenticode(installer: Path, expected_publisher: str = "Karvalho") -> None:
-    """Usa o verificador nativo do Windows e exige o publicador esperado."""
-    if os.name != "nt":
-        raise OSError("Authenticode requer Windows")
-    # Um processo iniciado pelo PowerShell 7 pode herdar um PSModulePath que
-    # impede o Windows PowerShell de carregar Microsoft.PowerShell.Security.
-    environment = {
-        key: value
-        for key, value in os.environ.items()
-        if key.casefold() != "psmodulepath"
-    }
-    environment["RFQOL_VERIFY_PATH"] = str(Path(installer).resolve(strict=True))
-    script = (
-        "$s=Get-AuthenticodeSignature -LiteralPath $env:RFQOL_VERIFY_PATH;"
-        "$o=[ordered]@{Status=[string]$s.Status;Subject=[string]$s.SignerCertificate.Subject};"
-        "$o|ConvertTo-Json -Compress"
-    )
-    try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=environment,
-        )
-        status = json.loads(result.stdout.strip().splitlines()[-1])
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, IndexError) as error:
-        raise ValueError("Não foi possível verificar a assinatura Authenticode") from error
-    if status.get("Status") != "Valid" or expected_publisher.casefold() not in str(
-        status.get("Subject") or ""
-    ).casefold():
-        raise ValueError("Assinatura Authenticode ou publicador inválido")
 
 
 def download_verified(

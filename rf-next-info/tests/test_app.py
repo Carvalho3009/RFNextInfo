@@ -46,7 +46,6 @@ import app.support_log as support_log_module
 from app.updater import (
     UPDATE_SIGNATURE_CONTEXT,
     download_verified,
-    verify_authenticode,
     verify_downloaded,
     verify_manifest,
 )
@@ -1684,29 +1683,16 @@ class AppLogicTest(unittest.TestCase):
         manifest = {"file": "setup.exe"}
         with patch("app.main.messagebox.askyesno", return_value=True), patch(
             "app.main.verify_manifest", return_value=manifest
-        ), patch("app.main.verify_downloaded"), patch(
-            "app.main.verify_authenticode"
-        ), patch("pathlib.Path.read_text", return_value="{}"), patch(
+        ), patch("app.main.verify_downloaded") as verify_file, patch(
+            "pathlib.Path.read_text", return_value="{}"
+        ), patch(
             "app.main.os.startfile"
         ) as launch:
             App._update_downloaded(app, Path("setup.exe"), None)
+        verify_file.assert_called_once_with(Path("setup.exe"), manifest)
         launch.assert_called_once_with(Path("setup.exe"))
         app.store.close.assert_called_once()
         app.destroy.assert_called_once()
-
-    def test_authenticode_requires_valid_expected_publisher(self):
-        result = Mock(
-            stdout='{"Status":"Valid","Subject":"CN=Karvalho"}\n'
-        )
-        with patch("app.updater.subprocess.run", return_value=result) as run:
-            verify_authenticode(Path(__file__))
-        environment = run.call_args.kwargs["env"]
-        self.assertEqual(environment["RFQOL_VERIFY_PATH"], str(Path(__file__).resolve()))
-
-        result.stdout = '{"Status":"Valid","Subject":"CN=Outro"}\n'
-        with patch("app.updater.subprocess.run", return_value=result):
-            with self.assertRaises(ValueError):
-                verify_authenticode(Path(__file__))
 
     def test_unsafe_executable_copy_rollback_is_removed(self):
         root = Path(__file__).resolve().parents[1]
@@ -1845,6 +1831,7 @@ class AppLogicTest(unittest.TestCase):
                 json.dumps({
                     "product": "rf-qol",
                     "release": True,
+                    "authenticode": False,
                     "commit": "a" * 40,
                     "installer_sha256": "b" * 64,
                     "manifest_sha256": "c" * 64,
@@ -1861,6 +1848,19 @@ class AppLogicTest(unittest.TestCase):
             provenance.write_text("{}", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "alterada"):
                 sign_provenance.verify_signature(provenance, signature, public)
+            provenance.write_text(
+                json.dumps({
+                    "product": "rf-qol",
+                    "release": True,
+                    "authenticode": True,
+                    "commit": "a" * 40,
+                    "installer_sha256": "b" * 64,
+                    "manifest_sha256": "c" * 64,
+                }),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "incompleta"):
+                sign_provenance.create_signature(provenance, "update-test", key)
 
     def test_activation_diagnostics_and_local_format_check(self):
         error = urllib.error.HTTPError(

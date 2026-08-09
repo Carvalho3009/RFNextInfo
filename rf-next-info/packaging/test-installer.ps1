@@ -33,6 +33,10 @@ try {
 } finally {
     Pop-Location
 }
+$AuthenticodeStatus = [string](Get-AuthenticodeSignature -LiteralPath $Installer).Status
+if ($AuthenticodeStatus -ne 'NotSigned') {
+    throw "Instalador de ensaio deve permanecer NotSigned: $AuthenticodeStatus"
+}
 
 $PreviousSelfTest = $env:RFQOL_SELF_TEST
 try {
@@ -65,6 +69,7 @@ $Result = [ordered]@{
     installer_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash
     compiler = (& $Nsis '/VERSION' | Out-String).Trim()
     compiler_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Nsis).Hash
+    authenticode_status = $AuthenticodeStatus
     installed_executable_removed = $true
 }
 $ResultPath = Join-Path $EvidenceRoot 'installer-smoke-result.json'

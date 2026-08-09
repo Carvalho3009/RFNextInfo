@@ -9,11 +9,12 @@
 - implementa estados explícitos de autorização e introspecção v2 obrigatória no site;
 - bloqueia captura, leitura, monitores, exportação e envio sem licença válida no motor compartilhado;
 - separa as chaves de licença e atualização e remove a chave mutável do estado local;
-- implementa manifesto de update v2, anti-downgrade, tamanho/hash e reverificação Authenticode;
+- implementa manifesto de update v2, anti-downgrade e reverificação de tamanho/hash;
 - remove o rollback por cópia executável em diretório gravável;
 - separa estado de confiança e staging em diretório de máquina com ACL administrativo;
 - fecha dependências e adiciona lock de wheels com SHA-256 para Windows x64/Python 3.13;
-- mantém publicação bloqueada até chaves, certificado, assinatura e testes reais.
+- registra a decisão de distribuir executável e instalador sem Authenticode;
+- mantém publicação bloqueada até chaves Ed25519 de produção e testes reais.
 - adiciona vetor público, contrato do emissor, cerimônia de chaves e runbook de release.
 
 ## 3.0.11 — beta

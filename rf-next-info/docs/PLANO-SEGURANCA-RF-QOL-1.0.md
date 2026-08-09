@@ -1,6 +1,6 @@
 # Plano de segurança — RF QOL 1.0
 
-Status: planejado, aguardando aprovação do owner para implementação.
+Status: implementado localmente; produção e publicação permanecem pendentes.
 
 Baseline verificada em 09/08/2026:
 
@@ -25,7 +25,8 @@ Transformar a base 3.0.11 numa instalação nova do RF QOL 1.0 com:
 - licença e atualização com âncoras de confiança distintas e imutáveis;
 - atualização explícita, verificável e sem execução de código gravável por
   usuário;
-- executável e instalador assinados pelo publicador Karvalho;
+- executável e instalador deliberadamente sem Authenticode, com conteúdo
+  autenticado por manifesto/procedência Ed25519 e SHA-256;
 - captura passiva por Pktmon, sem injeção, hooks invasivos, UPX, ofuscação ou
   manipulação do Defender;
 - ausência de `0x0101`, token, ticket ou credencial em banco, arquivos, IPC,
@@ -36,7 +37,9 @@ Transformar a base 3.0.11 numa instalação nova do RF QOL 1.0 com:
 - Nome final: `RF QOL`.
 - A 1.0 será instalação limpa, com novo `installation_id` e licenças novas.
 - Não haverá migração de licença da linha RF NEXT QOL.
-- Domínio, suporte, publicador e certificado continuam Karvalho.
+- Domínio, suporte, logo e empresa exibida continuam Karvalho.
+- O programa não terá certificado Authenticode; o Windows poderá exibir
+  `Publicador desconhecido` e alertas do SmartScreen.
 - O domínio de licença continua `rflicenca.karvalho.dev.br`.
 - A tolerância offline será de 24 horas.
 - Sem licença válida não haverá exportação.
@@ -44,7 +47,8 @@ Transformar a base 3.0.11 numa instalação nova do RF QOL 1.0 com:
   `https://discord.gg/D3hhdMgkj`, aberto no navegador padrão somente após
   ação do usuário.
 - O rollback continua sendo um requisito, mas será feito por instalador
-  assinado, nunca por cópia executável numa pasta gravável pelo usuário.
+  autenticado por manifesto Ed25519, nunca por cópia executável numa pasta
+  gravável pelo usuário.
 
 ## Evidência encontrada na 3.0.11
 
@@ -64,10 +68,10 @@ Transformar a base 3.0.11 numa instalação nova do RF QOL 1.0 com:
 |---|---|---|---|
 | R-01 | A chave pública da licença é obtida do mesmo servidor durante a ativação e salva como estado mutável. | Um servidor ou resposta comprometida pode introduzir uma chave atacante. | Fixar a chave pública de lease no binário; nenhuma chave recebida da rede participa de verificação. |
 | R-02 | A mesma chave mutável também autentica o manifesto de update. | Comprometimento da licença pode virar execução remota de código. | Chave Ed25519 exclusiva de update, pública pinada no binário e privada mantida offline. |
-| R-03 | O rollback abre `updates/rollback/RFNextInfo.exe`, dentro de uma árvore `users-modify`. | Substituição local do executável e possível execução elevada. | Remover execução de binário copiado; usar instalador anterior assinado em staging admin-only e reverificá-lo. |
+| R-03 | O rollback abre `updates/rollback/RFNextInfo.exe`, dentro de uma árvore `users-modify`. | Substituição local do executável e possível execução elevada. | Remover execução de binário copiado; usar instalador anterior coberto por manifesto Ed25519 em staging admin-only e reverificá-lo. |
 | R-04 | A política atual permite 72 horas offline e orienta exportar após o vencimento. | Contraria a decisão do owner. | Lease v2 com teto de 24 horas imposto também pelo cliente e autorização central para exportação. |
 | R-05 | O motor de exportação não exige licença válida antes de gerar JSON/CSV. | Desabilitar apenas botões não impõe a regra. | Gate no motor compartilhado, cobrindo exportação manual, automática, envio e interface legada. |
-| R-06 | Executável e instalador não têm Authenticode. | Origem do publicador não é verificável pelo Windows. | Authenticode SHA-256 com timestamp RFC 3161 em ambos. |
+| R-06 | Executável e instalador não têm Authenticode. | Windows não verifica a origem e pode exibir `Publicador desconhecido`/SmartScreen. | Risco aceito pelo owner; exigir download oficial, manifesto e procedência Ed25519, tamanho/SHA-256, confirmação visível e chave de update offline. |
 | R-07 | Dependências usam intervalos de versão e não há procedência de build registrada. | Build futuro pode incorporar dependências diferentes sem evidência. | Lock com hashes, SBOM, scan de segredos e registro de commit, ferramentas e hashes. |
 | R-08 | O emissor de licença não está neste snapshot. | Cliente e site não conseguem adotar lease v2 isoladamente. | Localizar e versionar a alteração do emissor antes de implementar o cliente. |
 
@@ -106,7 +110,7 @@ chave privada de lease (online, servidor)
 chave privada de update (offline, cerimônia de release)
   -> manifesto v2 assinado
   -> chave pública de update pinada no RF QOL
-  -> SHA-256 + tamanho + Authenticode do instalador
+  -> SHA-256 + tamanho do instalador final
 
 servidor/site
   -> introspecção v2
@@ -141,13 +145,13 @@ licença nem no repositório.
 3. O manifesto precisa corresponder ao produto, canal, arquitetura, versão e
    sequência esperados.
 4. O instalador é baixado para staging admin-only.
-5. Tamanho, SHA-256 e Authenticode do publicador esperado são verificados.
+5. Tamanho e SHA-256 são verificados contra o manifesto Ed25519.
 6. O usuário vê versão e changelog e confirma a instalação.
 7. As verificações são repetidas imediatamente antes da execução.
 8. O aplicativo fecha captura e banco de forma consistente.
 9. O instalador executa com UAC e registra resultado/self-test.
-10. Rollback usa o instalador anterior assinado e só é permitido quando a
-    compatibilidade de dados estiver declarada no manifesto.
+10. Rollback usa o instalador anterior autenticado pelo manifesto Ed25519 e só
+    é permitido quando a compatibilidade de dados estiver declarada.
 
 Nenhum executável é iniciado a partir de pasta `users-modify`. Atualizações de
 segurança continuam disponíveis quando a licença está ausente ou vencida.
@@ -162,7 +166,7 @@ segurança continuam disponíveis quando a licença está ausente ou vencida.
   plugin, script ou chave de confiança carregados pelo aplicativo.
 - DPAPI `LOCAL_MACHINE` só pode proteger o estado de instalação quando o ACL do
   arquivo limitar leitura/escrita a Administradores/SYSTEM. DPAPI não substitui
-  ACL nem assinatura.
+  ACL nem assinatura Ed25519 de conteúdo.
 
 ## Cadeia de fornecimento e release
 
@@ -172,18 +176,17 @@ segurança continuam disponíveis quando a licença está ausente ou vencida.
 - Scan de segredos e de artefatos proibidos.
 - Registro de commit, versão do Python, PyInstaller, dependências, SHA-256 do
   executável, instalador e manifesto.
-- Authenticode SHA-256 com timestamp RFC 3161.
+- Procedência local declara `authenticode=false` e é assinada com a chave
+  Ed25519 de update.
 - Atestação de procedência do GitHub quando o build ocorrer no Actions; para
   build local, `release-provenance.json` assinado faz parte do gate.
-- Nenhuma chave privada, PFX, senha ou token entra no repositório ou no
+- Nenhuma chave privada, senha ou token entra no repositório ou no
   pacote do cliente.
 
 ## Referências oficiais
 
 - Microsoft, DPAPI `CryptProtectData`:
   https://learn.microsoft.com/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata
-- Microsoft, timestamp Authenticode:
-  https://learn.microsoft.com/windows/win32/seccrypto/time-stamping-authenticode-signatures
 - GitHub, artifact attestations:
   https://docs.github.com/actions/concepts/security/artifact-attestations
 - NIST SP 800-218, SSDF:
@@ -201,4 +204,4 @@ evidência local, as fontes oficiais, os testes previstos e os gates do owner.
 O owner aprovou em 09 ago 2026 a implementação máxima em ambiente isolado, com
 execução autônoma e documentação para revisão posterior. Isso autoriza código,
 chaves de desenvolvimento, staging e testes locais; não autoriza publicação,
-produção, compra ou uso de certificado/chaves reais não disponíveis.
+produção ou uso de chaves definitivas ainda não geradas.

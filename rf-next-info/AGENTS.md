@@ -6,5 +6,5 @@
 - Interface e arte devem seguir integralmente `K:\Karvalho\Identidade Visual Karvalho\SKILL.md`.
 - Kills são estimadas por recompensa; campos não confirmados ficam ocultos.
 - Nenhum token/ticket de sessão ou payload `0x0101` pode ser salvo ou exibido.
-- O piloto pode ser sem assinatura; release pública fica bloqueada até certificado confiável e testes limpos.
+- Por decisão do owner, executável e instalador não usam Authenticode; release pública exige manifesto e procedência Ed25519, hashes e testes limpos.
 - Alterações não devem publicar releases nem mudar produção sem validação final.

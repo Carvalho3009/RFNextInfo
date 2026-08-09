@@ -14,20 +14,6 @@ $Python = if ($env:RFQOL_BUILD_PYTHON) {
     'python'
 }
 
-function Invoke-Sign([string]$Path) {
-    if (-not $Release) { return }
-    foreach ($name in 'RFQOL_SIGNTOOL', 'RFQOL_CERT_SHA1', 'RFQOL_TIMESTAMP_URL') {
-        if (-not (Get-Item -LiteralPath "env:$name" -ErrorAction SilentlyContinue).Value) {
-            throw "$name é obrigatório no build de release."
-        }
-    }
-    & $env:RFQOL_SIGNTOOL sign /sha1 $env:RFQOL_CERT_SHA1 /fd SHA256 `
-        /tr $env:RFQOL_TIMESTAMP_URL /td SHA256 $Path
-    if ($LASTEXITCODE) { throw "Falha ao assinar $Path" }
-    & $env:RFQOL_SIGNTOOL verify /pa /tw $Path
-    if ($LASTEXITCODE) { throw "Falha ao verificar a assinatura de $Path" }
-}
-
 Push-Location $Project
 try {
     $Dirty = [bool](git status --porcelain)
@@ -89,7 +75,6 @@ try {
     if ($LASTEXITCODE) { throw 'Ambiente de dependências inconsistente.' }
     & $Python -m pip list --local --format=json | Set-Content -LiteralPath (Join-Path $Dist 'sbom-python.json') -Encoding UTF8
     Copy-Item -LiteralPath '.\requirements-lock-win-x64-py313.txt' -Destination $Dist -Force
-    Invoke-Sign $Executable
 
     $NsisPath = if ($env:RFQOL_NSIS) {
         if (-not (Test-Path -LiteralPath $env:RFQOL_NSIS -PathType Leaf)) {
@@ -108,7 +93,6 @@ try {
         & $NsisPath '/V2' '/WX' '.\packaging\installer.nsi'
         if ($LASTEXITCODE) { throw 'Falha ao gerar o instalador.' }
         $Installer = Join-Path $Project 'dist\RF QOL Setup 1.0.0.exe'
-        Invoke-Sign $Installer
     }
 
     if ($Release) {
@@ -141,6 +125,7 @@ try {
         pyinstaller = (& $Python -m PyInstaller --version 2>&1 | Out-String).Trim()
         nsis = if ($NsisPath) { (& $NsisPath '/VERSION' | Out-String).Trim() } else { $null }
         nsis_sha256 = if ($NsisPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath $NsisPath).Hash } else { $null }
+        authenticode = $false
         release = [bool]$Release
     }
     $Provenance | ConvertTo-Json | Set-Content -LiteralPath '.\dist\release-provenance.json' -Encoding UTF8

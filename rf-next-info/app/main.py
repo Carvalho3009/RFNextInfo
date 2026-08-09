@@ -40,7 +40,6 @@ from app.support_log import configure as configure_log, recent_lines
 from app.updater import (
     download_verified,
     latest,
-    verify_authenticode,
     verify_downloaded,
     verify_manifest,
 )
@@ -6575,7 +6574,9 @@ class App(tk.Tk):
             )
         if messagebox.askyesno(
             "Atualização verificada",
-            "Assinatura e SHA-256 conferem.\n\n"
+            "Manifesto Ed25519 e SHA-256 conferem.\n\n"
+            "O instalador não usa assinatura de código do Windows e pode "
+            "aparecer como Publicador desconhecido.\n\n"
             "O RF QOL será fechado e o instalador será aberto. Continuar?",
         ):
             self._save_preferences()
@@ -6589,7 +6590,6 @@ class App(tk.Tk):
                     current_sequence=self.license.highest_release_sequence,
                 )
                 verify_downloaded(installer, manifest)
-                verify_authenticode(installer)
                 os.startfile(installer)
             except (OSError, ValueError, json.JSONDecodeError) as launch_error:
                 self.log.exception("update_installer_launch_failed")

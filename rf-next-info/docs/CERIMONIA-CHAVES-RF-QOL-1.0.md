@@ -1,15 +1,14 @@
 # Cerimônia de chaves — RF QOL 1.0
 
 Estado: procedimento preparado; chaves de produção ainda não geradas
-Escopo: lease Ed25519, update Ed25519 e Authenticode Karvalho
+Escopo: lease Ed25519 e update Ed25519
 
 ## Separação de papéis
 
 | Papel | Local da privada | Uso | `key_id` esperado |
 |---|---|---|---|
 | Lease | segredo online exclusivo do emissor | assinar leases v2 de até 24 h | `lease-AAAA-NN` |
-| Update | mídia/cofre offline, fora do servidor | assinar manifesto após Authenticode | `update-AAAA-NN` |
-| Authenticode | provedor/cofre do certificado Karvalho | assinar EXE e instalador | subject/thumbprint registrados na ata |
+| Update | mídia/cofre offline, fora do servidor | assinar manifesto e procedência após gerar os bytes finais | `update-AAAA-NN` |
 
 As privadas de lease e update não podem compartilhar arquivo, conta, backup,
 permissões ou máquina operacional. Nenhuma privada entra no Git, em artefato,
@@ -21,8 +20,8 @@ log, variável persistida pelo cliente ou pacote de suporte.
 - testemunha/revisor diferente do operador;
 - owner que autoriza a promoção;
 - data, ambiente, ferramenta e versão;
-- SHA-256 das chaves públicas e do certificado público;
-- `key_id`, subject, issuer, serial, thumbprint e validade do certificado;
+- SHA-256 das chaves públicas;
+- `key_id` de cada papel;
 - local de custódia e procedimento de recuperação, sem registrar segredos.
 
 ## Sequência da cerimônia
@@ -40,12 +39,13 @@ log, variável persistida pelo cliente ou pacote de suporte.
 10. Destruir arquivos temporários e verificar que não ficaram em histórico,
     terminal, cache, backup ou artefato.
 
-## Authenticode
+## Assinatura de código do Windows
 
-O certificado real somente entra após G2. Registrar o subject e thumbprint
-aprovados e então tornar a verificação do cliente mais estrita que a busca
-temporária pelo nome `Karvalho`. O build de release exige SHA-256, timestamp
-RFC 3161 e `signtool verify /pa /tw` no executável e no instalador.
+Por decisão do owner, o RF QOL 1.0 não usa certificado Authenticode. Executável
+e instalador permanecem `NotSigned`; metadados e logo Karvalho não constituem
+prova criptográfica de origem. O Windows poderá exibir `Publicador desconhecido`
+e alertas do SmartScreen. A confiança do conteúdo depende da chave Ed25519 de
+update pinada no programa, manifesto/procedência assinados, tamanho e SHA-256.
 
 ## Rotação e incidente
 
@@ -54,9 +54,8 @@ RFC 3161 e `signtool verify /pa /tw` no executável e no instalador.
 - Privada de lease comprometida: revogar o segredo online, ativar a próxima
   pública já pinada e reduzir o impacto ao TTL máximo de 24 h.
 - Privada de update comprometida: bloquear o feed e distribuir instalador
-  manual com Authenticode; não confiar em rotação publicada pela chave exposta.
-- Certificado comprometido: interromper release, revogar no emissor e repetir a
-  validação pública com o novo certificado.
+  manual por canal oficial, com hashes publicados por canal independente; não
+  confiar em rotação publicada pela chave exposta.
 
 ## Gates automáticos existentes
 

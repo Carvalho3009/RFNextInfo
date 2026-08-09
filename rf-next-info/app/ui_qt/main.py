@@ -54,7 +54,6 @@ from app.support_log import (
 from app.updater import (
     download_verified,
     latest,
-    verify_authenticode,
     verify_downloaded,
     verify_manifest,
 )
@@ -3063,7 +3062,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 current_sequence=self.license_client.highest_release_sequence,
             )
             verify_downloaded(installer, manifest)
-            verify_authenticode(installer)
         except (OSError, ValueError, json.JSONDecodeError) as error:
             self.log.exception("update_reverification_failed")
             QtWidgets.QMessageBox.critical(
@@ -3081,7 +3079,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if QtWidgets.QMessageBox.question(
             self,
             "Atualização verificada",
-            "O RF QOL será fechado e o instalador assinado será aberto. Continuar?",
+            "Manifesto Ed25519 e SHA-256 conferem.\n\n"
+            "O instalador não usa assinatura de código do Windows e pode "
+            "aparecer como Publicador desconhecido.\n\n"
+            "O RF QOL será fechado e o instalador será aberto. Continuar?",
         ) != QtWidgets.QMessageBox.StandardButton.Yes:
             return
         script = (

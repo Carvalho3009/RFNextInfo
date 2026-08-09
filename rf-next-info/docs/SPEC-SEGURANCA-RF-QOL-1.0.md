@@ -32,12 +32,17 @@ contratos funcionais do site além da validação de licença.
 - instalador: `RF QOL Setup 1.0.0.exe`
 - versão inicial: `1.0.0`
 - issuer de licença: `rflicenca.karvalho.dev.br`
-- publicador Authenticode: Karvalho
+- empresa exibida nos metadados: Karvalho
+- assinatura de código do Windows: não utilizada
 - suporte Discord: `https://discord.gg/D3hhdMgkj`
 
 O produto e os executáveis usam o nome RF QOL. Por decisão do owner em
 09 ago 2026, a identidade visual e o logo permanecem Karvalho, que também
-continua nos papéis de domínio, suporte, publicador e certificado.
+continua nos papéis de domínio, suporte e empresa exibida nos metadados. Em
+decisão posterior na mesma data, o owner determinou que o programa não terá
+certificado Authenticode. O Windows poderá mostrar `Publicador desconhecido` e
+alertas do SmartScreen; isso não deve ser apresentado como falha da cadeia
+Ed25519 do produto.
 
 A 1.0 DEVE ser instalação nova. Estado e licenças da linha RF NEXT QOL NÃO
 DEVEM ser migrados nem aceitos. Arquivos antigos NÃO DEVEM ser apagados pela
@@ -77,7 +82,8 @@ atacante publique código aceito pelos clientes.
 Uma nova chave pública só pode ser introduzida por versão assinada pela chave
 anterior ainda confiável. Durante a transição, o binário pode conter `current`
 e `next`; após a janela aprovada, a chave antiga é removida. Comprometimento da
-chave de update exige instalador manual assinado pelo publicador.
+chave de update exige bloquear o feed e distribuir instalador manual pelo canal
+oficial, com hashes publicados por um canal independente.
 
 ## 4. Lease v2
 
@@ -243,10 +249,9 @@ exceto rollback explícito e assinado.
 - Download ocorre em staging admin-only.
 - Arquivo parcial tem nome distinto e nunca é executado.
 - Tamanho e SHA-256 são verificados após download.
-- Authenticode DEVE formar cadeia confiável, ter o publicador esperado e
-  timestamp válido.
-- Manifesto, hash e Authenticode são reverificados imediatamente antes da
-  execução.
+- Manifesto Ed25519, tamanho e SHA-256 são reverificados imediatamente antes
+  da execução.
+- A interface informa que o instalador não usa assinatura de código do Windows.
 - A interface exibe versão, canal e changelog e exige confirmação.
 - Não existe update silencioso.
 - TLS padrão permanece obrigatório; `verify=False` ou equivalente é proibido.
@@ -258,7 +263,7 @@ exceto rollback explícito e assinado.
 - O instalador anterior fica em cache admin-only e conserva manifesto e
   assinatura originais.
 - Antes de executar rollback, o cliente repete verificação Ed25519, tamanho,
-  SHA-256 e Authenticode.
+  SHA-256 e compatibilidade declarada.
 - Rollback exige confirmação e UAC.
 - O anti-downgrade só é dispensado para esta ação explícita; as demais
   verificações continuam obrigatórias.
@@ -302,12 +307,12 @@ interpretada como licença válida no servidor.
 - Build ocorre em ambiente limpo a partir de commit limpo.
 - Release inclui SBOM e arquivo de procedência.
 - Scan de segredos e scanner de dados proibidos devem passar.
-- Executável e instalador recebem Authenticode SHA-256 e timestamp RFC 3161.
-- `signtool verify /pa /tw` deve passar em ambos.
-- Hashes publicados devem ser calculados depois da assinatura.
-- Manifesto é assinado por último, com o hash do instalador assinado.
-- Release pública sem Authenticode, timestamp, manifesto v2 ou testes negativos
-  é proibida.
+- Executável e instalador permanecem sem Authenticode por decisão do owner.
+- A procedência declara explicitamente `authenticode=false`.
+- Hashes publicados devem ser calculados sobre os bytes finais.
+- Manifesto é assinado por último, com o hash do instalador final.
+- Release pública sem manifesto v2, procedência Ed25519 ou testes negativos é
+  proibida.
 
 ## 12. Critérios de aceite obrigatórios
 
@@ -327,7 +332,10 @@ interpretada como licença válida no servidor.
 
 - Manifesto forjado, expirado, canal/produto errado, sequence antigo, tamanho ou
   hash divergente são rejeitados.
-- Instalador sem Authenticode válido ou com publicador inesperado é rejeitado.
+- Instalador ausente do manifesto Ed25519 ou com tamanho/hash divergente é
+  rejeitado.
+- Executável e instalador finais são confirmados como `NotSigned`, conforme a
+  decisão registrada, sem tratar metadados de empresa como prova criptográfica.
 - Nenhum código executável fica em caminho `users-modify`.
 - Substituir o arquivo após a primeira verificação é detectado na reverificação.
 - Rollback válido reinstala uma versão compatível; rollback incompatível é
@@ -347,8 +355,8 @@ interpretada como licença válida no servidor.
 
 - G0: aprovado em 09 ago 2026.
 - G1: aprovado para implementação isolada, staging e chaves de desenvolvimento.
-- G2: aprovado somente para preparar e validar o fluxo; o certificado real não
-  pode ser usado, comprado ou alterado sem estar explicitamente disponível.
+- G2: certificado Authenticode removido do escopo por decisão do owner; resta a
+  cerimônia das chaves Ed25519 definitivas.
 - G3: aprovado para RC e testes locais que não afetem o programa em uso.
 - G4: pendente; publicação/release e produção não fazem parte desta autorização.
 

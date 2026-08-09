@@ -22,6 +22,7 @@ def create_signature(provenance: Path, key_id: str, private_key: Path) -> dict:
     if (
         document.get("product") != "rf-qol"
         or document.get("release") is not True
+        or document.get("authenticode") is not False
         or not document.get("commit")
         or not document.get("installer_sha256")
         or not document.get("manifest_sha256")

@@ -84,10 +84,10 @@ python -m unittest discover -s tests -v
 .\dist\RF QOL\RF QOL.exe --self-test
 ```
 
-O build de desenvolvimento permanece sem assinatura. O build `-Release` exige
-chaves públicas de produção, certificado Authenticode, timestamp, manifesto v2
-assinado e NSIS 3.12; enquanto esses recursos não estiverem disponíveis, a
-publicação é bloqueada.
+Executável e instalador permanecem deliberadamente sem Authenticode por decisão
+do owner. O build `-Release` exige chaves públicas de produção, manifesto v2 e
+procedência assinados com Ed25519 e NSIS 3.12; enquanto esses recursos não
+estiverem disponíveis, a publicação é bloqueada.
 
 ### Diagnóstico da atualização durante a captura
 

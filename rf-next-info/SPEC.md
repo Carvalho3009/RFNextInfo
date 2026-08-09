@@ -110,16 +110,17 @@ Roadmap:
   disponíveis. Os arquivos do usuário nunca são apagados ou criptografados.
 - Captura PktMon pendente após falha deve ser recuperável sem apagar o ETL.
 - Atualização visível e confirmada, com chave Ed25519 exclusiva e pinada,
-  manifesto v2, sequência anti-downgrade, tamanho, SHA-256, Authenticode e
-  rollback por instalador anterior assinado. Nenhum código é executado de
-  pasta gravável pelo usuário.
+  manifesto v2, sequência anti-downgrade, tamanho, SHA-256 e rollback pelo
+  instalador anterior autenticado pelo manifesto assinado. Nenhum código é
+  executado de pasta gravável pelo usuário.
 - Sem telemetria; diagnósticos e logs sanitizados só são enviados após consentimento.
 - Log técnico local rotativo de até aproximadamente 4 MB; envio, pasta e cópia manual na aba Licença.
 - Envio ao site usa API HTTPS idempotente e token revogável por Profile; o
   programa nunca recebe credenciais do banco. O servidor armazena somente o
   hash do token, e o Windows protege a cópia local.
-- Interface RF QOL com identidade e logo próprias. Karvalho permanece como
-  domínio, suporte, publicador e certificado. O programa inclui o link oficial
+- Interface RF QOL com identidade visual Karvalho. Karvalho permanece como
+  domínio, suporte e empresa exibida nos metadados. O programa não usa
+  certificado Authenticode e inclui o link oficial
   `https://discord.gg/D3hhdMgkj`, aberto somente por ação do usuário.
 - RF QOL 1.0 é instalação nova e não migra licença da linha RF NEXT QOL.
   Binários, estado de licença, anti-downgrade e staging executável usam ACL
@@ -131,8 +132,9 @@ Roadmap:
 Nome final do produto: `RF QOL`.
 Executável final: `RF QOL.exe`.
 Instalador final: `RF QOL Setup 1.0.0.exe`.
-Domínio, suporte, publicador e certificado: Karvalho.
-Logo própria: pendente de aprovação visual antes da implementação.
+Domínio, suporte e empresa exibida: Karvalho.
+Assinatura de código do Windows: não utilizada por decisão do owner.
+Logo: Karvalho.
 
 ## Gates
 
@@ -156,9 +158,10 @@ Logo própria: pendente de aprovação visual antes da implementação.
   âncora de confiança.
 - Lease v1, licença antiga, product/audience divergente ou prazo offline acima
   de 24 horas são rejeitados no cliente e no site.
-- Executável e instalador públicos devem passar em Authenticode SHA-256 com
-  timestamp RFC 3161.
-- Piloto sem assinatura não é release pública.
+- Executável e instalador públicos permanecem sem Authenticode; o Windows pode
+  exibir `Publicador desconhecido` e o SmartScreen pode alertar.
+- Manifesto e procedência Ed25519, tamanho e SHA-256 dos bytes publicados são
+  obrigatórios para release pública.
 - Publicação no GitHub somente após testes e revisão.
 
 ## Limites confirmados desta implementação
