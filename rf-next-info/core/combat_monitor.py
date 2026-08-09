@@ -24,7 +24,7 @@ def summarize_combat(
     boss_catalog = boss_catalog or {}
     damage: list[dict[str, int]] = []
     hp_history: dict[int, list[tuple[int, int]]] = {}
-    target_damage: dict[int, dict[int, int]] = {}
+    target_damage: dict[int, dict[int, list[tuple[int, int]]]] = {}
     last_pve: tuple[int, int] | None = None
     last_pvp: tuple[int, int, str] | None = None
     for event in ordered:
@@ -89,7 +89,7 @@ def summarize_combat(
                 hp_damage = max(0, int(result.get("hp_damage") or 0))
                 if caster is not None and hp_damage:
                     by_caster = target_damage.setdefault(target, {})
-                    by_caster[caster] = by_caster.get(caster, 0) + hp_damage
+                    by_caster.setdefault(caster, []).append((timestamp, hp_damage))
                 if local_uid is None:
                     continue
                 if caster == local_uid and target in monsters:
@@ -127,13 +127,24 @@ def summarize_combat(
                 dps_window_seconds,
             )
             boss["top_damage_players"] = _top_damage_players(
-                target_damage.get(int(entity["uid"]), {}), players
+                target_damage.get(int(entity["uid"]), {}),
+                players,
+                reference_ns,
+                dps_window_seconds,
             )
             boss["top_damage_guilds"] = _top_damage_groups(
-                target_damage.get(int(entity["uid"]), {}), players, "guild"
+                target_damage.get(int(entity["uid"]), {}),
+                players,
+                "guild",
+                reference_ns,
+                dps_window_seconds,
             )
             boss["top_damage_groups"] = _top_damage_groups(
-                target_damage.get(int(entity["uid"]), {}), players, "group"
+                target_damage.get(int(entity["uid"]), {}),
+                players,
+                "group",
+                reference_ns,
+                dps_window_seconds,
             )
             boss.update(
                 level=_integer(metadata.get("level")),
@@ -297,40 +308,63 @@ def _add_boss_rates(
 
 
 def _top_damage_players(
-    damage: dict[int, int], players: dict[int, dict[str, Any]]
+    damage: dict[int, list[tuple[int, int]]],
+    players: dict[int, dict[str, Any]],
+    now_ns: int,
+    window_seconds: int,
 ) -> list[dict[str, Any]]:
-    rows = [
-        {
+    rows = []
+    for uid, events in damage.items():
+        recent, dps = _damage_rate(events, now_ns, window_seconds)
+        if not recent:
+            continue
+        player = players.get(uid) or {}
+        rows.append({
             "uid": uid,
-            "name": str((players.get(uid) or {}).get("name") or f"UID {uid}"),
-            "damage": amount,
-        }
-        for uid, amount in damage.items()
-        if amount > 0
-    ]
+            "name": str(player.get("name") or f"UID {uid}"),
+            "guild_name": str(player.get("guild_name") or player.get("guild_id") or ""),
+            "damage": recent,
+            "dps_hp": dps,
+        })
     return sorted(
-        rows, key=lambda row: (-int(row["damage"]), row["name"])
+        rows, key=lambda row: (-float(row["dps_hp"]), row["name"])
     )[:10]
 
 
 def _top_damage_groups(
-    damage: dict[int, int],
+    damage: dict[int, list[tuple[int, int]]],
     players: dict[int, dict[str, Any]],
     group_type: str,
+    now_ns: int,
+    window_seconds: int,
 ) -> list[dict[str, Any]]:
-    totals: dict[str, int] = {}
-    for uid, amount in damage.items():
+    grouped_events: dict[str, list[tuple[int, int]]] = {}
+    for uid, events in damage.items():
         player = players.get(uid) or {}
         if group_type == "guild":
             name = str(player.get("guild_name") or player.get("guild_id") or "").strip()
         else:
             name = str(player.get("group_id") or "").strip()
-        if name and amount > 0:
-            totals[name] = totals.get(name, 0) + amount
-    return [
-        {"name": name, "damage": amount}
-        for name, amount in sorted(totals.items(), key=lambda item: (-item[1], item[0]))[:10]
-    ]
+        if name:
+            grouped_events.setdefault(name, []).extend(events)
+    rows = []
+    for name, events in grouped_events.items():
+        recent, dps = _damage_rate(events, now_ns, window_seconds)
+        if recent:
+            rows.append({"name": name, "damage": recent, "dps_hp": dps})
+    return sorted(rows, key=lambda row: (-float(row["dps_hp"]), row["name"]))[:10]
+
+
+def _damage_rate(
+    events: list[tuple[int, int]], now_ns: int, window_seconds: int
+) -> tuple[int, float]:
+    cutoff = now_ns - window_seconds * 1_000_000_000
+    recent = [(timestamp, amount) for timestamp, amount in events if timestamp >= cutoff]
+    if not recent:
+        return 0, 0.0
+    elapsed = max(1.0, min(float(window_seconds), (now_ns - recent[0][0]) / 1_000_000_000))
+    total = sum(amount for _timestamp, amount in recent)
+    return total, round(total / elapsed, 1)
 
 
 def _target_snapshot(

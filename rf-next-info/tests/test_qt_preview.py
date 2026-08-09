@@ -159,7 +159,15 @@ class QtPreviewSmokeTest(unittest.TestCase):
             "character_name": "Carvalho",
             "bosses": [
                 {"name": "Xenogeyser", "level": 86, "current_hp": 400, "max_hp": 500,
-                 "hp_percent": 80.0, "age_seconds": 1.0, "stale": False},
+                 "hp_percent": 80.0, "age_seconds": 1.0, "stale": False,
+                 "top_damage_players": [
+                     {"name": f"Jogador {index}", "guild_name": "Karvalho",
+                      "dps_hp": 1000 - index, "damage": 5000 - index}
+                     for index in range(1, 7)
+                 ],
+                 "top_damage_guilds": [
+                     {"name": "Karvalho", "dps_hp": 5990, "damage": 29990}
+                 ]},
                 {"name": "Executor", "level": 90, "current_hp": 300, "max_hp": 600,
                  "hp_percent": 50.0, "age_seconds": 2.0, "stale": False},
             ],
@@ -175,6 +183,18 @@ class QtPreviewSmokeTest(unittest.TestCase):
         ]
         self.assertTrue(any("Xenogeyser" in text for text in labels))
         self.assertTrue(any("Executor" in text for text in labels))
+        self.assertTrue(any("DPS por jogador" in text for text in labels))
+        self.assertTrue(any("Jogador 6 · Karvalho" in text for text in labels))
+        self.assertTrue(any("DPS por guilda" in text for text in labels))
+        cards = window.combat_page_layouts["boss"]["cards"]
+        self.assertFalse(cards[0].isHidden())
+        self.assertTrue(cards[1].isHidden())
+        self.assertEqual(
+            window.combat_page_layouts["boss"]["layout"].getItemPosition(
+                window.combat_page_layouts["boss"]["layout"].indexOf(cards[0])
+            ),
+            (0, 0, 1, 2),
+        )
         self.assertEqual(window.combat_widgets["boss"][1]["boss_layout"].count(), 0)
         window.close()
 
@@ -554,7 +574,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.5")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.6")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

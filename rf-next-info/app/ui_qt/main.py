@@ -345,14 +345,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.removeWidget(card)
             for row in range(3):
                 layout.setRowStretch(row, 0)
-            if expanded:
-                for index, card in enumerate(cards):
+            visible_cards = (
+                [card for card in cards if not card.isHidden()]
+                if page["mode"] == "boss"
+                else cards
+            )
+            if len(visible_cards) == 1:
+                layout.addWidget(visible_cards[0], 0, 0, 1, 2)
+                layout.setRowStretch(1, 1)
+                layout.setColumnStretch(0, 1)
+                layout.setColumnStretch(1, 0)
+            elif expanded:
+                for index, card in enumerate(visible_cards):
                     layout.addWidget(card, 0, index)
                 layout.setRowStretch(1, 1)
                 layout.setColumnStretch(0, 1)
                 layout.setColumnStretch(1, 1)
             else:
-                for index, card in enumerate(cards):
+                for index, card in enumerate(visible_cards):
                     layout.addWidget(card, index, 0, 1, 2)
                 layout.setRowStretch(2, 1)
                 layout.setColumnStretch(0, 1)
@@ -722,11 +732,20 @@ class MainWindow(QtWidgets.QMainWindow):
                     **values,
                 }
             )
+        page_empty = None
+        if mode == "boss":
+            page_empty = _label(
+                "Nenhum Boss detectado pelos clientes ativos.", "muted"
+            )
+            page_empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            content_layout.addWidget(page_empty, 2, 0, 1, 2)
         self.combat_widgets[mode] = widgets
         content_layout.setRowStretch(2, 1)
         self.combat_page_layouts[mode] = {
+            "mode": mode,
             "layout": content_layout,
             "cards": cards,
+            "empty": page_empty,
         }
         scroll.setWidget(content)
         column.addWidget(scroll, 1)
@@ -4227,10 +4246,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     f"Cliente {chr(65 + index)} · {character or 'aguardando personagem'}"
                 )
                 if mode == "boss":
-                    self._render_bosses(widgets, list((monitor or {}).get("bosses") or []))
+                    bosses = list((monitor or {}).get("bosses") or [])
+                    self._render_bosses(widgets, bosses)
+                    self.combat_page_layouts[mode]["cards"][index].setVisible(
+                        bool(bosses)
+                    )
                     widgets["status"].setText(
                         "Bosses próximos confirmados pelo stream em memória."
-                        if (monitor or {}).get("bosses")
+                        if bosses
                         else "Nenhum boss confirmado próximo."
                     )
                     continue
@@ -4278,6 +4301,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     if target.get("stale")
                     else f"Atualizado há {age:.1f} s{direction}".replace(".", ",")
                 )
+        boss_page = self.combat_page_layouts.get("boss")
+        if boss_page:
+            has_boss = any(not card.isHidden() for card in boss_page["cards"])
+            boss_page["empty"].setVisible(not has_boss)
+        self._sync_combat_layout()
         self._update_boss_overlay(monitors)
         self._update_pvp_overlay(monitors)
 
@@ -4509,34 +4537,29 @@ class MainWindow(QtWidgets.QMainWindow):
                     "muted",
                 )
             )
-            top = list(boss.get("top_damage_players") or [])
-            if top:
-                column.addWidget(
-                    _label(
-                        "Top dano: "
-                        + " · ".join(
-                            f"{item.get('name')}: {self._format_count(item.get('damage'))}"
-                            for item in top[:3]
-                        ),
-                        "muted",
-                    )
-                )
             for title, key in (
-                ("Guildas", "top_damage_guilds"),
-                ("Grupos", "top_damage_groups"),
+                ("DPS por jogador · 10 s", "top_damage_players"),
+                ("DPS por guilda · 10 s", "top_damage_guilds"),
+                ("DPS por grupo · 10 s", "top_damage_groups"),
             ):
                 ranking = list(boss.get(key) or [])
                 if ranking:
-                    column.addWidget(
-                        _label(
-                            f"{title}: "
-                            + " · ".join(
-                                f"{item.get('name')}: {self._format_count(item.get('damage'))}"
-                                for item in ranking[:3]
-                            ),
-                            "muted",
+                    column.addWidget(_label(title, "subtitle"))
+                    for position, item in enumerate(ranking[:10], 1):
+                        ranking_row = QtWidgets.QHBoxLayout()
+                        name = str(item.get("name") or "Não identificado")
+                        guild = str(item.get("guild_name") or "").strip()
+                        if guild:
+                            name += f" · {guild}"
+                        ranking_row.addWidget(_label(f"{position}. {name}", "muted"), 1)
+                        ranking_row.addWidget(
+                            _label(
+                                f"{self._format_count(item.get('dps_hp'))}/s "
+                                f"· dano {self._format_count(item.get('damage'))}",
+                                "data",
+                            )
                         )
-                    )
+                        column.addLayout(ranking_row)
             progress = QtWidgets.QProgressBar()
             progress.setRange(0, 1000)
             progress.setValue(max(0, min(1000, round(float(percent) * 10))) if isinstance(percent, (int, float)) else 0)

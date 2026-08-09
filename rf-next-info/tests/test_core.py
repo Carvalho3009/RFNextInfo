@@ -293,12 +293,19 @@ class CoreTest(unittest.TestCase):
             result["bosses"][0]["top_damage_players"][0]["damage"], 1000
         )
         self.assertEqual(
+            result["bosses"][0]["top_damage_players"][0]["dps_hp"], 1000.0
+        )
+        self.assertEqual(
+            result["bosses"][0]["top_damage_players"][0]["guild_name"],
+            "Karvalho",
+        )
+        self.assertEqual(
             result["bosses"][0]["top_damage_guilds"],
-            [{"name": "Karvalho", "damage": 1000}],
+            [{"name": "Karvalho", "damage": 1000, "dps_hp": 1000.0}],
         )
         self.assertEqual(
             result["bosses"][0]["top_damage_groups"],
-            [{"name": "9", "damage": 1000}],
+            [{"name": "9", "damage": 1000, "dps_hp": 1000.0}],
         )
 
         events.append({"ts_ns": 4_000_000_000, "type": "dying_unit", "data": {"uid": 30}})

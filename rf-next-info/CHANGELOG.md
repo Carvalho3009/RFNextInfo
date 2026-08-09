@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.6 — beta
+
+- mostra na aba Boss somente os clientes que detectaram ao menos um Boss;
+- faz um único cartão ocupar toda a largura quando só um cliente detectar Boss;
+- amplia o ranking para até 10 jogadores com DPS e dano na janela de 10 segundos;
+- separa os rankings por jogador, guilda e grupo quando essas identidades estiverem disponíveis.
+
 ## 3.0.5 — beta
 
 - permite alterar individualmente os atalhos globais dos monitores PvE, PvP e Boss;
