@@ -55,6 +55,7 @@ from app.support_log import (
 from app.updater import create_rollback, download_verified, latest
 from app.ui_qt.operations import (
     CaptureEngine,
+    DEFAULT_GLOBAL_SHORTCUTS,
     ExportEngine,
     GlobalHotkeys,
     MonitorEngine,
@@ -76,6 +77,12 @@ PAGES = (
     ("Tutorial", "Primeiros passos e atalhos."),
 )
 MONITOR_PAGES = {2: "pve", 3: "pvp", 4: "boss"}
+MONITOR_SHORTCUT_OPTIONS = tuple(
+    f"{modifier}+F{number}"
+    for modifier in ("Ctrl", "Alt", "Shift")
+    for number in range(1, 13)
+    if not (modifier == "Ctrl" and number in {8, 9})
+)
 
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
@@ -580,11 +587,7 @@ class MainWindow(QtWidgets.QMainWindow):
         column.setSpacing(12)
         column.addWidget(_label(title, "title"))
         controls = QtWidgets.QHBoxLayout()
-        monitor_shortcut = {
-            "pve": "Ctrl+F5",
-            "pvp": "Ctrl+F6",
-            "boss": "Ctrl+F7",
-        }[mode]
+        monitor_shortcut = DEFAULT_GLOBAL_SHORTCUTS[f"monitor_{mode}"]
         enabled = QtWidgets.QPushButton(f"Ligar monitor  {monitor_shortcut}")
         enabled.setCheckable(True)
         enabled.toggled.connect(
@@ -1355,6 +1358,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for mode, title, default in (("character", "Personagem", "F1"), ("market", "Mercado", "F2"), ("codex", "Codex", "F3"), ("memory_chips", "Memory Chips", "F4")):
             combo = QtWidgets.QComboBox(); combo.addItems(tuple(f"F{number}" for number in range(1, 13))); combo.setCurrentText(default)
             shortcuts_form.addRow(title, combo); self.setting_shortcuts[mode] = combo
+        shortcuts_form.addRow(_label("Monitores", "subtitle"))
+        for mode, title in (
+            ("monitor_pve", "Monitor PvE"),
+            ("monitor_pvp", "Monitor PvP"),
+            ("monitor_boss", "Boss"),
+        ):
+            combo = QtWidgets.QComboBox()
+            combo.addItems(MONITOR_SHORTCUT_OPTIONS)
+            combo.setCurrentText(DEFAULT_GLOBAL_SHORTCUTS[mode])
+            shortcuts_form.addRow(title, combo)
+            self.setting_shortcuts[mode] = combo
         grid.addWidget(shortcuts, 2, 0)
 
         behavior = QtWidgets.QFrame(objectName="panel")
@@ -1363,7 +1377,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_minimize = QtWidgets.QCheckBox("Minimizar para a bandeja")
         self.setting_auto_export = QtWidgets.QCheckBox("Exportar automaticamente ao parar")
         self.setting_auto_market = QtWidgets.QCheckBox(
-            "Enviar Mercado automaticamente ao concluir a lista"
+            "Enviar Leilão/Mercado automaticamente ao concluir a lista"
         )
         self.setting_delete_export = QtWidgets.QCheckBox("Excluir após exportar")
         self.setting_detailed_log = QtWidgets.QCheckBox("Ativar log completo (detalhado)")
@@ -1459,7 +1473,8 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         shortcuts = dict(preferences.get("shortcuts") or {})
         for mode, combo in self.setting_shortcuts.items():
-            combo.setCurrentText(str(shortcuts.get(mode) or {"character": "F1", "market": "F2", "codex": "F3", "memory_chips": "F4"}[mode]))
+            combo.setCurrentText(str(shortcuts.get(mode) or DEFAULT_GLOBAL_SHORTCUTS[mode]))
+        self._apply_monitor_shortcut_labels(shortcuts)
         self.setting_minimize.setChecked(bool(preferences.get("minimize_to_tray", False)))
         self.setting_auto_export.setChecked(bool(preferences.get("auto_export", False)))
         self.setting_auto_market.setChecked(bool(preferences.get("auto_market_upload", True)))
@@ -1499,7 +1514,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Configurações", "Escolha uma pasta absoluta para as capturas.")
             return
         if len(set(shortcuts.values())) != len(shortcuts):
-            QtWidgets.QMessageBox.warning(self, "Configurações", "Cada envio precisa usar uma tecla de atalho diferente.")
+            QtWidgets.QMessageBox.warning(self, "Configurações", "Cada ação precisa usar uma tecla de atalho diferente.")
             return
         self.preferences = save_preferences({
             "capture_directory": str(capture_directory),
@@ -1534,6 +1549,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ensure_capture_engine()
         self._refresh_farm_catalog()
         self._render_overview()
+        self._apply_monitor_shortcut_labels(shortcuts)
         self._sync_global_hotkeys(shortcuts)
         self.setting_storage.setText(f"Capturas: {capture_directory}\nPreferências salvas para a interface estável e para o preview.")
         if self.site_profile.connected:
@@ -1638,6 +1654,22 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.global_hotkeys.stop()
         self.global_hotkeys.start(shortcuts)
+
+    def _apply_monitor_shortcut_labels(
+        self, shortcuts: dict[str, str] | None = None
+    ) -> None:
+        shortcuts = shortcuts or {}
+        for mode, controls in self.monitor_controls.items():
+            shortcut = str(
+                shortcuts.get(f"monitor_{mode}")
+                or DEFAULT_GLOBAL_SHORTCUTS[f"monitor_{mode}"]
+            )
+            controls["shortcut"] = shortcut
+            action = (
+                "Desligar monitor" if controls["enabled"].isChecked()
+                else "Ligar monitor"
+            )
+            controls["enabled"].setText(f"{action}  {shortcut}")
 
     def _rename_client(self, index: int) -> None:
         current = str(self.preferences.get(f"character{index + 1}") or "")

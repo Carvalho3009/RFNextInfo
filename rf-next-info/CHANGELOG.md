@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.5 — beta
+
+- permite alterar individualmente os atalhos globais dos monitores PvE, PvP e Boss;
+- aplica os novos atalhos imediatamente e os preserva entre atualizações;
+- permite habilitar ou desabilitar o envio automático de Leilão/Mercado;
+- mantém o envio manual de Mercado disponível quando o automático está desligado.
+
 ## 3.0.4 — beta
 
 - corrige a cópia recursiva da instalação para dentro do próprio rollback;

@@ -48,6 +48,57 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_pvp_overlay(False)
             window.close()
 
+    def test_monitor_keybinds_and_auto_market_setting_are_persisted(self):
+        from PySide6 import QtWidgets
+
+        from app.ui_qt.data import load_preferences
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["monitor-keybind-settings-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preferences_path = root / "preferences.json"
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=preferences_path,
+            )
+            window.capture_timer.stop()
+            window.setting_capture_directory.setText(str(root / "captures"))
+            window.setting_shortcuts["monitor_pve"].setCurrentText("Alt+F10")
+            window.setting_shortcuts["monitor_pvp"].setCurrentText("Shift+F11")
+            window.setting_shortcuts["monitor_boss"].setCurrentText("Ctrl+F12")
+            window.setting_auto_market.setChecked(False)
+
+            with (
+                mock.patch.object(QtWidgets.QMessageBox, "information"),
+                mock.patch.object(window.global_hotkeys, "stop"),
+                mock.patch.object(window.global_hotkeys, "start") as start_hotkeys,
+            ):
+                window._save_settings()
+
+            saved = load_preferences(preferences_path)
+            self.assertEqual(saved["shortcuts"]["monitor_pve"], "Alt+F10")
+            self.assertEqual(saved["shortcuts"]["monitor_pvp"], "Shift+F11")
+            self.assertEqual(saved["shortcuts"]["monitor_boss"], "Ctrl+F12")
+            self.assertFalse(saved["auto_market_upload"])
+            self.assertEqual(
+                window.monitor_controls["pve"]["enabled"].text(),
+                "Ligar monitor  Alt+F10",
+            )
+            self.assertEqual(
+                start_hotkeys.call_args.args[0]["monitor_boss"], "Ctrl+F12"
+            )
+            self.assertIn("Leilão/Mercado", window.setting_auto_market.text())
+            window.controls_initialized = True
+            window.capture_engine = SimpleNamespace(current_session="session")
+            window.site_profile = SimpleNamespace(connected=True)
+            with mock.patch.object(window, "_run_site_operation") as upload:
+                window._maybe_auto_market_upload()
+            upload.assert_not_called()
+            window.capture_engine = None
+            window.close()
+
     def test_monitor_page_requests_checkpoint_preview_without_rotation(self):
         from app.ui_qt.main import MainWindow, create_application
 
@@ -503,7 +554,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.4")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.5")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
