@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima beta
+## 3.0.10 — beta
 
 - permite arrastar o overlay PvP e preserva sua posição entre aberturas;
 - reposiciona o overlay automaticamente se a posição salva ficar fora da tela.
