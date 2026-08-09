@@ -1,4 +1,9 @@
-# SPEC — RF NEXT QOL
+# SPEC — RF NEXT QOL 3.0.11 -> RF QOL 1.0
+
+Plano de segurança normativo:
+[`docs/SPEC-SEGURANCA-RF-QOL-1.0.md`](docs/SPEC-SEGURANCA-RF-QOL-1.0.md).
+Roadmap:
+[`docs/ROADMAP-SEGURANCA-RF-QOL-1.0.md`](docs/ROADMAP-SEGURANCA-RF-QOL-1.0.md).
 
 ## Escopo aprovado
 
@@ -97,27 +102,37 @@
   para leitura posterior ou descarte manual.
 - Alertas: 5 GB; 10 GB ou 10% livre; encerramento seguro abaixo de 2 GB livres.
 - Após exportar: mostrar tamanhos, validar o arquivo e oferecer envio dos brutos à Lixeira.
-- Licença online a cada 24h, tolerância de 72h; depois bloquear novas capturas e preservar exportação.
-- A exportação e a recuperação dos arquivos existentes permanecem disponíveis sem licença reconhecida.
+- RF QOL 1.0 usa lease v2 com chaves novas, `product=rf-qol`, audience
+  `rf-qol-windows` e teto de 24 horas desde a última validação online.
+- Sem licença válida, o aplicativo bloqueia captura, monitores,
+  leitura/processamento, envio e exportação. Ativação, renovação, suporte,
+  Discord, diagnóstico local sanitizado e atualização assinada permanecem
+  disponíveis. Os arquivos do usuário nunca são apagados ou criptografados.
 - Captura PktMon pendente após falha deve ser recuperável sem apagar o ETL.
-- Atualização GitHub stable/beta, visível e confirmada, com manifesto assinado, SHA-256 e rollback de uma versão.
+- Atualização visível e confirmada, com chave Ed25519 exclusiva e pinada,
+  manifesto v2, sequência anti-downgrade, tamanho, SHA-256, Authenticode e
+  rollback por instalador anterior assinado. Nenhum código é executado de
+  pasta gravável pelo usuário.
 - Sem telemetria; diagnósticos e logs sanitizados só são enviados após consentimento.
 - Log técnico local rotativo de até aproximadamente 4 MB; envio, pasta e cópia manual na aba Licença.
 - Envio ao site usa API HTTPS idempotente e token revogável por Profile; o
   programa nunca recebe credenciais do banco. O servidor armazena somente o
   hash do token, e o Windows protege a cópia local.
-- Interface profissional baseada no kit RF Next da identidade Karvalho. A logo
-  oficial é copiada dos assets da marca; mockups gerados não são fonte de logo.
-- Instalador, dependências, capturador, banco, configurações, logs, cache e
-  atualizador permanecem na pasta selecionada durante a instalação. Novas
-  instalações não usam `%AppData%`, `%LocalAppData%` nem `%ProgramData%`.
-- Atualizações reutilizam a pasta instalada. Dados legados só são removidos
-  depois de copiados e validados; o desinstalador permite preservar os dados.
+- Interface RF QOL com identidade e logo próprias. Karvalho permanece como
+  domínio, suporte, publicador e certificado. O programa inclui o link oficial
+  `https://discord.gg/D3hhdMgkj`, aberto somente por ação do usuário.
+- RF QOL 1.0 é instalação nova e não migra licença da linha RF NEXT QOL.
+  Binários, estado de licença, anti-downgrade e staging executável usam ACL
+  admin-only; dados mutáveis podem permanecer na pasta escolhida, mas nunca
+  fornecem código ou chave de confiança ao aplicativo.
 
 ## Marca
 
-Fonte oficial: `K:\Karvalho\Identidade Visual Karvalho`.
-Nome do produto: `RF NEXT QOL`.
+Nome final do produto: `RF QOL`.
+Executável final: `RF QOL.exe`.
+Instalador final: `RF QOL Setup 1.0.0.exe`.
+Domínio, suporte, publicador e certificado: Karvalho.
+Logo própria: pendente de aprovação visual antes da implementação.
 
 ## Gates
 
@@ -134,8 +149,15 @@ Nome do produto: `RF NEXT QOL`.
 - Reenvio da mesma sessão/lote ao site não pode criar registros duplicados.
 - O layout de `0x031D` deve ser revalidado na versão corrente, reconciliado com
   a recompensa observada e coberto por golden frame antes de produção.
-- Instalação, primeira execução e atualização não podem criar arquivos do
-  produto nas pastas de AppData/ProgramData.
+- Instalação, primeira execução, ACLs e atualização devem cumprir a SPEC de
+  segurança da 1.0; nenhum caminho executável pode ser `users-modify`.
+- Chave de lease e chave de update devem ser distintas, pinadas no binário e
+  incapazes de validar o papel uma da outra. Chave recebida da rede nunca é
+  âncora de confiança.
+- Lease v1, licença antiga, product/audience divergente ou prazo offline acima
+  de 24 horas são rejeitados no cliente e no site.
+- Executável e instalador públicos devem passar em Authenticode SHA-256 com
+  timestamp RFC 3161.
 - Piloto sem assinatura não é release pública.
 - Publicação no GitHub somente após testes e revisão.
 
