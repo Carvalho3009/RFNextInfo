@@ -289,7 +289,9 @@ def codex_data():
         for requirement in collection["requirements"] for item in requirement["accepted"]
     ]
     item_meta = market_item_lookup(item["id"] for item in accepted_items)
-    prices, captured_at = latest_market_price_lookup(item["id"] for item in accepted_items)
+    prices = latest_market_price_map()
+    captured = [value.get("capturedAt") for value in prices.values() if value.get("capturedAt")]
+    captured_at = min(captured) if captured else None
     for collection in payload["collections"]:
         priced_requirements = []
         for requirement in collection["requirements"]:
@@ -297,18 +299,22 @@ def codex_data():
                 item.update({key: item_meta.get(item["id"], {}).get(key, default)
                              for key, default in (("prime", False), ("version", "Normal"))})
                 item["image"] = market_image_url("", item["id"], item.pop("icon", ""))
-                price = prices.get((item["id"], requirement["enchant"]))
-                if price is not None:
-                    item["marketPrice"] = price
-                    item["marketTotal"] = price * requirement["quantity"]
-            priced = [item for item in requirement["accepted"] if "marketPrice" in item]
+                market = prices.get((item["id"], requirement["enchant"]))
+                if market is not None:
+                    plan = market_purchase_plan(market, requirement["quantity"])
+                    item["marketPrice"] = market["price"]
+                    item["purchasePlan"] = plan
+                    if plan["complete"]:
+                        item["marketTotal"] = plan["totalCost"]
+            priced = [item for item in requirement["accepted"] if "marketTotal" in item]
             if priced:
-                cheapest = min(priced, key=lambda item: item["marketPrice"])
+                cheapest = min(priced, key=lambda item: item["marketTotal"])
                 requirement.update({
                     "marketPrice": cheapest["marketPrice"],
                     "marketTotal": cheapest["marketTotal"],
                     "pricedItemId": cheapest["id"],
                     "pricedItemName": cheapest["name"],
+                    "purchasePlan": cheapest["purchasePlan"],
                 })
                 priced_requirements.append(requirement)
         collection["pricedRequirements"] = len(priced_requirements)
@@ -1327,7 +1333,68 @@ def latest_market_price_map():
         result[key]["fallbackQuantityBasis"] = "minimum" if "minimum" in bases else "inferred" if "inferred" in bases else "exact"
     for market in result.values():
         market["priceLevels"].sort(key=lambda level: level["price"])
+    for alias, canonical in market_item_aliases().items():
+        for (item_id, refinement), market in list(result.items()):
+            if item_id == canonical and (alias, refinement) not in result:
+                result[(alias, refinement)] = market
     return result
+
+
+@lru_cache(maxsize=1)
+def market_item_aliases():
+    if not GAME_DB_PATH.is_file():
+        return {}
+    with game_database() as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_item_aliases'").fetchone():
+            return {}
+        return {
+            str(row["alias_item_id"]): str(row["market_item_id"])
+            for row in db.execute("SELECT alias_item_id, market_item_id FROM market_item_aliases")
+        }
+
+
+def market_purchase_plan(market, quantity):
+    quantity = int(quantity)
+    if quantity < 0:
+        raise ValueError("Quantidade de compra inválida")
+    levels = []
+    if market:
+        levels.extend({**level, "quantityBasis": level.get("quantityBasis", "exact")}
+                      for level in market.get("priceLevels", []))
+        fallback = int(market.get("fallbackLowestQuantity") or 0)
+        if fallback:
+            levels.append({
+                "price": market["price"], "quantity": fallback,
+                "quantityBasis": market.get("fallbackQuantityBasis") or "minimum",
+            })
+        elif not levels and market.get("price") is not None:
+            levels.append({"price": market["price"], "quantity": 1, "quantityBasis": "minimum"})
+    grouped = {}
+    for level in levels:
+        price, available = float(level["price"]), int(level["quantity"])
+        if available <= 0:
+            continue
+        current = grouped.setdefault(price, {"price": price, "quantity": 0, "quantityBasis": "exact"})
+        current["quantity"] += available
+        if level.get("quantityBasis") != "exact":
+            current["quantityBasis"] = level.get("quantityBasis") or "minimum"
+    remaining, lines = quantity, []
+    for level in sorted(grouped.values(), key=lambda value: value["price"]):
+        if remaining <= 0:
+            break
+        take = min(remaining, level["quantity"])
+        lines.append({
+            "unitPrice": level["price"], "quantity": take,
+            "lineCost": take * level["price"], "quantityBasis": level["quantityBasis"],
+        })
+        remaining -= take
+    covered = quantity - remaining
+    return {
+        "requestedQuantity": quantity, "coveredQuantity": covered,
+        "missingQuantity": remaining, "totalCost": sum(line["lineCost"] for line in lines),
+        "complete": remaining == 0, "lines": lines,
+        "capturedAt": market.get("capturedAt") if market else None,
+    }
 
 
 def salvage_data(query="", tier=None, grade=None, enchant=None, status="all",
@@ -1788,51 +1855,63 @@ def latest_market_price_lookup(item_ids):
     item_ids = sorted({str(item_id) for item_id in item_ids if re.fullmatch(r"\d{1,12}", str(item_id))})
     if not item_ids:
         return {}, None
-    with database() as db:
-        snapshot = db.execute(
-            "SELECT id, captured_at FROM market_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
-        ).fetchone()
-        if not snapshot:
-            return {}, None
-        prices = {}
-        for start in range(0, len(item_ids), 500):
-            batch = item_ids[start:start + 500]
-            placeholders = ",".join("?" * len(batch))
-            rows = db.execute(
-                f"SELECT item_id, refinement, lowest_price FROM market_prices "
-                f"WHERE snapshot_id = ? AND item_id IN ({placeholders})",
-                (snapshot["id"], *batch),
-            )
-            prices.update({(row["item_id"], row["refinement"]): row["lowest_price"] for row in rows})
-        return prices, snapshot["captured_at"]
+    market = latest_market_price_map()
+    prices = {
+        (item_id, refinement): value["price"]
+        for (item_id, refinement), value in market.items()
+        if item_id in item_ids
+    }
+    captured = [market[key]["capturedAt"] for key in prices if market[key].get("capturedAt")]
+    return prices, min(captured) if captured else None
 
 
 def enrich_craft_materials(materials, prices=None, captured_at=None):
+    aliases = market_item_aliases()
+    for material in materials:
+        deduplicated = {}
+        for accepted in material["acceptedItems"]:
+            accepted["itemId"] = aliases.get(str(accepted["itemId"]), str(accepted["itemId"]))
+            deduplicated.setdefault(accepted["itemId"], accepted)
+        material["acceptedItems"] = list(deduplicated.values())
     item_meta = market_item_lookup(
         accepted["itemId"] for material in materials for accepted in material["acceptedItems"]
     )
     if prices is None:
-        prices, captured_at = latest_market_price_lookup(
-            accepted["itemId"] for material in materials for accepted in material["acceptedItems"]
-        )
+        prices = latest_market_price_map()
+        captured = [value.get("capturedAt") for value in prices.values() if value.get("capturedAt")]
+        captured_at = min(captured) if captured else None
     for material in materials:
         for accepted in material["acceptedItems"]:
             accepted.update({key: item_meta.get(accepted["itemId"], {}).get(key, default)
                              for key, default in (("prime", False), ("version", "Normal"))})
             accepted["image"] = market_image_url("", accepted["itemId"], accepted.pop("icon", ""))
-            price = prices.get((accepted["itemId"], material["enchantLevel"]))
-            if price is not None:
-                accepted["marketPrice"] = price
-                accepted["marketTotal"] = price * material["quantity"]
-        priced = [accepted for accepted in material["acceptedItems"] if "marketPrice" in accepted]
+            market = prices.get((accepted["itemId"], material["enchantLevel"]))
+            if market is not None:
+                if not isinstance(market, dict):
+                    market = {"price": market, "priceLevels": [{"price": market, "quantity": material["quantity"]}]}
+                plan = market_purchase_plan(market, material["quantity"])
+                accepted["marketPrice"] = market["price"]
+                accepted["purchasePlan"] = plan
+                if plan["complete"]:
+                    accepted["marketTotal"] = plan["totalCost"]
+        priced = [accepted for accepted in material["acceptedItems"] if "marketTotal" in accepted]
         if priced:
-            cheapest = min(priced, key=lambda accepted: accepted["marketPrice"])
+            cheapest = min(priced, key=lambda accepted: accepted["marketTotal"])
             material.update({
                 "marketPrice": cheapest["marketPrice"],
                 "marketTotal": cheapest["marketTotal"],
                 "pricedItemId": cheapest["itemId"],
                 "pricedItemName": cheapest["name"],
+                "purchasePlan": cheapest["purchasePlan"],
             })
+        else:
+            partial = max(
+                (accepted for accepted in material["acceptedItems"] if accepted.get("purchasePlan")),
+                key=lambda accepted: (accepted["purchasePlan"]["coveredQuantity"], -accepted["purchasePlan"]["totalCost"]),
+                default=None,
+            )
+            if partial:
+                material["partialPurchasePlan"] = partial["purchasePlan"]
     return captured_at
 
 
@@ -1858,10 +1937,9 @@ def craft_market_summaries(recipe_keys):
                 "grade": row["accepted_item_grade"], "tier": row["accepted_item_tier"], "icon": row["icon"],
             })
     summaries = {}
-    prices, captured_at = latest_market_price_lookup(
-        accepted["itemId"] for materials in grouped.values() for material in materials
-        for accepted in material["acceptedItems"]
-    )
+    prices = latest_market_price_map()
+    captured = [value.get("capturedAt") for value in prices.values() if value.get("capturedAt")]
+    captured_at = min(captured) if captured else None
     for recipe_key, materials in grouped.items():
         enrich_craft_materials(materials, prices, captured_at)
         priced = [material for material in materials if "marketTotal" in material]
@@ -1988,6 +2066,147 @@ def craft_detail(recipe_key):
         "materialMarketCost": sum(material["marketTotal"] for material in priced),
         "pricedMaterials": len(priced),
         "materialCount": len(materials),
+    }
+
+
+def tri_plate_data(quantity=1, target="stable"):
+    quantity = int(quantity)
+    if not 1 <= quantity <= 100_000 or target not in {"unstable", "stable"}:
+        raise ValueError("Cálculo de Tri-Plate inválido")
+    with game_database() as db:
+        recipes = [dict(row) for row in db.execute(
+            "SELECT recipe_key, output_item_id, output_name, name_en, cost_value, output_enchant "
+            "FROM craft_recipes WHERE (name_en LIKE 'Unstable Dimensional Tri-Plate (%' "
+            "OR name_en LIKE 'Stable Dimensional Tri-Plate (%') "
+            "AND name_en NOT LIKE '%Chest%' ORDER BY name_en, recipe_key"
+        )]
+        recipe_keys = [recipe["recipe_key"] for recipe in recipes]
+        if not recipe_keys:
+            return {"quantity": quantity, "target": target, "variants": [], "marketCapturedAt": None}
+        material_rows = list(db.execute(
+            f"SELECT recipe_key, slot, quantity, enchant_level, accepted_item_id, accepted_item_name, "
+            f"name_en, accepted_item_grade, accepted_item_tier, icon FROM craft_materials "
+            f"WHERE recipe_key IN ({','.join('?' * len(recipe_keys))}) ORDER BY recipe_key, slot, accepted_item_id",
+            recipe_keys,
+        ))
+    aliases, prices = market_item_aliases(), latest_market_price_map()
+    captured = [value.get("capturedAt") for value in prices.values() if value.get("capturedAt")]
+    captured_at = min(captured) if captured else None
+    by_recipe = {}
+    for row in material_rows:
+        canonical = aliases.get(str(row["accepted_item_id"]), str(row["accepted_item_id"]))
+        key = (row["recipe_key"], row["slot"], canonical)
+        by_recipe.setdefault(key, {
+            "itemId": canonical, "name": row["accepted_item_name"], "nameEn": row["name_en"],
+            "grade": row["accepted_item_grade"], "tier": row["accepted_item_tier"], "icon": row["icon"],
+            "quantity": int(row["quantity"]), "enchant": int(row["enchant_level"]),
+        })
+    materials = {}
+    for (recipe_key, _slot, _canonical), material in by_recipe.items():
+        materials.setdefault(recipe_key, []).append(material)
+
+    def variant_name(recipe):
+        match = re.search(r"\((.+)\)$", recipe["name_en"])
+        return match.group(1) if match else recipe["output_item_id"]
+
+    def shopping_lines(plan, item):
+        image = market_image_url("", item["itemId"], item.get("icon", ""))
+        return [{
+            "itemId": item["itemId"], "name": item["name"], "nameEn": item.get("nameEn", ""),
+            "grade": item.get("grade"), "tier": item.get("tier"), "enchant": item.get("enchant", 0),
+            "image": image, **line,
+        } for line in plan["lines"]]
+
+    unstable = {}
+    stable = {}
+    for recipe in recipes:
+        target_map = unstable if recipe["name_en"].startswith("Unstable ") else stable
+        target_map.setdefault(variant_name(recipe), []).append(recipe)
+    variants = []
+    output_meta = market_item_lookup(recipe["output_item_id"] for recipe in recipes)
+    for variant in sorted(set(unstable) & set(stable)):
+        unstable_recipe = unstable[variant][0]
+        stable_recipe = stable[variant][0]
+        stable_materials = materials.get(stable_recipe["recipe_key"], [])
+        stable_unstable_quantity = stable_materials[0]["quantity"] if len(stable_materials) == 1 else 20
+        unstable_runs = quantity if target == "unstable" else quantity * stable_unstable_quantity
+        route_results = []
+        for recipe in unstable[variant]:
+            recipe_materials = materials.get(recipe["recipe_key"], [])
+            if len(recipe_materials) != 1:
+                continue
+            material = recipe_materials[0]
+            needed = material["quantity"] * unstable_runs
+            plan = market_purchase_plan(prices.get((material["itemId"], material["enchant"])), needed)
+            route_results.append({
+                "recipeKey": recipe["recipe_key"], "blueprint": {
+                    **{key: material.get(key) for key in ("itemId", "name", "nameEn", "grade", "tier", "enchant")},
+                    "quantity": needed,
+                },
+                "purchasePlan": plan, "shoppingLines": shopping_lines(plan, material),
+                "diamondCost": plan["totalCost"] if plan["complete"] else None,
+                "knownCost": plan["totalCost"], "craftCredits": recipe["cost_value"] * unstable_runs,
+            })
+        route_results.sort(key=lambda route: (
+            not route["purchasePlan"]["complete"],
+            route["diamondCost"] if route["diamondCost"] is not None else math.inf,
+            -route["purchasePlan"]["coveredQuantity"], route["knownCost"],
+        ))
+        unstable_item = {
+            "itemId": unstable_recipe["output_item_id"], "name": unstable_recipe["output_name"],
+            "nameEn": unstable_recipe["name_en"], "enchant": unstable_recipe["output_enchant"],
+            **{key: output_meta.get(unstable_recipe["output_item_id"], {}).get(key)
+               for key in ("grade", "tier", "icon")},
+        }
+        stable_item = {
+            "itemId": stable_recipe["output_item_id"], "name": stable_recipe["output_name"],
+            "nameEn": stable_recipe["name_en"], "enchant": stable_recipe["output_enchant"],
+            **{key: output_meta.get(stable_recipe["output_item_id"], {}).get(key)
+               for key in ("grade", "tier", "icon")},
+        }
+        unstable_buy_quantity = quantity if target == "unstable" else quantity * stable_unstable_quantity
+        unstable_market = market_purchase_plan(
+            prices.get((unstable_item["itemId"], unstable_item["enchant"])), unstable_buy_quantity
+        )
+        stable_market = market_purchase_plan(
+            prices.get((stable_item["itemId"], stable_item["enchant"])), quantity
+        ) if target == "stable" else None
+        options = [{
+            "key": f"blueprints:{route['recipeKey']}",
+            "label": f"Craftar com {route['blueprint']['name']}",
+            "diamondCost": route["diamondCost"], "knownCost": route["knownCost"],
+            "complete": route["purchasePlan"]["complete"],
+            "missingQuantity": route["purchasePlan"]["missingQuantity"],
+            "craftCredits": route["craftCredits"] + (stable_recipe["cost_value"] * quantity if target == "stable" else 0),
+            "shoppingLines": route["shoppingLines"],
+        } for route in route_results]
+        options.append({
+            "key": "unstable-market", "label": "Comprar Unstable" if target == "stable" else "Comprar pronta",
+            "diamondCost": unstable_market["totalCost"] if unstable_market["complete"] else None,
+            "knownCost": unstable_market["totalCost"], "complete": unstable_market["complete"],
+            "missingQuantity": unstable_market["missingQuantity"],
+            "craftCredits": stable_recipe["cost_value"] * quantity if target == "stable" else 0,
+            "shoppingLines": shopping_lines(unstable_market, unstable_item),
+        })
+        if stable_market:
+            options.append({
+                "key": "stable-market", "label": "Comprar Stable pronta",
+                "diamondCost": stable_market["totalCost"] if stable_market["complete"] else None,
+                "knownCost": stable_market["totalCost"], "complete": stable_market["complete"],
+                "missingQuantity": stable_market["missingQuantity"], "craftCredits": 0,
+                "shoppingLines": shopping_lines(stable_market, stable_item),
+            })
+        complete_options = [option for option in options if option["complete"]]
+        cheapest = min(complete_options, key=lambda option: option["diamondCost"])["key"] if complete_options else None
+        variants.append({
+            "variant": variant, "unstable": {**unstable_item, "image": market_image_url("", unstable_item["itemId"], unstable_item.get("icon", ""))},
+            "stable": {**stable_item, "image": market_image_url("", stable_item["itemId"], stable_item.get("icon", ""))},
+            "unstablePerStable": stable_unstable_quantity,
+            "unstableRoutes": route_results, "options": options, "cheapestOption": cheapest,
+        })
+    return {
+        "quantity": quantity, "target": target, "variants": variants, "marketCapturedAt": captured_at,
+        "notice": "Custos em diamantes consomem as faixas capturadas; créditos de craft permanecem separados. Cobertura parcial nunca é tratada como custo completo.",
     }
 
 
@@ -2152,7 +2371,10 @@ def personal_craft_analysis(payload):
         all_item_ids = [row[0] for row in game_db.execute(
             "SELECT DISTINCT accepted_item_id FROM craft_materials UNION SELECT DISTINCT item_id FROM craft_results"
         )]
-        prices, captured_at = latest_market_price_lookup(all_item_ids)
+        prices = latest_market_price_map()
+        aliases = market_item_aliases()
+        captured = [value.get("capturedAt") for value in prices.values() if value.get("capturedAt")]
+        captured_at = min(captured) if captured else None
         recipe_cache = {}
         producer_cache = {}
 
@@ -2167,7 +2389,9 @@ def personal_craft_analysis(payload):
                 ):
                     if not materials or materials[-1]["slot"] != row["slot"]:
                         materials.append({"slot": row["slot"], "quantity": row["quantity"], "enchant": row["enchant_level"], "accepted": []})
-                    materials[-1]["accepted"].append({"itemId": row["accepted_item_id"], "name": row["accepted_item_name"], "grade": row["accepted_item_grade"]})
+                    item_id = aliases.get(str(row["accepted_item_id"]), str(row["accepted_item_id"]))
+                    if not any(option["itemId"] == item_id for option in materials[-1]["accepted"]):
+                        materials[-1]["accepted"].append({"itemId": item_id, "name": row["accepted_item_name"], "grade": row["accepted_item_grade"]})
                 results = [dict(row) for row in game_db.execute("SELECT * FROM craft_results WHERE recipe_key=?", (recipe_key,))]
                 recipe_cache[recipe_key] = {"recipe": dict(recipe), "materials": materials, "results": results}
             return recipe_cache[recipe_key]
@@ -2182,12 +2406,26 @@ def personal_craft_analysis(payload):
                 )] if key else []
             return producer_cache[key]
 
+        def priced_line(options, enchant, quantity):
+            candidates = []
+            for option in options:
+                market = prices.get((option["itemId"], enchant))
+                plan = market_purchase_plan(market, quantity)
+                candidates.append({**option, "market": market, "purchasePlan": plan})
+            complete = [option for option in candidates if option["purchasePlan"]["complete"]]
+            chosen = min(complete, key=lambda option: option["purchasePlan"]["totalCost"]) if complete else max(
+                candidates, key=lambda option: (option["purchasePlan"]["coveredQuantity"], -option["purchasePlan"]["totalCost"])
+            )
+            plan = chosen["purchasePlan"]
+            return {
+                "accepted": options, "itemId": chosen["itemId"], "name": chosen["name"], "grade": chosen["grade"],
+                "quantity": quantity, "unitPrice": chosen["market"]["price"] if chosen["market"] else None,
+                "marketTotal": plan["totalCost"] if plan["complete"] else None,
+                "purchasePlan": plan, "enchant": enchant,
+            }
+
         def direct_line(material, quantity):
-            options = [{**option, "unitPrice": prices.get((option["itemId"], material["enchant"]))} for option in material["accepted"]]
-            priced = [option for option in options if option["unitPrice"] is not None]
-            chosen = min(priced, key=lambda option: option["unitPrice"]) if priced else options[0]
-            return {"accepted": options, "itemId": chosen["itemId"], "name": chosen["name"], "grade": chosen["grade"],
-                    "quantity": quantity, "unitPrice": chosen["unitPrice"], "enchant": material["enchant"]}
+            return priced_line(material["accepted"], material["enchant"], quantity)
 
         def merge_lines(lines):
             merged = {}
@@ -2197,7 +2435,7 @@ def personal_craft_analysis(payload):
                     merged[key] = copy.deepcopy(line)
                 else:
                     merged[key]["quantity"] += line["quantity"]
-            return list(merged.values())
+            return [priced_line(line["accepted"], line["enchant"], line["quantity"]) for line in merged.values()]
 
         # ponytail: escolhe o subcraft pelo custo do snapshot; um otimizador global só vale quando estoque misto provar diferença relevante.
         def market_plan(recipe_key, runs, stack=()):
@@ -2210,8 +2448,8 @@ def personal_craft_analysis(payload):
             for material in data["materials"]:
                 quantity = material["quantity"] * runs
                 direct = direct_line(material, quantity)
-                best = {"lines": [direct], "fees": 0, "steps": [], "known": direct["unitPrice"] is not None,
-                        "diamonds": direct["unitPrice"] * quantity if direct["unitPrice"] is not None else math.inf}
+                best = {"lines": [direct], "fees": 0, "steps": [], "known": direct["marketTotal"] is not None,
+                        "diamonds": direct["marketTotal"] if direct["marketTotal"] is not None else math.inf}
                 accepted_ids = {option["itemId"] for option in material["accepted"]}
                 for producer in producers(accepted_ids):
                     produced = sum(
@@ -2222,7 +2460,7 @@ def personal_craft_analysis(payload):
                         continue
                     child = market_plan(producer, math.ceil(quantity / produced), (*stack, recipe_key))
                     child_cost = sum(
-                        line["quantity"] * line["unitPrice"] for line in child["lines"] if line["unitPrice"] is not None
+                        line["marketTotal"] for line in child["lines"] if line["marketTotal"] is not None
                     ) if child["known"] else math.inf
                     if child_cost < best["diamonds"]:
                         best = {**child, "diamonds": child_cost}
@@ -2239,10 +2477,13 @@ def personal_craft_analysis(payload):
             recipe = data["recipe"]
             normal = next((result for result in data["results"] if result["result_type"] == "normal"), None)
             output_quantity = runs * int(normal["quantity"] if normal else 1)
-            output_price = prices.get((recipe["output_item_id"], recipe["output_enchant"]))
+            output_market = prices.get((recipe["output_item_id"], recipe["output_enchant"]))
+            output_plan = market_purchase_plan(output_market, output_quantity)
+            output_price = output_plan["totalCost"] / output_quantity if output_plan["complete"] and output_quantity else None
             products.append({"recipeKey": selected["recipeKey"], "name": recipe["output_name"], "runs": runs,
                              "quantity": output_quantity, "unitPrice": output_price,
-                             "marketTotal": output_price * output_quantity if output_price is not None else None})
+                             "marketTotal": output_plan["totalCost"] if output_plan["complete"] else None,
+                             "purchasePlan": output_plan})
 
     full_lines, planned_lines = merge_lines(full_lines), merge_lines(planned_lines)
     owned_value, owned_unknown = 0, False
@@ -2254,7 +2495,8 @@ def personal_craft_analysis(payload):
                 if not used:
                     continue
                 source["quantity"] -= used; remaining -= used
-                unit_price = prices.get((option["itemId"], line["enchant"]))
+                market = prices.get((option["itemId"], line["enchant"]))
+                unit_price = market["price"] if market else None
                 owned_unknown |= unit_price is None
                 owned_value += (unit_price or 0) * used
                 origins.append({"character": source["character"], "itemId": option["itemId"], "quantity": used})
@@ -2263,7 +2505,7 @@ def personal_craft_analysis(payload):
             if not remaining:
                 break
         line.update({"ownedQuantity": line["quantity"] - remaining, "origins": origins, "purchaseQuantity": remaining,
-                     "chestQuantity": 0, "chestOrigins": []})
+                     "chestQuantity": 0, "chestOrigins": [], "chestUnitPrice": line["unitPrice"]})
 
     for grade, sources in chest_stock.items():
         candidates = sorted(
@@ -2279,13 +2521,16 @@ def personal_craft_analysis(payload):
                 line["chestOrigins"].append({"character": source["character"], "quantity": used})
 
     for line in planned_lines:
-        line["purchaseCost"] = line["purchaseQuantity"] * line["unitPrice"] if line["unitPrice"] is not None else None
+        plan = market_purchase_plan(prices.get((line["itemId"], line["enchant"])), line["purchaseQuantity"])
+        line["purchasePlan"] = plan
+        line["purchaseCost"] = plan["totalCost"] if plan["complete"] else None
+        line["unitPrice"] = plan["totalCost"] / line["purchaseQuantity"] if plan["complete"] and line["purchaseQuantity"] else None
         line.pop("accepted", None)
-    full_known = all(line["unitPrice"] is not None for line in full_lines)
+    full_known = all(line["marketTotal"] is not None for line in full_lines)
     need_known = all(line["purchaseCost"] is not None or not line["purchaseQuantity"] for line in planned_lines)
-    full_cost = sum(line["quantity"] * line["unitPrice"] for line in full_lines) if full_known else None
+    full_cost = sum(line["marketTotal"] for line in full_lines) if full_known else None
     needed_cost = sum(line["purchaseCost"] or 0 for line in planned_lines) if need_known else None
-    chest_savings = sum(line["chestQuantity"] * (line["unitPrice"] or 0) for line in planned_lines)
+    chest_savings = sum(line["chestQuantity"] * (line["chestUnitPrice"] or 0) for line in planned_lines)
     product_known = all(product["marketTotal"] is not None for product in products)
     return {
         "marketCapturedAt": captured_at,
@@ -2294,7 +2539,7 @@ def personal_craft_analysis(payload):
                     "productMarketValue": sum(product["marketTotal"] for product in products) if product_known else None,
                     "craftFeesCredits": fees},
         "products": products, "requirements": planned_lines, "steps": steps,
-        "notice": "Diamantes usam o menor preço do último snapshot; taxas de craft permanecem separadas em créditos.",
+        "notice": "Diamantes consomem as faixas disponíveis do último Local + Global; taxas de craft permanecem separadas em créditos.",
     }
 
 
@@ -4532,6 +4777,10 @@ class Handler(SimpleHTTPRequestHandler):
                 if path == "/api/craft/summary":
                     return self.send_json(200, craft_summary())
                 params = parse_qs(request_url.query)
+                if path == "/api/craft/tri-plates":
+                    return self.send_json(200, tri_plate_data(
+                        params.get("quantity", ["1"])[0], params.get("target", ["stable"])[0]
+                    ))
                 if path == "/api/craft/search":
                     return self.send_json(200, craft_search(params.get("q", [""])[0], params.get("category", [""])[0],
                                                             params.get("subcategory", [""])[0], params.get("limit", ["60"])[0],
@@ -5696,6 +5945,24 @@ if __name__ == "__main__":
             assert combined_market["priceLevels"] == [
                 {"price": 100, "quantity": 1}, {"price": 110, "quantity": 2}, {"price": 120, "quantity": 2},
             ]
+            demand_plan = market_purchase_plan(combined_market, 5)
+            assert demand_plan["complete"] and demand_plan["totalCost"] == 560
+            assert [(line["quantity"], line["unitPrice"]) for line in demand_plan["lines"]] == [(1, 100), (2, 110), (2, 120)]
+            example_plan = market_purchase_plan({
+                "price": 10, "priceLevels": [
+                    {"price": 10, "quantity": 2}, {"price": 15, "quantity": 2}, {"price": 50, "quantity": 1},
+                ],
+            }, 5)
+            assert example_plan["complete"] and example_plan["totalCost"] == 100
+            assert market_purchase_plan({"price": 10, "priceLevels": [
+                {"price": 10, "quantity": 2}, {"price": 15, "quantity": 2}, {"price": 50, "quantity": 1},
+            ]}, 3)["totalCost"] == 35
+            short_plan = market_purchase_plan({"price": 10, "priceLevels": [
+                {"price": 10, "quantity": 2}, {"price": 15, "quantity": 2}, {"price": 50, "quantity": 1},
+            ]}, 6)
+            assert not short_plan["complete"] and short_plan["missingQuantity"] == 1 and short_plan["totalCost"] == 100
+            if market_item_aliases().get("275045") == "270045":
+                assert latest_market_price_map()[("275045", 0)]["price"] == 1000
             with database() as db:
                 newer_global_snapshot = db.execute(
                     "INSERT INTO market_snapshots (captured_at, imported_at, source_id, row_count, total_registered, profile, server_type) "
@@ -5703,6 +5970,8 @@ if __name__ == "__main__":
                     ("2026-07-21T22:00:00+00:00", datetime.now(timezone.utc).isoformat(), "self-test-global-newer", 0, 0, "carvalho", 1),
                 ).lastrowid
             assert not any(listing["serverType"] == 1 and listing["itemId"] == "1000150" for listing in market_data()["listings"])
+            lookup_after_empty_global, _ = latest_market_price_lookup(["1000150"])
+            assert lookup_after_empty_global[("1000150", 7)] == 100
             with database() as db:
                 db.execute("DELETE FROM market_snapshots WHERE id=?", (newer_global_snapshot,))
             with database() as db:
@@ -5853,6 +6122,9 @@ if __name__ == "__main__":
                     "SELECT name_en FROM craft_recipes WHERE name_en <> '' AND name_en <> output_name LIMIT 1"
                 ).fetchone()[0]
             assert craft_search(english_name, "", "", 5)["results"]
+            tri_plate_sample = tri_plate_data(1, "stable")
+            assert len(tri_plate_sample["variants"]) == 10
+            assert all(variant["unstablePerStable"] == 20 and variant["options"] for variant in tri_plate_sample["variants"])
             material_sample = [{"slot": 1, "quantity": 3, "enchantLevel": 0, "acceptedItems": [
                 {"itemId": "1", "name": "A", "icon": ""}, {"itemId": "2", "name": "B", "icon": ""}
             ]}]

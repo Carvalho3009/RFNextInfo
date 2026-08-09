@@ -535,6 +535,16 @@
     .material-watch-list { display: grid; gap: 8px; }
     .material-watch-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border: 1px solid var(--gold-dark); border-radius: 6px; }
     .material-watch-item strong, .material-watch-item small { display: block; overflow-wrap: anywhere; }
+    .tri-plate-grid { display: grid; gap: 12px; }
+    .tri-plate-card { padding: 14px; border: 1px solid var(--gold-dark); border-radius: 8px; background: var(--panel2); }
+    .tri-plate-card > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-bottom: 10px; }
+    .tri-plate-card h3, .tri-plate-card p { margin: 0; }
+    .tri-plate-options { display: grid; gap: 8px; }
+    .tri-plate-option { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(130px, auto)) auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid rgb(109 84 40 / 55%); }
+    .tri-plate-option.cheapest { border-color: var(--acid); background: rgb(168 255 22 / 4%); }
+    .tri-plate-option strong, .tri-plate-option small { display: block; }
+    .tri-plate-option small { color: var(--muted); font: .68rem/1.4 system-ui, sans-serif; }
+    .tri-plate-price-lines { margin-top: 4px; color: var(--water); }
     .prime-badge { display: inline-flex; margin-left: 6px; padding: 2px 5px; border: 1px solid var(--gold); border-radius: 999px; color: var(--gold); font-size: .62rem; text-transform: uppercase; }
     .market-delta { font-weight: 800; }
     .market-opportunity { display: inline-flex; width: fit-content; padding: 4px 6px; border: 1px solid rgb(168 255 22 / 50%); color: var(--acid); background: rgb(168 255 22 / 6%); font-size: .68rem; font-weight: 800; }
@@ -713,7 +723,7 @@
     @media (max-width: 680px) { .game-data-table { min-width: 100%; table-layout: fixed; } .game-data-table th:nth-child(1), .game-data-table td:nth-child(1), .game-data-table th:nth-child(3), .game-data-table td:nth-child(3) { display: none; } .game-data-table th:nth-child(2) { width: 30%; } .game-data-table th:last-child { width: 82px; } .codex-toolbar, .codex-summary, .codex-auto-search, .codex-bulk-shopping { grid-template-columns: 1fr; } .codex-toolbar-footer { align-items: stretch; flex-direction: column; } .codex-view-toggle button { flex: 1; } .codex-requirement { grid-template-columns: 48px minmax(0, 1fr); } .codex-requirement .catalog-thumb { width: 44px; height: 44px; } .codex-actions { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; align-items: center; justify-items: stretch; } .codex-delivery { width: 100%; } .market-summary strong { font-size: .95rem; } .market-summary div { padding: 9px 7px; } .market-toolbar { align-items: flex-start; flex-direction: column; } .market-item-main { grid-template-columns: 64px minmax(0, 1fr); padding: 10px; } .market-item-main .catalog-thumb { width: 64px; height: 64px; } .market-variant-head, .salvage-level-head, .salvage-source-head { display: none; } .market-variant { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; } .market-variant span::before, .market-variant strong::before, .salvage-level > span::before, .salvage-level > div::before, .salvage-source > span::before, .salvage-source > div::before { display: block; margin-bottom: 3px; color: var(--muted); content: attr(data-label); font-size: .58rem; text-transform: uppercase; } .market-variant .market-opportunity { display: block; width: auto; } .salvage-level, .salvage-source { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; } .salvage-outputs, .salvage-source-item { grid-column: 1 / -1; } .market-history-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .market-history-summary div { border-bottom: 1px solid var(--gold-dark); } .market-history-summary div:nth-child(even) { border-right: 0; } .market-detail-dialog .market-history-table { min-width: 100% !important; } .market-detail-dialog .market-history-table thead { display: none; } .market-detail-dialog .market-history-table tr { display: block; padding: 8px; border-bottom: 1px solid var(--gold-dark); } .market-detail-dialog .market-history-table td { display: flex; justify-content: space-between; gap: 10px; padding: 4px; border: 0; } .market-detail-dialog .market-history-table td::before { color: var(--muted); content: attr(data-label); } }
     @media (max-width: 1200px) { #farmForm .form-section:first-child { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 680px) { #farmForm .form-section:first-child { grid-template-columns: 1fr; } }
-    @media (max-width: 680px) { .salvage-calculator-form, .material-calculator-grid { grid-template-columns: 1fr; } .salvage-plan-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .salvage-plan-summary div:nth-child(even) { border-right: 0; } .salvage-plan-line { grid-template-columns: repeat(2, minmax(0, 1fr)); } .salvage-plan-line .salvage-source-item { grid-column: 1 / -1; } }
+    @media (max-width: 680px) { .salvage-calculator-form, .material-calculator-grid { grid-template-columns: 1fr; } .salvage-plan-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .salvage-plan-summary div:nth-child(even) { border-right: 0; } .salvage-plan-line, .tri-plate-option { grid-template-columns: 1fr; } .salvage-plan-line .salvage-source-item { grid-column: 1 / -1; } }
     @media (max-width: 1200px) { .market-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .market-filters .filter-category-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .market-filters .filter-category-card { grid-column: auto !important; } }
     @media (max-width: 680px) { .market-filters, .market-filters .filter-category-cards { grid-template-columns: 1fr; } }
     @media (prefers-reduced-motion: reduce) { *, *::after, *::before { transition: none !important; } }
@@ -1675,11 +1685,13 @@
         <button id="marketScreenTab" type="button" role="tab" aria-selected="false" aria-controls="marketScreen">Geral</button>
         <button id="marketLocalScreenTab" type="button" role="tab" aria-selected="false" aria-controls="marketScreen">Local</button>
         <button id="marketGlobalScreenTab" type="button" role="tab" aria-selected="false" aria-controls="marketScreen">Global</button>
+        <button id="materialCalculatorScreenTab" type="button" role="tab" aria-selected="false" aria-controls="materialCalculatorScreen">Calculadora de Materiais</button>
         <button id="arcaneNodeScreenTab" type="button" role="tab" aria-selected="false" aria-controls="arcaneNodeScreen">Arcane Node</button>
       </details>
       <details class="nav-group" name="main-menu">
         <summary>Evolução</summary>
         <button id="craftScreenTab" type="button" role="tab" aria-selected="false" aria-controls="craftScreen">Craft</button>
+        <button id="triPlateScreenTab" type="button" role="tab" aria-selected="false" aria-controls="triPlateScreen">Tri-Plate</button>
         <button id="personalCraftScreenTab" type="button" role="tab" aria-selected="false" aria-controls="personalCraftScreen">Craft Pessoal</button>
         <button id="codexScreenTab" type="button" role="tab" aria-selected="false" aria-controls="codexScreen">Codex</button>
         <button id="shoppingScreenTab" type="button" role="tab" aria-selected="false" aria-controls="shoppingScreen">Lista de compra</button>
@@ -1690,7 +1702,6 @@
         <button id="guideScreenTab" type="button" role="tab" aria-selected="false" aria-controls="guideScreen">Guia de Classes</button>
       </details>
       <button id="salvageScreenTab" type="button" role="tab" aria-selected="false" aria-controls="salvageScreen" hidden>Salvage</button>
-      <button id="materialCalculatorScreenTab" type="button" role="tab" aria-selected="false" aria-controls="materialCalculatorScreen" hidden>Calculadora de Materiais</button>
       <button id="generalImport" class="general-import" type="button">Importar CSV / JSON</button>
       <input id="generalImportFile" type="file" accept=".csv,.json,text/csv,application/json" hidden>
       <small id="generalImportStatus" class="general-import-status" aria-live="polite">Arquivos gerados pelos programas RF NEXT.</small>
@@ -2101,6 +2112,21 @@
         </form>
         <div id="craftGrid" class="catalog-grid"></div>
         <p id="emptyCraft" class="empty" hidden>Nenhuma receita encontrada.</p>
+      </div>
+    </section>
+    <section id="triPlateScreen" class="game-data-screen catalog-screen" hidden>
+      <header class="game-data-hero">
+        <div><p class="guide-kicker">Rare Weapon Blueprint → Unstable → Stable</p><h2>Tri-Plate</h2><p>Compare o custo real por faixa de preço para fabricar ou comprar Dimensional Tri-Plates.</p></div>
+        <span id="triPlateSnapshot" class="game-data-version">Mercado —</span>
+      </header>
+      <div class="game-data-body">
+        <form id="triPlateForm" class="salvage-calculator-form">
+          <label>Calcular<select id="triPlateTarget"><option value="stable">Stable Dimensional Tri-Plate</option><option value="unstable">Unstable Dimensional Tri-Plate</option></select></label>
+          <label>Quantidade final<input id="triPlateQuantity" type="number" min="1" max="100000" step="1" value="1" required></label>
+          <button type="submit">Calcular</button>
+        </form>
+        <p id="triPlateStatus" class="game-data-status" aria-live="polite">Carregando receitas e preços…</p>
+        <div id="triPlateGrid" class="tri-plate-grid"></div>
       </div>
     </section>
     <section id="personalCraftScreen" class="game-data-screen" hidden>
@@ -2863,7 +2889,7 @@
     const primeName = (item, name = localizedName(item)) => isPrimeItem(item) && !/^prime\b/i.test(name) ? `Prime ${name}` : name;
     const appendPrimeBadge = (target, item) => { if (isPrimeItem(item)) target.append(marketNode('span', 'prime-badge', 'Prime')); };
     const EQUIPMENT_SIDES = ['A', 'B', 'C', 'D'];
-    const RESTORABLE_SCREENS = new Set(['history', 'character', 'market', 'market-local', 'market-global', 'discord-alerts', 'salvage', 'materials', 'arcane-node', 'craft', 'personal-craft', 'memory-chips', 'codex', 'shopping', 'equipment', 'game-data', 'guide']);
+    const RESTORABLE_SCREENS = new Set(['history', 'character', 'market', 'market-local', 'market-global', 'discord-alerts', 'salvage', 'materials', 'arcane-node', 'craft', 'tri-plate', 'personal-craft', 'memory-chips', 'codex', 'shopping', 'equipment', 'game-data', 'guide']);
     const EQUIPMENT_FILTER_TYPES = {
       'weapon-armor': [['1', 'Arma'], ['2', 'Neck'], ['3', 'Chest'], ['4', 'Lower'], ['5', 'Arms'], ['6', 'Leg']],
       accessory: [['7', 'Ear'], ['8', 'Necklace'], ['9', 'Bangle'], ['10', 'Ring']],
@@ -5343,7 +5369,7 @@
       if (payload.marketCapturedAt) {
         const marketSummary = document.createElement('p');
         marketSummary.textContent = payload.pricedMaterials === payload.materialCount
-          ? `Materiais pelo menor preço da última captura: ${marketPrice(payload.materialMarketCost)} · taxa ${craftFee(recipe.cost_value)} · ${marketDate(payload.marketCapturedAt)}.`
+          ? `Materiais pelas faixas disponíveis da última captura: ${marketPrice(payload.materialMarketCost)} · taxa ${craftFee(recipe.cost_value)} · ${marketDate(payload.marketCapturedAt)}.`
           : `${payload.pricedMaterials} de ${payload.materialCount} material(is) com preço na última captura · subtotal conhecido ${marketPrice(payload.materialMarketCost)} · ${marketDate(payload.marketCapturedAt)}.`;
         identityCopy.append(marketSummary);
       } else {
@@ -5376,15 +5402,21 @@
         const total = document.createElement('span');
         total.textContent = material.marketTotal !== undefined ? `menor total ${marketPrice(material.marketTotal)}` : 'sem preço na captura';
         const options = craftVisibleMaterialOptions(material.acceptedItems);
-        const accepted = options.reduce((best, option) => best == null || (option.marketPrice ?? Infinity) < (best.marketPrice ?? Infinity) ? option : best, null);
+        const accepted = options.reduce((best, option) => {
+          if (best == null) return option;
+          const complete = option.marketTotal !== undefined, bestComplete = best.marketTotal !== undefined;
+          if (complete !== bestComplete) return complete ? option : best;
+          if (complete) return option.marketTotal < best.marketTotal ? option : best;
+          return (option.purchasePlan?.coveredQuantity || 0) > (best.purchasePlan?.coveredQuantity || 0) ? option : best;
+        }, null);
         const pick = marketNode('label', 'shopping-pick');
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = true;
-        checkbox.shoppingItem = accepted && {
+        checkbox.shoppingItems = (accepted?.purchasePlan?.lines || []).map(line => ({
           itemId: accepted.itemId, name: localizedName(accepted) || `Item ${accepted.itemId}`, image: accepted.image, prime: accepted.prime,
           grade: accepted.grade, tier: accepted.tier, enchant: material.enchantLevel,
-          quantity: material.quantity, unitPrice: accepted.marketPrice,
-        };
-        checkbox.disabled = !accepted;
+          quantity: line.quantity, unitPrice: line.unitPrice,
+        }));
+        checkbox.disabled = !checkbox.shoppingItems.length;
         pick.append(checkbox, document.createTextNode('Enviar'));
         head.append(total, pick); item.append(head);
         craftVisibleMaterialOptions(material.acceptedItems).forEach(accepted => {
@@ -5396,9 +5428,12 @@
           appendPrimeBadge(name, accepted);
           option.append(name);
           const price = document.createElement('span'); price.className = 'craft-material-price';
-          if (accepted.marketPrice !== undefined) {
-            price.append(document.createTextNode(marketPrice(accepted.marketPrice)));
-            const subtotal = document.createElement('small'); subtotal.textContent = `${format(material.quantity)}x = ${marketPrice(accepted.marketTotal)}`; price.append(subtotal);
+          if (accepted.marketTotal !== undefined) {
+            price.append(document.createTextNode(marketPrice(accepted.marketTotal)));
+            const subtotal = document.createElement('small'); subtotal.textContent = accepted.purchasePlan.lines.map(line => `${format(line.quantity)}x a ${marketPrice(line.unitPrice)}`).join(' + '); price.append(subtotal);
+          } else if (accepted.purchasePlan?.coveredQuantity) {
+            price.append(document.createTextNode(`Subtotal ${marketPrice(accepted.purchasePlan.totalCost)}`));
+            const partial = document.createElement('small'); partial.textContent = `${format(accepted.purchasePlan.coveredQuantity)} de ${format(accepted.purchasePlan.requestedQuantity)} cobertos`; price.append(partial);
           } else {
             price.textContent = 'sem preço';
           }
@@ -5411,7 +5446,7 @@
       addShopping.type = 'button';
       addShopping.addEventListener('click', () => {
         try {
-          const items = [...materials.querySelectorAll('.shopping-pick input:checked')].map(input => input.shoppingItem).filter(Boolean);
+          const items = [...materials.querySelectorAll('.shopping-pick input:checked')].flatMap(input => input.shoppingItems || []);
           const count = replaceManualShopping(activeCharacter, `Craft x Leilão: ${localizedName(recipe, 'output_name', 'name_en')}`, items);
           $('craftStatus').textContent = `${format(count)} material(is) enviado(s) à Lista de Compra de ${activeCharacter}.`;
         } catch (error) { $('craftStatus').textContent = error.message; }
@@ -5434,6 +5469,60 @@
         }));
         $('craftVersion').textContent = `Versão ${payload.version}`; await searchCraft();
       } catch (error) { craftLoaded = false; $('craftStatus').textContent = error.message; }
+    }
+
+    function triPlateOptionNode(variant, option, target) {
+      const row = marketNode('div', `tri-plate-option${variant.cheapestOption === option.key ? ' cheapest' : ''}`);
+      const copy = marketNode('div');
+      copy.append(marketNode('strong', '', `${option.label}${variant.cheapestOption === option.key ? ' · menor custo em diamantes' : ''}`));
+      const levels = option.shoppingLines.map(line => `${format(line.quantity)}x a ${marketPrice(line.unitPrice)}`).join(' + ');
+      copy.append(marketNode('small', 'tri-plate-price-lines', levels || 'Nenhuma oferta detalhada capturada.'));
+      if (!option.complete) copy.append(marketNode('small', 'salvage-plan-warning', `Cobertura parcial · faltam ${format(option.missingQuantity)} unidade(s) do material.`));
+      const diamonds = marketNode('strong', '', option.complete ? marketPrice(option.diamondCost) : `Subtotal ${marketPrice(option.knownCost)}`);
+      const credits = marketNode('span', '', option.craftCredits ? craftFee(option.craftCredits) : 'Sem taxa de craft');
+      const add = marketNode('button', 'secondary', option.complete ? 'Adicionar à lista' : 'Adicionar faixas capturadas');
+      add.type = 'button'; add.disabled = !option.shoppingLines.length;
+      add.addEventListener('click', () => {
+        try {
+          const items = option.shoppingLines.map(line => ({
+            itemId: line.itemId, name: localizedName(line), image: line.image, grade: line.grade, tier: line.tier,
+            enchant: line.enchant, quantity: line.quantity, unitPrice: line.unitPrice,
+          }));
+          const source = `Tri-Plate: ${variant.variant} · ${target === 'stable' ? 'Stable' : 'Unstable'} · ${option.label}`;
+          const count = replaceManualShopping(activeCharacter, source, items);
+          $('triPlateStatus').textContent = `${format(count)} faixa(s) enviada(s) à Lista de Compra de ${activeCharacter}.`;
+        } catch (error) { $('triPlateStatus').textContent = error.message; }
+      });
+      row.append(copy, diamonds, credits, add); return row;
+    }
+
+    function renderTriPlates(payload) {
+      $('triPlateSnapshot').textContent = payload.marketCapturedAt ? `Mercado ${marketDate(payload.marketCapturedAt)}` : 'Mercado sem captura';
+      $('triPlateGrid').replaceChildren(...payload.variants.map(variant => {
+        const item = payload.target === 'stable' ? variant.stable : variant.unstable;
+        const card = marketNode('article', 'tri-plate-card');
+        const head = document.createElement('header');
+        const identity = marketNode('div', 'market-identity');
+        const name = localizedName(item);
+        identity.append(catalogThumb(name, item.image, { grade: item.grade, tier: item.tier }));
+        const copy = marketNode('div'); copy.append(marketNode('h3', '', name), marketNode('p', '', `Região ${variant.variant} · ${format(payload.quantity)} unidade(s) final(is)`)); identity.append(copy);
+        head.append(identity, marketNode('strong', '', payload.target === 'stable' ? `${format(payload.quantity * variant.unstablePerStable)} Unstable necessárias` : `${format(payload.quantity)} Unstable`));
+        const options = marketNode('div', 'tri-plate-options');
+        options.append(...variant.options.map(option => triPlateOptionNode(variant, option, payload.target)));
+        card.append(head, options); return card;
+      }));
+      $('triPlateStatus').textContent = `${format(payload.variants.length)} variante(s). ${payload.notice}`;
+    }
+
+    async function loadTriPlates() {
+      $('triPlateStatus').textContent = 'Calculando pelas faixas capturadas…';
+      const params = new URLSearchParams({ target: $('triPlateTarget').value, quantity: $('triPlateQuantity').value });
+      try {
+        const response = await fetch(`api/craft/tri-plates?${params}`, { credentials: 'same-origin' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Tri-Plates indisponíveis.');
+        renderTriPlates(payload);
+      } catch (error) { $('triPlateGrid').replaceChildren(); $('triPlateStatus').textContent = error.message; }
     }
 
     const personalCraftGrade = grade => LOADOUT_GRADE_LABELS[Number(grade)] || `Raridade ${grade}`;
@@ -5951,7 +6040,7 @@
         codexShopping[character] || {}, codexVisibleCollections(character), codexSnapshotMarks(character), codexShoppingBought[character] || {}
       ).map(entry => [`${entry.item.id}\u0000${entry.enchant}\u00000`, entry]));
       (manualShopping[character] || []).forEach(manual => {
-        const key = `${manual.itemId}\u0000${manual.enchant || 0}\u0000${manual.prime ? 1 : 0}`;
+        const key = `${manual.itemId}\u0000${manual.enchant || 0}\u0000${manual.prime ? 1 : 0}\u0000${manual.unitPrice ?? 'sem-preco'}`;
         const entry = grouped.get(key) || {
           item: { id: manual.itemId, name: manual.name, image: shoppingImage(manual), grade: manual.grade, tier: manual.tier, prime: manual.prime === true },
           enchant: manual.enchant || 0, quantity: 0, boughtQuantity: 0, cost: 0, boughtCost: 0,
@@ -6161,9 +6250,10 @@
       const itemName = primeName(entry.item, baseName);
       row.append(catalogThumb(itemName, entry.item.image, { grade: entry.item.grade }));
       const copy = marketNode('span', 'codex-shopping-item-copy');
+      const manualPrices = [...new Set(entry.sources.filter(source => source.kind === 'manual' && source.manual.unitPrice != null).map(source => source.manual.unitPrice))];
       copy.append(
         marketNode('strong', '', itemName),
-        marketNode('small', '', `${format(entry.quantity)}x${entry.enchant ? ` · refino +${entry.enchant}` : ''}`)
+        marketNode('small', '', `${format(entry.quantity)}x${entry.enchant ? ` · refino +${entry.enchant}` : ''}${manualPrices.length === 1 ? ` · ${marketPrice(manualPrices[0])} cada` : ''}`)
       );
       const references = [...new Set(entry.sources.map(source => {
         if (source.kind === 'manual') return source.manual.source;
@@ -7312,6 +7402,7 @@
       $('materialCalculatorScreen').hidden = screen !== 'materials';
       $('arcaneNodeScreen').hidden = screen !== 'arcane-node';
       $('craftScreen').hidden = screen !== 'craft';
+      $('triPlateScreen').hidden = screen !== 'tri-plate';
       $('personalCraftScreen').hidden = screen !== 'personal-craft';
       $('memoryChipScreen').hidden = screen !== 'memory-chips';
       $('codexScreen').hidden = screen !== 'codex';
@@ -7319,7 +7410,7 @@
       $('equipmentScreen').hidden = screen !== 'equipment';
       $('gameDataScreen').hidden = screen !== 'game-data';
       $('guideScreen').hidden = screen !== 'guide';
-      [['myScreenTab', 'mine'], ['historyScreenTab', 'history'], ['characterScreenTab', 'character'], ['spotDatabaseScreenTab', 'spots'], ['mobDatabaseScreenTab', 'database'], ['marketScreenTab', 'market'], ['marketLocalScreenTab', 'market-local'], ['marketGlobalScreenTab', 'market-global'], ['discordAlertsScreenTab', 'discord-alerts'], ['salvageScreenTab', 'salvage'], ['materialCalculatorScreenTab', 'materials'], ['arcaneNodeScreenTab', 'arcane-node'], ['craftScreenTab', 'craft'], ['personalCraftScreenTab', 'personal-craft'], ['memoryChipScreenTab', 'memory-chips'], ['codexScreenTab', 'codex'], ['shoppingScreenTab', 'shopping'], ['equipmentScreenTab', 'equipment'], ['gameDataScreenTab', 'game-data'], ['guideScreenTab', 'guide']].forEach(([id, value]) => {
+      [['myScreenTab', 'mine'], ['historyScreenTab', 'history'], ['characterScreenTab', 'character'], ['spotDatabaseScreenTab', 'spots'], ['mobDatabaseScreenTab', 'database'], ['marketScreenTab', 'market'], ['marketLocalScreenTab', 'market-local'], ['marketGlobalScreenTab', 'market-global'], ['discordAlertsScreenTab', 'discord-alerts'], ['salvageScreenTab', 'salvage'], ['materialCalculatorScreenTab', 'materials'], ['arcaneNodeScreenTab', 'arcane-node'], ['craftScreenTab', 'craft'], ['triPlateScreenTab', 'tri-plate'], ['personalCraftScreenTab', 'personal-craft'], ['memoryChipScreenTab', 'memory-chips'], ['codexScreenTab', 'codex'], ['shoppingScreenTab', 'shopping'], ['equipmentScreenTab', 'equipment'], ['gameDataScreenTab', 'game-data'], ['guideScreenTab', 'guide']].forEach(([id, value]) => {
         const active = screen === value;
         $(id).classList.toggle('active', active);
         $(id).setAttribute('aria-selected', String(active));
@@ -7334,6 +7425,7 @@
       if (screen === 'materials') loadMaterialCalculator();
       if (screen === 'arcane-node') loadArcaneNodeCalculator();
       if (screen === 'craft') loadCraft();
+      if (screen === 'tri-plate') loadTriPlates();
       if (screen === 'personal-craft') renderPersonalCraft();
       if (screen === 'memory-chips') loadMemoryChips();
       if (screen === 'codex') loadCodex();
@@ -7752,6 +7844,7 @@
     $('materialCalculatorScreenTab').addEventListener('click', () => selectScreen('materials'));
     $('arcaneNodeScreenTab').addEventListener('click', () => selectScreen('arcane-node'));
     $('craftScreenTab').addEventListener('click', () => selectScreen('craft'));
+    $('triPlateScreenTab').addEventListener('click', () => selectScreen('tri-plate'));
     $('personalCraftScreenTab').addEventListener('click', () => selectScreen('personal-craft'));
     $('memoryChipScreenTab').addEventListener('click', () => selectScreen('memory-chips'));
     $('codexScreenTab').addEventListener('click', () => selectScreen('codex'));
@@ -7917,6 +8010,7 @@
     ['craftIncludeEvents', 'craftCompleteMarket', 'craftGrade'].forEach(id => $(id).addEventListener('change', searchCraft));
     $('craftCategory').addEventListener('change', () => { fillSubcategoryOptions($('craftCategory'), $('craftSubcategory'), craftTaxonomy); searchCraft(); });
     $('craftSubcategory').addEventListener('change', searchCraft);
+    $('triPlateForm').addEventListener('submit', event => { event.preventDefault(); loadTriPlates(); });
     $('personalCraftCharacter').addEventListener('change', renderPersonalCraft);
     $('personalCraftMaterialSearch').addEventListener('click', searchPersonalCraftMaterials);
     $('personalCraftMaterialForm').addEventListener('submit', event => {
@@ -8005,7 +8099,8 @@
     console.assert(document.querySelectorAll('[data-ranking-tab]').length === 3 && document.querySelectorAll('[data-ranking-panel]').length === 3, 'Falha na configuração das abas de ranking');
     console.assert($('spotDatabaseScreenTab') && $('spotDatabaseScreen') && $('arcaneNodeScreenTab') && $('arcaneNodeScreen') && $('arcaneNodeForm'), 'Falha na configuração da Base de spots/Arcane Node');
     console.assert($('arcaneNodeScreenTab').closest('.nav-group')?.querySelector('summary')?.textContent === 'Mercado', 'Falha na categoria do Arcane Node');
-    console.assert($('marketScreenTab') && $('marketScreen') && $('salvageScreenTab') && $('salvageScreen') && $('craftScreenTab') && $('craftScreen') && $('personalCraftScreenTab') && $('personalCraftScreen') && $('memoryChipScreenTab') && $('memoryChipScreen') && $('codexScreenTab') && $('codexScreen'), 'Falha na configuração das abas Mercado/Salvage/Craft/Craft Pessoal/Memory Chips/Codex');
+    console.assert($('materialCalculatorScreenTab').closest('.nav-group')?.querySelector('summary')?.textContent === 'Mercado', 'Falha na categoria da Calculadora de Materiais');
+    console.assert($('marketScreenTab') && $('marketScreen') && $('salvageScreenTab') && $('salvageScreen') && $('craftScreenTab') && $('craftScreen') && $('triPlateScreenTab') && $('triPlateScreen') && $('personalCraftScreenTab') && $('personalCraftScreen') && $('memoryChipScreenTab') && $('memoryChipScreen') && $('codexScreenTab') && $('codexScreen'), 'Falha na configuração das abas Mercado/Salvage/Craft/Tri-Plate/Craft Pessoal/Memory Chips/Codex');
     console.assert(personalCraftGrade(1) === 'Comum' && personalCraftOrigins([{ character: 'A', quantity: 2 }]).includes('A: 2'), 'Falha nas regras básicas do Craft Pessoal');
     console.assert($('shoppingScreenTab') && $('shoppingScreen') && $('equipmentScreenTab') && $('equipmentScreen') && document.querySelectorAll('[data-equipment-side]').length === 4, 'Falha na configuração das abas Lista de Compra/Comparador');
     console.assert(equipmentValue({}, { regular: [10], prime: [20] }, 0) === 10 && equipmentValue({}, { regular: [10], prime: [20] }, 16) === 20, 'Falha ao selecionar o estado do equipamento');
