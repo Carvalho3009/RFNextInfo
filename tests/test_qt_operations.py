@@ -339,6 +339,39 @@ class CaptureEngineTest(unittest.TestCase):
 
 
 class SiteUploadEngineTest(unittest.TestCase):
+    def test_market_send_returns_passive_detail_queue(self):
+        class Store:
+            def __init__(self, *_args, **_kwargs): pass
+            def session_envelope(self, *_args, **_kwargs): return {}
+            def close(self): pass
+
+        class Site:
+            connected = True
+            profile = "Profile"
+
+            def upload_live(self, _mode, _payload, _key):
+                return {"receipt": "local", "responses": [{"detailCoverage": {
+                    "summaryItems": 10, "detailedItems": 1, "detailedUnits": 70,
+                    "pendingTargetCount": 1, "pendingTargets": [{
+                        "itemId": "270061", "name": "Diagrama VI", "refinement": 0,
+                    }],
+                }}]}
+
+        class License:
+            installation_id = "install-1"
+            lease = "lease-1"
+
+        with mock.patch("app.ui_qt.operations.CaptureStore", Store), mock.patch(
+            "app.ui_qt.operations._market_rows",
+            return_value=[{"ServerType": 0, "ItemIndex": 270061}],
+        ):
+            result = SiteUploadEngine(Path("unused"), Site(), License()).send_mode(
+                "market", -1, {"session_id": "session"}, "pt"
+            )
+        coverage = result["marketDetailCoverage"]
+        self.assertEqual(coverage["detailedUnits"], 70)
+        self.assertEqual(coverage["pendingTargets"][0]["itemId"], "270061")
+
     def test_character_send_uses_saved_profile_and_canonical_payload(self):
         class Site:
             connected = True

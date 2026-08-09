@@ -702,6 +702,13 @@ class MainWindow(QtWidgets.QMainWindow):
             status = _label("Aguardando leitura", "info")
             self.send_status_labels[mode] = status
             card_layout.addWidget(status)
+            if mode == "market":
+                self.market_detail_queue = _label(
+                    "Envie o Mercado para conferir os materiais que precisam ter os detalhes abertos no jogo.",
+                    "muted",
+                )
+                self.market_detail_queue.setWordWrap(True)
+                card_layout.addWidget(self.market_detail_queue)
             actions = QtWidgets.QHBoxLayout()
             labels = ("Enviar Mercado · geral",) if general else ("Enviar Cliente A", "Enviar Cliente B")
             for client_index, text in enumerate(labels):
@@ -2277,8 +2284,26 @@ class MainWindow(QtWidgets.QMainWindow):
         elif name.startswith("send:"):
             mode = name.split(":", 2)[1]
             if error is None:
-                target = dict(result or {}).get("target") or "Dados"
+                data = dict(result or {})
+                target = data.get("target") or "Dados"
                 self.send_status_labels[mode].setText(f"{target} enviado")
+                if mode == "market":
+                    coverage = data.get("marketDetailCoverage") or {}
+                    pending = list(coverage.get("pendingTargets") or [])
+                    names = []
+                    for item in pending[:8]:
+                        refinement = int(item.get("refinement") or 0)
+                        names.append(
+                            f"{item.get('name') or item.get('itemId')}"
+                            f"{' +' + str(refinement) if refinement else ''}"
+                        )
+                    remaining = max(0, int(coverage.get("pendingTargetCount") or 0) - len(names))
+                    queue = " · ".join(names)
+                    self.market_detail_queue.setText(
+                        f"Detalhes: {int(coverage.get('detailedItems') or 0)} item(ns), "
+                        f"{int(coverage.get('detailedUnits') or 0)} unidade(s). "
+                        + (f"Abra no Mercado: {queue}{f' · +{remaining}' if remaining else ''}." if names else "Nenhum material acompanhado pendente.")
+                    )
             else:
                 message = str(error) or "Envio recusado pelo site"
                 self.send_status_labels[mode].setText(message)

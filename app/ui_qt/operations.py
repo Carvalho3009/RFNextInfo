@@ -136,7 +136,18 @@ class SiteUploadEngine:
             separators=(",", ":"),
         ).encode()).hexdigest()
         response = self.site_profile.upload_live(mode, payload, key)
-        return {"target": target, "receipt": response.get("receipt", ""), "uid": uid}
+        result = {"target": target, "receipt": response.get("receipt", ""), "uid": uid}
+        if mode == "market":
+            coverages = [item.get("detailCoverage") or {} for item in response.get("responses", [])]
+            pending = [target for coverage in coverages for target in coverage.get("pendingTargets", [])]
+            result["marketDetailCoverage"] = {
+                "summaryItems": sum(int(item.get("summaryItems") or 0) for item in coverages),
+                "detailedItems": sum(int(item.get("detailedItems") or 0) for item in coverages),
+                "detailedUnits": sum(int(item.get("detailedUnits") or 0) for item in coverages),
+                "pendingTargetCount": sum(int(item.get("pendingTargetCount") or 0) for item in coverages),
+                "pendingTargets": pending,
+            }
+        return result
 
     def send_subsessions(
         self, identifiers: list[str], snapshot: dict, language: str
