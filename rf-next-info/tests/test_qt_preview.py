@@ -21,7 +21,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertGreater(memory, 0)
 
     def test_3_0_controls_show_ram_shortcuts_and_transparent_overlay(self):
-        from PySide6 import QtCore
+        from PySide6 import QtCore, QtGui
+        from app.ui_qt.data import load_preferences
         from app.ui_qt.main import MainWindow, create_application
 
         create_application(["three-zero-controls-test"])
@@ -55,6 +56,36 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 window.pvp_overlay.windowFlags()
                 & QtCore.Qt.WindowType.FramelessWindowHint
             )
+            self.assertEqual(
+                window.pvp_overlay.cursor().shape(),
+                QtCore.Qt.CursorShape.SizeAllCursor,
+            )
+            position = (
+                QtGui.QGuiApplication.primaryScreen().availableGeometry().topLeft()
+                + QtCore.QPoint(40, 40)
+            )
+            window.pvp_overlay.mousePressEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                position=lambda: QtCore.QPointF(10, 10),
+                accept=lambda: None,
+            ))
+            window.pvp_overlay.mouseMoveEvent(SimpleNamespace(
+                buttons=lambda: QtCore.Qt.MouseButton.LeftButton,
+                globalPosition=lambda: QtCore.QPointF(position + QtCore.QPoint(10, 10)),
+                accept=lambda: None,
+            ))
+            window.pvp_overlay.mouseReleaseEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                accept=lambda: None,
+            ))
+            self.assertEqual(window.pvp_overlay.pos(), position)
+            self.assertEqual(
+                load_preferences(root / "preferences.json")["pvp_overlay_position"],
+                [position.x(), position.y()],
+            )
+            window._toggle_pvp_overlay(False)
+            window._toggle_pvp_overlay(True)
+            self.assertEqual(window.pvp_overlay.pos(), position)
             window._toggle_pvp_overlay(False)
             window.close()
 

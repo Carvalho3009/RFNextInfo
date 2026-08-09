@@ -1,5 +1,10 @@
 # Changelog
 
+## Próxima beta
+
+- permite arrastar o overlay PvP e preserva sua posição entre aberturas;
+- reposiciona o overlay automaticamente se a posição salva ficar fora da tela.
+
 ## 3.0.9 — beta
 
 - lê o alvo selecionado diretamente dos pedidos `0x0609` e `0x0601` do cliente;
