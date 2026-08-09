@@ -46,7 +46,21 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 "Ligar monitor Cliente A  Ctrl+F6",
             )
             self.assertIn("sem ler", window.stop_without_reading_button.text())
+            window.snapshot = {"combat_monitors": [{
+                "local": {},
+                "nearby_players": [],
+                "pvp": {
+                    "uid": 20,
+                    "character_uid": 222,
+                    "name": "Rival confirmado",
+                    "level": 70,
+                    "hp_percent": 65.5,
+                    "stale": False,
+                },
+            }]}
             window._toggle_pvp_overlay(True)
+            self.assertEqual(window.pvp_overlay_summary.text(), "Hostis próximos: 1")
+            self.assertEqual(window.pvp_overlay_rows.count(), 1)
             self.assertTrue(
                 window.pvp_overlay.testAttribute(
                     QtCore.Qt.WidgetAttribute.WA_TranslucentBackground

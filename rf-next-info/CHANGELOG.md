@@ -3,7 +3,11 @@
 ## 3.0.10 — beta
 
 - permite arrastar o overlay PvP e preserva sua posição entre aberturas;
-- reposiciona o overlay automaticamente se a posição salva ficar fora da tela.
+- reposiciona o overlay automaticamente se a posição salva ficar fora da tela;
+- alimenta o overlay PvP imediatamente com o alvo atual e com jogadores hostis próximos confirmados, sem tomar o foco da tela;
+- prioriza e preserva eventos de Boss mesmo sob grande volume de tráfego paralelo;
+- mantém a identidade e o estado do Boss fora do buffer comum até morte confirmada;
+- exibe fila, atraso e contadores do leitor em tempo real e reinicia o leitor se o trabalhador parar.
 
 ## 3.0.9 — beta
 
