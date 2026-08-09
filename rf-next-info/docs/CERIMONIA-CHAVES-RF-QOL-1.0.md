@@ -1,6 +1,6 @@
 # Cerimônia de chaves — RF QOL 1.0
 
-Estado: chave de lease gerada e validada; revisão independente, backup e
+Estado: chave de lease gerada, validada e revisada pelo owner; backup e
 promoção pendentes; chave de update ainda não gerada
 Escopo: lease Ed25519 e update Ed25519
 
@@ -78,8 +78,9 @@ placeholder de update.
   pública pinada, PvP negado e licença descartável revogada;
 - privada sob ACL restrita ao operador, Administradores e SYSTEM;
 - não instalada no emissor de produção;
-- revisão por testemunha diferente do operador e cópia de recuperação segura:
-  pendentes;
+- Carlos confirmou como revisor humano o `key_id`, a pública, o SHA-256, os
+  controles de acesso e a ausência de promoção em 09 ago 2026;
+- cópia de recuperação segura: pendente;
 - chave `update-2026-01`: não gerada; deve usar ambiente offline separado.
 
 O registro local sanitizado está fora dos repositórios em
