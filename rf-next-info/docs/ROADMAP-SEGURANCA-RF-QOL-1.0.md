@@ -5,6 +5,9 @@ Branch de planejamento: `plan/rf-qol-security-1.0`
 Estado geral: implementação local isolada autorizada em 09 ago 2026;
 publicação não autorizada
 
+Identidade atual: produto/executáveis RF QOL com logo e identidade visual
+Karvalho, conforme decisão posterior do owner em 09 ago 2026.
+
 ## Princípios de execução
 
 - Cada fase termina em evidência verificável.

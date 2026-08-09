@@ -308,7 +308,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setMinimumSize(1180, 664)
         self.resize(1440, 810)
 
-        icon = QtGui.QIcon(str(ASSETS / "rf-qol-symbol-v1.png"))
+        icon = QtGui.QIcon(str(ASSETS / "karvalho-symbol-gold.png"))
         self.setWindowIcon(icon)
         self._tray = self._build_tray(icon)
 
@@ -552,12 +552,12 @@ class MainWindow(QtWidgets.QMainWindow):
         column.setSpacing(8)
 
         logo = QtWidgets.QLabel(objectName="brandLogo")
-        pixmap = QtGui.QPixmap(str(ASSETS / "rf-qol-primary-v1.png"))
+        pixmap = QtGui.QPixmap(str(ASSETS / "karvalho-symbol-gold.png"))
         logo.setPixmap(pixmap.scaled(72, 72, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                                      QtCore.Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         column.addWidget(logo)
-        brand = _label("RF QOL", "brand")
+        brand = _label("KARVALHO", "brand")
         brand.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         column.addWidget(brand)
         column.addSpacing(20)

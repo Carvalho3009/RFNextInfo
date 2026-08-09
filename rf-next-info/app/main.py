@@ -1340,16 +1340,16 @@ class App(tk.Tk):
         try:
             from PIL import Image, ImageDraw, ImageTk
 
-            with Image.open(ASSETS / "rf-qol-symbol-v1.png") as source:
+            with Image.open(ASSETS / "karvalho-symbol-gold.png") as source:
                 source = source.crop(source.getbbox())
                 source.thumbnail((32, 32), Image.Resampling.LANCZOS)
                 self.app_icon = ImageTk.PhotoImage(source.copy())
             self.iconphoto(True, self.app_icon)
-            with Image.open(ASSETS / "rf-qol-symbol-v1.png") as source:
+            with Image.open(ASSETS / "karvalho-symbol-gold.png") as source:
                 source = source.crop(source.getbbox())
                 source.thumbnail((54, 54), Image.Resampling.LANCZOS)
                 self.logo = ImageTk.PhotoImage(source.copy())
-            with Image.open(ASSETS / "rf-qol-primary-v1.png") as source:
+            with Image.open(ASSETS / "karvalho-primary-gold.png") as source:
                 source = source.crop(source.getbbox())
                 source.thumbnail((166, 42), Image.Resampling.LANCZOS)
                 self.product_logo = ImageTk.PhotoImage(source.copy())
@@ -6969,7 +6969,7 @@ class App(tk.Tk):
                 from PIL import Image
 
                 if not self.tray:
-                    image = Image.open(ASSETS / "rf-qol-symbol-v1.png")
+                    image = Image.open(ASSETS / "karvalho-symbol-gold.png")
                     self.tray = pystray.Icon(
                         "RF QOL",
                         image,

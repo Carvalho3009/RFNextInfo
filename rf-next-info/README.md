@@ -7,7 +7,7 @@ Suporte: [Discord oficial](https://discord.gg/D3hhdMgkj) · `carvalho@tuta.com`
 
 ## Recursos atuais
 
-- executável autônomo, identidade RF QOL própria e instalador padrão;
+- executável autônomo com identidade visual Karvalho e instalador padrão;
 - seleção única do executável e detecção automática das conexões TCP atuais;
 - lista limitada aos executáveis `ProjectRF*`;
 - captura nativa Pktmon limitada às portas conhecidas do RF NEXT e às portas

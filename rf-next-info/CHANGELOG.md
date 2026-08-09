@@ -2,7 +2,7 @@
 
 ## 1.0.0 — em desenvolvimento isolado
 
-- renomeia produto, executável e instalador para RF QOL e aplica identidade própria;
+- renomeia produto, executável e instalador para RF QOL e mantém a identidade visual Karvalho;
 - adiciona o link oficial do Discord;
 - substitui a lease v1 por lease v2 com chaves pinadas, produto/audience, instalação e teto offline de 24 horas;
 - usa licenças novas com prefixo RFQ e rejeita licenças KRV da linha anterior;

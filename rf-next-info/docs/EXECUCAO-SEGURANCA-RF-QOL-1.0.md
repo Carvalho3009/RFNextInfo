@@ -42,8 +42,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | F4 | Rollback por cópia de EXE removido. Rollback assinado continua desativado até haver RC anterior e compatibilidade de schema. | Parcial seguro |
 | 09 ago 2026 | F5 | Dependências CPython 3.13 fechadas por versão/hash e instaladas offline na própria worktree; SBOM e procedência gerados. | Concluído local |
 | 09 ago 2026 | F5 | Build portátil `RF QOL.exe` gerado e autoteste aprovado. Inno Setup não está instalado, portanto nenhum instalador foi produzido. | Parcial |
-| 09 ago 2026 | Marca | Logos anteriores removidos; identidade própria RF QOL adicionada em versões principal e símbolo, sem urso/K/Karvalho. | Concluído local |
+| 09 ago 2026 | Marca | Logos anteriores removidos e identidade própria RF QOL criada. | Supersedido pelo owner |
 | 09 ago 2026 | Marca | Nome/título/executável/atalhos renomeados; link exato do Discord adicionado com navegador padrão. | Concluído local |
+| 09 ago 2026 | Marca | Owner decidiu manter logo e identidade visual Karvalho; assets existentes foram restaurados sem alterar o nome RF QOL. | Concluído local |
 
 ## Evidências e comandos de validação
 
@@ -71,14 +72,12 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 ## Identidade visual
 
-- Assets finais: `assets/rf-qol-primary-v1.png` e
-  `assets/rf-qol-symbol-v1.png`.
-- Geração: ImageGen embutido, usando a identidade Karvalho somente como
-  referência de nível de acabamento, paleta e proporção.
-- Direção: monograma geométrico original R/Q, ouro facetado, texto exato
-  `RF QOL`, fundo transparente, sem urso, K, Karvalho ou RF NEXT QOL.
-- Os quatro PNGs antigos foram removidos desta branch. A remoção é recuperável
-  pelo Git e não afetou a beta em uso.
+- Assets finais: `assets/karvalho-primary-gold.png` e
+  `assets/karvalho-symbol-gold.png`.
+- O nome oficial do programa e dos executáveis continua RF QOL; somente a
+  decisão visual foi revertida.
+- Os assets RF QOL gerados anteriormente foram removidos desta branch. A
+  alteração é recuperável pelo Git e não afetou a beta em uso.
 
 ## Pendências externas reais
 

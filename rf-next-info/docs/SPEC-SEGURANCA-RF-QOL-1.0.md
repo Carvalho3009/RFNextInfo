@@ -35,8 +35,9 @@ contratos funcionais do site além da validação de licença.
 - publicador Authenticode: Karvalho
 - suporte Discord: `https://discord.gg/D3hhdMgkj`
 
-O nome Karvalho NÃO DEVE aparecer como marca ou logo do produto. Ele permanece
-somente nos papéis aprovados de domínio, suporte, publicador e certificado.
+O produto e os executáveis usam o nome RF QOL. Por decisão do owner em
+09 ago 2026, a identidade visual e o logo permanecem Karvalho, que também
+continua nos papéis de domínio, suporte, publicador e certificado.
 
 A 1.0 DEVE ser instalação nova. Estado e licenças da linha RF NEXT QOL NÃO
 DEVEM ser migrados nem aceitos. Arquivos antigos NÃO DEVEM ser apagados pela
