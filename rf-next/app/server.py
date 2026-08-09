@@ -65,6 +65,7 @@ HISTORY_COLUMN_KEYS = frozenset({
     "rarity1", "rarity2", "rarity3", "rarity4", "rarity5", "rarity6",
 })
 Image.MAX_IMAGE_PIXELS = 25_000_000
+DATABASE_SCHEMA_PATHS = set()
 
 GAME_ENTITY_TYPES = {
     "item": ("Item", "item_details"),
@@ -2724,6 +2725,17 @@ def database():
     connection = sqlite3.connect(DB_PATH, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    database_path = str(DB_PATH.resolve())
+    if database_path in DATABASE_SCHEMA_PATHS:
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return
     connection.execute("PRAGMA journal_mode = WAL")
     connection.executescript("""
         CREATE TABLE IF NOT EXISTS users (
@@ -2829,6 +2841,7 @@ def database():
         connection.execute("ALTER TABLE market_alert_state ADD COLUMN last_signature TEXT")
     if "last_sent_at" not in alert_state_columns:
         connection.execute("ALTER TABLE market_alert_state ADD COLUMN last_sent_at TEXT")
+    DATABASE_SCHEMA_PATHS.add(database_path)
     try:
         yield connection
         connection.commit()
@@ -5688,6 +5701,10 @@ if __name__ == "__main__":
                         "characters": [{"name": "Carvalho", "level": 66, "className": "Arbiter"}]
                     })),
                 )
+            with database() as writer:
+                writer.execute("UPDATE users SET share=1 WHERE id=?", ("carvalho",))
+                with database() as reader:
+                    assert reader.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
             profile_token = create_profile_token("carvalho")
             assert profile_for_token(profile_token) == "carvalho"
             assert profile_for_token("token-invalido") is None

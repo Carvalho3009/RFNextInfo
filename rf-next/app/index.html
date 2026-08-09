@@ -4694,6 +4694,7 @@
       const alert = discordAlertFromForm(); $('discordAlertStatus').textContent = 'Avaliando a captura atual…';
       try {
         const response = await fetch('api/alerts/preview', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(alert) });
+        if (!(response.headers.get('content-type') || '').includes('application/json')) throw new Error(response.redirected ? 'Sua sessão expirou. Atualize a página e entre novamente.' : 'Servidor temporariamente indisponível. Tente novamente.');
         const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Prévia indisponível.');
         const preview = $('discordAlertPreview'); preview.replaceChildren(marketNode('strong', '', `${format(data.matchCount)} resultado(s) de ${format(data.candidates)} candidato(s)`), ...data.matches.map(match => marketNode('span', '', `${match.name}${match.refinement ? ` +${match.refinement}` : ''}`))); preview.hidden = false; $('discordAlertStatus').textContent = data.matchCount ? 'A regra dispararia com a captura atual.' : 'Nenhum resultado atende à regra agora.'; return data;
       } catch (error) { $('discordAlertStatus').textContent = error.message; return null; }
