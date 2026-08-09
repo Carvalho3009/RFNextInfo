@@ -48,19 +48,46 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertIn("sem ler", window.stop_without_reading_button.text())
             window.snapshot = {"combat_monitors": [{
                 "local": {},
-                "nearby_players": [],
-                "pvp": {
+                "nearby_players": [{
                     "uid": 20,
                     "character_uid": 222,
-                    "name": "Rival confirmado",
+                    "name": "Rigarden",
                     "level": 70,
                     "hp_percent": 65.5,
-                    "stale": False,
-                },
+                }],
+                "pvp": {},
+                "bosses": [{
+                    "uid": 30,
+                    "name": "Mecha Corruptor",
+                    "current_hp": 750_000,
+                    "max_hp": 1_000_000,
+                    "hp_percent": 75.0,
+                    "dps_hp": 25_000,
+                    "eta_seconds": 30,
+                }],
             }]}
             window._toggle_pvp_overlay(True)
-            self.assertEqual(window.pvp_overlay_summary.text(), "Hostis próximos: 1")
+            self.assertEqual(
+                window.pvp_overlay_summary.text(),
+                "Jogadores próximos: 1 · Hostis confirmados: 0",
+            )
             self.assertEqual(window.pvp_overlay_rows.count(), 1)
+            pvp_labels = window.pvp_overlay_rows.itemAt(0).widget().findChildren(
+                window.pvp_overlay_summary.__class__
+            )
+            self.assertTrue(any("Rigarden" in label.text() for label in pvp_labels))
+            self.assertTrue(any("Próximo" in label.text() for label in pvp_labels))
+            window.snapshot["combat_monitors"][0]["pvp"] = {
+                "uid": 21,
+                "name": "Rival confirmado",
+                "hp_percent": 50.0,
+                "stale": False,
+            }
+            window._render_combat()
+            self.assertEqual(
+                window.pvp_overlay_summary.text(),
+                "Jogadores próximos: 2 · Hostis confirmados: 1",
+            )
             self.assertTrue(
                 window.pvp_overlay.testAttribute(
                     QtCore.Qt.WidgetAttribute.WA_TranslucentBackground
@@ -101,6 +128,48 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_pvp_overlay(True)
             self.assertEqual(window.pvp_overlay.pos(), position)
             window._toggle_pvp_overlay(False)
+
+            window._toggle_boss_overlay(True)
+            self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
+            self.assertEqual(window.boss_overlay_hp.text(), "HP 750.000 / 1.000.000")
+            self.assertEqual(window.boss_overlay_progress.value(), 750)
+            self.assertIn("25.000", window.boss_overlay_rate.text())
+            self.assertEqual(
+                window.boss_overlay.cursor().shape(),
+                QtCore.Qt.CursorShape.SizeAllCursor,
+            )
+            window.snapshot["combat_monitors"][0]["bosses"][0]["current_hp"] = 500_000
+            window.snapshot["combat_monitors"][0]["bosses"][0]["hp_percent"] = 50.0
+            window._render_combat()
+            self.assertEqual(window.boss_overlay_hp.text(), "HP 500.000 / 1.000.000")
+            self.assertEqual(window.boss_overlay_progress.value(), 500)
+            boss_position = position + QtCore.QPoint(80, 80)
+            window.boss_overlay.mousePressEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                position=lambda: QtCore.QPointF(10, 10),
+                accept=lambda: None,
+            ))
+            window.boss_overlay.mouseMoveEvent(SimpleNamespace(
+                buttons=lambda: QtCore.Qt.MouseButton.LeftButton,
+                globalPosition=lambda: QtCore.QPointF(
+                    boss_position + QtCore.QPoint(10, 10)
+                ),
+                accept=lambda: None,
+            ))
+            window.boss_overlay.mouseReleaseEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                accept=lambda: None,
+            ))
+            self.assertEqual(window.boss_overlay.pos(), boss_position)
+            self.assertEqual(
+                load_preferences(root / "preferences.json")["boss_overlay_position"],
+                [boss_position.x(), boss_position.y()],
+            )
+            window._toggle_boss_overlay(False)
+            window._toggle_boss_overlay(True)
+            self.assertEqual(window.boss_overlay.pos(), boss_position)
+            self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
+            window._toggle_boss_overlay(False)
             window.close()
 
     def test_monitor_keybinds_and_auto_market_setting_are_persisted(self):

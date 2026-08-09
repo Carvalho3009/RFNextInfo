@@ -3796,7 +3796,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.boss_overlay.close()
                 self.boss_overlay = None
             return
-        overlay = QtWidgets.QDialog(self)
+        overlay = _MovableOverlay(self)
         overlay.setWindowTitle("RF NEXT QOL · Boss")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
@@ -3807,7 +3807,11 @@ class MainWindow(QtWidgets.QMainWindow):
         overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         overlay.setObjectName("monitorOverlay")
         overlay.setStyleSheet("QDialog#monitorOverlay { background: transparent; }")
+        overlay.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+        overlay.setToolTip("Arraste com o botão esquerdo para mover.")
+        overlay.position_changed.connect(self._save_boss_overlay_position)
         layout = QtWidgets.QVBoxLayout(overlay)
+        layout.setContentsMargins(12, 10, 12, 10)
         self.boss_overlay_name = _label("Aguardando boss próximo", "subtitle")
         self.boss_overlay_hp = _label("HP —", "data")
         self.boss_overlay_progress = QtWidgets.QProgressBar()
@@ -3819,8 +3823,12 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.boss_overlay_progress)
         layout.addWidget(self.boss_overlay_rate)
         overlay.resize(430, 150)
-        overlay.show()
+        self._restore_overlay_position(overlay, "boss_overlay_position")
         self.boss_overlay = overlay
+        overlay.show()
+        self._update_boss_overlay(
+            list(self.snapshot.get("combat_monitors") or [])
+        )
 
     def _toggle_pvp_overlay(self, enabled: bool) -> None:
         if not enabled:
@@ -3849,7 +3857,17 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.pvp_overlay_summary)
         layout.addLayout(self.pvp_overlay_rows)
         overlay.resize(410, 180)
-        position = self.preferences.get("pvp_overlay_position")
+        self._restore_overlay_position(overlay, "pvp_overlay_position")
+        self.pvp_overlay = overlay
+        overlay.show()
+        self._update_pvp_overlay(
+            list(self.snapshot.get("combat_monitors") or [])
+        )
+
+    def _restore_overlay_position(
+        self, overlay: QtWidgets.QDialog, preference_key: str
+    ) -> None:
+        position = self.preferences.get(preference_key)
         if isinstance(position, (list, tuple)) and len(position) == 2:
             try:
                 point = QtCore.QPoint(int(position[0]), int(position[1]))
@@ -3867,18 +3885,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay.move(point)
             except (TypeError, ValueError):
                 pass
-        overlay.show()
-        self.pvp_overlay = overlay
-        self._update_pvp_overlay(
-            list(self.snapshot.get("combat_monitors") or [])
+
+    def _save_overlay_position(
+        self, preference_key: str, position: QtCore.QPoint
+    ) -> None:
+        self.preferences = save_preferences(
+            {preference_key: [position.x(), position.y()]},
+            self.preferences_path,
         )
 
     @QtCore.Slot(QtCore.QPoint)
     def _save_pvp_overlay_position(self, position: QtCore.QPoint) -> None:
-        self.preferences = save_preferences(
-            {"pvp_overlay_position": [position.x(), position.y()]},
-            self.preferences_path,
-        )
+        self._save_overlay_position("pvp_overlay_position", position)
+
+    @QtCore.Slot(QtCore.QPoint)
+    def _save_boss_overlay_position(self, position: QtCore.QPoint) -> None:
+        self._save_overlay_position("boss_overlay_position", position)
 
     def _set_capture_controls(self) -> None:
         engine = self.capture_engine
@@ -4571,7 +4593,8 @@ class MainWindow(QtWidgets.QMainWindow):
             item = self.pvp_overlay_rows.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        enemies: dict[str, dict[str, Any]] = {}
+        players: dict[str, dict[str, Any]] = {}
+        hostile_ids: set[str] = set()
         for monitor in monitors:
             target = dict(monitor.get("pvp") or {})
             if target and not target.get("stale"):
@@ -4582,13 +4605,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     or ""
                 )
                 if identity:
-                    enemies[identity] = target
+                    players[identity] = target
+                    hostile_ids.add(identity)
             local_realm = (monitor.get("local") or {}).get("realm")
-            if local_realm is None:
-                continue
             for player in list(monitor.get("nearby_players") or []):
-                if player.get("realm") is None or player.get("realm") == local_realm:
-                    continue
                 identity = str(
                     player.get("character_uid")
                     or player.get("uid")
@@ -4596,20 +4616,27 @@ class MainWindow(QtWidgets.QMainWindow):
                     or ""
                 )
                 if identity:
-                    enemies.setdefault(identity, player)
-        enemy_rows = list(enemies.values())
+                    players.setdefault(identity, player)
+                    if (
+                        local_realm is not None
+                        and player.get("realm") is not None
+                        and player.get("realm") != local_realm
+                    ):
+                        hostile_ids.add(identity)
+        player_rows = list(players.items())
         self.pvp_overlay_summary.setText(
-            f"Hostis próximos: {len(enemy_rows)}"
-            if enemy_rows
-            else "Nenhum jogador hostil confirmado"
+            f"Jogadores próximos: {len(player_rows)} · Hostis confirmados: {len(hostile_ids)}"
+            if player_rows
+            else "Nenhum jogador próximo confirmado"
         )
-        for player in enemy_rows[:8]:
+        for identity, player in player_rows[:8]:
             row = QtWidgets.QFrame(objectName="secondaryMetricGroup")
             layout = QtWidgets.QHBoxLayout(row)
             layout.setContentsMargins(8, 5, 8, 5)
             name = str(player.get("name") or "Jogador confirmado")
             level = f" · Nv. {player['level']}" if player.get("level") else ""
-            layout.addWidget(_label(f"{name}{level}", "subtitle"), 1)
+            status = " · Hostil" if identity in hostile_ids else " · Próximo"
+            layout.addWidget(_label(f"{name}{level}{status}", "subtitle"), 1)
             percent = player.get("hp_percent")
             layout.addWidget(
                 _label(
