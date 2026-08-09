@@ -7,6 +7,7 @@ import math
 import subprocess
 import threading
 import time
+from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -141,8 +142,17 @@ def _process_memory_bytes() -> int | None:
         return None
     counters = _ProcessMemoryCounters()
     counters.cb = ctypes.sizeof(counters)
-    success = ctypes.windll.psapi.GetProcessMemoryInfo(
-        ctypes.windll.kernel32.GetCurrentProcess(),
+    kernel32 = ctypes.windll.kernel32
+    psapi = ctypes.windll.psapi
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi.GetProcessMemoryInfo.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_ProcessMemoryCounters),
+        wintypes.DWORD,
+    )
+    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+    success = psapi.GetProcessMemoryInfo(
+        kernel32.GetCurrentProcess(),
         ctypes.byref(counters),
         counters.cb,
     )

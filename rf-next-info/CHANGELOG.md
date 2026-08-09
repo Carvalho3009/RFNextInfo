@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.7 — beta
+
+- corrige a assinatura da API nativa do Windows usada para medir a memória;
+- volta a exibir no topo o consumo atual de RAM do RF NEXT QOL;
+- adiciona teste real do contador de memória, sem depender de valor simulado.
+
 ## 3.0.6 — beta
 
 - mostra na aba Boss somente os clientes que detectaram ao menos um Boss;

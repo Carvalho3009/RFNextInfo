@@ -1,5 +1,6 @@
 import importlib.util
 import logging
+import os
 import tempfile
 import time
 import unittest
@@ -10,6 +11,15 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Contador de RAM disponível no Windows")
+    def test_process_memory_reader_returns_current_working_set(self):
+        from app.ui_qt.main import _process_memory_bytes
+
+        memory = _process_memory_bytes()
+
+        self.assertIsInstance(memory, int)
+        self.assertGreater(memory, 0)
+
     def test_3_0_controls_show_ram_shortcuts_and_transparent_overlay(self):
         from PySide6 import QtCore
         from app.ui_qt.main import MainWindow, create_application
@@ -574,7 +584,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.6")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.7")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
