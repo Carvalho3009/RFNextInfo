@@ -935,6 +935,60 @@ def normalize_market_timestamp(value, fallback):
     return captured.astimezone(timezone.utc).isoformat()
 
 
+def market_capture_detail_coverage(profile, listings):
+    summaries, detailed = {}, set()
+    for listing in listings:
+        match = re.search(r"\d+", listing["refinement"])
+        key = (str(listing["itemId"]), int(match.group()) if match else 0)
+        if listing["rowType"] == "offer":
+            detailed.add(key)
+        else:
+            summaries[key] = listing
+    targets = {}
+
+    def add_target(item_id, enchant=0, reason="Calculadora"):
+        item_id = market_item_aliases().get(str(item_id), str(item_id))
+        targets.setdefault((item_id, int(enchant or 0)), set()).add(str(reason)[:80])
+
+    with database() as db:
+        row = db.execute("SELECT state FROM users WHERE id=?", (profile,)).fetchone() if profile else None
+    state = clean_state(json.loads(row["state"] or "{}")) if row else clean_state({})
+    for watched in state["salvageWatchedMaterials"]:
+        add_target(watched["itemId"], watched.get("enchant"), "Calculadora de Materiais")
+    for items in state["manualShopping"].values():
+        for item in items:
+            add_target(item["itemId"], item.get("enchant"), item.get("source") or "Lista de Compra")
+    recipe_keys = [recipe["recipeKey"] for recipe in state["personalCraftRecipes"]]
+    with game_database() as db:
+        clauses, values = ["r.name_en LIKE 'Unstable Dimensional Tri-Plate (%'"], []
+        if recipe_keys:
+            clauses.append(f"m.recipe_key IN ({','.join('?' * len(recipe_keys))})")
+            values.extend(recipe_keys)
+        rows = db.execute(
+            "SELECT DISTINCT m.accepted_item_id,m.enchant_level,"
+            "CASE WHEN r.name_en LIKE 'Unstable Dimensional Tri-Plate (%' THEN 'Tri-Plate' ELSE 'Craft Pessoal' END reason "
+            "FROM craft_materials m JOIN craft_recipes r ON r.recipe_key=m.recipe_key "
+            f"WHERE {' OR '.join(clauses)}",
+            values,
+        ).fetchall()
+    for material in rows:
+        add_target(material["accepted_item_id"], material["enchant_level"], material["reason"])
+    pending = []
+    for key, reasons in targets.items():
+        listing = summaries.get(key)
+        if listing and key not in detailed:
+            pending.append({
+                "itemId": key[0], "name": listing["name"], "refinement": key[1],
+                "listingCount": listing["quantity"], "reasons": sorted(reasons),
+            })
+    pending.sort(key=lambda item: (item["reasons"], item["name"].casefold(), item["refinement"]))
+    return {
+        "summaryItems": len(summaries), "detailedItems": len(detailed),
+        "detailedUnits": sum(listing["quantity"] for listing in listings if listing["rowType"] == "offer"),
+        "pendingTargets": pending[:100], "pendingTargetCount": len(pending),
+    }
+
+
 def import_market_csv(
     path, captured_at=None, source_id=None, profile=None, defer_notifications=False
 ):
@@ -969,6 +1023,7 @@ def import_market_csv(
         match = re.search(r"\d+", listing["refinement"])
         key = (listing["itemId"], int(match.group()) if match else 0, listing["price"])
         levels[key] = levels.get(key, 0) + listing["quantity"]
+    detail_coverage = market_capture_detail_coverage(profile, listings)
 
     with database() as db:
         previous = db.execute("SELECT id FROM market_snapshots WHERE source_id = ?", (source_id,)).fetchone()
@@ -986,7 +1041,7 @@ def import_market_csv(
             )
             return {
                 "snapshotId": previous[0], "serverType": server_type, "rows": len(grouped),
-                "priceLevels": len(levels), "inserted": False,
+                "priceLevels": len(levels), "inserted": False, "detailCoverage": detail_coverage,
             }
         cursor = db.execute(
             "INSERT INTO market_snapshots (captured_at, imported_at, source_id, row_count, total_registered, profile, server_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1008,7 +1063,7 @@ def import_market_csv(
         )
     result = {
         "snapshotId": snapshot_id, "serverType": server_type, "rows": len(grouped), "priceLevels": len(levels),
-        "inserted": True, "capturedAt": captured_at,
+        "inserted": True, "capturedAt": captured_at, "detailCoverage": detail_coverage,
     }
     if defer_notifications:
         result["notificationsDeferred"] = True
@@ -1264,35 +1319,12 @@ def latest_market_price_map():
             f"WHERE p.snapshot_id IN ({placeholders}) GROUP BY p.item_id, p.refinement",
             snapshot_ids,
         ).fetchall()
-        current_rows = db.execute(
-            "SELECT p.snapshot_id, s.server_type, p.item_id, p.refinement, p.lowest_price, "
-            "p.highest_price, p.registered_items FROM market_prices p "
-            "JOIN market_snapshots s ON s.id=p.snapshot_id "
-            f"WHERE p.snapshot_id IN ({placeholders})",
-            snapshot_ids,
-        ).fetchall()
         levels = db.execute(
             "SELECT snapshot_id, item_id, refinement, price, SUM(quantity) quantity FROM market_price_levels "
             f"WHERE snapshot_id IN ({placeholders}) "
             "GROUP BY snapshot_id, item_id, refinement, price ORDER BY price",
             snapshot_ids,
         ).fetchall()
-        previous_rows = {}
-        for snapshot in snapshots:
-            previous = db.execute(
-                "SELECT id FROM market_snapshots WHERE server_type=? AND "
-                "(captured_at<? OR (captured_at=? AND id<?)) "
-                "ORDER BY captured_at DESC, id DESC LIMIT 1",
-                (snapshot["server_type"], snapshot["captured_at"], snapshot["captured_at"], snapshot["id"]),
-            ).fetchone()
-            if not previous:
-                continue
-            for row in db.execute(
-                "SELECT item_id, refinement, lowest_price, highest_price, registered_items "
-                "FROM market_prices WHERE snapshot_id=?",
-                (previous["id"],),
-            ):
-                previous_rows[(snapshot["server_type"], str(row["item_id"]), int(row["refinement"]))] = row
     result = {
         (str(row["item_id"]), int(row["refinement"])): {
             "price": row["lowest_price"], "quantity": row["registered_items"],
@@ -1300,10 +1332,6 @@ def latest_market_price_map():
             "fallbackLowestQuantity": 0, "fallbackQuantityBasis": None,
         }
         for row in rows
-    }
-    detailed = {
-        (row["snapshot_id"], str(row["item_id"]), int(row["refinement"]), row["price"])
-        for row in levels
     }
     for row in levels:
         key = (str(row["item_id"]), int(row["refinement"]))
@@ -1313,24 +1341,6 @@ def latest_market_price_map():
                 existing["quantity"] += row["quantity"]
             else:
                 result[key]["priceLevels"].append({"price": row["price"], "quantity": row["quantity"]})
-    for row in current_rows:
-        key = (str(row["item_id"]), int(row["refinement"]))
-        if key not in result or row["lowest_price"] != result[key]["price"]:
-            continue
-        detail_key = (row["snapshot_id"], key[0], key[1], row["lowest_price"])
-        if detail_key in detailed:
-            continue
-        previous = previous_rows.get((row["server_type"], key[0], key[1]))
-        if row["lowest_price"] == row["highest_price"]:
-            quantity, basis = row["registered_items"], "exact"
-        elif (previous and row["lowest_price"] < previous["lowest_price"]
-              and row["registered_items"] > previous["registered_items"]):
-            quantity, basis = row["registered_items"] - previous["registered_items"], "inferred"
-        else:
-            quantity, basis = 1, "minimum"
-        result[key]["fallbackLowestQuantity"] += quantity
-        bases = {result[key]["fallbackQuantityBasis"], basis} - {None}
-        result[key]["fallbackQuantityBasis"] = "minimum" if "minimum" in bases else "inferred" if "inferred" in bases else "exact"
     for market in result.values():
         market["priceLevels"].sort(key=lambda level: level["price"])
     for alias, canonical in market_item_aliases().items():
@@ -5918,6 +5928,22 @@ if __name__ == "__main__":
                     "WHERE item_id='1000150' ORDER BY price"
                 ).fetchall()
             assert imported["inserted"] and imported["notificationsQueued"] == 1 and not duplicate["inserted"]
+            missing_coverage = market_capture_detail_coverage(None, [{
+                "itemId": "270061", "name": "Diagrama VI", "refinement": "Sem refino",
+                "rowType": "summary", "quantity": 20,
+            }])
+            assert missing_coverage["pendingTargets"][0]["itemId"] == "270061"
+            assert missing_coverage["pendingTargets"][0]["listingCount"] == 20
+            stacked_coverage = market_capture_detail_coverage(None, [{
+                "itemId": "270061", "name": "Diagrama VI", "refinement": "Sem refino",
+                "rowType": "summary", "quantity": 20,
+            }, {
+                "itemId": "270061", "name": "Diagrama VI", "refinement": "Sem refino",
+                "rowType": "offer", "quantity": 70,
+            }])
+            assert stacked_coverage["detailedItems"] == 1
+            assert stacked_coverage["detailedUnits"] == 70
+            assert not stacked_coverage["pendingTargets"]
             queued_messages = claim_discord_outbox()
             assert len(queued_messages) == 1 and queued_messages[0]["discord_user_id"] == "123456789"
             assert ack_discord_outbox(queued_messages[0]["id"], "sent")["status"] == "sent"
@@ -5963,6 +5989,10 @@ if __name__ == "__main__":
             assert not short_plan["complete"] and short_plan["missingQuantity"] == 1 and short_plan["totalCost"] == 100
             if market_item_aliases().get("275045") == "270045":
                 assert latest_market_price_map()[("275045", 0)]["price"] == 1000
+            summary_only = latest_market_price_map()[("270045", 0)]
+            summary_plan = market_purchase_plan(summary_only, 2)
+            assert not summary_plan["complete"] and summary_plan["coveredQuantity"] == 1
+            assert summary_plan["missingQuantity"] == 1
             with database() as db:
                 newer_global_snapshot = db.execute(
                     "INSERT INTO market_snapshots (captured_at, imported_at, source_id, row_count, total_registered, profile, server_type) "
