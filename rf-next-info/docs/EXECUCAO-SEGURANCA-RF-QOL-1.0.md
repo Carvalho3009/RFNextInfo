@@ -28,7 +28,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | Data | Fase | Mudança/evidência | Estado |
 |---|---|---|---|
 | 09 ago 2026 | F0 | Planejamento congelado e worktree de implementação criada. | Concluído |
-| 09 ago 2026 | F1 | Emissor de licença não está presente no monorepo; o site apenas introspecta o serviço externo. | Confirmado |
+| 09 ago 2026 | F1 | Emissor Docker localizado em `K:\MCP\projects\rf-licenca`; implementação v2 feita na worktree isolada `rf-licenca-security-r1`. | Concluído local |
 | 09 ago 2026 | F1 | Contrato v2, cerimônia de chaves, runbook e vetor público determinístico criados. Privada do vetor descartada. | Concluído local |
 | 09 ago 2026 | F2 | Cliente agora aceita somente lease v2 Ed25519 por chave pinada de papel `lease-*`, produto/audience/UUID corretos e janela máxima de 24 h. | Concluído local |
 | 09 ago 2026 | F2 | Prefixo da licença nova alterado para `RFQ`; `KRV-*`, lease v1 e estado com chave pública mutável são rejeitados. | Concluído local |
@@ -36,7 +36,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | F2 | Gate aplicado a captura, continuidade, monitor, leitura, importação, consulta, exportação e envio nas interfaces Qt e legada. Perda de autorização encerra captura sem ler os brutos. | Concluído local |
 | 09 ago 2026 | F2 | Estado de confiança separado em `%ProgramData%\Karvalho\RF QOL`, protegido por DPAPI machine e ACL Administradores/SYSTEM; preferência/banco/log/captura permanecem separados. | Concluído local |
 | 09 ago 2026 | F3 | `rf-next/app/server.py` passou a exigir introspecção ativa v2, `rf-qol`, `rf-qol-windows` e instalação idêntica. | Concluído no site local |
-| 09 ago 2026 | F3 | Emissão/ativação real não implementada porque o código do emissor é externo e não foi localizado. | Bloqueio externo |
+| 09 ago 2026 | F3 | Emissor v2 implementado de forma aditiva: RFQ, chave Ed25519 separada, claims exatos, 6 h/24 h, UUID, produto/audience, rate limit e auditoria pseudonimizada. | Concluído local |
+| 09 ago 2026 | F3 | Homologação Docker paralela em `127.0.0.1:8788` passou ativação, cliente, renovação, introspecção, diagnóstico, site e revogação; produção v1 permaneceu saudável. | Concluído staging |
 | 09 ago 2026 | F4 | Manifesto v2 fechado, chave distinta `update-*`, SHA-256, tamanho, expiração, sequência e download parcial implementados. | Concluído local |
 | 09 ago 2026 | F4 | Authenticode nativo corrigido para ambiente PowerShell 7/Windows PowerShell e reverificado imediatamente antes de abrir o instalador. | Concluído local |
 | 09 ago 2026 | F4 | Rollback por cópia de EXE removido. Rollback assinado continua desativado até haver RC anterior e compatibilidade de schema. | Parcial seguro |
@@ -67,8 +68,19 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   deve ser distribuído.
 - O build recusará release sem Inno Setup, certificado/timestamp, chave privada
   offline de update e substituição das públicas placeholder.
-- Fable: nenhuma nova chamada foi necessária nesta execução; a revisão anterior
-  continua complementar e, conforme autorizado, não bloqueia o avanço local.
+- Emissor: 12 testes aprovados; configuração Docker de staging validada.
+- Integração real em staging: o verificador do cliente recebeu a pública de
+  staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
+  e rejeitou instalação divergente e lease revogada.
+- A migração aditiva passou sobre cópia temporária consistente do banco real:
+  integridade `ok`, mesma quantidade de licenças e todas classificadas como
+  legado. A cópia foi eliminada; a fonte foi aberta somente para leitura.
+- Fable job 500 revisou o desenho. Foram incorporados chave v2 separada, claims
+  exatos, `Retry-After`, UUID, último hop confiável, poda LRU e teto de 512 MiB
+  para diagnósticos; a alegação sobre timestamps `Z` foi descartada após
+  confronto com o normalizador real do cliente.
+- Custo reportado pelo worker Fable: estimativa de USD 4,453115 em assinatura;
+  cobrança adicional efetiva permanece `unknown`.
 
 ## Identidade visual
 
@@ -81,16 +93,15 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 ## Pendências externas reais
 
-1. código/acesso ao emissor para implementar e provar ativação/renovação/
-   revogação v2 em staging;
-2. cerimônia das chaves de produção;
-3. certificado Authenticode Karvalho e timestamp RFC 3161;
-4. Inno Setup para produzir o instalador;
-5. RC anterior assinada para implementar/testar rollback seguro;
-6. Windows 10/11 limpos, licença real e teste com até dois clientes;
-7. G4 do owner para qualquer publicação ou produção.
+1. cerimônia das chaves de produção;
+2. certificado Authenticode Karvalho e timestamp RFC 3161;
+3. Inno Setup para produzir o instalador;
+4. RC anterior assinada para implementar/testar rollback seguro;
+5. Windows 10/11 limpos, licença real e teste com até dois clientes;
+6. G4 do owner para qualquer publicação ou produção.
 
 ## Rollback
 
-Enquanto não houver integração externa, o rollback é descartar a branch/worktree
-de implementação. A Beta publicada e os dados reais permanecem intactos.
+O rollback desta etapa é parar/remover o contêiner de staging e descartar as
+duas worktrees de implementação. O contêiner oficial v1, a Beta publicada e os
+dados reais permanecem intactos.

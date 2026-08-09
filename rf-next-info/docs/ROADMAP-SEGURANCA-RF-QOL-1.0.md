@@ -28,7 +28,7 @@ Karvalho, conforme decisão posterior do owner em 09 ago 2026.
 | M0 | Baseline 3.0.11 e riscos confirmados | Concluído | — |
 | M1 | SPEC e roadmap aprovados | Concluído | G0 |
 | M2 | Lease v2, chaves e autorização central | Concluído localmente; produção pendente | G1 |
-| M3 | Emissor/site v2 integrados | Parcial: site pronto, emissor externo pendente | G1 |
+| M3 | Emissor/site v2 integrados | Concluído em staging isolado; produção pendente | G1 |
 | M4 | Update/rollback/ACL seguros | Parcial: update/ACL prontos, rollback assinado pendente | G1 |
 | M5 | Build assinado e rastreável | Parcial: portátil/SBOM/procedência prontos, assinatura pendente | G2 |
 | M6 | RC validada em ambiente real | Parcial: RC portátil local; matriz limpa pendente | G3 |
@@ -129,9 +129,9 @@ Rollback:
 
 ## Fase 3 — Emissor e site
 
-Estado real: parcial. O site exige introspecção v2, produto, audience e
-instalação; o emissor é serviço externo sem código localizado no monorepo e seu
-contrato está em `docs/CONTRATO-EMISSOR-LEASE-V2.md`.
+Estado real: concluído em staging isolado. O emissor Docker foi localizado,
+evoluído numa worktree separada e integrado ao cliente/site por `/api/v2`.
+Produção continua em `/api/v1` e não foi alterada.
 
 Objetivo: emitir e impor lease v2 ponta a ponta.
 
@@ -153,6 +153,10 @@ Critérios de aceite:
 - upload com lease v2 válida é idempotente e aceito;
 - upload expirado/revogado retorna erro fechado e auditável;
 - nenhuma chave de acesso ou chave privada aparece em logs/backup de teste.
+
+Evidência de staging em 09 ago 2026: ativação RFQ, validação pelo cliente,
+renovação com novo `lease_id`, introspecção, diagnóstico sanitizado, bloqueio
+por instalação divergente e revogação passaram no contêiner paralelo.
 
 Rollback:
 
@@ -235,8 +239,8 @@ Gate: G2 para uso do certificado real.
 ## Fase 6 — RC e validação real
 
 Estado real: pacote portátil local gerado com Python 3.13 e autoteste aprovado.
-Instalador, Windows limpo 10/11, ativação real e teste com dois clientes seguem
-pendentes de ambiente externo.
+Instalador, Windows limpo 10/11, licença/chaves de produção e teste com dois
+clientes seguem pendentes. A ativação com chave efêmera já passou em staging.
 
 Objetivo: provar o sistema fora do ambiente do implementador.
 

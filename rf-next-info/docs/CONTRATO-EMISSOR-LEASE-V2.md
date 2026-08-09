@@ -1,7 +1,11 @@
 # Contrato do emissor de licença — RF QOL lease v2
 
-Estado: contrato do cliente/site implementado; emissor externo não localizado
-no monorepo e ainda pendente de implementação em staging.
+Estado: cliente, site e emissor implementados e integrados em staging isolado;
+chaves de produção, cutover e publicação continuam pendentes.
+
+Implementação do emissor: `K:\MCP\_worktrees\rf-licenca-security-r1`.
+Homologação: contêiner `rf-licenca-staging-api-1`, somente em
+`127.0.0.1:8788`, com dados e chaves efêmeros separados da produção.
 
 ## Identidade
 

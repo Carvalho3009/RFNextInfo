@@ -39,6 +39,7 @@ services:
     environment:
       MCP_VISION_URL: http://host.docker.internal:8080/api/vision/ocr
       MCP_VISION_TOKEN: ${RFNEXT_VISION_TOKEN:-}
+      RFNEXT_LICENSE_INTROSPECT_URL: http://rf-licenca:8080/api/v2/introspect
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
