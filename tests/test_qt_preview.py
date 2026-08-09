@@ -21,7 +21,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertGreater(memory, 0)
 
     def test_3_0_controls_show_ram_shortcuts_and_transparent_overlay(self):
-        from PySide6 import QtCore
+        from PySide6 import QtCore, QtGui
+        from app.ui_qt.data import load_preferences
         from app.ui_qt.main import MainWindow, create_application
 
         create_application(["three-zero-controls-test"])
@@ -45,7 +46,21 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 "Ligar monitor Cliente A  Ctrl+F6",
             )
             self.assertIn("sem ler", window.stop_without_reading_button.text())
+            window.snapshot = {"combat_monitors": [{
+                "local": {},
+                "nearby_players": [],
+                "pvp": {
+                    "uid": 20,
+                    "character_uid": 222,
+                    "name": "Rival confirmado",
+                    "level": 70,
+                    "hp_percent": 65.5,
+                    "stale": False,
+                },
+            }]}
             window._toggle_pvp_overlay(True)
+            self.assertEqual(window.pvp_overlay_summary.text(), "Hostis próximos: 1")
+            self.assertEqual(window.pvp_overlay_rows.count(), 1)
             self.assertTrue(
                 window.pvp_overlay.testAttribute(
                     QtCore.Qt.WidgetAttribute.WA_TranslucentBackground
@@ -55,6 +70,36 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 window.pvp_overlay.windowFlags()
                 & QtCore.Qt.WindowType.FramelessWindowHint
             )
+            self.assertEqual(
+                window.pvp_overlay.cursor().shape(),
+                QtCore.Qt.CursorShape.SizeAllCursor,
+            )
+            position = (
+                QtGui.QGuiApplication.primaryScreen().availableGeometry().topLeft()
+                + QtCore.QPoint(40, 40)
+            )
+            window.pvp_overlay.mousePressEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                position=lambda: QtCore.QPointF(10, 10),
+                accept=lambda: None,
+            ))
+            window.pvp_overlay.mouseMoveEvent(SimpleNamespace(
+                buttons=lambda: QtCore.Qt.MouseButton.LeftButton,
+                globalPosition=lambda: QtCore.QPointF(position + QtCore.QPoint(10, 10)),
+                accept=lambda: None,
+            ))
+            window.pvp_overlay.mouseReleaseEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                accept=lambda: None,
+            ))
+            self.assertEqual(window.pvp_overlay.pos(), position)
+            self.assertEqual(
+                load_preferences(root / "preferences.json")["pvp_overlay_position"],
+                [position.x(), position.y()],
+            )
+            window._toggle_pvp_overlay(False)
+            window._toggle_pvp_overlay(True)
+            self.assertEqual(window.pvp_overlay.pos(), position)
             window._toggle_pvp_overlay(False)
             window.close()
 
@@ -620,7 +665,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.9")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.10")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

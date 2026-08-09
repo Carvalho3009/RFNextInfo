@@ -171,6 +171,42 @@ def _label(text: str, role: str = "") -> QtWidgets.QLabel:
     return label
 
 
+class _MovableOverlay(QtWidgets.QDialog):
+    position_changed = QtCore.Signal(QtCore.QPoint)
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._drag_offset: QtCore.QPoint | None = None
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._drag_offset = event.position().toPoint()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if (
+            self._drag_offset is not None
+            and event.buttons() & QtCore.Qt.MouseButton.LeftButton
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+        if (
+            event.button() == QtCore.Qt.MouseButton.LeftButton
+            and self._drag_offset is not None
+        ):
+            self._drag_offset = None
+            self.position_changed.emit(self.pos())
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class MainWindow(QtWidgets.QMainWindow):
     data_loaded = QtCore.Signal(object)
     data_failed = QtCore.Signal(str)
@@ -638,6 +674,10 @@ class MainWindow(QtWidgets.QMainWindow):
             shortcut = "Ctrl+Shift+F6" if mode == "pvp" else "Ctrl+Shift+F7"
             overlay = QtWidgets.QPushButton(f"Abrir overlay  {shortcut}")
             overlay.setCheckable(True)
+            if mode == "pvp":
+                overlay.setToolTip(
+                    "Arraste o overlay com o botão esquerdo para mudar sua posição."
+                )
             overlay.toggled.connect(
                 self._toggle_pvp_overlay if mode == "pvp" else self._toggle_boss_overlay
             )
@@ -3788,7 +3828,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.pvp_overlay.close()
                 self.pvp_overlay = None
             return
-        overlay = QtWidgets.QDialog(self)
+        overlay = _MovableOverlay(self)
         overlay.setWindowTitle("RF NEXT QOL · PvP próximo")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
@@ -3799,6 +3839,9 @@ class MainWindow(QtWidgets.QMainWindow):
         overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         overlay.setObjectName("monitorOverlay")
         overlay.setStyleSheet("QDialog#monitorOverlay { background: transparent; }")
+        overlay.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+        overlay.setToolTip("Arraste com o botão esquerdo para mover.")
+        overlay.position_changed.connect(self._save_pvp_overlay_position)
         layout = QtWidgets.QVBoxLayout(overlay)
         layout.setContentsMargins(12, 10, 12, 10)
         self.pvp_overlay_summary = _label("Nenhum jogador hostil confirmado", "subtitle")
@@ -3806,8 +3849,36 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.pvp_overlay_summary)
         layout.addLayout(self.pvp_overlay_rows)
         overlay.resize(410, 180)
+        position = self.preferences.get("pvp_overlay_position")
+        if isinstance(position, (list, tuple)) and len(position) == 2:
+            try:
+                point = QtCore.QPoint(int(position[0]), int(position[1]))
+                screen = QtGui.QGuiApplication.screenAt(point)
+                if screen is None:
+                    screen = QtGui.QGuiApplication.primaryScreen()
+                if screen is not None:
+                    area = screen.availableGeometry()
+                    point.setX(
+                        max(area.left(), min(point.x(), area.right() - overlay.width() + 1))
+                    )
+                    point.setY(
+                        max(area.top(), min(point.y(), area.bottom() - overlay.height() + 1))
+                    )
+                overlay.move(point)
+            except (TypeError, ValueError):
+                pass
         overlay.show()
         self.pvp_overlay = overlay
+        self._update_pvp_overlay(
+            list(self.snapshot.get("combat_monitors") or [])
+        )
+
+    @QtCore.Slot(QtCore.QPoint)
+    def _save_pvp_overlay_position(self, position: QtCore.QPoint) -> None:
+        self.preferences = save_preferences(
+            {"pvp_overlay_position": [position.x(), position.y()]},
+            self.preferences_path,
+        )
 
     def _set_capture_controls(self) -> None:
         engine = self.capture_engine
@@ -4062,9 +4133,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     tuple(int(port) for port in group)
                     for group in data.get("client_ports") or []
                 )
+                metrics = dict(data.get("monitor_metrics") or {})
                 self.top_last_read.setText(
-                    f"Monitores: {len(self.live_combat_events)} evento(s) em memória"
+                    f"Monitores: {len(self.live_combat_events)} evento(s) prioritários"
+                    f" · fila {metrics.get('queue_depth', 0)}"
+                    f" · atraso {float(metrics.get('lag_seconds') or 0):.1f} s"
                 )
+                self.log.debug("monitor_metrics %s", metrics)
                 self._load_combat_data()
             for mode, enabled in self.monitor_enabled.items():
                 if enabled and self.monitor_next_due[mode] <= now_mono:
@@ -4129,6 +4204,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif name == "preview":
             now = datetime.now().strftime("%H:%M:%S")
             now_mono = time.monotonic()
+            metrics = dict(data.get("monitor_metrics") or {})
             for mode, enabled in self.monitor_enabled.items():
                 if enabled and self.monitor_next_due[mode] <= now_mono:
                     self.monitor_next_due[mode] = (
@@ -4136,6 +4212,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     )
             self.top_last_read.setText(
                 f"Última leitura rápida: {now} · {data.get('added', 0)} evento(s)"
+                f" · fila {metrics.get('queue_depth', 0)}"
+                f" · atraso {float(metrics.get('lag_seconds') or 0):.1f} s"
                 if data.get("available")
                 else "Última leitura rápida: indisponível neste modo de captura"
             )
@@ -4144,6 +4222,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 tuple(int(port) for port in group)
                 for group in data.get("client_ports") or []
             )
+            self.log.debug("monitor_metrics %s", metrics)
             self._load_combat_data()
         elif name == "pause":
             self.top_capture.setText("Captura — pausada")
@@ -4492,23 +4571,39 @@ class MainWindow(QtWidgets.QMainWindow):
             item = self.pvp_overlay_rows.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        enemies = []
+        enemies: dict[str, dict[str, Any]] = {}
         for monitor in monitors:
+            target = dict(monitor.get("pvp") or {})
+            if target and not target.get("stale"):
+                identity = str(
+                    target.get("character_uid")
+                    or target.get("uid")
+                    or target.get("name")
+                    or ""
+                )
+                if identity:
+                    enemies[identity] = target
             local_realm = (monitor.get("local") or {}).get("realm")
             if local_realm is None:
                 continue
-            enemies.extend(
-                player
-                for player in list(monitor.get("nearby_players") or [])
-                if player.get("realm") is not None
-                and player.get("realm") != local_realm
-            )
+            for player in list(monitor.get("nearby_players") or []):
+                if player.get("realm") is None or player.get("realm") == local_realm:
+                    continue
+                identity = str(
+                    player.get("character_uid")
+                    or player.get("uid")
+                    or player.get("name")
+                    or ""
+                )
+                if identity:
+                    enemies.setdefault(identity, player)
+        enemy_rows = list(enemies.values())
         self.pvp_overlay_summary.setText(
-            f"Hostis próximos: {len(enemies)}"
-            if enemies
+            f"Hostis próximos: {len(enemy_rows)}"
+            if enemy_rows
             else "Nenhum jogador hostil confirmado"
         )
-        for player in enemies[:8]:
+        for player in enemy_rows[:8]:
             row = QtWidgets.QFrame(objectName="secondaryMetricGroup")
             layout = QtWidgets.QHBoxLayout(row)
             layout.setContentsMargins(8, 5, 8, 5)

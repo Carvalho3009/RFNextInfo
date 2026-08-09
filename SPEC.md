@@ -44,6 +44,8 @@
   os monitores PvE e PvP, inclusive com o programa em segundo plano.
 - Na próxima versão, os overlays usam fundo transparente, preservando somente
   os elementos visuais e informações do monitor.
+- O overlay PvP pode ser arrastado livremente; sua última posição é preservada
+  e corrigida para uma área visível quando a configuração de telas mudar.
 - `0x031D FG2C_notify_boss_result_Message` é a fonte primária planejada para
   recompensa de boss e recebedor. O layout precisa fechar exatamente e passar
   por captura marcada antes da persistência; `0x040A` é confirmação local.

@@ -24,7 +24,7 @@ from core.connections import (
 )
 from core.combat_monitor import summarize_combat
 from core.ingest import _decode_stream_resync, _pcapng_to_pcap, _safe_parse
-from core.live_stream import LiveEventDecoder
+from core.live_stream import LiveEventDecoder, LiveEventStream
 from core.knowledge import KnowledgeStore
 from core.rfnext_frame_decode import parse_observation_payload, pcap_tcp_streams
 from core.store import CaptureStore
@@ -395,6 +395,120 @@ class CoreTest(unittest.TestCase):
         events.append({"ts_ns": 4_000_000_000, "type": "dying_unit", "data": {"uid": 30}})
         self.assertEqual(
             summarize_combat(events, "111", boss_catalog=catalog, now_ns=4_000_000_000)["bosses"],
+            [],
+        )
+
+    def test_live_stream_never_evicts_active_boss_under_parallel_event_load(self):
+        stream = LiveEventStream(max_events=3, boss_indexes={375100})
+        flow = "127.0.0.1:12020 -> 127.0.0.1:50000"
+        stream._remember([
+            {
+                "flow": flow,
+                "ts_ns": 1_000_000_000,
+                "type": "world_info_prefix",
+                "data": {"fields": {"character_uid": "111"}},
+            },
+            {
+                "flow": flow,
+                "ts_ns": 2_000_000_000,
+                "type": "appear_player_list",
+                "data": {"units": [{"character_uid": 111, "uid": 10, "name": "Local"}]},
+            },
+            {
+                "flow": flow,
+                "ts_ns": 3_000_000_000,
+                "type": "appear_monster_list",
+                "data": {"units": [{
+                    "uid": 30,
+                    "npc_index": 375100,
+                    "max_hp": 500_000_000,
+                    "current_hp": 500_000_000,
+                }]},
+            },
+        ])
+        stream._remember([
+            {
+                "flow": flow,
+                "ts_ns": 4_000_000_000 + index,
+                "type": "unparsed",
+                "data": {},
+            }
+            for index in range(30_000)
+        ])
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": 4_500_000_000,
+            "type": "world_info_prefix",
+            "data": {"fields": {"character_uid": "111"}},
+        }])
+        stream._remember([
+            {
+                "flow": flow,
+                "ts_ns": 5_000_000_000 + index,
+                "type": "use_skill_result",
+                "data": {
+                    "ret": 0,
+                    "caster_uid": 99,
+                    "effect_results": [{"uid": 999, "hp_damage": 1, "final_hp": 99}],
+                },
+            }
+            for index in range(10)
+        ])
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": 6_000_000_000,
+            "type": "use_skill_result",
+            "data": {
+                "ret": 0,
+                "caster_uid": 10,
+                "effect_results": [{
+                    "uid": 30,
+                    "hp_damage": 1_000_000,
+                    "final_hp": 499_000_000,
+                }],
+            },
+        }, {
+            "flow": flow,
+            "ts_ns": 6_500_000_000,
+            "opcode": 0x031D,
+            "type": "unparsed",
+            "data": {},
+        }])
+
+        events = stream.snapshot()
+        result = summarize_combat(
+            events,
+            "111",
+            boss_catalog={
+                375100: {"name": "Xenogeyser", "level": 70, "npc_subtype": 106}
+            },
+            now_ns=7_000_000_000,
+        )
+
+        self.assertEqual(result["bosses"][0]["name"], "Xenogeyser")
+        self.assertEqual(result["bosses"][0]["current_hp"], 499_000_000)
+        self.assertFalse(any(
+            event.get("type") == "unparsed" and event.get("opcode") != 0x031D
+            for event in events
+        ))
+        self.assertEqual(stream.metrics()["ignored_events"], 30_000)
+        self.assertEqual(stream.metrics()["boss_anchors"], 1)
+        self.assertEqual(stream.metrics()["boss_events"], 2)
+        self.assertEqual(stream.metrics()["dropped_events"], 7)
+
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": 8_000_000_000,
+            "type": "dying_unit",
+            "data": {"uid": 30},
+        }])
+        self.assertEqual(
+            summarize_combat(
+                stream.snapshot(),
+                "111",
+                boss_catalog={375100: {"name": "Xenogeyser"}},
+                now_ns=8_000_000_000,
+            )["bosses"],
             [],
         )
 

@@ -719,6 +719,7 @@ class MonitorEngine:
             if not self.live_capture:
                 return {"available": False, "active": False, "events": []}
             self._refresh_routes()
+            self.events.start()
             events = self.events.snapshot()
             return {
                 "available": True,
@@ -726,7 +727,22 @@ class MonitorEngine:
                 "added": len(events),
                 "events": events,
                 "client_ports": [list(group) for group in self.client_ports],
+                "monitor_metrics": self._monitor_metrics(),
             }
+
+    def _monitor_metrics(self) -> dict[str, object]:
+        metrics = dict(self.events.metrics())
+        live = self.live_capture
+        if live:
+            for name in (
+                "received_packets",
+                "filtered_packets",
+                "duplicate_packets",
+                "missed_write",
+                "missed_read",
+            ):
+                metrics[name] = int(getattr(live, name, 0) or 0)
+        return metrics
 
     def stop(self) -> None:
         with self._lock:
@@ -1016,13 +1032,24 @@ class CaptureEngine:
             if not self.current_session or not self.live_capture:
                 return {"added": 0, "available": False, "fast": False}
             self._refresh_routes()
+            self.live_events.start()
             events = self.live_events.snapshot()
+            metrics = dict(self.live_events.metrics())
+            for name in (
+                "received_packets",
+                "filtered_packets",
+                "duplicate_packets",
+                "missed_write",
+                "missed_read",
+            ):
+                metrics[name] = int(getattr(self.live_capture, name, 0) or 0)
             return {
                 "added": len(events),
                 "available": True,
                 "fast": True,
                 "events": events,
                 "client_ports": [list(group) for group in self.client_ports],
+                "monitor_metrics": metrics,
             }
 
     def abandon(self) -> list[Path]:
