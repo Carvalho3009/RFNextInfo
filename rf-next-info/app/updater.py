@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import urllib.request
 from pathlib import Path
 from typing import Callable
@@ -12,6 +13,40 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 RELEASES = "https://rflicenca.karvalho.dev.br/api/v1/updates"
 UPDATE_SIGNATURE_CONTEXT = b"RFNEXT-UPDATE-V1\0"
 HEADERS = {"Accept": "application/json", "User-Agent": "RFNextInfo"}
+ROLLBACK_EXCLUDED = {"Capturas", "Uninstall.exe", "cache", "database", "logs", "updates"}
+ROLLBACK_MAX_BYTES = 1024 * 1024 * 1024
+
+
+def create_rollback(
+    source: Path, target: Path, max_bytes: int = ROLLBACK_MAX_BYTES
+) -> Path:
+    source = Path(source).resolve()
+    target = Path(target).resolve()
+    expected = (source / "updates" / "rollback" / "RFNextInfo").resolve()
+    if target != expected:
+        raise ValueError("Destino de rollback inválido")
+
+    total = 0
+    for entry in source.iterdir():
+        if entry.name in ROLLBACK_EXCLUDED:
+            continue
+        files = [entry] if entry.is_file() else entry.rglob("*")
+        for path in files:
+            if path.is_file():
+                total += path.stat().st_size
+                if total > max_bytes:
+                    raise ValueError("Rollback excede o limite de 1 GiB")
+
+    if target.exists():
+        shutil.rmtree(target)
+
+    def ignore(directory: str, names: list[str]) -> list[str]:
+        if Path(directory).resolve() != source:
+            return []
+        return [name for name in names if name in ROLLBACK_EXCLUDED]
+
+    shutil.copytree(source, target, ignore=ignore)
+    return target
 
 
 def verify_manifest(manifest: dict, public_key: str) -> dict:

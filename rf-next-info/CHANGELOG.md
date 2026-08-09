@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.4 — beta
+
+- corrige a cópia recursiva da instalação para dentro do próprio rollback;
+- exclui banco, capturas, logs, cache e atualizações do backup local;
+- limita o rollback a 1 GiB e cancela a atualização se o backup falhar;
+- preserva somente os binários, a licença e as preferências necessárias.
+
 ## 3.0.3 — beta
 
 - preserva o último Biosuit/classe e Rover confirmados para cada UID;

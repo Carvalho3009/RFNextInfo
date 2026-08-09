@@ -4,7 +4,6 @@ import os
 import sys
 import ctypes
 import math
-import shutil
 import subprocess
 import threading
 import time
@@ -53,7 +52,7 @@ from app.support_log import (
     recent_lines,
     set_detailed,
 )
-from app.updater import download_verified, latest
+from app.updater import create_rollback, download_verified, latest
 from app.ui_qt.operations import (
     CaptureEngine,
     ExportEngine,
@@ -2946,12 +2945,16 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if getattr(sys, "frozen", False):
             rollback = UPDATES_DIR / "rollback" / "RFNextInfo"
-            shutil.rmtree(rollback, ignore_errors=True)
-            shutil.copytree(
-                Path(sys.executable).parent,
-                rollback,
-                ignore=shutil.ignore_patterns("Uninstall.exe"),
-            )
+            try:
+                create_rollback(Path(sys.executable).parent, rollback)
+            except (OSError, ValueError) as error:
+                self.log.exception("update_rollback_failed")
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Atualização cancelada",
+                    f"Não foi possível preservar a versão atual:\n{error}",
+                )
+                return
         escaped = str(installer).replace("'", "''")
         script = (
             f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; "
