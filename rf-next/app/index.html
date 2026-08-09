@@ -5477,7 +5477,11 @@
       copy.append(marketNode('strong', '', `${option.label}${variant.cheapestOption === option.key ? ' · menor custo em diamantes' : ''}`));
       const levels = option.shoppingLines.map(line => `${format(line.quantity)}x a ${marketPrice(line.unitPrice)}`).join(' + ');
       copy.append(marketNode('small', 'tri-plate-price-lines', levels || 'Nenhuma oferta detalhada capturada.'));
-      if (!option.complete) copy.append(marketNode('small', 'salvage-plan-warning', `Cobertura parcial · faltam ${format(option.missingQuantity)} unidade(s) do material.`));
+      if (option.detailsMissing) {
+        copy.append(marketNode('small', 'salvage-plan-warning', `${option.detailMaterial}: a última captura não possui a quantidade por oferta. Faça uma captura completa do Mercado.`));
+      } else if (!option.complete) {
+        copy.append(marketNode('small', 'salvage-plan-warning', `Cobertura parcial · faltam ${format(option.missingQuantity)} unidade(s) do material.`));
+      }
       const diamonds = marketNode('strong', '', option.complete ? marketPrice(option.diamondCost) : `Subtotal ${marketPrice(option.knownCost)}`);
       const credits = marketNode('span', '', option.craftCredits ? craftFee(option.craftCredits) : 'Sem taxa de craft');
       const add = marketNode('button', 'secondary', option.complete ? 'Adicionar à lista' : 'Adicionar faixas capturadas');
