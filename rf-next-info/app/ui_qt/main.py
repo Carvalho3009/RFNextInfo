@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
 
 from app.ui_qt.data import (
     CLASS_ICON_FILES,
@@ -88,6 +88,7 @@ MONITOR_SHORTCUT_OPTIONS = tuple(
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
 MOB_ICONS = ASSETS / "mob-icons"
+INSTANCE_SERVER_NAME = "Karvalho.RFNextQOL"
 
 SUBSESSION_COLUMNS = (
     ("select", "", 28, True),
@@ -419,7 +420,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         tray = QtWidgets.QSystemTrayIcon(icon, self)
         tray.setToolTip(f"RF NEXT QOL — {VERSION}")
-        menu = QtWidgets.QMenu()
+        menu = QtWidgets.QMenu(self)
+        self.tray_menu = menu
         show_action = menu.addAction("Abrir RF NEXT QOL")
         show_action.triggered.connect(self._show_from_tray)
         menu.addSeparator()
@@ -433,13 +435,16 @@ class MainWindow(QtWidgets.QMainWindow):
         exit_action = menu.addAction("Sair")
         exit_action.triggered.connect(self._exit_application)
         tray.setContextMenu(menu)
-        tray.activated.connect(
-            lambda reason: self._show_from_tray()
-            if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick
-            else None
-        )
+        tray.activated.connect(self._tray_activated)
         tray.show()
         return tray
+
+    def _tray_activated(self, reason: QtWidgets.QSystemTrayIcon.ActivationReason) -> None:
+        if reason in {
+            QtWidgets.QSystemTrayIcon.ActivationReason.Trigger,
+            QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick,
+        }:
+            self._show_from_tray()
 
     def _show_from_tray(self) -> None:
         self.showNormal()
@@ -1716,6 +1721,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 engine.stop()
             except Exception:
                 self.log.exception("capture_stop_on_close_failed")
+        if self._tray and hasattr(self._tray, "hide"):
+            self._tray.hide()
+            if hasattr(self._tray, "setContextMenu"):
+                self._tray.setContextMenu(None)
         self.log.info("app_closed")
         super().closeEvent(event)
 
@@ -2666,6 +2675,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_table.resizeColumnToContents(column)
 
     def _subsession_selection_changed(self, _item: QtWidgets.QTableWidgetItem | None = None) -> None:
+        self.selected_subsessions.intersection_update(
+            str(item.get("id"))
+            for item in self.snapshot.get("subsessions") or []
+            if item.get("id")
+        )
         visible_ids = {
             str(self.subsession_table.item(row, 0).data(QtCore.Qt.ItemDataRole.UserRole))
             for row in range(self.subsession_table.rowCount())
@@ -5121,12 +5135,68 @@ def create_application(argv: list[str] | None = None) -> QtWidgets.QApplication:
     return app
 
 
+def _notify_running_instance(name: str = INSTANCE_SERVER_NAME) -> bool:
+    socket = QtNetwork.QLocalSocket()
+    socket.connectToServer(name, QtCore.QIODevice.OpenModeFlag.WriteOnly)
+    if not socket.waitForConnected(350):
+        return False
+    socket.write(b"show\n")
+    socket.waitForBytesWritten(350)
+    socket.disconnectFromServer()
+    return True
+
+
+def _claim_instance_server(
+    app: QtWidgets.QApplication,
+    name: str = INSTANCE_SERVER_NAME,
+) -> QtNetwork.QLocalServer | None:
+    lock_root = QtCore.QStandardPaths.writableLocation(
+        QtCore.QStandardPaths.StandardLocation.TempLocation
+    )
+    lock = QtCore.QLockFile(str(Path(lock_root) / f"{name}.lock"))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        _notify_running_instance(name)
+        return None
+    server = QtNetwork.QLocalServer(app)
+    QtNetwork.QLocalServer.removeServer(name)
+    if not server.listen(name):
+        lock.unlock()
+        raise RuntimeError("Não foi possível reservar a instância única do RF NEXT QOL.")
+    app._rfnext_instance_lock = lock
+    return server
+
+
+def _activate_from_instance_request(
+    server: QtNetwork.QLocalServer,
+    window: MainWindow,
+) -> None:
+    requested = False
+    while server.hasPendingConnections():
+        connection = server.nextPendingConnection()
+        if connection:
+            connection.waitForReadyRead(50)
+            requested = requested or bytes(connection.readAll()).strip() == b"show"
+            connection.disconnectFromServer()
+            connection.deleteLater()
+    if requested:
+        window._show_from_tray()
+
+
 def main() -> int:
     self_test = "--self-test" in sys.argv
     if self_test:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = create_application(sys.argv)
+    instance_server = None if self_test else _claim_instance_server(app)
+    if not self_test and instance_server is None:
+        return 0
     window = MainWindow(load_data=not self_test)
+    if instance_server is not None:
+        instance_server.newConnection.connect(
+            lambda: _activate_from_instance_request(instance_server, window)
+        )
+        app._rfnext_instance_server = instance_server
     window.show()
     app.processEvents()
     if self_test:

@@ -1,5 +1,5 @@
 #define AppName "RF NEXT QOL"
-#define AppVersion "3.0.10"
+#define AppVersion "3.0.11"
 #define AppPublisher "Karvalho"
 #define AppExeName "RFNextInfo.exe"
 
