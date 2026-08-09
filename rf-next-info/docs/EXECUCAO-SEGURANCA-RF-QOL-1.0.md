@@ -56,6 +56,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Chaves | Par definitivo de lease `lease-2026-01` gerado sob ACL restrita, pública pinada no cliente e autoteste aprovado. Privada não promovida à produção; testemunha e backup de recuperação continuam pendentes. Chave de update não foi gerada neste computador online. | Parcial seguro |
 | 09 ago 2026 | Chaves | Emissor Docker efêmero 8789 assinou Base+Boss com `lease-2026-01`; cliente com a pública definitiva aceitou Boss, negou PvP e a licença de ensaio foi revogada. Contêiner efêmero removido; 8787/8788 permaneceram saudáveis. | Concluído staging |
 | 09 ago 2026 | Chaves | Carlos confirmou como revisor humano `lease-2026-01`, a pública, o SHA-256, a ACL e que a privada permanece fora da produção. Backup de recuperação continua pendente e bloqueia promoção. | Revisão concluída |
+| 09 ago 2026 | Chaves | Backup local AES-256-GCM criado em `D:` com chave de recuperação separada em `E:`; origem permanece em `K:`. ACL restrita, restauração exata aprovada, chave errada rejeitada e nenhum segredo encontrado nos arquivos rastreados dos dois repositórios. Cópia off-site segue recomendada. | Backup local validado |
 
 ## Evidências e comandos de validação
 
@@ -101,7 +102,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 - Após a indisponibilidade do Fable, o owner decidiu prosseguir sem esse
   parecer automatizado. A dispensa se limita ao Fable: testemunha humana,
   backup de recuperação, chave offline de update, testes RC e G4 permanecem
-  como gates obrigatórios antes de promoção ou publicação.
+  como gates obrigatórios antes de promoção ou publicação. Testemunha e backup
+  local foram concluídos depois; os demais gates continuam abertos.
 - Integração real em staging: o verificador do cliente recebeu a pública de
   staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
   e rejeitou instalação divergente e lease revogada.
@@ -135,7 +137,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 ## Pendências externas reais
 
-1. backup da chave de lease e cerimônia offline da chave de update;
+1. cópia externa/off-site recomendada do backup de lease e cerimônia offline
+   da chave de update;
 2. RC anterior coberta por manifesto Ed25519 para implementar/testar rollback seguro;
 3. Windows 10/11 limpos, licença real e teste com até dois clientes;
 4. G4 do owner para qualquer publicação ou produção.

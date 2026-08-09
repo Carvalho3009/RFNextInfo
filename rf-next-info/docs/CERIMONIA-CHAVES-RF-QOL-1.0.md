@@ -1,7 +1,7 @@
 # Cerimônia de chaves — RF QOL 1.0
 
-Estado: chave de lease gerada, validada e revisada pelo owner; backup e
-promoção pendentes; chave de update ainda não gerada
+Estado: chave de lease gerada, validada e revisada pelo owner; backup local
+de recuperação validado; promoção pendente; chave de update ainda não gerada
 Escopo: lease Ed25519 e update Ed25519
 
 ## Separação de papéis
@@ -80,7 +80,15 @@ placeholder de update.
 - não instalada no emissor de produção;
 - Carlos confirmou como revisor humano o `key_id`, a pública, o SHA-256, os
   controles de acesso e a ausência de promoção em 09 ago 2026;
-- cópia de recuperação segura: pendente;
+- cópia de recuperação local: pacote AES-256-GCM em disco físico `D:` e chave
+  de recuperação em disco físico `E:`, ambos separados da origem em `K:` e
+  limitados por ACL a `Kadu-PC\celc3`, Administradores e SYSTEM;
+- restauração do pacote: aprovada por comparação exata com a origem; chave
+  aleatória incorreta foi rejeitada;
+- SHA-256 do pacote cifrado:
+  `e1ea8ef40ff1624ac2fb981188fbcdff3668f680ee6e5b9644287ea464e42bac`;
+- cópia externa/off-site: recomendada e ainda pendente; o backup atual cobre
+  falha do disco `K:`, mas não perda simultânea deste computador;
 - chave `update-2026-01`: não gerada; deve usar ambiente offline separado.
 
 O registro local sanitizado está fora dos repositórios em
