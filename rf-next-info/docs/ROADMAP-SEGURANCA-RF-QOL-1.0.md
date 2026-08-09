@@ -30,8 +30,8 @@ Karvalho, conforme decisão posterior do owner em 09 ago 2026.
 | M2 | Lease v2, chaves e autorização central | Concluído localmente; produção pendente | G1 |
 | M3 | Emissor/site v2 integrados | Concluído em staging isolado; produção pendente | G1 |
 | M4 | Update/rollback/ACL seguros | Parcial: update/ACL prontos, rollback assinado pendente | G1 |
-| M5 | Build assinado e rastreável | Parcial: portátil/SBOM/procedência prontos, assinatura pendente | G2 |
-| M6 | RC validada em ambiente real | Parcial: RC portátil local; matriz limpa pendente | G3 |
+| M5 | Build assinado e rastreável | Parcial: portátil/instalador/SBOM/procedência prontos, Authenticode pendente | G2 |
+| M6 | RC validada em ambiente real | Parcial: instalador validado localmente; matriz limpa pendente | G3 |
 | M7 | Release RF QOL 1.0 | Pendente | G4 |
 
 ## Fase 0 — Baseline e proposta
@@ -203,9 +203,10 @@ Rollback:
 
 ## Fase 5 — Cadeia de build e assinatura
 
-Estado real: lock com hashes, instalação offline, SBOM, procedência, build
-portátil e self-test concluídos. Inno Setup, certificado real, timestamp e
-chave offline de update não estavam disponíveis; o gate de release os exige.
+Estado real: locks com hashes no cliente e emissor, imagem-base por digest,
+SBOM, procedência, assinatura destacada, build portátil, NSIS 3.12, instalador
+e self-tests concluídos. Certificado real, timestamp e chave offline de update
+permanecem externos; o gate de release os exige.
 
 Objetivo: produzir artefato rastreável e reconhecido pelo Windows.
 
@@ -238,9 +239,10 @@ Gate: G2 para uso do certificado real.
 
 ## Fase 6 — RC e validação real
 
-Estado real: pacote portátil local gerado com Python 3.13 e autoteste aprovado.
-Instalador, Windows limpo 10/11, licença/chaves de produção e teste com dois
-clientes seguem pendentes. A ativação com chave efêmera já passou em staging.
+Estado real: pacote e instalador locais gerados com Python 3.13; instalação,
+autoteste e desinstalação passaram em destino isolado no Windows 11 atual.
+Windows limpos 10/11, licença/chaves de produção e teste com dois clientes
+seguem pendentes. Ativação, revogação e cutover passaram em staging.
 
 Objetivo: provar o sistema fora do ambiente do implementador.
 

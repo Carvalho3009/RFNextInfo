@@ -62,14 +62,30 @@ class RuntimePathsTest(unittest.TestCase):
             (root / "packaging" / name).read_text(encoding="utf-8")
             for name in ("installer.iss", "installer.nsi")
         ).lower()
-        self.assertNotIn("$appdata", installer_text)
         self.assertIn("{commonappdata}\\karvalho\\rf qol", installer_text)
-        self.assertIn("$programdata\\karvalho\\rf qol", installer_text)
+        self.assertIn("setshellvarcontext all", installer_text)
+        self.assertIn("$appdata\\karvalho\\rf qol", installer_text)
         self.assertNotIn(
             'name: "{app}\\updates"; permissions: users-modify', installer_text
         )
         self.assertIn("{app}\\logs\\install.log", installer_text)
         self.assertIn("$instdir\\logs\\install.log", installer_text)
+
+    def test_nsis_installer_has_isolated_non_admin_smoke_mode(self):
+        root = Path(__file__).resolve().parents[1]
+        installer = (root / "packaging" / "installer.nsi").read_text(
+            encoding="utf-8"
+        ).lower()
+        smoke = (root / "packaging" / "test-installer.ps1").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("dev_smoke", installer)
+        self.assertIn("requestexecutionlevel user", installer)
+        self.assertIn("/ddev_smoke", smoke)
+        self.assertIn("self_test=0", smoke)
+        self.assertIn("uninstall.exe", smoke)
+        self.assertIn("execshellwait", installer)
+        self.assertIn("self-test.ok", installer)
 
 
 if __name__ == "__main__":

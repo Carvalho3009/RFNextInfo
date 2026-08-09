@@ -5213,6 +5213,8 @@ def main() -> int:
         window.exit_requested = True
         window.close()
         app.quit()
+        if passed:
+            LOG_PATH.with_name("self-test.ok").write_text("passed\n", encoding="ascii")
         return 0 if passed else 1
     return app.exec()
 

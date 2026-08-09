@@ -42,7 +42,11 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | F4 | Authenticode nativo corrigido para ambiente PowerShell 7/Windows PowerShell e reverificado imediatamente antes de abrir o instalador. | Concluído local |
 | 09 ago 2026 | F4 | Rollback por cópia de EXE removido. Rollback assinado continua desativado até haver RC anterior e compatibilidade de schema. | Parcial seguro |
 | 09 ago 2026 | F5 | Dependências CPython 3.13 fechadas por versão/hash e instaladas offline na própria worktree; SBOM e procedência gerados. | Concluído local |
-| 09 ago 2026 | F5 | Build portátil `RF QOL.exe` gerado e autoteste aprovado. Inno Setup não está instalado, portanto nenhum instalador foi produzido. | Parcial |
+| 09 ago 2026 | F5 | NSIS 3.12 oficial validado por hash e licença aberta; build portátil e instalador `RF QOL Setup 1.0.0.exe` gerados com procedência ampliada. | Concluído local |
+| 09 ago 2026 | F5 | Instalador de ensaio não administrativo instalou, executou o autoteste interno e externo e desinstalou sem deixar executável ou registro. | Concluído local |
+| 09 ago 2026 | F5 | Procedência local recebeu assinatura Ed25519 destacada com contexto próprio; dependências do emissor foram fechadas por versão/hash e a imagem-base por digest. | Concluído local |
+| 09 ago 2026 | F6 | Ensaio de update aceitou assinatura/hash e bloqueou manifesto adulterado e instalador sem Authenticode. | Concluído local |
+| 09 ago 2026 | F6 | Ensaio de cutover migrou cópia somente leitura do banco real com 19 licenças, integridade `ok`, mesma contagem e rollback byte a byte. Porta temporária removida; produção não tocada. | Concluído staging |
 | 09 ago 2026 | Marca | Logos anteriores removidos e identidade própria RF QOL criada. | Supersedido pelo owner |
 | 09 ago 2026 | Marca | Nome/título/executável/atalhos renomeados; link exato do Discord adicionado com navegador padrão. | Concluído local |
 | 09 ago 2026 | Marca | Owner decidiu manter logo e identidade visual Karvalho; assets existentes foram restaurados sem alterar o nome RF QOL. | Concluído local |
@@ -51,8 +55,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 - Regressão rápida CPython 3.11: 186 testes aprovados, 23 ignorados por Qt não
   instalado nesse interpretador.
-- Regressão final CPython 3.13 no ambiente virtual fechado: 188 testes
-  aprovados, nenhum ignorado, em 74,571 s. Inclui vetor público, assinador
+- Regressão final CPython 3.13 no ambiente virtual fechado: 190 testes
+  aprovados, nenhum ignorado, em 98,193 s. Inclui vetor público, assinador
   offline, link exato do Discord e smoke offscreen.
 - Self-test do site com catálogos canônicos externos apontados por variáveis:
   `OCR parser OK`, exit code 0.
@@ -66,15 +70,20 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   têm `-production-pending`.
 - O build de desenvolvimento é deliberadamente `NotSigned`; não é release nem
   deve ser distribuído.
-- O build recusará release sem Inno Setup, certificado/timestamp, chave privada
+- O build recusará release sem NSIS, certificado/timestamp, chave privada
   offline de update e substituição das públicas placeholder.
-- Emissor: 12 testes aprovados; configuração Docker de staging validada.
+- Emissor: 14 testes aprovados; configuração Docker de staging validada.
 - Integração real em staging: o verificador do cliente recebeu a pública de
   staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
   e rejeitou instalação divergente e lease revogada.
 - A migração aditiva passou sobre cópia temporária consistente do banco real:
   integridade `ok`, mesma quantidade de licenças e todas classificadas como
   legado. A cópia foi eliminada; a fonte foi aberta somente para leitura.
+- A imagem candidata reconstruída com `--require-hashes` ficou saudável em
+  `127.0.0.1:8788`; cliente real ativou, atravessou o gate de exportação e a
+  introspecção mudou de ativa para inativa após revogação.
+- Evidências persistidas fora dos repositórios em `K:\MCP\_staging` cobrem
+  instalador NSIS, update e cutover/rollback.
 - Fable job 500 revisou o desenho. Foram incorporados chave v2 separada, claims
   exatos, `Retry-After`, UUID, último hop confiável, poda LRU e teto de 512 MiB
   para diagnósticos; a alegação sobre timestamps `Z` foi descartada após
@@ -95,10 +104,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 1. cerimônia das chaves de produção;
 2. certificado Authenticode Karvalho e timestamp RFC 3161;
-3. Inno Setup para produzir o instalador;
-4. RC anterior assinada para implementar/testar rollback seguro;
-5. Windows 10/11 limpos, licença real e teste com até dois clientes;
-6. G4 do owner para qualquer publicação ou produção.
+3. RC anterior assinada para implementar/testar rollback seguro;
+4. Windows 10/11 limpos, licença real e teste com até dois clientes;
+5. G4 do owner para qualquer publicação ou produção.
 
 ## Rollback
 

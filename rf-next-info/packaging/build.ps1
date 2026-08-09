@@ -34,6 +34,14 @@ try {
     if ($Release -and $Dirty) {
         throw 'Build de release exige commit limpo.'
     }
+    foreach ($Generated in @(
+        '.\dist\update-manifest.json',
+        '.\dist\release-provenance-signature.json'
+    )) {
+        if (Test-Path -LiteralPath $Generated -PathType Leaf) {
+            Remove-Item -LiteralPath $Generated -Force
+        }
+    }
     & $Python -c 'import PySide6'
     if ($LASTEXITCODE) {
         throw 'PySide6 não está disponível no ambiente de build.'
@@ -83,13 +91,21 @@ try {
     Copy-Item -LiteralPath '.\requirements-lock-win-x64-py313.txt' -Destination $Dist -Force
     Invoke-Sign $Executable
 
-    $Inno = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-    $Installer = $null
-    if (-not $Inno) {
-        if ($Release) { throw 'Inno Setup é obrigatório para o instalador de release.' }
-        Write-Warning 'Inno Setup não encontrado; somente o pacote portátil foi gerado.'
+    $NsisPath = if ($env:RFQOL_NSIS) {
+        if (-not (Test-Path -LiteralPath $env:RFQOL_NSIS -PathType Leaf)) {
+            throw "RFQOL_NSIS não aponta para makensis.exe: $($env:RFQOL_NSIS)"
+        }
+        (Resolve-Path -LiteralPath $env:RFQOL_NSIS).Path
     } else {
-        & $Inno.Source '.\packaging\installer.iss'
+        $Command = Get-Command makensis.exe -ErrorAction SilentlyContinue
+        if ($Command) { $Command.Source } else { $null }
+    }
+    $Installer = $null
+    if (-not $NsisPath) {
+        if ($Release) { throw 'NSIS é obrigatório para o instalador de release.' }
+        Write-Warning 'NSIS não encontrado; somente o pacote portátil foi gerado.'
+    } else {
+        & $NsisPath '/V2' '/WX' '.\packaging\installer.nsi'
         if ($LASTEXITCODE) { throw 'Falha ao gerar o instalador.' }
         $Installer = Join-Path $Project 'dist\RF QOL Setup 1.0.0.exe'
         Invoke-Sign $Installer
@@ -118,9 +134,24 @@ try {
         executable_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Executable).Hash
         installer_sha256 = if ($Installer) { (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash } else { $null }
         lock_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath '.\requirements-lock-win-x64-py313.txt').Hash
+        sbom_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Dist 'sbom-python.json')).Hash
+        manifest_sha256 = if (Test-Path -LiteralPath '.\dist\update-manifest.json') {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath '.\dist\update-manifest.json').Hash
+        } else { $null }
+        pyinstaller = (& $Python -m PyInstaller --version 2>&1 | Out-String).Trim()
+        nsis = if ($NsisPath) { (& $NsisPath '/VERSION' | Out-String).Trim() } else { $null }
+        nsis_sha256 = if ($NsisPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath $NsisPath).Hash } else { $null }
         release = [bool]$Release
     }
     $Provenance | ConvertTo-Json | Set-Content -LiteralPath '.\dist\release-provenance.json' -Encoding UTF8
+    if ($Release) {
+        & $Python '.\tools\sign_provenance.py' `
+            --provenance '.\dist\release-provenance.json' `
+            --key-id $env:RFQOL_UPDATE_KEY_ID `
+            --private-key $env:RFQOL_UPDATE_PRIVATE_KEY `
+            --out '.\dist\release-provenance-signature.json'
+        if ($LASTEXITCODE) { throw 'Falha ao assinar a procedência local.' }
+    }
 } finally {
     Pop-Location
 }

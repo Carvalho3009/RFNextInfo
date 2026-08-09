@@ -8,11 +8,16 @@ Estado: preparado; não autorizado para publicação (G4 pendente)
 - emissor/site v2 validados em staging;
 - chaves públicas de produção instaladas e placeholders removidos;
 - certificado Karvalho e timestamp RFC 3161 disponíveis pelo fluxo aprovado;
-- Inno Setup disponível;
+- NSIS 3.12 disponível;
 - Windows 10 e 11 x64 limpos para a matriz de RC;
 - `RFQOL_SIGNTOOL`, `RFQOL_CERT_SHA1`, `RFQOL_TIMESTAMP_URL`,
   `RFQOL_UPDATE_PRIVATE_KEY` e `RFQOL_UPDATE_KEY_ID` fornecidos apenas ao
   processo de release.
+
+O compilador pode ser fornecido por `RFQOL_NSIS`. A ferramenta usada no
+desenvolvimento isolado é NSIS 3.12 extraído do pacote cujo SHA-256 foi
+verificado pelo catálogo do Windows Package Manager. O NSIS permite uso
+comercial sob as licenças zlib/libpng, bzip2 e CPLv1 aplicáveis.
 
 ## Build candidato
 
@@ -27,6 +32,15 @@ Estado: preparado; não autorizado para publicação (G4 pendente)
    `RF QOL Setup 1.0.0.exe`.
 7. Verificar que `release-provenance.json`, `sbom-python.json`, lock e
    `update-manifest.json` correspondem aos bytes finais.
+8. Verificar `release-provenance-signature.json` com a pública de update. A
+   assinatura destacada usa contexto próprio e não altera o instalador nem o
+   manifesto já assinados.
+
+Antes de usar certificado real, executar o ensaio sem elevação com
+`packaging/test-installer.ps1`. Esse modo não cria registro/atalhos, usa pasta
+temporária e `RFQOL_SELF_TEST=1`; ele comprova instalação, autoteste pós-instalação e
+desinstalação sem
+alterar o `AppId`, `%ProgramFiles%` ou `%ProgramData%` da futura release.
 
 O manifesto é sempre o último artefato assinado. Alterar ou reassinar o
 instalador invalida o manifesto e exige gerá-lo novamente.
@@ -49,7 +63,8 @@ assinado, manifesto original e compatibilidade de schema declarada. Não liberar
 
 ## Publicação (somente após G4)
 
-1. Publicar instalador, manifesto, SBOM, procedência e hashes aprovados.
+1. Publicar instalador, manifesto, SBOM, procedência, assinatura destacada e
+   hashes aprovados.
 2. Baixar novamente da superfície pública.
 3. Repetir SHA-256, Ed25519, Authenticode `/pa /tw` e self-test no download.
 4. Confirmar feed estável e ausência de draft/prerelease indevido.

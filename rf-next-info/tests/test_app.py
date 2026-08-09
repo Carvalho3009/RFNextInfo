@@ -51,7 +51,7 @@ from app.updater import (
     verify_manifest,
 )
 import app.main as main_module
-from tools import sign_update_manifest
+from tools import sign_provenance, sign_update_manifest
 
 
 def b64(value: bytes) -> str:
@@ -1835,6 +1835,32 @@ class AppLogicTest(unittest.TestCase):
                 current_sequence=1,
             )
             self.assertEqual(verify_downloaded(installer, manifest), installer)
+
+    def test_local_provenance_has_detached_update_key_signature(self):
+        private = Ed25519PrivateKey.generate()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provenance = root / "release-provenance.json"
+            provenance.write_text(
+                json.dumps({
+                    "product": "rf-qol",
+                    "release": True,
+                    "commit": "a" * 40,
+                    "installer_sha256": "b" * 64,
+                    "manifest_sha256": "c" * 64,
+                }),
+                encoding="utf-8",
+            )
+            key = root / "update-private.key"
+            key.write_text(b64(private.private_bytes_raw()), encoding="ascii")
+            signature = sign_provenance.create_signature(
+                provenance, "update-test", key
+            )
+            public = {"update-test": b64(private.public_key().public_bytes_raw())}
+            sign_provenance.verify_signature(provenance, signature, public)
+            provenance.write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "alterada"):
+                sign_provenance.verify_signature(provenance, signature, public)
 
     def test_activation_diagnostics_and_local_format_check(self):
         error = urllib.error.HTTPError(

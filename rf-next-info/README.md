@@ -86,7 +86,7 @@ python -m unittest discover -s tests -v
 
 O build de desenvolvimento permanece sem assinatura. O build `-Release` exige
 chaves públicas de produção, certificado Authenticode, timestamp, manifesto v2
-assinado e Inno Setup; enquanto esses recursos não estiverem disponíveis, a
+assinado e NSIS 3.12; enquanto esses recursos não estiverem disponíveis, a
 publicação é bloqueada.
 
 ### Diagnóstico da atualização durante a captura
