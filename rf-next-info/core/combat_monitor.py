@@ -15,6 +15,7 @@ def summarize_combat(
     now_ns: int | None = None,
     dps_window_seconds: int = 10,
     stale_seconds: int = 15,
+    nearby_stale_seconds: int = 5,
 ) -> dict[str, Any]:
     ordered = sorted(events, key=lambda event: (event.get("ts_ns") or 0))
     players: dict[int, dict[str, Any]] = {}
@@ -74,6 +75,8 @@ def summarize_combat(
                 _record_hp(
                     hp_history, caster, timestamp, caster_entity.get("current_hp")
                 )
+            main_target_uid = _integer(data.get("main_target_uid"))
+            fallback_outgoing_target: int | None = None
             for result in data.get("effect_results") or []:
                 target = _integer(result.get("uid"))
                 if target is None:
@@ -92,10 +95,13 @@ def summarize_combat(
                     by_caster.setdefault(caster, []).append((timestamp, hp_damage))
                 if local_uid is None:
                     continue
-                if caster == local_uid and target in monsters:
-                    last_pve = (timestamp, target)
+                if (
+                    caster == local_uid
+                    and fallback_outgoing_target is None
+                    and (target in monsters or target in players)
+                ):
+                    fallback_outgoing_target = target
                 if caster == local_uid and target in players:
-                    last_pvp = (timestamp, target, "saída")
                     damage.append(
                         {
                             "ts_ns": timestamp,
@@ -105,6 +111,16 @@ def summarize_combat(
                     )
                 elif target == local_uid and caster in players:
                     last_pvp = (timestamp, caster, "entrada")
+            if caster == local_uid:
+                outgoing_target = (
+                    main_target_uid
+                    if main_target_uid in monsters or main_target_uid in players
+                    else fallback_outgoing_target
+                )
+                if outgoing_target in monsters:
+                    last_pve = (timestamp, outgoing_target)
+                elif outgoing_target in players:
+                    last_pvp = (timestamp, outgoing_target, "saída")
 
     reference_ns = int(now_ns if now_ns is not None else time.time_ns())
     bosses = []
@@ -158,7 +174,7 @@ def summarize_combat(
         name = str(entity.get("name") or "").strip()
         if uid == local_uid or not character or not name:
             continue
-        target = _target_snapshot(entity, reference_ns, stale_seconds)
+        target = _target_snapshot(entity, reference_ns, nearby_stale_seconds)
         if not target or target["stale"] or target.get("dead"):
             continue
         previous = nearby_players_by_identity.get(character)
@@ -170,16 +186,18 @@ def summarize_combat(
     nearby_players.sort(key=lambda item: str(item.get("name") or "").casefold())
     nearby_monsters_by_type: dict[int, dict[str, Any]] = {}
     for entity in monsters.values():
+        npc_index = _integer(entity.get("npc_index"))
+        catalog_name = str(npc_names.get(npc_index) or "").strip()
+        if npc_index is None or not catalog_name:
+            continue
         target = _target_snapshot(
             entity,
             reference_ns,
-            stale_seconds,
-            fallback_name=npc_names.get(int(entity.get("npc_index") or 0)),
+            nearby_stale_seconds,
+            fallback_name=catalog_name,
         )
-        npc_index = _integer(entity.get("npc_index"))
         if (
-            npc_index is not None
-            and target
+            target
             and not target["stale"]
             and not target.get("dead")
         ):
@@ -213,14 +231,11 @@ def summarize_combat(
             "by_guild": dict(sorted(by_guild.items(), key=lambda item: (-item[1], item[0]))),
         },
         "bosses": bosses,
-        "pve": _target_snapshot(
+        "pve": _named_pve_snapshot(
             monsters.get(last_pve[1]) if last_pve else None,
+            npc_names,
             reference_ns,
             stale_seconds,
-            fallback_name=(
-                npc_names.get(int(monsters[last_pve[1]].get("npc_index") or 0))
-                if last_pve and last_pve[1] in monsters else None
-            ),
         ),
         "pvp": _pvp_snapshot(
             players.get(last_pvp[1]) if last_pvp else None,
@@ -231,6 +246,26 @@ def summarize_combat(
             stale_seconds,
         ),
     }
+
+
+def _named_pve_snapshot(
+    entity: dict[str, Any] | None,
+    npc_names: dict[int, str],
+    now_ns: int,
+    stale_seconds: int,
+) -> dict[str, Any] | None:
+    if not entity:
+        return None
+    npc_index = _integer(entity.get("npc_index"))
+    name = str(npc_names.get(npc_index) or "").strip()
+    if not name:
+        return None
+    return _target_snapshot(
+        entity,
+        now_ns,
+        stale_seconds,
+        fallback_name=name,
+    )
 
 
 def _integer(value: Any) -> int | None:

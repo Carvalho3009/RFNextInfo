@@ -38,11 +38,11 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertEqual(window.top_memory.text(), "RAM: 64,0 MiB")
             self.assertEqual(
                 window.monitor_controls["pve"]["enabled"].text(),
-                "Ligar monitor  Ctrl+F5",
+                "Ligar monitor Cliente A  Ctrl+F5",
             )
             self.assertEqual(
                 window.monitor_controls["pvp"]["enabled"].text(),
-                "Ligar monitor  Ctrl+F6",
+                "Ligar monitor Cliente A  Ctrl+F6",
             )
             self.assertIn("sem ler", window.stop_without_reading_button.text())
             window._toggle_pvp_overlay(True)
@@ -94,7 +94,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertFalse(saved["auto_market_upload"])
             self.assertEqual(
                 window.monitor_controls["pve"]["enabled"].text(),
-                "Ligar monitor  Alt+F10",
+                "Ligar monitor Cliente A  Alt+F10",
             )
             self.assertEqual(
                 start_hotkeys.call_args.args[0]["monitor_boss"], "Ctrl+F12"
@@ -108,6 +108,31 @@ class QtPreviewSmokeTest(unittest.TestCase):
             upload.assert_not_called()
             window.capture_engine = None
             window.close()
+
+    def test_pve_and_pvp_activation_is_independent_per_client_tab(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["monitor-client-tabs-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        with mock.patch.object(window, "_resume_active_monitors"):
+            pve = window.monitor_controls["pve"]
+            pve["tabs"].setCurrentIndex(1)
+            pve["enabled"].setChecked(True)
+
+            self.assertEqual(window.monitor_client_enabled["pve"], [False, True])
+            self.assertTrue(window.monitor_enabled["pve"])
+            self.assertIn("Cliente B", pve["enabled"].text())
+
+            pve["tabs"].setCurrentIndex(0)
+            self.assertFalse(pve["enabled"].isChecked())
+            self.assertEqual(window.monitor_client_enabled["pve"], [False, True])
+
+            pvp = window.monitor_controls["pvp"]
+            pvp["enabled"].setChecked(True)
+            self.assertEqual(window.monitor_client_enabled["pvp"], [True, False])
+            self.assertTrue(window.monitor_enabled["pvp"])
+        window.close()
 
     def test_monitor_page_requests_checkpoint_preview_without_rotation(self):
         from app.ui_qt.main import MainWindow, create_application
@@ -128,6 +153,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window._stored_capture_bytes = lambda _path: 0
         window._run_capture_operation = lambda name, callback: calls.append(name) or callback()
         window.next_read_at = time.monotonic() + 30
+        window.monitor_client_enabled["pve"][0] = True
         window.monitor_enabled["pve"] = True
         window.page_stack.setCurrentIndex(2)
         self.assertIn("preview", calls)
@@ -239,6 +265,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
                     for index in range(8)
                 ],
             }]}
+            window.monitor_client_enabled["pve"][0] = True
+            window.monitor_client_enabled["pvp"][0] = True
             window._render_combat()
             window.show()
             for mode, page_index in (("pve", 2), ("pvp", 3)):
@@ -274,27 +302,35 @@ class QtPreviewSmokeTest(unittest.TestCase):
             for mode in ("pve", "pvp"):
                 page = window.combat_page_layouts[mode]
                 self.assertEqual(
-                    [
-                        page["layout"].getItemPosition(
-                            page["layout"].indexOf(card)
-                        )
-                        for card in page["cards"]
-                    ],
-                    [(0, 0, 1, 2), (1, 0, 1, 2)],
+                    page["layout"].getItemPosition(
+                        page["layout"].indexOf(page["cards"][0])
+                    ),
+                    (0, 0, 1, 2),
                 )
+                self.assertTrue(page["cards"][1].isHidden())
+                tabs = window.monitor_controls[mode]["tabs"]
+                self.assertEqual(tabs.count(), 2)
+                tabs.setCurrentIndex(1)
+                app.processEvents()
+                self.assertTrue(page["cards"][0].isHidden())
+                self.assertFalse(page["cards"][1].isHidden())
+                self.assertEqual(
+                    page["layout"].getItemPosition(
+                        page["layout"].indexOf(page["cards"][1])
+                    ),
+                    (0, 0, 1, 2),
+                )
+                tabs.setCurrentIndex(0)
             window.showMaximized()
             app.processEvents()
             window._sync_responsive_layouts()
             for mode in ("pve", "pvp"):
                 page = window.combat_page_layouts[mode]
                 self.assertEqual(
-                    [
-                        page["layout"].getItemPosition(
-                            page["layout"].indexOf(card)
-                        )
-                        for card in page["cards"]
-                    ],
-                    [(0, 0, 1, 1), (0, 1, 1, 1)],
+                    page["layout"].getItemPosition(
+                        page["layout"].indexOf(page["cards"][0])
+                    ),
+                    (0, 0, 1, 2),
                 )
             window.showNormal()
             app.processEvents()
@@ -584,7 +620,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.7")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.8")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -644,6 +680,23 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 action.text() for action in window.subsession_column_actions.values()
             })
             self.assertGreaterEqual(window.subsession_mobs.minimumHeight(), 300)
+            self.assertEqual(window.subsession_filter_level_from.value(), 0)
+            self.assertEqual(window.subsession_filter_level_to.value(), 0)
+            self.assertEqual(window.subsession_filter_level_from.specialValueText(), "")
+            self.assertEqual(window.subsession_filter_level_to.specialValueText(), "")
+            self.assertEqual(window.subsession_filter_level_from.width(), 110)
+            self.assertEqual(window.subsession_filter_level_to.width(), 110)
+            form = window.subsession_form_layout
+            client_row = form.getWidgetPosition(window.subsession_client)[0]
+            observation_row = form.getWidgetPosition(window.subsession_name)[0]
+            filter_row = form.getWidgetPosition(
+                window.subsession_filter_level_from.parentWidget()
+            )[0]
+            mobs_row = form.getWidgetPosition(window.subsession_mobs)[0]
+            self.assertEqual(observation_row, client_row + 1)
+            self.assertLess(filter_row, mobs_row)
+            self.assertTrue(window.subsession_level_from.isHidden())
+            self.assertTrue(window.subsession_level_to.isHidden())
             self.assertFalse(hasattr(window, "setting_quick_durations"))
             reader = window.snapshot_reader
             window.data_load_running = True

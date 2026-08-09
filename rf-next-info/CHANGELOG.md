@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.8 — beta
+
+- separa os monitores PvE e PvP em abas dos Clientes A e B, com ativação independente;
+- corrige o alvo PvE em ataques de área usando o alvo principal confirmado pelo protocolo;
+- limita o monitor PvE a NPCs com nomes definidos no catálogo;
+- remove jogadores próximos antigos após cinco segundos sem nova confirmação;
+- move o filtro numérico de nível para antes da lista de mobs e compacta seus campos;
+- move a observação para baixo do cliente e remove a linha redundante de nível dos mobs.
+
 ## 3.0.7 — beta
 
 - corrige a assinatura da API nativa do Windows usada para medir a memória;

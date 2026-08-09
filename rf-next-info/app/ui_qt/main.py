@@ -208,6 +208,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.capture_engine: CaptureEngine | None = None
         self.monitor_engine: MonitorEngine | None = None
         self.monitor_enabled = {"pve": False, "pvp": False, "boss": False}
+        self.monitor_client_enabled = {
+            "pve": [False, False],
+            "pvp": [False, False],
+        }
         self.monitor_next_due = {"pve": 0.0, "pvp": 0.0, "boss": 0.0}
         self.monitor_controls: dict[str, dict[str, Any]] = {}
         self.boss_overlay: QtWidgets.QDialog | None = None
@@ -355,11 +359,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.removeWidget(card)
             for row in range(3):
                 layout.setRowStretch(row, 0)
-            visible_cards = (
-                [card for card in cards if not card.isHidden()]
-                if page["mode"] == "boss"
-                else cards
-            )
+            visible_cards = [card for card in cards if not card.isHidden()]
             if len(visible_cards) == 1:
                 layout.addWidget(visible_cards[0], 0, 0, 1, 2)
                 layout.setRowStretch(1, 1)
@@ -606,9 +606,19 @@ class MainWindow(QtWidgets.QMainWindow):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(12)
         column.addWidget(_label(title, "title"))
+        client_tabs = None
+        if mode in {"pve", "pvp"}:
+            client_tabs = QtWidgets.QTabBar()
+            client_tabs.setExpanding(False)
+            client_tabs.addTab("Cliente A")
+            client_tabs.addTab("Cliente B")
+            column.addWidget(client_tabs)
         controls = QtWidgets.QHBoxLayout()
         monitor_shortcut = DEFAULT_GLOBAL_SHORTCUTS[f"monitor_{mode}"]
-        enabled = QtWidgets.QPushButton(f"Ligar monitor  {monitor_shortcut}")
+        client_suffix = " Cliente A" if client_tabs is not None else ""
+        enabled = QtWidgets.QPushButton(
+            f"Ligar monitor{client_suffix}  {monitor_shortcut}"
+        )
         enabled.setCheckable(True)
         enabled.toggled.connect(
             lambda checked, selected=mode: self._toggle_monitor(selected, checked)
@@ -639,7 +649,14 @@ class MainWindow(QtWidgets.QMainWindow):
             "interval": interval,
             "overlay": overlay,
             "shortcut": monitor_shortcut,
+            "tabs": client_tabs,
         }
+        if client_tabs is not None:
+            client_tabs.currentChanged.connect(
+                lambda index, selected=mode: self._monitor_client_changed(
+                    selected, index
+                )
+            )
         description = _label(
             (
                 "Stream efêmero em memória. Nenhum arquivo bruto é criado quando "
@@ -728,6 +745,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.addLayout(stats)
             layout.addWidget(status)
             content_layout.addWidget(card, index, 0, 1, 2)
+            if client_tabs is not None and index:
+                card.hide()
             cards.append(card)
             widgets.append(
                 {
@@ -1286,12 +1305,13 @@ class MainWindow(QtWidgets.QMainWindow):
         filter_levels = QtWidgets.QWidget()
         filter_levels_layout = QtWidgets.QHBoxLayout(filter_levels)
         filter_levels_layout.setContentsMargins(0, 0, 0, 0)
+        filter_levels_layout.setSpacing(8)
         self.subsession_filter_level_from = QtWidgets.QSpinBox()
         self.subsession_filter_level_from.setRange(0, 999)
-        self.subsession_filter_level_from.setSpecialValueText("mínimo")
         self.subsession_filter_level_to = QtWidgets.QSpinBox()
         self.subsession_filter_level_to.setRange(0, 999)
-        self.subsession_filter_level_to.setSpecialValueText("máximo")
+        self.subsession_filter_level_from.setFixedWidth(110)
+        self.subsession_filter_level_to.setFixedWidth(110)
         self.subsession_filter_level_from.valueChanged.connect(
             self._refilter_subsession_mobs
         )
@@ -1301,18 +1321,20 @@ class MainWindow(QtWidgets.QMainWindow):
         filter_levels_layout.addWidget(self.subsession_filter_level_from)
         filter_levels_layout.addWidget(_label("até", "muted"))
         filter_levels_layout.addWidget(self.subsession_filter_level_to)
+        filter_levels_layout.addStretch(1)
         self.subsession_mobs = QtWidgets.QListWidget()
         self.subsession_mobs.setMinimumHeight(300)
         self.subsession_select_all = QtWidgets.QCheckBox("Selecionar todos os mobs")
         self.subsession_select_all.toggled.connect(self._toggle_all_mobs)
         self.subsession_other_mob = QtWidgets.QLineEdit()
         self.subsession_other_mob.setPlaceholderText("Nome de mob adicional")
-        levels = QtWidgets.QWidget()
-        levels_layout = QtWidgets.QHBoxLayout(levels)
-        levels_layout.setContentsMargins(0, 0, 0, 0)
-        self.subsession_level_from = QtWidgets.QSpinBox(); self.subsession_level_from.setRange(0, 999)
-        self.subsession_level_to = QtWidgets.QSpinBox(); self.subsession_level_to.setRange(0, 999)
-        levels_layout.addWidget(self.subsession_level_from); levels_layout.addWidget(_label("até", "muted")); levels_layout.addWidget(self.subsession_level_to)
+        # Mantidos ocultos apenas para ler favoritos antigos sem perder dados.
+        self.subsession_level_from = QtWidgets.QSpinBox(content)
+        self.subsession_level_from.setRange(0, 999)
+        self.subsession_level_from.hide()
+        self.subsession_level_to = QtWidgets.QSpinBox(content)
+        self.subsession_level_to.setRange(0, 999)
+        self.subsession_level_to.hide()
         self.subsession_duration = QtWidgets.QSpinBox(); self.subsession_duration.setRange(0, 1440); self.subsession_duration.setSuffix(" min")
         self.subsession_name = QtWidgets.QLineEdit(); self.subsession_name.setPlaceholderText("Observação ou nome")
         self.auto_subsession = QtWidgets.QCheckBox("Criar a próxima automaticamente")
@@ -1320,15 +1342,18 @@ class MainWindow(QtWidgets.QMainWindow):
         automatic = QtWidgets.QWidget(); automatic_layout = QtWidgets.QHBoxLayout(automatic); automatic_layout.setContentsMargins(0,0,0,0); automatic_layout.addWidget(self.auto_subsession); automatic_layout.addWidget(self.auto_subsession_minutes); automatic_layout.addStretch(1)
         for label_text, widget in (
             ("Favorito", favorites), ("Cliente", self.subsession_client),
+            ("Observação", self.subsession_name),
             ("Mapa", self.subsession_map),
-            ("Spot", self.subsession_spot), ("Mobs", self.subsession_mobs),
+            ("Spot", self.subsession_spot),
             ("Filtrar mobs por level", filter_levels),
+            ("Mobs", self.subsession_mobs),
             ("", self.subsession_select_all),
-            ("Mob extra", self.subsession_other_mob), ("Nível dos mobs", levels),
+            ("Mob extra", self.subsession_other_mob),
             ("Duração (0 = manual)", self.subsession_duration),
-            ("Observação", self.subsession_name), ("Automática", automatic),
+            ("Automática", automatic),
         ):
             layout.addRow(label_text, widget)
+        self.subsession_form_layout = layout
         buttons = QtWidgets.QWidget(); buttons_layout = QtWidgets.QHBoxLayout(buttons); buttons_layout.setContentsMargins(0,0,0,0); buttons_layout.addStretch(1)
         cancel = QtWidgets.QPushButton("Cancelar"); cancel.clicked.connect(self._cancel_subsession_form)
         self.subsession_save = QtWidgets.QPushButton("Criar subsessão"); self.subsession_save.clicked.connect(self._save_subsession)
@@ -1694,11 +1719,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 or DEFAULT_GLOBAL_SHORTCUTS[f"monitor_{mode}"]
             )
             controls["shortcut"] = shortcut
-            action = (
-                "Desligar monitor" if controls["enabled"].isChecked()
-                else "Ligar monitor"
-            )
-            controls["enabled"].setText(f"{action}  {shortcut}")
+            self._update_monitor_button(mode)
 
     def _rename_client(self, index: int) -> None:
         current = str(self.preferences.get(f"character{index + 1}") or "")
@@ -3664,12 +3685,57 @@ class MainWindow(QtWidgets.QMainWindow):
     def _monitor_interval_changed(self, mode: str) -> None:
         self.monitor_next_due[mode] = 0.0
 
-    def _toggle_monitor(self, mode: str, enabled: bool) -> None:
-        self.monitor_enabled[mode] = enabled
+    def _update_monitor_button(self, mode: str) -> None:
         controls = self.monitor_controls[mode]
+        enabled = controls["enabled"].isChecked()
         action = "Desligar monitor" if enabled else "Ligar monitor"
-        controls["enabled"].setText(f"{action}  {controls['shortcut']}")
+        tabs = controls.get("tabs")
+        client = f" Cliente {chr(65 + tabs.currentIndex())}" if tabs else ""
+        controls["enabled"].setText(
+            f"{action}{client}  {controls['shortcut']}"
+        )
+
+    def _monitor_client_changed(self, mode: str, index: int) -> None:
+        controls = self.monitor_controls[mode]
+        enabled = controls["enabled"]
+        enabled.blockSignals(True)
+        enabled.setChecked(self.monitor_client_enabled[mode][index])
+        enabled.blockSignals(False)
+        for card_index, card in enumerate(self.combat_page_layouts[mode]["cards"]):
+            card.setVisible(card_index == index)
+        self._update_monitor_button(mode)
+        self._sync_combat_layout()
+        self._render_combat()
+
+    def _disable_monitor_mode(self, mode: str) -> None:
+        if mode in self.monitor_client_enabled:
+            self.monitor_client_enabled[mode] = [False, False]
+        self.monitor_enabled[mode] = False
+        controls = self.monitor_controls[mode]
+        controls["enabled"].blockSignals(True)
+        controls["enabled"].setChecked(False)
+        controls["enabled"].blockSignals(False)
+        self._update_monitor_button(mode)
+
+    def _resume_active_monitors(self) -> None:
+        if not any(self.monitor_enabled.values()) or self.capture_busy:
+            return
+        monitor = self._ensure_monitor_engine()
+        if not monitor.active:
+            self.top_last_read.setText("Monitores — iniciando stream em memória…")
+            self._run_capture_operation("monitor:start", monitor.start)
+
+    def _toggle_monitor(self, mode: str, enabled: bool) -> None:
+        controls = self.monitor_controls[mode]
+        tabs = controls.get("tabs")
+        if tabs is not None:
+            self.monitor_client_enabled[mode][tabs.currentIndex()] = enabled
+            self.monitor_enabled[mode] = any(self.monitor_client_enabled[mode])
+        else:
+            self.monitor_enabled[mode] = enabled
+        self._update_monitor_button(mode)
         self.monitor_next_due[mode] = 0.0
+        self._render_combat()
         if not any(self.monitor_enabled.values()):
             if self.monitor_engine and self.monitor_engine.active:
                 try:
@@ -3682,10 +3748,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if capture and capture.active:
             self._capture_tick()
             return
-        monitor = self._ensure_monitor_engine()
-        if not monitor.active and not self.capture_busy:
-            self.top_last_read.setText("Monitores — iniciando stream em memória…")
-            self._run_capture_operation("monitor:start", monitor.start)
+        self._resume_active_monitors()
 
     def _toggle_boss_overlay(self, enabled: bool) -> None:
         if not enabled:
@@ -3923,7 +3986,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.top_last_read.setToolTip(str(error))
                 for mode, enabled in self.monitor_enabled.items():
                     if enabled:
-                        self.monitor_controls[mode]["enabled"].setChecked(False)
+                        self._disable_monitor_mode(mode)
                 return
             self.top_capture.setText(f"Captura — falha: {error}")
             if name in {"read", "preview"}:
@@ -4069,13 +4132,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.top_capture.setText("Captura — pausada")
             self._load_readonly_data()
             if any(self.monitor_enabled.values()):
-                QtCore.QTimer.singleShot(
-                    0,
-                    lambda: self._toggle_monitor(
-                        next(mode for mode, value in self.monitor_enabled.items() if value),
-                        True,
-                    ),
-                )
+                QtCore.QTimer.singleShot(0, self._resume_active_monitors)
         elif name == "stop":
             self.last_capture_session = str(data.get("session_id") or self.last_capture_session)
             failures = list(data.get("failures") or [])
@@ -4091,13 +4148,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.pending_observation_session = self.last_capture_session
             self._load_readonly_data()
             if any(self.monitor_enabled.values()):
-                QtCore.QTimer.singleShot(
-                    0,
-                    lambda: self._toggle_monitor(
-                        next(mode for mode, value in self.monitor_enabled.items() if value),
-                        True,
-                    ),
-                )
+                QtCore.QTimer.singleShot(0, self._resume_active_monitors)
             self.top_next_read.setText("Próx. leitura: —")
             if not failures and self.setting_auto_export.isChecked():
                 target = Path(self.setting_capture_directory.text()) / "Exportados"
@@ -4127,17 +4178,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.capture_engine = None
             self.capture_recovery_attempted = False
             if any(self.monitor_enabled.values()):
-                QtCore.QTimer.singleShot(
-                    0,
-                    lambda: self._toggle_monitor(
-                        next(
-                            mode
-                            for mode, value in self.monitor_enabled.items()
-                            if value
-                        ),
-                        True,
-                    ),
-                )
+                QtCore.QTimer.singleShot(0, self._resume_active_monitors)
         self._set_capture_controls()
         pending, self.pending_capture_action = self.pending_capture_action, None
         if pending == "pause":
@@ -4255,6 +4296,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 widgets["heading"].setText(
                     f"Cliente {chr(65 + index)} · {character or 'aguardando personagem'}"
                 )
+                if (
+                    mode in self.monitor_client_enabled
+                    and not self.monitor_client_enabled[mode][index]
+                ):
+                    self._render_nearby(widgets, [], mode, {})
+                    widgets["target"].setText("Último alvo confirmado: —")
+                    widgets["status"].setText(
+                        f"Monitor desligado para o Cliente {chr(65 + index)}."
+                    )
+                    widgets["progress"].setValue(0)
+                    for name in ("current_hp", "max_hp", "hp_percent", "dps_hp"):
+                        if name in widgets:
+                            widgets[name].setText("—")
+                    continue
                 if mode == "boss":
                     bosses = list((monitor or {}).get("bosses") or [])
                     self._render_bosses(widgets, bosses)
@@ -4853,6 +4908,21 @@ QPushButton:hover { border-color: #D4A64D; color: #FFFFFF; }
 QPushButton:focus { border: 2px solid #38BDF8; }
 QPushButton:checked { background: #3A301B; border-color: #D4A64D; color: #F6BE3B; }
 QPushButton:disabled { color: #6D7578; border-color: #26333A; background: #0A0E10; }
+QTabBar { background: transparent; }
+QTabBar::tab {
+    background: #0A1115;
+    color: #F4F2EB;
+    border: 1px solid #314149;
+    border-bottom-color: #D4A64D;
+    padding: 9px 22px;
+    min-width: 96px;
+}
+QTabBar::tab:selected {
+    background: #3A301B;
+    color: #F6BE3B;
+    border-color: #D4A64D;
+}
+QTabBar::tab:hover { color: #FFFFFF; border-color: #D4A64D; }
 QMessageBox { background: #081820; }
 QMessageBox QLabel { color: #F4F2EB; background: transparent; }
 QMessageBox QPushButton { color: #F4F2EB; min-width: 90px; }
