@@ -2881,7 +2881,7 @@
     }
     let history = [], characters = [], archivedCharacters = [], customLocations = [], mobDatabase = [], codex = {}, codexShopping = {}, codexShoppingBought = {}, manualShopping = {}, codexSnapshots = {}, characterShares = {}, captureReceipts = {}, lastMarketReceipt = {}, historyColumnLayout = {}, availableProfiles = [], sharedCharacters = [], adminProfileRecords = [], farmItems = [], editingId = null, editingMobId = null, editingLocation = '', activeCharacter = '', activeSharedCharacter = '', historyCharacter = '', historyScope = 'personal', currentScreen = 'history', adminActor = '';
     let remoteReady = false, shareHistory = false, remoteSaveTimer, remoteSaveQueue = Promise.resolve(), generalHistory = [], generalLoaded = false, gameDataLoaded = false, marketLoaded = false, marketListings = [], marketTaxonomy = {}, marketSnapshotCount = 0, marketTotalRegistered = 0, marketUpdatedAt = '', marketServerSummaries = {}, marketFavorites = [], marketAlerts = [], arcaneNodeCurrentUnitPrice = null, arcaneNodeCurrentPrime = '', salvageLoaded = false, salvageOffset = 0, salvageMaterialOptions = [], salvageWatchedMaterials = [], selectedSalvageMaterial = null, craftLoaded = false, craftTaxonomy = {}, personalCraftRecipes = [], personalCraftMaterialResults = [], personalCraftRecipeResults = [], lastPersonalCraftAnalysis = null, memoryChipLoaded = false, memoryChipData = null, memoryChipVisible = 30, codexLoaded = false, codexCollections = [], codexVisible = 100, codexView = 'detail', codexMarketCapturedAt = null, codexAutoPlan = null, characterLoadoutCatalog = {}, lastOcrResult, pastedOcrImage;
-    let discordAlertEditingId = '', currentUserIsAdmin = false, discordAlertEvents = [];
+    let discordAlertEditingId = '', discordAlertFiltersLoaded = false, currentUserIsAdmin = false, discordAlertEvents = [];
     let contentLanguage = localStorage.getItem('rf-next-game-language') === 'en' ? 'en' : 'pt';
     const localizedName = (item, ptKey = 'name', enKey = 'nameEn') =>
       String(contentLanguage === 'en' && item?.[enKey] ? item[enKey] : item?.[ptKey] || '');
@@ -4729,8 +4729,21 @@
       } catch (error) { $('discordAdminMessageStatus').textContent = error.message; }
     }
 
+    async function loadDiscordAlertFilters() {
+      if (discordAlertFiltersLoaded) return;
+      const response = await fetch('api/market/filters', { credentials: 'same-origin' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Filtros indisponíveis.');
+      marketTaxonomy = payload.taxonomy || {};
+      fillCheckOptions('discordAlertCategories', Object.keys(marketTaxonomy).map(value => [value, value])); fillSubcategoryCards('discordAlertSubcategories');
+      fillCheckOptions('discordAlertTiers', (payload.tiers || []).map(value => [value, `Tier ${value}`]));
+      fillCheckOptions('discordAlertGrades', (payload.grades || []).map(value => [value, LOADOUT_GRADE_LABELS[value] || `Raridade ${value}`]));
+      discordAlertFiltersLoaded = true;
+    }
+
     async function loadDiscordAlerts() {
-      await loadMarket(); updateDiscordAlertControls(); renderDiscordAlerts(); loadDiscordStatus(); loadDiscordAlertHistory(); loadDiscordAlertAdmin();
+      try { await loadDiscordAlertFilters(); } catch (error) { $('discordAlertStatus').textContent = error.message; }
+      updateDiscordAlertControls(); renderDiscordAlerts(); loadDiscordStatus(); loadDiscordAlertHistory(); loadDiscordAlertAdmin();
     }
 
     async function saveDiscordAlert(event) {

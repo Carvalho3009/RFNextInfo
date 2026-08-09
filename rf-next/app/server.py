@@ -1175,6 +1175,10 @@ def market_data():
     return payload
 
 
+def market_filter_options():
+    return {"taxonomy": MARKET_TAXONOMY, "tiers": list(range(9)), "grades": [1, 2, 3, 4]}
+
+
 def market_history(item_id):
     if not re.fullmatch(r"\d{1,12}", item_id):
         raise ValueError("ItemIndex inválido")
@@ -4712,6 +4716,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             return self.send_game_icon(path.removeprefix("/game-icons/"))
 
+        if path == "/api/market/filters":
+            if not self.require_identity():
+                return
+            return self.send_json(200, market_filter_options())
+
         if path == "/api/market":
             if not self.require_identity():
                 return
@@ -5643,6 +5652,9 @@ if __name__ == "__main__":
         assert normalize_search("Habilidade Épica") == "habilidade epica"
         market_sample = parse_market_csv("nome;categoria;subcategoria;refino;preco;maiorpreco;quantidade\nMachado de Palaccia;Arma;Dreadnought;+7;1.250.000;1.500.000;3\n")
         assert market_sample[0]["price"] == 1_250_000 and market_sample[0]["highestPrice"] == 1_500_000
+        assert market_filter_options() == {
+            "taxonomy": MARKET_TAXONOMY, "tiers": list(range(9)), "grades": [1, 2, 3, 4],
+        }
         partial_plan = salvage_purchase_plan([{
             "sourceQuantity": 1, "sourcePrice": 10, "quantity": 30,
         }], 100)
