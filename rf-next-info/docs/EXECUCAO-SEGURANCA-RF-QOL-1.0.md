@@ -52,6 +52,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Marca | Nome/título/executável/atalhos renomeados; link exato do Discord adicionado com navegador padrão. | Concluído local |
 | 09 ago 2026 | Marca | Owner decidiu manter logo e identidade visual Karvalho; assets existentes foram restaurados sem alterar o nome RF QOL. | Concluído local |
 | 09 ago 2026 | Segurança | Owner decidiu não usar certificado Authenticode. Verificador, build e gates passaram a exigir manifesto/procedência Ed25519, tamanho e SHA-256, registrando `authenticode=false`. | Concluído local |
+| 09 ago 2026 | Licença | Permissões `base`, `monitor-pve`, `monitor-pvp` e `monitor-boss` foram adicionadas à lease assinada e ao painel do emissor. PvE/PvP ficam visíveis e bloqueados sem módulo; Boss fica invisível. Gates cobrem atalhos, overlays e motor compartilhado. | Concluído local |
 
 ## Evidências e comandos de validação
 
@@ -80,6 +81,12 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 - O build recusará release sem NSIS, chave privada offline de update e
   substituição das públicas placeholder.
 - Emissor: 14 testes aprovados; configuração Docker de staging validada.
+- Emissor após módulos: 15 testes aprovados. Cliente: 190 testes aprovados,
+  nenhum ignorado, em 97,024 s no ambiente CPython 3.13/Qt fechado; vetor
+  público e smoke offscreen incluídos.
+- Homologação 8788 confirmou licença `base+monitor-pvp`, introspecção dos
+  módulos, mudança para `base+monitor-boss` na renovação e revogação final da
+  licença descartável. Produção 8787 permaneceu saudável e não foi alterada.
 - Integração real em staging: o verificador do cliente recebeu a pública de
   staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
   e rejeitou instalação divergente e lease revogada.

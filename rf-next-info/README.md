@@ -35,6 +35,8 @@ Suporte: [Discord oficial](https://discord.gg/D3hhdMgkj) · `carvalho@tuta.com`
 - estado da licença protegido pelo DPAPI do Windows e recuperável por backup
   criptografado após reinício ou atualização;
 - captura, leitura, monitores, exportação e envio bloqueados sem lease válida;
+- módulos Base, Monitor PvE, Monitor PvP e Monitor Boss assinados na lease;
+  PvE/PvP ficam visíveis e bloqueados sem permissão, enquanto Boss fica oculto;
 - exportação com lease e `installation_id`, nunca com a chave da licença;
 - atualização GitHub sempre visível, com changelog, confirmação, assinatura
   Ed25519 e SHA-256; sem atualização silenciosa;

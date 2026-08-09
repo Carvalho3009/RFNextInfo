@@ -112,6 +112,8 @@ Tarefas:
    autoexportação, atalhos e interface legada.
 8. Preservar ativação, suporte, Discord, diagnóstico local e update sem licença.
 9. Criar estado protegido e ACL admin-only para licença/anti-rollback.
+10. Assinar permissões `base`, `monitor-pve`, `monitor-pvp` e `monitor-boss`;
+    manter PvE/PvP visíveis e bloqueados sem permissão e ocultar Boss.
 
 Critérios de aceite:
 
@@ -122,6 +124,7 @@ Critérios de aceite:
 - perda de licença encerra captura com preservação dos brutos;
 - arquivos existentes não são apagados nem criptografados;
 - regressão funcional completa continua verde.
+- atalhos, overlays e chamadas diretas não contornam os gates dos módulos.
 
 Rollback:
 

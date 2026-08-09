@@ -21,6 +21,8 @@ AUDIENCE = "rf-qol-windows"
 MAX_OFFLINE = timedelta(hours=24)
 MAX_NEXT_CHECK = timedelta(hours=6)
 CLOCK_SKEW = timedelta(minutes=5)
+FEATURE_ORDER = ("base", "monitor-pve", "monitor-pvp", "monitor-boss")
+FEATURE_SET = frozenset(FEATURE_ORDER)
 
 # Chave pública sem material privado correspondente, usada para manter builds
 # de desenvolvimento fechados até a cerimônia das chaves de produção.
@@ -55,6 +57,21 @@ def _activation_error(error: urllib.error.HTTPError) -> str:
     return f"{detail or 'servidor recusou a ativação'} (HTTP {error.code}{reference})"
 
 
+def _features(value) -> list[str]:
+    if not isinstance(value, list) or (
+        not value
+        or any(not isinstance(feature, str) for feature in value)
+        or len(value) != len(set(value))
+        or "base" not in value
+        or not set(value).issubset(FEATURE_SET)
+    ):
+        raise ValueError("Módulos inválidos")
+    normalized = [feature for feature in FEATURE_ORDER if feature in value]
+    if value != normalized:
+        raise ValueError("Ordem de módulos inválida")
+    return normalized
+
+
 def verify_lease(
     lease: str,
     public_keys: dict[str, str] | str = LEASE_PUBLIC_KEYS,
@@ -84,8 +101,9 @@ def verify_lease(
             "next_check_at",
             "valid_until",
             "entitlement_expires_at",
+            "features",
         }
-        if not required.issubset(claims):
+        if set(claims) != required:
             raise ValueError
         key_id = claims["key_id"]
         if not isinstance(key_id, str) or not key_id.startswith("lease-"):
@@ -107,6 +125,7 @@ def verify_lease(
             or claims["aud"] != AUDIENCE
         ):
             raise ValueError
+        _features(claims["features"])
         for field in ("lease_id", "license_id", "installation_id"):
             if not isinstance(claims[field], str) or not 1 <= len(claims[field]) <= 200:
                 raise ValueError
@@ -321,13 +340,16 @@ class LicenseClient:
             raise ValueError("Relógio local requer revalidação online")
         return claims
 
-    def require(self, capability: str) -> dict:
+    def require(self, capability: str, feature: str = "base") -> dict:
         try:
-            return self.claims()
+            claims = self.claims()
+            if feature not in _features(claims["features"]):
+                raise ValueError("módulo ausente")
+            return claims
         except (KeyError, TypeError, ValueError) as error:
             label = capability.replace("_", " ")
             raise PermissionError(
-                f"Licença válida obrigatória para {label}."
+                f"Sua licença não permite {label}."
             ) from error
 
     def local_status(self) -> dict:
@@ -342,6 +364,7 @@ class LicenseClient:
                 "source": self.load_status,
                 "valid_until": claims["valid_until"],
                 "next_check_at": claims["next_check_at"],
+                "features": claims["features"],
             }
         except (KeyError, TypeError, ValueError):
             state = self.license_state()
@@ -362,6 +385,7 @@ class LicenseClient:
                 "source": self.load_status,
                 "valid_until": None,
                 "next_check_at": None,
+                "features": [],
             }
 
     def license_state(self, *, now: datetime | None = None) -> str:

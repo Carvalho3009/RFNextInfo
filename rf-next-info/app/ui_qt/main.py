@@ -81,6 +81,11 @@ PAGES = (
     ("Tutorial", "Primeiros passos e atalhos."),
 )
 MONITOR_PAGES = {2: "pve", 3: "pvp", 4: "boss"}
+MONITOR_FEATURES = {
+    "pve": "monitor-pve",
+    "pvp": "monitor-pvp",
+    "boss": "monitor-boss",
+}
 MONITOR_SHORTCUT_OPTIONS = tuple(
     f"{modifier}+F{number}"
     for modifier in ("Ctrl", "Alt", "Shift")
@@ -262,6 +267,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.site_busy = False
         self.pending_capture_action: str | None = None
         self.license_active = False
+        self.license_features: set[str] = set()
         self.capture_recovery_attempted = False
         self.license_refresh_running = False
         self.last_license_refresh_at = 0.0
@@ -329,6 +335,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_progress_changed.connect(self._update_progress)
         self.page_stack.currentChanged.connect(self._page_changed)
         self.global_hotkeys = GlobalHotkeys(self.global_hotkey_triggered.emit)
+        self._apply_license(self.license_client.local_status())
         if load_data:
             self.global_hotkeys.start()
         self.capture_timer = QtCore.QTimer(self)
@@ -3675,6 +3682,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _apply_license(self, status: dict[str, object]) -> None:
         active = bool(status.get("active"))
         self.license_active = active
+        self.license_features = {
+            str(feature) for feature in (status.get("features") or [])
+        }
         message = str(status.get("message") or "Licença indisponível")
         self.top_license.setText(f"Licença — {message.lower()}")
         self.top_license.setProperty("role", "ok" if active else "muted")
@@ -3687,9 +3697,70 @@ class MainWindow(QtWidgets.QMainWindow):
             details.append(f"Prazo offline: {status['valid_until']}")
         if status.get("next_check_at"):
             details.append(f"Próxima validação: {status['next_check_at']}")
+        labels = {
+            "base": "Base",
+            "monitor-pve": "Monitor PvE",
+            "monitor-pvp": "Monitor PvP",
+            "monitor-boss": "Monitor Boss",
+        }
+        enabled_labels = [labels[feature] for feature in labels if feature in self.license_features]
+        details.append(
+            "Módulos: " + (", ".join(enabled_labels) if enabled_labels else "nenhum")
+        )
         details.append("Comprovante local protegido; renovação online feita quando devida.")
         self.license_details.setText("\n".join(details))
+        self._apply_module_access()
         self._set_capture_controls()
+
+    def _apply_module_access(self) -> None:
+        for index, mode in MONITOR_PAGES.items():
+            allowed = MONITOR_FEATURES[mode] in self.license_features
+            button = self.nav_buttons[index]
+            button.setVisible(allowed if mode == "boss" else True)
+            button.setEnabled(allowed)
+            button.setToolTip(
+                "" if allowed else "Módulo não incluído nesta licença."
+            )
+            controls = self.monitor_controls[mode]
+            for name in ("enabled", "interval", "overlay", "tabs"):
+                control = controls.get(name)
+                if control is not None:
+                    control.setEnabled(allowed)
+            if not allowed:
+                self._disable_monitor_mode(mode)
+                overlay = controls.get("overlay")
+                if overlay is not None:
+                    overlay.blockSignals(True)
+                    overlay.setChecked(False)
+                    overlay.blockSignals(False)
+                if mode == "pvp" and self.pvp_overlay:
+                    self._toggle_pvp_overlay(False)
+                if mode == "boss" and self.boss_overlay:
+                    self._toggle_boss_overlay(False)
+        current = self.page_stack.currentIndex()
+        if current in MONITOR_PAGES and not self.nav_buttons[current].isEnabled():
+            self.page_stack.setCurrentIndex(0)
+            self.nav_buttons[0].setChecked(True)
+        if (
+            not any(self.monitor_enabled.values())
+            and self.monitor_engine
+            and self.monitor_engine.active
+        ):
+            try:
+                self.monitor_engine.stop()
+            except Exception:
+                self.log.exception("monitor_stop_after_license_change_failed")
+
+    def _require_monitor_feature(self, mode: str) -> bool:
+        try:
+            self.license_client.require(
+                f"o módulo Monitor {mode.upper() if mode != 'boss' else 'Boss'}",
+                MONITOR_FEATURES[mode],
+            )
+            return True
+        except PermissionError as error:
+            QtWidgets.QMessageBox.warning(self, "Módulo não licenciado", str(error))
+            return False
 
     @staticmethod
     def _stored_capture_bytes(directory: Path) -> int:
@@ -3777,9 +3848,19 @@ class MainWindow(QtWidgets.QMainWindow):
         monitor = self._ensure_monitor_engine()
         if not monitor.active:
             self.top_last_read.setText("Monitores — iniciando stream em memória…")
-            self._run_capture_operation("monitor:start", monitor.start)
+            features = tuple(
+                MONITOR_FEATURES[mode]
+                for mode, enabled in self.monitor_enabled.items()
+                if enabled
+            )
+            self._run_capture_operation(
+                "monitor:start", lambda: monitor.start(features)
+            )
 
     def _toggle_monitor(self, mode: str, enabled: bool) -> None:
+        if enabled and not self._require_monitor_feature(mode):
+            self._disable_monitor_mode(mode)
+            return
         controls = self.monitor_controls[mode]
         tabs = controls.get("tabs")
         if tabs is not None:
@@ -3809,6 +3890,13 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.boss_overlay:
                 self.boss_overlay.close()
                 self.boss_overlay = None
+            return
+        if not self._require_monitor_feature("boss"):
+            overlay_button = self.monitor_controls["boss"].get("overlay")
+            if overlay_button is not None:
+                overlay_button.blockSignals(True)
+                overlay_button.setChecked(False)
+                overlay_button.blockSignals(False)
             return
         overlay = _MovableOverlay(self)
         overlay.setWindowTitle("RF QOL · Boss")
@@ -3849,6 +3937,13 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.pvp_overlay:
                 self.pvp_overlay.close()
                 self.pvp_overlay = None
+            return
+        if not self._require_monitor_feature("pvp"):
+            overlay_button = self.monitor_controls["pvp"].get("overlay")
+            if overlay_button is not None:
+                overlay_button.blockSignals(True)
+                overlay_button.setChecked(False)
+                overlay_button.blockSignals(False)
             return
         overlay = _MovableOverlay(self)
         overlay.setWindowTitle("RF QOL · PvP próximo")
@@ -4385,7 +4480,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"Próx. monitor: {max(0, math.ceil(next_due - now))} s"
             )
             if not self.capture_busy and now >= next_due:
-                self._run_capture_operation("monitor:preview", monitor.snapshot)
+                features = tuple(
+                    MONITOR_FEATURES[mode]
+                    for mode, enabled in self.monitor_enabled.items()
+                    if enabled
+                )
+                self._run_capture_operation(
+                    "monitor:preview", lambda: monitor.snapshot(features)
+                )
         elif engine and engine.paused:
             self.top_next_read.setText("Próx. leitura: pausada")
         elif engine and engine.current_session and not self.capture_busy:

@@ -8,6 +8,8 @@
 - usa licenças novas com prefixo RFQ e rejeita licenças KRV da linha anterior;
 - implementa estados explícitos de autorização e introspecção v2 obrigatória no site;
 - bloqueia captura, leitura, monitores, exportação e envio sem licença válida no motor compartilhado;
+- separa Base, Monitor PvE, Monitor PvP e Monitor Boss na lease assinada; sem
+  permissão, PvE/PvP continuam visíveis e bloqueados enquanto Boss fica oculto;
 - separa as chaves de licença e atualização e remove a chave mutável do estado local;
 - implementa manifesto de update v2, anti-downgrade e reverificação de tamanho/hash;
 - remove o rollback por cópia executável em diretório gravável;

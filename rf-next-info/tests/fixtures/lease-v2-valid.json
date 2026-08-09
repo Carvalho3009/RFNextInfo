@@ -1,9 +1,9 @@
 {
   "verification_time": "2026-08-09T12:00:00+00:00",
   "public_keys": {
-    "lease-test-vector-2026-01": "xvCTj36C-14d5p6vVI3F59XjHVUG5bmozaq0P0YNsLc"
+    "lease-test-vector-2026-01": "3yu8ECjvXSAz5BdgoXB-W-vxQNg_3FyrQtbg0PqRvr8"
   },
-  "lease": "eyJhdWQiOiJyZi1xb2wtd2luZG93cyIsImVudGl0bGVtZW50X2V4cGlyZXNfYXQiOiIyMDI2LTA5LTA5VDA4OjAwOjAwKzAwOjAwIiwiaW5zdGFsbGF0aW9uX2lkIjoiNGZkYjZkMjQtZGM5ZC00ZTc0LTk3ZDQtYWExYWU2YzNiMDIxIiwiaXNzIjoicmZsaWNlbmNhLmthcnZhbGhvLmRldi5iciIsImlzc3VlZF9hdCI6IjIwMjYtMDgtMDlUMDg6MDA6MDArMDA6MDAiLCJrZXlfaWQiOiJsZWFzZS10ZXN0LXZlY3Rvci0yMDI2LTAxIiwibGVhc2VfaWQiOiJ2ZWN0b3ItbGVhc2UtMDAxIiwibGljZW5zZV9pZCI6InZlY3Rvci1saWNlbnNlLTAwMSIsIm5leHRfY2hlY2tfYXQiOiIyMDI2LTA4LTA5VDE0OjAwOjAwKzAwOjAwIiwicHJvZHVjdCI6InJmLXFvbCIsInYiOjIsInZhbGlkX3VudGlsIjoiMjAyNi0wOC0xMFQwODowMDowMCswMDowMCJ9.JRHQhiT8nh6yVNOaQ75cmRoMYYZZiYyQn8DSQAOsNfU0AhodKRYwsr2YNAwBhKX69rxM8hs6MyQrbqI3zVM0DA",
+  "lease": "eyJhdWQiOiJyZi1xb2wtd2luZG93cyIsImVudGl0bGVtZW50X2V4cGlyZXNfYXQiOiIyMDI2LTA5LTA5VDA4OjAwOjAwKzAwOjAwIiwiZmVhdHVyZXMiOlsiYmFzZSIsIm1vbml0b3ItcHZlIiwibW9uaXRvci1wdnAiLCJtb25pdG9yLWJvc3MiXSwiaW5zdGFsbGF0aW9uX2lkIjoiNGZkYjZkMjQtZGM5ZC00ZTc0LTk3ZDQtYWExYWU2YzNiMDIxIiwiaXNzIjoicmZsaWNlbmNhLmthcnZhbGhvLmRldi5iciIsImlzc3VlZF9hdCI6IjIwMjYtMDgtMDlUMDg6MDA6MDArMDA6MDAiLCJrZXlfaWQiOiJsZWFzZS10ZXN0LXZlY3Rvci0yMDI2LTAxIiwibGVhc2VfaWQiOiJ2ZWN0b3ItbGVhc2UtMDAxIiwibGljZW5zZV9pZCI6InZlY3Rvci1saWNlbnNlLTAwMSIsIm5leHRfY2hlY2tfYXQiOiIyMDI2LTA4LTA5VDE0OjAwOjAwKzAwOjAwIiwicHJvZHVjdCI6InJmLXFvbCIsInYiOjIsInZhbGlkX3VudGlsIjoiMjAyNi0wOC0xMFQwODowMDowMCswMDowMCJ9.Z-PjaWLOLqvt2T6XFDEWqDC1VDNyztmzD3L33Bw9cAkFPoQWBCwPS4b0hv0WVn1KB5m1SEBZGhjXP9L8ISeWCQ",
   "expected_claims": {
     "v": 2,
     "iss": "rflicenca.karvalho.dev.br",
@@ -16,6 +16,7 @@
     "issued_at": "2026-08-09T08:00:00+00:00",
     "next_check_at": "2026-08-09T14:00:00+00:00",
     "valid_until": "2026-08-10T08:00:00+00:00",
-    "entitlement_expires_at": "2026-09-09T08:00:00+00:00"
+    "entitlement_expires_at": "2026-09-09T08:00:00+00:00",
+    "features": ["base", "monitor-pve", "monitor-pvp", "monitor-boss"]
   }
 }

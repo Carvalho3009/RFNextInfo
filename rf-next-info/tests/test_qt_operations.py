@@ -127,7 +127,7 @@ class _AllowedLicense:
     lease = "lease-1"
 
     @staticmethod
-    def require(_capability):
+    def require(_capability, _feature="base"):
         return {"active": True}
 
 
@@ -136,7 +136,7 @@ class _DeniedLicense:
     lease = None
 
     @staticmethod
-    def require(_capability):
+    def require(_capability, _feature="base"):
         raise PermissionError("licença necessária")
 
 
@@ -156,7 +156,7 @@ class CaptureEngineTest(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 capture.start()
             with self.assertRaises(PermissionError):
-                monitor.start()
+                monitor.start(("monitor-pve",))
             self.assertFalse(list(root.glob("*.etl")))
 
     def test_stop_without_reading_preserves_raw_files_and_session(self):
@@ -203,12 +203,14 @@ class CaptureEngineTest(unittest.TestCase):
             ],
         )
 
-        started = monitor.start()
+        started = monitor.start(("monitor-pve",))
 
         self.assertTrue(started["active"])
         self.assertIsNone(monitor.live_capture.target)
         self.assertIsNotNone(monitor.live_capture.sink)
-        self.assertEqual(monitor.snapshot()["client_ports"], [[50000]])
+        self.assertEqual(
+            monitor.snapshot(("monitor-pve",))["client_ports"], [[50000]]
+        )
         monitor.stop()
         self.assertFalse(monitor.active)
 

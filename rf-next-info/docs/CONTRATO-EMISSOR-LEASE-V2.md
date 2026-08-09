@@ -64,7 +64,8 @@ nunca é convertida em autorização pelo site.
 
 O payload contém exatamente os campos normativos da SPEC: `v`, `iss`,
 `product`, `aud`, `key_id`, `lease_id`, `license_id`, `installation_id`,
-`issued_at`, `next_check_at`, `valid_until` e `entitlement_expires_at`. Datas
+`issued_at`, `next_check_at`, `valid_until`, `entitlement_expires_at` e
+`features`. Datas
 são ISO-8601 UTC com fuso. Deve valer:
 
 `issued_at <= next_check_at <= valid_until <= entitlement_expires_at`
@@ -73,6 +74,10 @@ e também:
 
 - `next_check_at - issued_at <= 6 h`;
 - `valid_until - issued_at <= 24 h`.
+
+`features` é uma lista em ordem canônica. `base` é obrigatória e pode ser
+acompanhada por `monitor-pve`, `monitor-pvp` e `monitor-boss`. Valores
+desconhecidos, duplicados ou fora dessa ordem invalidam a lease.
 
 ## Introspecção para o site
 
@@ -85,7 +90,8 @@ O serviço usado por `rf-next/app/server.py` deve devolver, no mínimo:
   "product": "rf-qol",
   "aud": "rf-qol-windows",
   "installation_id": "uuid",
-  "valid_until": "UTC"
+  "valid_until": "UTC",
+  "features": ["base", "monitor-pvp"]
 }
 ```
 

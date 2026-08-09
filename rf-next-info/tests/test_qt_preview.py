@@ -42,6 +42,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 preferences_path=root / "preferences.json",
             )
             window.capture_timer.stop()
+            window.license_client.require = mock.Mock(return_value={"active": True})
+            window._apply_license({
+                "active": True,
+                "message": "Licença válida",
+                "features": ["base", "monitor-pve", "monitor-pvp", "monitor-boss"],
+            })
             with mock.patch("app.ui_qt.main._process_memory_bytes", return_value=64 * 1024**2):
                 window._capture_tick()
             self.assertEqual(window.top_memory.text(), "RAM: 64,0 MiB")
@@ -237,6 +243,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
         create_application(["monitor-client-tabs-test"])
         window = MainWindow(load_data=False)
         window.capture_timer.stop()
+        window.license_client.require = mock.Mock(return_value={"active": True})
+        window._apply_license({
+            "active": True,
+            "message": "Licença válida",
+            "features": ["base", "monitor-pve", "monitor-pvp"],
+        })
         with mock.patch.object(window, "_resume_active_monitors"):
             pve = window.monitor_controls["pve"]
             pve["tabs"].setCurrentIndex(1)
@@ -782,13 +794,35 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
             "Visão geral", "Envios", "Monitor PvE", "Monitor PvP",
-            "Boss", "Alertas", "Subsessões", "Configurações", "Tutorial",
+            "Alertas", "Subsessões", "Configurações", "Tutorial",
         ])
+        self.assertFalse(result["navigation_enabled"]["Monitor PvE"])
+        self.assertFalse(result["navigation_enabled"]["Monitor PvP"])
+        self.assertFalse(result["navigation_enabled"]["Boss"])
         self.assertFalse(result["frameless"])
         self.assertEqual(result["overview_groups"], 5)
         self.assertEqual(result["overview_metrics"], 18)
         widget_rule = STYLE.split("QWidget {", 1)[1].split("}", 1)[0]
         self.assertNotIn("background", widget_rule)
+
+    def test_module_license_keeps_pvp_visible_and_hides_unlicensed_boss(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["module-license-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window._apply_license({
+            "active": True,
+            "message": "Licença válida",
+            "features": ["base", "monitor-pvp"],
+        })
+
+        self.assertFalse(window.nav_buttons[2].isHidden())
+        self.assertFalse(window.nav_buttons[2].isEnabled())
+        self.assertFalse(window.nav_buttons[3].isHidden())
+        self.assertTrue(window.nav_buttons[3].isEnabled())
+        self.assertTrue(window.nav_buttons[4].isHidden())
+        window.close()
 
     def test_f3_preferences_and_subsession_form_use_injected_files(self):
         from PySide6 import QtCore, QtGui, QtWidgets

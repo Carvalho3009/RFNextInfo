@@ -102,7 +102,8 @@ oficial, com hashes publicados por um canal independente.
   "issued_at": "UTC ISO-8601",
   "next_check_at": "UTC ISO-8601",
   "valid_until": "UTC ISO-8601",
-  "entitlement_expires_at": "UTC ISO-8601"
+  "entitlement_expires_at": "UTC ISO-8601",
+  "features": ["base", "monitor-pve", "monitor-pvp", "monitor-boss"]
 }
 ```
 
@@ -116,6 +117,8 @@ O cliente DEVE rejeitar:
 - `valid_until` superior a 24 horas após `issued_at`;
 - `valid_until` posterior a `entitlement_expires_at`;
 - lease v1 ou licença da linha anterior.
+- claim ausente ou extra, módulo desconhecido/duplicado/fora da ordem canônica,
+  ou licença sem o módulo obrigatório `base`.
 
 ### 4.2 Renovação e tolerância offline
 
@@ -160,12 +163,24 @@ Somente `ACTIVE_ONLINE` e `ACTIVE_OFFLINE` autorizam funções licenciadas.
 | Gerar diagnóstico local sanitizado | Sim | Sim |
 | Verificar/instalar atualização assinada | Sim | Sim |
 | Iniciar ou continuar Pktmon | Sim | Não |
-| Monitor PvE/PvP/Boss em RAM | Sim | Não |
+| Monitor PvE em RAM | Somente com `monitor-pve` | Não |
+| Monitor PvP em RAM | Somente com `monitor-pvp` | Não |
+| Monitor Boss em RAM | Somente com `monitor-boss` | Não |
 | Importar, ler ou processar nova captura | Sim | Não |
 | Consultar dados capturados pela interface | Sim | Não |
 | Exportar JSON/CSV/diagnóstico de sessão | Sim | Não |
 | Autoexportar ao parar | Sim | Não |
 | Enviar ao site | Sim | Não |
+
+`base` autoriza captura, ingestão, leitura, exportação e envio. Sem a permissão
+correspondente, as abas Monitor PvE e Monitor PvP DEVEM permanecer visíveis,
+desabilitadas e inacessíveis; a aba Boss DEVE ficar invisível. Atalhos,
+overlays e chamadas diretas ao motor DEVEM aplicar o mesmo gate, sem depender
+da visibilidade do botão.
+
+Alterações de módulos entram na próxima renovação online, prevista em até seis
+horas. Uma lease já emitida pode conservar os módulos anteriores somente até
+`valid_until`, limitado a 24 horas após `issued_at`.
 
 Ao perder autorização durante uma captura, o aplicativo DEVE encerrar o Pktmon
 de forma segura, fechar o segmento corrente e preservar os brutos. NÃO DEVE

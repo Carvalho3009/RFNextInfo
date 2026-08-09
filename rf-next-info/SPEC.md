@@ -108,6 +108,10 @@ Roadmap:
   leitura/processamento, envio e exportação. Ativação, renovação, suporte,
   Discord, diagnóstico local sanitizado e atualização assinada permanecem
   disponíveis. Os arquivos do usuário nunca são apagados ou criptografados.
+- A lease assina os módulos `base`, `monitor-pve`, `monitor-pvp` e
+  `monitor-boss`. Base cobre captura, leitura, exportação e envio. Sem o módulo
+  correspondente, PvE/PvP permanecem visíveis e inacessíveis; Boss fica
+  invisível. Atalhos, overlays e o motor compartilhado aplicam o mesmo gate.
 - Captura PktMon pendente após falha deve ser recuperável sem apagar o ETL.
 - Atualização visível e confirmada, com chave Ed25519 exclusiva e pinada,
   manifesto v2, sequência anti-downgrade, tamanho, SHA-256 e rollback pelo

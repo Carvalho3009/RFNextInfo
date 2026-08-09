@@ -661,11 +661,20 @@ class MonitorEngine:
     def active(self) -> bool:
         return self.live_capture is not None
 
-    def start(self) -> dict[str, object]:
-        self.license.require("monitor em tempo real")
+    def _authorize(self, features) -> tuple[str, ...]:
+        requested = tuple(dict.fromkeys(features))
+        allowed = {"monitor-pve", "monitor-pvp", "monitor-boss"}
+        if not requested or not set(requested).issubset(allowed):
+            raise PermissionError("Módulo de monitor inválido")
+        for feature in requested:
+            self.license.require("monitor em tempo real", feature)
+        return requested
+
+    def start(self, features) -> dict[str, object]:
+        features = self._authorize(features)
         with self._lock:
             if self.active:
-                return self.snapshot()
+                return self.snapshot(features)
             processes = self.process_reader(DEFAULT_PORTS)
             if not processes:
                 raise RuntimeError("Abra um cliente ProjectRF e entre no jogo")
@@ -721,8 +730,8 @@ class MonitorEngine:
         if ports:
             self.live_capture.add_ports(ports)
 
-    def snapshot(self) -> dict[str, object]:
-        self.license.require("leitura do monitor")
+    def snapshot(self, features) -> dict[str, object]:
+        self._authorize(features)
         with self._lock:
             if not self.live_capture:
                 return {"available": False, "active": False, "events": []}

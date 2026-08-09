@@ -1984,6 +1984,7 @@ class AppLogicTest(unittest.TestCase):
             "next_check_at": (issued + timedelta(minutes=30)).isoformat(),
             "valid_until": (issued + timedelta(hours=24)).isoformat(),
             "entitlement_expires_at": (now + timedelta(days=30)).isoformat(),
+            "features": ["base", "monitor-pvp"],
         }
         payload = json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
         lease = f"{b64(payload)}.{b64(private.sign(payload))}"
@@ -2018,6 +2019,21 @@ class AppLogicTest(unittest.TestCase):
                 verify_lease(
                     invalid_lease,
                     {"lease-test": public, "update-test": public},
+                )
+        for invalid_features in (
+            ["monitor-pvp"],
+            ["base", "base"],
+            ["monitor-pvp", "base"],
+            ["base", "unknown"],
+        ):
+            invalid = {**claims, "features": invalid_features}
+            invalid_payload = json.dumps(
+                invalid, separators=(",", ":"), sort_keys=True
+            ).encode()
+            with self.assertRaises(ValueError, msg=invalid_features):
+                verify_lease(
+                    f"{b64(invalid_payload)}.{b64(private.sign(invalid_payload))}",
+                    {"lease-test": public},
                 )
 
         summary, marks = _capture_summary({"events": [{
@@ -2075,6 +2091,13 @@ class AppLogicTest(unittest.TestCase):
             self.assertEqual(remembered.installation_id, installation_id)
             self.assertEqual(remembered.license_state(), "ACTIVE_OFFLINE")
             self.assertEqual(remembered.local_status()["state"], "ACTIVE_OFFLINE")
+            self.assertEqual(
+                remembered.local_status()["features"], ["base", "monitor-pvp"]
+            )
+            remembered.require("captura")
+            remembered.require("Monitor PvP", "monitor-pvp")
+            with self.assertRaises(PermissionError):
+                remembered.require("Monitor Boss", "monitor-boss")
             self.assertEqual(
                 remembered.state["license_expires_at"],
                 claims["entitlement_expires_at"],

@@ -25,7 +25,7 @@ def run_smoke() -> dict[str, object]:
         )
         return json.loads(completed.stdout.strip().splitlines()[-1])
 
-    from app.ui_qt.main import MainWindow, PAGES, create_application
+    from app.ui_qt.main import MainWindow, create_application
 
     app = create_application(["rf-qol-qt-smoke"])
     window = MainWindow(load_data=False)
@@ -47,7 +47,10 @@ def run_smoke() -> dict[str, object]:
         "minimum_height": window.minimumHeight(),
         "page_count": window.page_stack.count(),
         "active_page": window.page_stack.currentIndex(),
-        "navigation": [title for title, _ in PAGES],
+        "navigation": [button.text() for button in window.nav_buttons if button.isVisible()],
+        "navigation_enabled": {
+            button.text(): button.isEnabled() for button in window.nav_buttons
+        },
         "frameless": bool(window.windowFlags() & QtCore.Qt.WindowType.FramelessWindowHint),
         "overview_groups": len([
             frame
