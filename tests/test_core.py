@@ -1931,6 +1931,155 @@ class CoreTest(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_historical_levels_realign_swapped_physical_client_slots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            history_source = root / "history.pcap"
+            initial_source = root / "initial.pcap"
+            evidence_source = root / "evidence.pcap"
+            later_source = root / "later.pcap"
+            for source in (
+                history_source, initial_source, evidence_source, later_source
+            ):
+                source.write_bytes(source.stem.encode("ascii"))
+            routes = ((50001,), (50002,))
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    history_source,
+                    [
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {"fields": {
+                                "character_uid": 101,
+                                "character_name": "Duffita",
+                                "level": 69,
+                            }},
+                        },
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50002",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {"fields": {
+                                "character_uid": 202,
+                                "character_name": "Xadão",
+                                "level": 61,
+                            }},
+                        },
+                    ],
+                    "old-session",
+                    client_ports=routes,
+                )
+                store.select_client_uid("new-session", "client:a", "101")
+                store.select_client_uid("new-session", "client:b", "202")
+
+                store.add_events(
+                    initial_source,
+                    [
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0307,
+                            "type": "update_exp",
+                            "data": {"fields": {"gain_exp": 72_204}},
+                        },
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50002",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0307,
+                            "type": "update_exp",
+                            "data": {"fields": {"gain_exp": 414_810}},
+                        },
+                    ],
+                    "new-session",
+                    client_ports=routes,
+                )
+                store.add_events(
+                    evidence_source,
+                    [
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0307,
+                            "type": "update_exp",
+                            "data": {"fields": {"level": 61, "gain_exp": 1}},
+                        },
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50002",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0307,
+                            "type": "update_exp",
+                            "data": {"fields": {"level": 69, "gain_exp": 1}},
+                        },
+                    ],
+                    "new-session",
+                    client_ports=routes,
+                )
+                store.select_client_uid("new-session", "client:a", "101")
+                store.select_client_uid("new-session", "client:b", "202")
+                store.add_events(
+                    later_source,
+                    [
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50001",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x2407,
+                            "type": "realm_contribution_update",
+                            "data": {"fields": {"contribution_total": 17_710}},
+                        },
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50002",
+                            "stream_offset": 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x2407,
+                            "type": "realm_contribution_update",
+                            "data": {"fields": {"contribution_total": 129_206}},
+                        },
+                    ],
+                    "new-session",
+                    client_ports=routes,
+                )
+
+                owners = [
+                    tuple(row)
+                    for row in store.conn.execute(
+                        """SELECT flow,character_uid,type FROM events
+                           WHERE session_id='new-session' ORDER BY id"""
+                    )
+                ]
+                self.assertTrue(all(
+                    uid == ("202" if ":50001" in flow else "101")
+                    for flow, uid, _kind in owners
+                ))
+                self.assertEqual(
+                    store.conn.execute(
+                        """SELECT physical_client_key,logical_client_key
+                           FROM client_route_slots WHERE session_id='new-session'
+                           ORDER BY physical_client_key"""
+                    ).fetchall(),
+                    [("client:a", "client:b"), ("client:b", "client:a")],
+                )
+                self.assertEqual(
+                    {
+                        item["uid"]: item["level"]
+                        for item in store.character_history()
+                    },
+                    {"101": 69, "202": 61},
+                )
+            finally:
+                store.close()
+
     def test_marked_entry_bundle_binds_appear_player_to_client(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -48,19 +48,46 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertIn("sem ler", window.stop_without_reading_button.text())
             window.snapshot = {"combat_monitors": [{
                 "local": {},
-                "nearby_players": [],
-                "pvp": {
+                "nearby_players": [{
                     "uid": 20,
                     "character_uid": 222,
-                    "name": "Rival confirmado",
+                    "name": "Rigarden",
                     "level": 70,
                     "hp_percent": 65.5,
-                    "stale": False,
-                },
+                }],
+                "pvp": {},
+                "bosses": [{
+                    "uid": 30,
+                    "name": "Mecha Corruptor",
+                    "current_hp": 750_000,
+                    "max_hp": 1_000_000,
+                    "hp_percent": 75.0,
+                    "dps_hp": 25_000,
+                    "eta_seconds": 30,
+                }],
             }]}
             window._toggle_pvp_overlay(True)
-            self.assertEqual(window.pvp_overlay_summary.text(), "Hostis próximos: 1")
+            self.assertEqual(
+                window.pvp_overlay_summary.text(),
+                "Jogadores próximos: 1 · Hostis confirmados: 0",
+            )
             self.assertEqual(window.pvp_overlay_rows.count(), 1)
+            pvp_labels = window.pvp_overlay_rows.itemAt(0).widget().findChildren(
+                window.pvp_overlay_summary.__class__
+            )
+            self.assertTrue(any("Rigarden" in label.text() for label in pvp_labels))
+            self.assertTrue(any("Próximo" in label.text() for label in pvp_labels))
+            window.snapshot["combat_monitors"][0]["pvp"] = {
+                "uid": 21,
+                "name": "Rival confirmado",
+                "hp_percent": 50.0,
+                "stale": False,
+            }
+            window._render_combat()
+            self.assertEqual(
+                window.pvp_overlay_summary.text(),
+                "Jogadores próximos: 2 · Hostis confirmados: 1",
+            )
             self.assertTrue(
                 window.pvp_overlay.testAttribute(
                     QtCore.Qt.WidgetAttribute.WA_TranslucentBackground
@@ -101,6 +128,48 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_pvp_overlay(True)
             self.assertEqual(window.pvp_overlay.pos(), position)
             window._toggle_pvp_overlay(False)
+
+            window._toggle_boss_overlay(True)
+            self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
+            self.assertEqual(window.boss_overlay_hp.text(), "HP 750.000 / 1.000.000")
+            self.assertEqual(window.boss_overlay_progress.value(), 750)
+            self.assertIn("25.000", window.boss_overlay_rate.text())
+            self.assertEqual(
+                window.boss_overlay.cursor().shape(),
+                QtCore.Qt.CursorShape.SizeAllCursor,
+            )
+            window.snapshot["combat_monitors"][0]["bosses"][0]["current_hp"] = 500_000
+            window.snapshot["combat_monitors"][0]["bosses"][0]["hp_percent"] = 50.0
+            window._render_combat()
+            self.assertEqual(window.boss_overlay_hp.text(), "HP 500.000 / 1.000.000")
+            self.assertEqual(window.boss_overlay_progress.value(), 500)
+            boss_position = position + QtCore.QPoint(80, 80)
+            window.boss_overlay.mousePressEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                position=lambda: QtCore.QPointF(10, 10),
+                accept=lambda: None,
+            ))
+            window.boss_overlay.mouseMoveEvent(SimpleNamespace(
+                buttons=lambda: QtCore.Qt.MouseButton.LeftButton,
+                globalPosition=lambda: QtCore.QPointF(
+                    boss_position + QtCore.QPoint(10, 10)
+                ),
+                accept=lambda: None,
+            ))
+            window.boss_overlay.mouseReleaseEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                accept=lambda: None,
+            ))
+            self.assertEqual(window.boss_overlay.pos(), boss_position)
+            self.assertEqual(
+                load_preferences(root / "preferences.json")["boss_overlay_position"],
+                [boss_position.x(), boss_position.y()],
+            )
+            window._toggle_boss_overlay(False)
+            window._toggle_boss_overlay(True)
+            self.assertEqual(window.boss_overlay.pos(), boss_position)
+            self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
+            window._toggle_boss_overlay(False)
             window.close()
 
     def test_monitor_keybinds_and_auto_market_setting_are_persisted(self):
@@ -656,6 +725,41 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.exit_requested = True
         window.close()
 
+    def test_second_instance_is_rejected_and_notifies_the_first(self):
+        import uuid
+
+        from PySide6 import QtNetwork
+
+        from app.ui_qt.main import _claim_instance_server, create_application
+
+        app = create_application(["single-instance-test"])
+        server_name = f"Karvalho.RFNextQOL.test.{uuid.uuid4().hex}"
+        server = _claim_instance_server(app, server_name)
+        try:
+            self.assertIsNotNone(server)
+            self.assertIsNone(_claim_instance_server(app, server_name))
+        finally:
+            server.close()
+            app._rfnext_instance_lock.unlock()
+            QtNetwork.QLocalServer.removeServer(server_name)
+
+    def test_tray_menu_is_retained_and_removed_on_exit(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        app = create_application(["tray-lifecycle-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        tray = window._tray
+        if tray is None:
+            self.skipTest("Área de notificação indisponível neste ambiente")
+        actions = [action.text() for action in window.tray_menu.actions()]
+        self.assertIn("Abrir RF NEXT QOL", actions)
+        self.assertIn("Sair", actions)
+        window.exit_requested = True
+        window.close()
+        app.processEvents()
+        self.assertFalse(tray.isVisible())
+
     def test_offscreen_window_uses_minimum_supported_size(self):
         from app.ui_qt.main import STYLE
         from app.ui_qt.smoke import run_smoke
@@ -665,7 +769,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.10")
+        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.11")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -905,6 +1009,41 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.setting_detailed_log.setChecked(False)
             window._load_settings_fields()
             self.assertTrue(window.setting_detailed_log.isChecked())
+            window.close()
+
+    def test_removed_subsession_is_dropped_from_selection_state(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["subsession-stale-selection-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            window.selected_subsessions = {"deleted-subsession"}
+            window.snapshot = {
+                "session_id": "session",
+                "subsessions": [],
+                "subsession_summaries": {},
+                "profiles": [],
+            }
+
+            window._render_subsessions()
+
+            self.assertEqual(window.selected_subsessions, set())
+            self.assertEqual(
+                window.send_selected_status.text(),
+                "Nenhuma subsessão selecionada",
+            )
+            self.assertFalse(window.subsession_upload_button.isEnabled())
+            window.selected_subsessions = {"deleted-subsession"}
+            window._run_site_operation = mock.Mock()
+            window._send_selected_subsessions()
+            self.assertEqual(window.selected_subsessions, set())
+            window._run_site_operation.assert_not_called()
             window.close()
 
     def test_subsession_level_filter_and_full_favorites(self):

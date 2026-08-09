@@ -88,8 +88,16 @@ CREATE TABLE IF NOT EXISTS character_history(
  last_seen_at TEXT NOT NULL,
  last_session_id TEXT NOT NULL DEFAULT '',
  last_client_key TEXT NOT NULL DEFAULT '',
+ level INTEGER,
  biosuit_item_index INTEGER,
  rover_item_index INTEGER
+);
+CREATE TABLE IF NOT EXISTS client_route_slots(
+ session_id TEXT NOT NULL,
+ physical_client_key TEXT NOT NULL,
+ logical_client_key TEXT NOT NULL,
+ evidence TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(session_id, physical_client_key)
 );
 CREATE TABLE IF NOT EXISTS store_state(
  key TEXT PRIMARY KEY, value INTEGER NOT NULL
@@ -142,6 +150,14 @@ def _client_key(
         if endpoints.intersection(ports):
             return f"client:{chr(97 + index)}"
     return None
+
+
+def _event_level(event: dict[str, Any]) -> int | None:
+    if event.get("type") not in {"world_info_prefix", "update_exp"}:
+        return None
+    fields = (event.get("data") or {}).get("fields") or {}
+    level = fields.get("level")
+    return level if isinstance(level, int) and 1 <= level <= 999 else None
 
 
 def _add_exp_percent(data: dict[str, Any]) -> dict[str, Any]:
@@ -294,7 +310,7 @@ class CaptureStore:
                     "PRAGMA table_info(character_history)"
                 )
             }
-            for column in ("biosuit_item_index", "rover_item_index"):
+            for column in ("level", "biosuit_item_index", "rover_item_index"):
                 if column not in history_columns:
                     self.conn.execute(
                         f"ALTER TABLE character_history ADD COLUMN {column} INTEGER"
@@ -321,6 +337,28 @@ class CaptureStore:
                        VALUES(?,?,?,?,?)""",
                     (uid, name, last_seen_at, session_id, client_key),
                 )
+            for uid, last_session_id in self.conn.execute(
+                """SELECT character_uid,last_session_id FROM character_history
+                   WHERE level IS NULL AND last_session_id!=''"""
+            ).fetchall():
+                rows = self.conn.execute(
+                    """SELECT data_json FROM events
+                       WHERE session_id=? AND character_uid=?
+                       AND type IN ('world_info_prefix','update_exp')
+                       ORDER BY id DESC LIMIT 64""",
+                    (last_session_id, uid),
+                ).fetchall()
+                level = None
+                for (raw,) in rows:
+                    fields = json.loads(raw).get("fields") or {}
+                    if isinstance(fields.get("level"), int):
+                        level = fields["level"]
+                        break
+                if level is not None:
+                    self.conn.execute(
+                        "UPDATE character_history SET level=? WHERE character_uid=?",
+                        (level, uid),
+                    )
 
     def _bump_event_revision(self) -> None:
         self.conn.execute(
@@ -373,6 +411,94 @@ class CaptureStore:
             event for event in events
             if event.get("opcode") != SENSITIVE_OPCODE
         ]
+        binding_rows = self.conn.execute(
+            """SELECT client_key,character_uid,binding_source
+               FROM client_bindings WHERE session_id=?""",
+            (session_id,),
+        ).fetchall()
+        manual_bindings = {
+            client_key: uid
+            for client_key, uid, source_name in binding_rows
+            if source_name == "manual"
+        }
+        route_slots = {
+            physical: logical
+            for physical, logical in self.conn.execute(
+                """SELECT physical_client_key,logical_client_key
+                   FROM client_route_slots WHERE session_id=?""",
+                (session_id,),
+            )
+        }
+        inferred_routes: dict[str, tuple[str, str]] = {}
+        if len(manual_bindings) == 2 and len(route_slots) < 2:
+            logical_by_uid = {uid: key for key, uid in manual_bindings.items()}
+            for event in raw_events:
+                physical = _client_key(event["flow"], client_ports)
+                if not (
+                    physical
+                    and event.get("type") == "world_info_prefix"
+                    and re.match(r"^\S+:12020\s*->", event["flow"])
+                ):
+                    continue
+                uid = _character_uid(event)
+                logical = logical_by_uid.get(uid or "")
+                if logical:
+                    inferred_routes[physical] = (logical, "canonical_uid")
+
+            history_levels = {
+                key: level
+                for key, uid in manual_bindings.items()
+                for (level,) in self.conn.execute(
+                    "SELECT level FROM character_history WHERE character_uid=?",
+                    (uid,),
+                )
+                if isinstance(level, int)
+            }
+            observed_levels: dict[str, int] = {}
+            for event in raw_events:
+                physical = _client_key(event["flow"], client_ports)
+                level = _event_level(event)
+                if physical and level is not None:
+                    observed_levels[physical] = level
+            for physical, level in observed_levels.items():
+                matches = [
+                    logical
+                    for logical, known_level in history_levels.items()
+                    if known_level == level
+                ]
+                if len(matches) == 1:
+                    inferred_routes.setdefault(
+                        physical, (matches[0], "historical_level")
+                    )
+
+            combined = {
+                **route_slots,
+                **{
+                    physical: logical
+                    for physical, (logical, _evidence) in inferred_routes.items()
+                },
+            }
+            if len(set(combined.values())) != len(combined):
+                inferred_routes.clear()
+            elif len(combined) == 1:
+                physical, logical = next(iter(combined.items()))
+                if physical != logical:
+                    other_physical = (
+                        "client:b" if physical == "client:a" else "client:a"
+                    )
+                    other_logical = (
+                        "client:b" if logical == "client:a" else "client:a"
+                    )
+                    inferred_routes.setdefault(
+                        other_physical, (other_logical, "two_client_inference")
+                    )
+        logical_routes = {
+            **route_slots,
+            **{
+                physical: logical
+                for physical, (logical, _evidence) in inferred_routes.items()
+            },
+        }
         uid_routes = {
             character_uid: client_key
             for client_key, character_uid in self.conn.execute(
@@ -383,7 +509,8 @@ class CaptureStore:
         }
         reserved_routes = set(uid_routes.values())
         for event in raw_events:
-            client_key = _client_key(event["flow"], client_ports)
+            physical_key = _client_key(event["flow"], client_ports)
+            client_key = logical_routes.get(physical_key, physical_key)
             if not (
                 client_key
                 and event.get("type") == "world_info_prefix"
@@ -431,7 +558,8 @@ class CaptureStore:
         flow_uids: dict[str, set[str]] = {}
         for event in raw_events:
             clean = _sanitize(event["data"])
-            client_key = _client_key(event["flow"], client_ports)
+            physical_key = _client_key(event["flow"], client_ports)
+            client_key = logical_routes.get(physical_key, physical_key)
             canonical_identity = (
                 event.get("type") == "world_info_prefix"
                 and bool(re.match(r"^\S+:12020\s*->", event["flow"]))
@@ -482,6 +610,42 @@ class CaptureStore:
         added = 0
         rewritten = False
         with self.conn:
+            if inferred_routes:
+                self.conn.executemany(
+                    """INSERT INTO client_route_slots
+                       (session_id,physical_client_key,logical_client_key,evidence)
+                       VALUES(?,?,?,?)
+                       ON CONFLICT(session_id,physical_client_key) DO UPDATE SET
+                       logical_client_key=excluded.logical_client_key,
+                       evidence=excluded.evidence""",
+                    [
+                        (session_id, physical, logical, evidence)
+                        for physical, (logical, evidence) in inferred_routes.items()
+                    ],
+                )
+                uid_remap = {
+                    manual_bindings[physical]: manual_bindings[logical]
+                    for physical, (logical, _evidence) in inferred_routes.items()
+                    if physical in manual_bindings
+                    and logical in manual_bindings
+                    and physical != logical
+                }
+                if uid_remap:
+                    clauses = " ".join(
+                        "WHEN character_uid=? THEN ?" for _ in uid_remap
+                    )
+                    parameters = list(
+                        itertools.chain.from_iterable(uid_remap.items())
+                    )
+                    parameters.extend((session_id, *uid_remap.keys()))
+                    updated = self.conn.execute(
+                        f"""UPDATE events SET character_uid=CASE {clauses}
+                            ELSE character_uid END
+                            WHERE session_id=? AND character_uid IN
+                            ({','.join('?' for _ in uid_remap)})""",
+                        parameters,
+                    )
+                    rewritten = rewritten or bool(updated.rowcount)
             bindings = {
                 client_key: (character_uid, binding_source)
                 for client_key, character_uid, binding_source
@@ -538,8 +702,8 @@ class CaptureStore:
                         self.conn.execute(
                             """INSERT INTO character_history
                                (character_uid,character_name,last_seen_at,
-                                last_session_id,last_client_key)
-                               VALUES(?,?,?,?,?)
+                                last_session_id,last_client_key,level)
+                               VALUES(?,?,?,?,?,?)
                                ON CONFLICT(character_uid) DO UPDATE SET
                                character_name=CASE
                                    WHEN excluded.character_name!=''
@@ -547,13 +711,17 @@ class CaptureStore:
                                    ELSE character_history.character_name END,
                                last_seen_at=excluded.last_seen_at,
                                last_session_id=excluded.last_session_id,
-                               last_client_key=excluded.last_client_key""",
+                               last_client_key=excluded.last_client_key,
+                               level=COALESCE(excluded.level,character_history.level)""",
                             (
                                 uid,
                                 name,
                                 datetime.now(timezone.utc).isoformat(),
                                 session_id,
                                 client_key,
+                                fields.get("level")
+                                if isinstance(fields.get("level"), int)
+                                else None,
                             ),
                         )
                     updated = self.conn.execute(
@@ -633,7 +801,8 @@ class CaptureStore:
                    AND type!='unparsed'""",
                 (session_id,),
             ):
-                client_key = _client_key(flow, client_ports)
+                physical_key = _client_key(flow, client_ports)
+                client_key = logical_routes.get(physical_key, physical_key)
                 binding = bindings.get(client_key) if client_key else None
                 if not binding:
                     continue
@@ -700,6 +869,7 @@ class CaptureStore:
                 self.conn.execute("DELETE FROM events")
                 self.conn.execute("DELETE FROM captures")
                 self.conn.execute("DELETE FROM client_bindings")
+                self.conn.execute("DELETE FROM client_route_slots")
             else:
                 self.conn.execute(
                     "DELETE FROM events WHERE session_id=?", (session_id,)
@@ -711,6 +881,10 @@ class CaptureStore:
                     "DELETE FROM client_bindings WHERE session_id=?",
                     (session_id,),
                 )
+                self.conn.execute(
+                    "DELETE FROM client_route_slots WHERE session_id=?",
+                    (session_id,),
+                )
             self._bump_event_revision()
 
     def clear_session(self, session_id: str) -> None:
@@ -719,6 +893,7 @@ class CaptureStore:
                 "capture_windows",
                 "subsessions",
                 "client_bindings",
+                "client_route_slots",
                 "events",
                 "captures",
             ):
@@ -750,6 +925,7 @@ class CaptureStore:
                 "last_seen_at": last_seen_at,
                 "last_session_id": last_session_id,
                 "last_client_key": last_client_key,
+                "level": level,
                 "biosuit_item_index": biosuit_item_index,
                 "rover_item_index": rover_item_index,
             }
@@ -759,12 +935,13 @@ class CaptureStore:
                 last_seen_at,
                 last_session_id,
                 last_client_key,
+                level,
                 biosuit_item_index,
                 rover_item_index,
             )
             in self.conn.execute(
                 """SELECT character_uid,character_name,last_seen_at,
-                          last_session_id,last_client_key,
+                          last_session_id,last_client_key,level,
                           biosuit_item_index,rover_item_index
                    FROM character_history
                    ORDER BY last_seen_at DESC,character_name,character_uid"""
@@ -806,6 +983,10 @@ class CaptureStore:
                         "DELETE FROM client_bindings WHERE session_id=? AND client_key=?",
                         (session_id, client_key),
                     )
+                    self.conn.execute(
+                        "DELETE FROM client_route_slots WHERE session_id=?",
+                        (session_id,),
+                    )
                 return
             uid = str(character_uid).strip()
             history = self.conn.execute(
@@ -828,6 +1009,11 @@ class CaptureStore:
                 )
             if current and current[1] == "canonical":
                 return
+            if not current or current[0] != uid:
+                self.conn.execute(
+                    "DELETE FROM client_route_slots WHERE session_id=?",
+                    (session_id,),
+                )
             self.conn.execute(
                 """INSERT INTO client_bindings
                    (session_id,client_key,character_uid,character_name,binding_source)

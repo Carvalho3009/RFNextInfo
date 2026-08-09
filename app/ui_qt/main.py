@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
 
 from app.ui_qt.data import (
     CLASS_ICON_FILES,
@@ -88,6 +88,7 @@ MONITOR_SHORTCUT_OPTIONS = tuple(
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
 MOB_ICONS = ASSETS / "mob-icons"
+INSTANCE_SERVER_NAME = "Karvalho.RFNextQOL"
 
 SUBSESSION_COLUMNS = (
     ("select", "", 28, True),
@@ -419,7 +420,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         tray = QtWidgets.QSystemTrayIcon(icon, self)
         tray.setToolTip(f"RF NEXT QOL — {VERSION}")
-        menu = QtWidgets.QMenu()
+        menu = QtWidgets.QMenu(self)
+        self.tray_menu = menu
         show_action = menu.addAction("Abrir RF NEXT QOL")
         show_action.triggered.connect(self._show_from_tray)
         menu.addSeparator()
@@ -433,13 +435,16 @@ class MainWindow(QtWidgets.QMainWindow):
         exit_action = menu.addAction("Sair")
         exit_action.triggered.connect(self._exit_application)
         tray.setContextMenu(menu)
-        tray.activated.connect(
-            lambda reason: self._show_from_tray()
-            if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick
-            else None
-        )
+        tray.activated.connect(self._tray_activated)
         tray.show()
         return tray
+
+    def _tray_activated(self, reason: QtWidgets.QSystemTrayIcon.ActivationReason) -> None:
+        if reason in {
+            QtWidgets.QSystemTrayIcon.ActivationReason.Trigger,
+            QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick,
+        }:
+            self._show_from_tray()
 
     def _show_from_tray(self) -> None:
         self.showNormal()
@@ -1716,6 +1721,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 engine.stop()
             except Exception:
                 self.log.exception("capture_stop_on_close_failed")
+        if self._tray and hasattr(self._tray, "hide"):
+            self._tray.hide()
+            if hasattr(self._tray, "setContextMenu"):
+                self._tray.setContextMenu(None)
         self.log.info("app_closed")
         super().closeEvent(event)
 
@@ -2666,6 +2675,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_table.resizeColumnToContents(column)
 
     def _subsession_selection_changed(self, _item: QtWidgets.QTableWidgetItem | None = None) -> None:
+        self.selected_subsessions.intersection_update(
+            str(item.get("id"))
+            for item in self.snapshot.get("subsessions") or []
+            if item.get("id")
+        )
         visible_ids = {
             str(self.subsession_table.item(row, 0).data(QtCore.Qt.ItemDataRole.UserRole))
             for row in range(self.subsession_table.rowCount())
@@ -3796,7 +3810,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.boss_overlay.close()
                 self.boss_overlay = None
             return
-        overlay = QtWidgets.QDialog(self)
+        overlay = _MovableOverlay(self)
         overlay.setWindowTitle("RF NEXT QOL · Boss")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
@@ -3807,7 +3821,11 @@ class MainWindow(QtWidgets.QMainWindow):
         overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         overlay.setObjectName("monitorOverlay")
         overlay.setStyleSheet("QDialog#monitorOverlay { background: transparent; }")
+        overlay.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+        overlay.setToolTip("Arraste com o botão esquerdo para mover.")
+        overlay.position_changed.connect(self._save_boss_overlay_position)
         layout = QtWidgets.QVBoxLayout(overlay)
+        layout.setContentsMargins(12, 10, 12, 10)
         self.boss_overlay_name = _label("Aguardando boss próximo", "subtitle")
         self.boss_overlay_hp = _label("HP —", "data")
         self.boss_overlay_progress = QtWidgets.QProgressBar()
@@ -3819,8 +3837,12 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.boss_overlay_progress)
         layout.addWidget(self.boss_overlay_rate)
         overlay.resize(430, 150)
-        overlay.show()
+        self._restore_overlay_position(overlay, "boss_overlay_position")
         self.boss_overlay = overlay
+        overlay.show()
+        self._update_boss_overlay(
+            list(self.snapshot.get("combat_monitors") or [])
+        )
 
     def _toggle_pvp_overlay(self, enabled: bool) -> None:
         if not enabled:
@@ -3849,7 +3871,17 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.pvp_overlay_summary)
         layout.addLayout(self.pvp_overlay_rows)
         overlay.resize(410, 180)
-        position = self.preferences.get("pvp_overlay_position")
+        self._restore_overlay_position(overlay, "pvp_overlay_position")
+        self.pvp_overlay = overlay
+        overlay.show()
+        self._update_pvp_overlay(
+            list(self.snapshot.get("combat_monitors") or [])
+        )
+
+    def _restore_overlay_position(
+        self, overlay: QtWidgets.QDialog, preference_key: str
+    ) -> None:
+        position = self.preferences.get(preference_key)
         if isinstance(position, (list, tuple)) and len(position) == 2:
             try:
                 point = QtCore.QPoint(int(position[0]), int(position[1]))
@@ -3867,18 +3899,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay.move(point)
             except (TypeError, ValueError):
                 pass
-        overlay.show()
-        self.pvp_overlay = overlay
-        self._update_pvp_overlay(
-            list(self.snapshot.get("combat_monitors") or [])
+
+    def _save_overlay_position(
+        self, preference_key: str, position: QtCore.QPoint
+    ) -> None:
+        self.preferences = save_preferences(
+            {preference_key: [position.x(), position.y()]},
+            self.preferences_path,
         )
 
     @QtCore.Slot(QtCore.QPoint)
     def _save_pvp_overlay_position(self, position: QtCore.QPoint) -> None:
-        self.preferences = save_preferences(
-            {"pvp_overlay_position": [position.x(), position.y()]},
-            self.preferences_path,
-        )
+        self._save_overlay_position("pvp_overlay_position", position)
+
+    @QtCore.Slot(QtCore.QPoint)
+    def _save_boss_overlay_position(self, position: QtCore.QPoint) -> None:
+        self._save_overlay_position("boss_overlay_position", position)
 
     def _set_capture_controls(self) -> None:
         engine = self.capture_engine
@@ -4571,7 +4607,8 @@ class MainWindow(QtWidgets.QMainWindow):
             item = self.pvp_overlay_rows.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        enemies: dict[str, dict[str, Any]] = {}
+        players: dict[str, dict[str, Any]] = {}
+        hostile_ids: set[str] = set()
         for monitor in monitors:
             target = dict(monitor.get("pvp") or {})
             if target and not target.get("stale"):
@@ -4582,13 +4619,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     or ""
                 )
                 if identity:
-                    enemies[identity] = target
+                    players[identity] = target
+                    hostile_ids.add(identity)
             local_realm = (monitor.get("local") or {}).get("realm")
-            if local_realm is None:
-                continue
             for player in list(monitor.get("nearby_players") or []):
-                if player.get("realm") is None or player.get("realm") == local_realm:
-                    continue
                 identity = str(
                     player.get("character_uid")
                     or player.get("uid")
@@ -4596,20 +4630,27 @@ class MainWindow(QtWidgets.QMainWindow):
                     or ""
                 )
                 if identity:
-                    enemies.setdefault(identity, player)
-        enemy_rows = list(enemies.values())
+                    players.setdefault(identity, player)
+                    if (
+                        local_realm is not None
+                        and player.get("realm") is not None
+                        and player.get("realm") != local_realm
+                    ):
+                        hostile_ids.add(identity)
+        player_rows = list(players.items())
         self.pvp_overlay_summary.setText(
-            f"Hostis próximos: {len(enemy_rows)}"
-            if enemy_rows
-            else "Nenhum jogador hostil confirmado"
+            f"Jogadores próximos: {len(player_rows)} · Hostis confirmados: {len(hostile_ids)}"
+            if player_rows
+            else "Nenhum jogador próximo confirmado"
         )
-        for player in enemy_rows[:8]:
+        for identity, player in player_rows[:8]:
             row = QtWidgets.QFrame(objectName="secondaryMetricGroup")
             layout = QtWidgets.QHBoxLayout(row)
             layout.setContentsMargins(8, 5, 8, 5)
             name = str(player.get("name") or "Jogador confirmado")
             level = f" · Nv. {player['level']}" if player.get("level") else ""
-            layout.addWidget(_label(f"{name}{level}", "subtitle"), 1)
+            status = " · Hostil" if identity in hostile_ids else " · Próximo"
+            layout.addWidget(_label(f"{name}{level}{status}", "subtitle"), 1)
             percent = player.get("hp_percent")
             layout.addWidget(
                 _label(
@@ -5094,12 +5135,68 @@ def create_application(argv: list[str] | None = None) -> QtWidgets.QApplication:
     return app
 
 
+def _notify_running_instance(name: str = INSTANCE_SERVER_NAME) -> bool:
+    socket = QtNetwork.QLocalSocket()
+    socket.connectToServer(name, QtCore.QIODevice.OpenModeFlag.WriteOnly)
+    if not socket.waitForConnected(350):
+        return False
+    socket.write(b"show\n")
+    socket.waitForBytesWritten(350)
+    socket.disconnectFromServer()
+    return True
+
+
+def _claim_instance_server(
+    app: QtWidgets.QApplication,
+    name: str = INSTANCE_SERVER_NAME,
+) -> QtNetwork.QLocalServer | None:
+    lock_root = QtCore.QStandardPaths.writableLocation(
+        QtCore.QStandardPaths.StandardLocation.TempLocation
+    )
+    lock = QtCore.QLockFile(str(Path(lock_root) / f"{name}.lock"))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        _notify_running_instance(name)
+        return None
+    server = QtNetwork.QLocalServer(app)
+    QtNetwork.QLocalServer.removeServer(name)
+    if not server.listen(name):
+        lock.unlock()
+        raise RuntimeError("Não foi possível reservar a instância única do RF NEXT QOL.")
+    app._rfnext_instance_lock = lock
+    return server
+
+
+def _activate_from_instance_request(
+    server: QtNetwork.QLocalServer,
+    window: MainWindow,
+) -> None:
+    requested = False
+    while server.hasPendingConnections():
+        connection = server.nextPendingConnection()
+        if connection:
+            connection.waitForReadyRead(50)
+            requested = requested or bytes(connection.readAll()).strip() == b"show"
+            connection.disconnectFromServer()
+            connection.deleteLater()
+    if requested:
+        window._show_from_tray()
+
+
 def main() -> int:
     self_test = "--self-test" in sys.argv
     if self_test:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = create_application(sys.argv)
+    instance_server = None if self_test else _claim_instance_server(app)
+    if not self_test and instance_server is None:
+        return 0
     window = MainWindow(load_data=not self_test)
+    if instance_server is not None:
+        instance_server.newConnection.connect(
+            lambda: _activate_from_instance_request(instance_server, window)
+        )
+        app._rfnext_instance_server = instance_server
     window.show()
     app.processEvents()
     if self_test:

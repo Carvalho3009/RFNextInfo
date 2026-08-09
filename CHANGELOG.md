@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.11 — beta
+
+- impede que várias instâncias do programa sejam abertas ao mesmo tempo e restaura a janela já existente;
+- mantém no ícone da bandeja as ações de abrir e sair e remove o ícone ao encerrar, evitando ícones duplicados ou sem menu;
+- corrige a inversão de experiência, contribuição e demais eventos entre os Clientes A e B usando UID confirmado e nível histórico para preservar a rota física correta;
+- remove da seleção subsessões que já foram excluídas, evitando o aviso falso de uma subsessão marcada.
+
 ## 3.0.10 — beta
 
 - permite arrastar o overlay PvP e preserva sua posição entre aberturas;
