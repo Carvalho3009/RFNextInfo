@@ -54,7 +54,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "3.0.8"
+VERSION = "3.0.9"
 MACHINE_STATE_DIR = STATE_DIR
 ASSETS = ROOT / "assets"
 WM_HOTKEY = 0x0312

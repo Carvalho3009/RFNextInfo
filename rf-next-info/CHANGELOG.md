@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.9 — beta
+
+- lê o alvo selecionado diretamente dos pedidos `0x0609` e `0x0601` do cliente;
+- mantém o alvo PvE/PvP funcional mesmo quando o personagem local não aparece em `0x0305`;
+- diferencia outra captura já ativa de uma interrupção real ao iniciar;
+- registra no log o tipo e a mensagem completos das falhas de captura.
+
 ## 3.0.8 — beta
 
 - separa os monitores PvE e PvP em abas dos Clientes A e B, com ativação independente;

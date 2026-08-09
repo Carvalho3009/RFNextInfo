@@ -28,6 +28,7 @@ def summarize_combat(
     target_damage: dict[int, dict[int, list[tuple[int, int]]]] = {}
     last_pve: tuple[int, int] | None = None
     last_pvp: tuple[int, int, str] | None = None
+    selected_target: tuple[int, int] | None = None
     for event in ordered:
         data = event.get("data") or {}
         timestamp = int(event.get("ts_ns") or 0)
@@ -64,6 +65,15 @@ def summarize_combat(
                 entity["dead"] = True
                 entity["last_seen_ns"] = timestamp
                 _record_hp(hp_history, uid, timestamp, 0)
+        elif kind in {"select_target_request", "use_skill_request"}:
+            target_uid = _integer(data.get("target_uid"))
+            if target_uid is not None:
+                selected_target = (timestamp, target_uid)
+                entity = players.get(target_uid) or monsters.get(target_uid)
+                if entity:
+                    entity["last_seen_ns"] = max(
+                        int(entity.get("last_seen_ns") or 0), timestamp
+                    )
         elif kind in {"use_skill_result", "use_normal_skill_result"}:
             if data.get("ret") not in (None, 0):
                 continue
@@ -219,6 +229,14 @@ def summarize_combat(
         guild = str(player.get("guild_name") or player.get("guild_id") or "").strip()
         if guild:
             by_guild[guild] = by_guild.get(guild, 0) + 1
+    if selected_target:
+        selected_at, selected_uid = selected_target
+        if selected_uid in monsters:
+            last_pve = (selected_at, selected_uid)
+            last_pvp = None
+        elif selected_uid in players:
+            last_pvp = (selected_at, selected_uid, "selecionado")
+            last_pve = None
     return {
         "local_combat_uid": local_uid,
         "local": local,

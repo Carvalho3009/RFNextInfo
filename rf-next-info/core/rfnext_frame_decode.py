@@ -29,6 +29,8 @@ USE_SKILL_PREFIX = struct.Struct("<HBIIIBffffffIfffqIIH")
 SKILL_EFFECT_RESULT = struct.Struct("<IffffffBqqqIIBI")
 NORMAL_SKILL_PREFIX = struct.Struct("<HBIfffIIIBqH")
 NORMAL_SKILL_EFFECT_RESULT = struct.Struct("<IfffBqqqBI")
+USE_SKILL_REQUEST = struct.Struct("<III")
+SELECT_TARGET_REQUEST = struct.Struct("<I")
 ACTION_CODES = {
     960: "ACTION_CODE_KILLED_NPC",
     1000: "ACTION_CODE_FIELDDROP",
@@ -1445,6 +1447,24 @@ def parse_nmssw_payload(decoded: bytes) -> dict[str, Any] | None:
 def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
     opcode = int.from_bytes(decoded[4:6], "little")
     payload = decoded[HEADER_SIZE:]
+    if opcode == 0x0601 and len(payload) == USE_SKILL_REQUEST.size:
+        skill_index, request_sequence_raw, target_uid = USE_SKILL_REQUEST.unpack(payload)
+        return {
+            "type": "use_skill_request",
+            "direction": "client_to_game",
+            "confidence": "alto-layout-exato+correlacao-0609-0602",
+            "skill_index": skill_index,
+            "request_sequence_raw": request_sequence_raw,
+            "target_uid": target_uid,
+        }
+    if opcode == 0x0609 and len(payload) == SELECT_TARGET_REQUEST.size:
+        (target_uid,) = SELECT_TARGET_REQUEST.unpack(payload)
+        return {
+            "type": "select_target_request",
+            "direction": "client_to_game",
+            "confidence": "alto-layout-exato+correlacao-0601",
+            "target_uid": target_uid,
+        }
     if opcode == 0x0305 and len(payload) >= 2:
         count = struct.unpack_from("<H", payload)[0]
         cursor = 2

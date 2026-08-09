@@ -2,7 +2,7 @@ Unicode True
 RequestExecutionLevel admin
 Name "RF NEXT QOL"
 !ifndef APP_VERSION
-!define APP_VERSION "3.0.8"
+!define APP_VERSION "3.0.9"
 !endif
 !ifndef APP_SOURCE
 !define APP_SOURCE "..\dist\RFNextInfo"

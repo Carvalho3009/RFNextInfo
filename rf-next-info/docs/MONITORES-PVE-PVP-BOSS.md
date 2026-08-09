@@ -19,7 +19,12 @@ captura.
   `guild_id` do registro de unidade.
 - `0x0311`: atualização de HP/FP.
 - `0x0316`: unidade morta.
-- `0x0602` e `0x0603`: resultado de habilidade, dano e HP final.
+- `0x0602` e `0x060D`: resultado de habilidade/ataque, dano e HP final.
+- `0x0609`: seleção de alvo enviada pelo cliente. O UID de 4 bytes coincidiu
+  com o alvo principal dos pedidos/resultados seguintes em 100% dos 90 eventos
+  correlacionados na captura real usada para esta correção.
+- `0x0601`: pedido de habilidade enviado pelo cliente; o terceiro campo de
+  32 bits confirmou o mesmo UID de alvo em 100% dos 52 eventos correlacionados.
 - `0x0C07`: sincronismo de HP de world boss; layout estrutural conhecido.
 - `0x0C08`: contribuição pessoal de world boss; layout estrutural conhecido.
 - `0x0C05` e `0x0C0A`: listas de resultado/top players, com registros de 33

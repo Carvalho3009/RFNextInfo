@@ -3844,7 +3844,12 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 self.capture_operation_done.emit(name, callback(), None)
             except Exception as error:
-                self.log.exception("capture_operation_failed name=%s", name)
+                self.log.exception(
+                    "capture_operation_failed name=%s error_type=%s detail=%s",
+                    name,
+                    type(error).__name__,
+                    error,
+                )
                 self.capture_operation_done.emit(name, None, error)
             finally:
                 self.log.debug(
@@ -3988,7 +3993,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     if enabled:
                         self._disable_monitor_mode(mode)
                 return
-            self.top_capture.setText(f"Captura — falha: {error}")
+            detail = str(error)
+            if name == "start" and "Outra captura PktMon" in detail:
+                self.top_capture.setText("Captura — outra sessão já está ativa")
+                self.top_capture.setToolTip(detail)
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Captura já ativa",
+                    "Já existe outra instância do RF NEXT QOL capturando. "
+                    "Encerre essa sessão pelo programa que já está aberto e tente novamente.",
+                )
+            else:
+                self.top_capture.setText(f"Captura — falha: {error}")
+                self.top_capture.setToolTip(detail)
             if name in {"read", "preview"}:
                 if name == "preview":
                     now_mono = time.monotonic()

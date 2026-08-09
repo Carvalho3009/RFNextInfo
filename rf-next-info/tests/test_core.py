@@ -26,7 +26,7 @@ from core.combat_monitor import summarize_combat
 from core.ingest import _decode_stream_resync, _pcapng_to_pcap, _safe_parse
 from core.live_stream import LiveEventDecoder
 from core.knowledge import KnowledgeStore
-from core.rfnext_frame_decode import pcap_tcp_streams
+from core.rfnext_frame_decode import parse_observation_payload, pcap_tcp_streams
 from core.store import CaptureStore
 
 
@@ -250,6 +250,45 @@ class CoreTest(unittest.TestCase):
             [(item["npc_index"], item["name"]) for item in result["nearby_monsters"]],
             [(100, "Alvo definido")],
         )
+
+    def test_target_request_drives_monitor_without_local_appearance(self):
+        events = [
+            {
+                "ts_ns": 1_000_000_000,
+                "type": "appear_monster_list",
+                "data": {"units": [
+                    {"uid": 30, "npc_index": 100, "max_hp": 1000, "current_hp": 900},
+                ]},
+            },
+            {
+                "ts_ns": 2_000_000_000,
+                "type": "select_target_request",
+                "data": {"target_uid": 30},
+            },
+        ]
+
+        result = summarize_combat(
+            events, "111", {100: "Alvo selecionado"}, now_ns=3_000_000_000
+        )
+
+        self.assertIsNone(result["local_combat_uid"])
+        self.assertEqual(result["pve"]["uid"], 30)
+        self.assertEqual(result["pve"]["name"], "Alvo selecionado")
+
+    def test_observation_decoder_reads_outgoing_target_requests(self):
+        target_frame = bytearray(10)
+        target_frame[4:6] = (0x0609).to_bytes(2, "little")
+        target_frame[6:] = struct.pack("<I", 0x34031FBA)
+        target = parse_observation_payload(bytes(target_frame))
+        self.assertEqual(target["type"], "select_target_request")
+        self.assertEqual(target["target_uid"], 0x34031FBA)
+
+        skill_frame = bytearray(18)
+        skill_frame[4:6] = (0x0601).to_bytes(2, "little")
+        skill_frame[6:] = struct.pack("<III", 1_080_024, 629, 0x34031FBA)
+        skill = parse_observation_payload(bytes(skill_frame))
+        self.assertEqual(skill["type"], "use_skill_request")
+        self.assertEqual(skill["target_uid"], 0x34031FBA)
 
     def test_combat_monitor_reclassifies_reused_combat_uid(self):
         events = [

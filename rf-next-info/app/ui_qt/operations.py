@@ -875,7 +875,8 @@ class CaptureEngine:
             capture = self.capture_factory(self.capture_directory)
             if capture.system_running():
                 raise RuntimeError(
-                    "Outra captura PktMon está ativa; encerre a versão estável ou aguarde o heartbeat"
+                    "Outra captura PktMon já está ativa em outra sessão do RF NEXT QOL. "
+                    "Encerre-a pelo programa que já está aberto antes de iniciar uma nova captura."
                 )
             capture.start_for_ports(prefix, ports)
             self.capture = capture
