@@ -92,6 +92,11 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 - Após pinar `lease-2026-01`, a regressão CPython 3.13/Qt passou com 191
   testes, nenhum ignorado, em 88,464 s. O teste adicional confirma que o gate
   de lease está aberto e o gate independente de update permanece fechado.
+- Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
+  direta na conversa `45` falharam antes da inferência porque a sessão OAuth
+  do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
+  resultado registrado como `sem resultado`, sem substituir por outro modelo
+  e sem alterar ou promover a chave. Custo da assinatura: `unknown`.
 - Integração real em staging: o verificador do cliente recebeu a pública de
   staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
   e rejeitou instalação divergente e lease revogada.
