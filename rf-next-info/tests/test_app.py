@@ -17,7 +17,12 @@ from unittest.mock import Mock, patch
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from app.license import LicenseClient, _activation_error, verify_lease
+from app.license import (
+    LicenseClient,
+    _activation_error,
+    validate_release_configuration as validate_license_release,
+    verify_lease,
+)
 from app.main import (
     App,
     FARM_CATALOG,
@@ -58,6 +63,9 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_production_lease_public_key_is_configured(self):
+        validate_license_release()
+
     def test_public_lease_v2_vector(self):
         fixture = json.loads(
             (Path(__file__).parent / "fixtures" / "lease-v2-valid.json").read_text(

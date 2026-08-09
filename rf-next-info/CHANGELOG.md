@@ -17,6 +17,8 @@
 - fecha dependências e adiciona lock de wheels com SHA-256 para Windows x64/Python 3.13;
 - registra a decisão de distribuir executável e instalador sem Authenticode;
 - mantém publicação bloqueada até chaves Ed25519 de produção e testes reais.
+- fixa a pública definitiva de lease `lease-2026-01`; a privada continua fora
+  do repositório e a chave offline de update ainda bloqueia a release.
 - adiciona vetor público, contrato do emissor, cerimônia de chaves e runbook de release.
 
 ## 3.0.11 — beta

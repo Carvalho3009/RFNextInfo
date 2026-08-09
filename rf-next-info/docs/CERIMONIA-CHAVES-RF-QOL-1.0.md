@@ -1,6 +1,7 @@
 # Cerimônia de chaves — RF QOL 1.0
 
-Estado: procedimento preparado; chaves de produção ainda não geradas
+Estado: chave de lease gerada e validada; revisão independente, backup e
+promoção pendentes; chave de update ainda não gerada
 Escopo: lease Ed25519 e update Ed25519
 
 ## Separação de papéis
@@ -59,7 +60,28 @@ update pinada no programa, manifesto/procedência assinados, tamanho e SHA-256.
 
 ## Gates automáticos existentes
 
-`app.license.validate_release_configuration()` e
-`app.updater.validate_release_configuration()` impedem build de release
-enquanto chaves `-pending` estiverem presentes. O fluxo local nunca gerou nem
-guardou as privadas correspondentes às públicas placeholder.
+`app.license.validate_release_configuration()` confirma a pública definitiva
+de lease. `app.updater.validate_release_configuration()` continua impedindo o
+build de release enquanto `update-production-pending` estiver presente. O
+fluxo local nunca gerou nem guardou a privada correspondente à pública
+placeholder de update.
+
+## Registro parcial — lease-2026-01
+
+- geração autorizada pelo owner em 09 ago 2026;
+- algoritmo: Ed25519 por CSPRNG do sistema via `cryptography 46.0.7`;
+- pública base64url pinada no cliente;
+- SHA-256 da pública:
+  `e16848fbb9d53036651dc5cdfed20d47cc29cd10240ec1317434c5b66a40dc42`;
+- autoteste de assinatura e verificação: aprovado;
+- ensaio Docker efêmero 8789: licença Base+Boss aceita pelo cliente com a
+  pública pinada, PvP negado e licença descartável revogada;
+- privada sob ACL restrita ao operador, Administradores e SYSTEM;
+- não instalada no emissor de produção;
+- revisão por testemunha diferente do operador e cópia de recuperação segura:
+  pendentes;
+- chave `update-2026-01`: não gerada; deve usar ambiente offline separado.
+
+O registro local sanitizado está fora dos repositórios em
+`K:\MCP\_ceremony\rf-qol-1.0\lease-2026-01\ceremony-evidence.json`.
+Ele não contém a privada.

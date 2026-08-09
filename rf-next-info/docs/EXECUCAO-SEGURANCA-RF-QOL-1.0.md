@@ -53,6 +53,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Marca | Owner decidiu manter logo e identidade visual Karvalho; assets existentes foram restaurados sem alterar o nome RF QOL. | Concluído local |
 | 09 ago 2026 | Segurança | Owner decidiu não usar certificado Authenticode. Verificador, build e gates passaram a exigir manifesto/procedência Ed25519, tamanho e SHA-256, registrando `authenticode=false`. | Concluído local |
 | 09 ago 2026 | Licença | Permissões `base`, `monitor-pve`, `monitor-pvp` e `monitor-boss` foram adicionadas à lease assinada e ao painel do emissor. PvE/PvP ficam visíveis e bloqueados sem módulo; Boss fica invisível. Gates cobrem atalhos, overlays e motor compartilhado. | Concluído local |
+| 09 ago 2026 | Chaves | Par definitivo de lease `lease-2026-01` gerado sob ACL restrita, pública pinada no cliente e autoteste aprovado. Privada não promovida à produção; testemunha e backup de recuperação continuam pendentes. Chave de update não foi gerada neste computador online. | Parcial seguro |
+| 09 ago 2026 | Chaves | Emissor Docker efêmero 8789 assinou Base+Boss com `lease-2026-01`; cliente com a pública definitiva aceitou Boss, negou PvP e a licença de ensaio foi revogada. Contêiner efêmero removido; 8787/8788 permaneceram saudáveis. | Concluído staging |
 
 ## Evidências e comandos de validação
 
@@ -87,6 +89,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 - Homologação 8788 confirmou licença `base+monitor-pvp`, introspecção dos
   módulos, mudança para `base+monitor-boss` na renovação e revogação final da
   licença descartável. Produção 8787 permaneceu saudável e não foi alterada.
+- Após pinar `lease-2026-01`, a regressão CPython 3.13/Qt passou com 191
+  testes, nenhum ignorado, em 88,464 s. O teste adicional confirma que o gate
+  de lease está aberto e o gate independente de update permanece fechado.
 - Integração real em staging: o verificador do cliente recebeu a pública de
   staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
   e rejeitou instalação divergente e lease revogada.
@@ -120,7 +125,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 ## Pendências externas reais
 
-1. cerimônia das chaves de produção;
+1. revisão independente e backup da chave de lease; cerimônia offline da chave de update;
 2. RC anterior coberta por manifesto Ed25519 para implementar/testar rollback seguro;
 3. Windows 10/11 limpos, licença real e teste com até dois clientes;
 4. G4 do owner para qualquer publicação ou produção.

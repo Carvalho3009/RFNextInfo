@@ -24,10 +24,10 @@ CLOCK_SKEW = timedelta(minutes=5)
 FEATURE_ORDER = ("base", "monitor-pve", "monitor-pvp", "monitor-boss")
 FEATURE_SET = frozenset(FEATURE_ORDER)
 
-# Chave pública sem material privado correspondente, usada para manter builds
-# de desenvolvimento fechados até a cerimônia das chaves de produção.
+# Pública definitiva de lease; a privada correspondente permanece fora do
+# repositório e do cliente, sob custódia exclusiva do emissor.
 LEASE_PUBLIC_KEYS = {
-    "lease-production-pending": "jnT3G4gf029nyovdOhYiym2p_Pt_NH0fd3AGDilJrRE",
+    "lease-2026-01": "xZgKtYVUkbKkisEe8qwvFKD72FVsu8sXN3KVC5EGeJ8",
 }
 
 
