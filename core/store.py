@@ -1445,6 +1445,8 @@ class CaptureStore:
             "appear_monster_list",
             "restore_hp_fp",
             "dying_unit",
+            "select_target_request",
+            "use_skill_request",
             "use_skill_result",
             "use_normal_skill_result",
         )

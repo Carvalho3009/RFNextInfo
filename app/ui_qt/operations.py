@@ -35,6 +35,16 @@ from core.store import CaptureStore
 LOG = logging.getLogger("rfnextinfo")
 LOG.addHandler(logging.NullHandler())
 
+DEFAULT_GLOBAL_SHORTCUTS = {
+    "character": "F1",
+    "market": "F2",
+    "codex": "F3",
+    "memory_chips": "F4",
+    "monitor_pve": "Ctrl+F5",
+    "monitor_pvp": "Ctrl+F6",
+    "monitor_boss": "Ctrl+F7",
+}
+
 
 def _site_loot_rows(raw: object) -> list[dict[str, object]]:
     """Normaliza o loot para o contrato numérico aceito pelo site."""
@@ -542,31 +552,48 @@ class GlobalHotkeys:
     def start(self, shortcuts: dict[str, str] | None = None) -> None:
         if os.name != "nt" or (self.thread and self.thread.is_alive()):
             return
-        self.shortcuts = dict(shortcuts or {
-            "character": "F1",
-            "market": "F2",
-            "codex": "F3",
-            "memory_chips": "F4",
-        })
+        self.shortcuts = dict(DEFAULT_GLOBAL_SHORTCUTS)
+        self.shortcuts.update(shortcuts or {})
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
 
     @staticmethod
+    def parse_shortcut(shortcut: str) -> tuple[int, int] | None:
+        parts = str(shortcut).upper().split("+")
+        match = re.fullmatch(r"F([1-9]|1[0-2])", parts[-1])
+        modifier_codes = {
+            "ALT": 0x0001,
+            "CTRL": 0x0002,
+            "SHIFT": 0x0004,
+            "WIN": 0x0008,
+        }
+        modifiers = 0x4000
+        seen: set[str] = set()
+        if not match:
+            return None
+        for modifier in parts[:-1]:
+            if modifier not in modifier_codes or modifier in seen:
+                return None
+            seen.add(modifier)
+            modifiers |= modifier_codes[modifier]
+        return 0x6F + int(match.group(1)), modifiers
+
+    @staticmethod
     def definitions(shortcuts: dict[str, str]) -> list[tuple[int, str, int, int]]:
+        configured = dict(DEFAULT_GLOBAL_SHORTCUTS)
+        configured.update(shortcuts)
         definitions = [
             (0x525101, "start", 0x77, 0x0002 | 0x4000),
             (0x525102, "stop", 0x78, 0x0002 | 0x4000),
-            (0x525103, "monitor_pve", 0x74, 0x0002 | 0x4000),
-            (0x525104, "monitor_pvp", 0x75, 0x0002 | 0x4000),
-            (0x525105, "monitor_boss", 0x76, 0x0002 | 0x4000),
             (0x525106, "overlay_pvp", 0x75, 0x0002 | 0x0004 | 0x4000),
             (0x525107, "overlay_boss", 0x76, 0x0002 | 0x0004 | 0x4000),
         ]
-        for offset, (action, shortcut) in enumerate(shortcuts.items(), 10):
-            match = re.fullmatch(r"F([1-9]|1[0-2])", shortcut.upper())
-            if match:
+        for offset, (action, shortcut) in enumerate(configured.items(), 10):
+            parsed = GlobalHotkeys.parse_shortcut(shortcut)
+            if parsed:
+                key, modifiers = parsed
                 definitions.append(
-                    (0x525100 + offset, action, 0x6F + int(match.group(1)), 0x4000)
+                    (0x525100 + offset, action, key, modifiers)
                 )
         return definitions
 
@@ -848,7 +875,8 @@ class CaptureEngine:
             capture = self.capture_factory(self.capture_directory)
             if capture.system_running():
                 raise RuntimeError(
-                    "Outra captura PktMon está ativa; encerre a versão estável ou aguarde o heartbeat"
+                    "Outra captura PktMon já está ativa em outra sessão do RF NEXT QOL. "
+                    "Encerre-a pelo programa que já está aberto antes de iniciar uma nova captura."
                 )
             capture.start_for_ports(prefix, ports)
             self.capture = capture

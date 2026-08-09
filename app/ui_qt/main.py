@@ -4,10 +4,10 @@ import os
 import sys
 import ctypes
 import math
-import shutil
 import subprocess
 import threading
 import time
+from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -53,9 +53,10 @@ from app.support_log import (
     recent_lines,
     set_detailed,
 )
-from app.updater import download_verified, latest
+from app.updater import create_rollback, download_verified, latest
 from app.ui_qt.operations import (
     CaptureEngine,
+    DEFAULT_GLOBAL_SHORTCUTS,
     ExportEngine,
     GlobalHotkeys,
     MonitorEngine,
@@ -77,6 +78,12 @@ PAGES = (
     ("Tutorial", "Primeiros passos e atalhos."),
 )
 MONITOR_PAGES = {2: "pve", 3: "pvp", 4: "boss"}
+MONITOR_SHORTCUT_OPTIONS = tuple(
+    f"{modifier}+F{number}"
+    for modifier in ("Ctrl", "Alt", "Shift")
+    for number in range(1, 13)
+    if not (modifier == "Ctrl" and number in {8, 9})
+)
 
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
@@ -135,8 +142,17 @@ def _process_memory_bytes() -> int | None:
         return None
     counters = _ProcessMemoryCounters()
     counters.cb = ctypes.sizeof(counters)
-    success = ctypes.windll.psapi.GetProcessMemoryInfo(
-        ctypes.windll.kernel32.GetCurrentProcess(),
+    kernel32 = ctypes.windll.kernel32
+    psapi = ctypes.windll.psapi
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi.GetProcessMemoryInfo.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_ProcessMemoryCounters),
+        wintypes.DWORD,
+    )
+    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+    success = psapi.GetProcessMemoryInfo(
+        kernel32.GetCurrentProcess(),
         ctypes.byref(counters),
         counters.cb,
     )
@@ -192,6 +208,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.capture_engine: CaptureEngine | None = None
         self.monitor_engine: MonitorEngine | None = None
         self.monitor_enabled = {"pve": False, "pvp": False, "boss": False}
+        self.monitor_client_enabled = {
+            "pve": [False, False],
+            "pvp": [False, False],
+        }
         self.monitor_next_due = {"pve": 0.0, "pvp": 0.0, "boss": 0.0}
         self.monitor_controls: dict[str, dict[str, Any]] = {}
         self.boss_overlay: QtWidgets.QDialog | None = None
@@ -339,14 +359,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.removeWidget(card)
             for row in range(3):
                 layout.setRowStretch(row, 0)
-            if expanded:
-                for index, card in enumerate(cards):
+            visible_cards = [card for card in cards if not card.isHidden()]
+            if len(visible_cards) == 1:
+                layout.addWidget(visible_cards[0], 0, 0, 1, 2)
+                layout.setRowStretch(1, 1)
+                layout.setColumnStretch(0, 1)
+                layout.setColumnStretch(1, 0)
+            elif expanded:
+                for index, card in enumerate(visible_cards):
                     layout.addWidget(card, 0, index)
                 layout.setRowStretch(1, 1)
                 layout.setColumnStretch(0, 1)
                 layout.setColumnStretch(1, 1)
             else:
-                for index, card in enumerate(cards):
+                for index, card in enumerate(visible_cards):
                     layout.addWidget(card, index, 0, 1, 2)
                 layout.setRowStretch(2, 1)
                 layout.setColumnStretch(0, 1)
@@ -580,13 +606,19 @@ class MainWindow(QtWidgets.QMainWindow):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(12)
         column.addWidget(_label(title, "title"))
+        client_tabs = None
+        if mode in {"pve", "pvp"}:
+            client_tabs = QtWidgets.QTabBar()
+            client_tabs.setExpanding(False)
+            client_tabs.addTab("Cliente A")
+            client_tabs.addTab("Cliente B")
+            column.addWidget(client_tabs)
         controls = QtWidgets.QHBoxLayout()
-        monitor_shortcut = {
-            "pve": "Ctrl+F5",
-            "pvp": "Ctrl+F6",
-            "boss": "Ctrl+F7",
-        }[mode]
-        enabled = QtWidgets.QPushButton(f"Ligar monitor  {monitor_shortcut}")
+        monitor_shortcut = DEFAULT_GLOBAL_SHORTCUTS[f"monitor_{mode}"]
+        client_suffix = " Cliente A" if client_tabs is not None else ""
+        enabled = QtWidgets.QPushButton(
+            f"Ligar monitor{client_suffix}  {monitor_shortcut}"
+        )
         enabled.setCheckable(True)
         enabled.toggled.connect(
             lambda checked, selected=mode: self._toggle_monitor(selected, checked)
@@ -617,7 +649,14 @@ class MainWindow(QtWidgets.QMainWindow):
             "interval": interval,
             "overlay": overlay,
             "shortcut": monitor_shortcut,
+            "tabs": client_tabs,
         }
+        if client_tabs is not None:
+            client_tabs.currentChanged.connect(
+                lambda index, selected=mode: self._monitor_client_changed(
+                    selected, index
+                )
+            )
         description = _label(
             (
                 "Stream efêmero em memória. Nenhum arquivo bruto é criado quando "
@@ -706,6 +745,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.addLayout(stats)
             layout.addWidget(status)
             content_layout.addWidget(card, index, 0, 1, 2)
+            if client_tabs is not None and index:
+                card.hide()
             cards.append(card)
             widgets.append(
                 {
@@ -720,11 +761,20 @@ class MainWindow(QtWidgets.QMainWindow):
                     **values,
                 }
             )
+        page_empty = None
+        if mode == "boss":
+            page_empty = _label(
+                "Nenhum Boss detectado pelos clientes ativos.", "muted"
+            )
+            page_empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            content_layout.addWidget(page_empty, 2, 0, 1, 2)
         self.combat_widgets[mode] = widgets
         content_layout.setRowStretch(2, 1)
         self.combat_page_layouts[mode] = {
+            "mode": mode,
             "layout": content_layout,
             "cards": cards,
+            "empty": page_empty,
         }
         scroll.setWidget(content)
         column.addWidget(scroll, 1)
@@ -1255,12 +1305,13 @@ class MainWindow(QtWidgets.QMainWindow):
         filter_levels = QtWidgets.QWidget()
         filter_levels_layout = QtWidgets.QHBoxLayout(filter_levels)
         filter_levels_layout.setContentsMargins(0, 0, 0, 0)
+        filter_levels_layout.setSpacing(8)
         self.subsession_filter_level_from = QtWidgets.QSpinBox()
         self.subsession_filter_level_from.setRange(0, 999)
-        self.subsession_filter_level_from.setSpecialValueText("mínimo")
         self.subsession_filter_level_to = QtWidgets.QSpinBox()
         self.subsession_filter_level_to.setRange(0, 999)
-        self.subsession_filter_level_to.setSpecialValueText("máximo")
+        self.subsession_filter_level_from.setFixedWidth(110)
+        self.subsession_filter_level_to.setFixedWidth(110)
         self.subsession_filter_level_from.valueChanged.connect(
             self._refilter_subsession_mobs
         )
@@ -1270,18 +1321,20 @@ class MainWindow(QtWidgets.QMainWindow):
         filter_levels_layout.addWidget(self.subsession_filter_level_from)
         filter_levels_layout.addWidget(_label("até", "muted"))
         filter_levels_layout.addWidget(self.subsession_filter_level_to)
+        filter_levels_layout.addStretch(1)
         self.subsession_mobs = QtWidgets.QListWidget()
         self.subsession_mobs.setMinimumHeight(300)
         self.subsession_select_all = QtWidgets.QCheckBox("Selecionar todos os mobs")
         self.subsession_select_all.toggled.connect(self._toggle_all_mobs)
         self.subsession_other_mob = QtWidgets.QLineEdit()
         self.subsession_other_mob.setPlaceholderText("Nome de mob adicional")
-        levels = QtWidgets.QWidget()
-        levels_layout = QtWidgets.QHBoxLayout(levels)
-        levels_layout.setContentsMargins(0, 0, 0, 0)
-        self.subsession_level_from = QtWidgets.QSpinBox(); self.subsession_level_from.setRange(0, 999)
-        self.subsession_level_to = QtWidgets.QSpinBox(); self.subsession_level_to.setRange(0, 999)
-        levels_layout.addWidget(self.subsession_level_from); levels_layout.addWidget(_label("até", "muted")); levels_layout.addWidget(self.subsession_level_to)
+        # Mantidos ocultos apenas para ler favoritos antigos sem perder dados.
+        self.subsession_level_from = QtWidgets.QSpinBox(content)
+        self.subsession_level_from.setRange(0, 999)
+        self.subsession_level_from.hide()
+        self.subsession_level_to = QtWidgets.QSpinBox(content)
+        self.subsession_level_to.setRange(0, 999)
+        self.subsession_level_to.hide()
         self.subsession_duration = QtWidgets.QSpinBox(); self.subsession_duration.setRange(0, 1440); self.subsession_duration.setSuffix(" min")
         self.subsession_name = QtWidgets.QLineEdit(); self.subsession_name.setPlaceholderText("Observação ou nome")
         self.auto_subsession = QtWidgets.QCheckBox("Criar a próxima automaticamente")
@@ -1289,15 +1342,18 @@ class MainWindow(QtWidgets.QMainWindow):
         automatic = QtWidgets.QWidget(); automatic_layout = QtWidgets.QHBoxLayout(automatic); automatic_layout.setContentsMargins(0,0,0,0); automatic_layout.addWidget(self.auto_subsession); automatic_layout.addWidget(self.auto_subsession_minutes); automatic_layout.addStretch(1)
         for label_text, widget in (
             ("Favorito", favorites), ("Cliente", self.subsession_client),
+            ("Observação", self.subsession_name),
             ("Mapa", self.subsession_map),
-            ("Spot", self.subsession_spot), ("Mobs", self.subsession_mobs),
+            ("Spot", self.subsession_spot),
             ("Filtrar mobs por level", filter_levels),
+            ("Mobs", self.subsession_mobs),
             ("", self.subsession_select_all),
-            ("Mob extra", self.subsession_other_mob), ("Nível dos mobs", levels),
+            ("Mob extra", self.subsession_other_mob),
             ("Duração (0 = manual)", self.subsession_duration),
-            ("Observação", self.subsession_name), ("Automática", automatic),
+            ("Automática", automatic),
         ):
             layout.addRow(label_text, widget)
+        self.subsession_form_layout = layout
         buttons = QtWidgets.QWidget(); buttons_layout = QtWidgets.QHBoxLayout(buttons); buttons_layout.setContentsMargins(0,0,0,0); buttons_layout.addStretch(1)
         cancel = QtWidgets.QPushButton("Cancelar"); cancel.clicked.connect(self._cancel_subsession_form)
         self.subsession_save = QtWidgets.QPushButton("Criar subsessão"); self.subsession_save.clicked.connect(self._save_subsession)
@@ -1356,6 +1412,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for mode, title, default in (("character", "Personagem", "F1"), ("market", "Mercado", "F2"), ("codex", "Codex", "F3"), ("memory_chips", "Memory Chips", "F4")):
             combo = QtWidgets.QComboBox(); combo.addItems(tuple(f"F{number}" for number in range(1, 13))); combo.setCurrentText(default)
             shortcuts_form.addRow(title, combo); self.setting_shortcuts[mode] = combo
+        shortcuts_form.addRow(_label("Monitores", "subtitle"))
+        for mode, title in (
+            ("monitor_pve", "Monitor PvE"),
+            ("monitor_pvp", "Monitor PvP"),
+            ("monitor_boss", "Boss"),
+        ):
+            combo = QtWidgets.QComboBox()
+            combo.addItems(MONITOR_SHORTCUT_OPTIONS)
+            combo.setCurrentText(DEFAULT_GLOBAL_SHORTCUTS[mode])
+            shortcuts_form.addRow(title, combo)
+            self.setting_shortcuts[mode] = combo
         grid.addWidget(shortcuts, 2, 0)
 
         behavior = QtWidgets.QFrame(objectName="panel")
@@ -1364,7 +1431,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_minimize = QtWidgets.QCheckBox("Minimizar para a bandeja")
         self.setting_auto_export = QtWidgets.QCheckBox("Exportar automaticamente ao parar")
         self.setting_auto_market = QtWidgets.QCheckBox(
-            "Enviar Mercado automaticamente ao concluir a lista"
+            "Enviar Leilão/Mercado automaticamente ao concluir a lista"
         )
         self.setting_delete_export = QtWidgets.QCheckBox("Excluir após exportar")
         self.setting_detailed_log = QtWidgets.QCheckBox("Ativar log completo (detalhado)")
@@ -1460,7 +1527,8 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         shortcuts = dict(preferences.get("shortcuts") or {})
         for mode, combo in self.setting_shortcuts.items():
-            combo.setCurrentText(str(shortcuts.get(mode) or {"character": "F1", "market": "F2", "codex": "F3", "memory_chips": "F4"}[mode]))
+            combo.setCurrentText(str(shortcuts.get(mode) or DEFAULT_GLOBAL_SHORTCUTS[mode]))
+        self._apply_monitor_shortcut_labels(shortcuts)
         self.setting_minimize.setChecked(bool(preferences.get("minimize_to_tray", False)))
         self.setting_auto_export.setChecked(bool(preferences.get("auto_export", False)))
         self.setting_auto_market.setChecked(bool(preferences.get("auto_market_upload", True)))
@@ -1500,7 +1568,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Configurações", "Escolha uma pasta absoluta para as capturas.")
             return
         if len(set(shortcuts.values())) != len(shortcuts):
-            QtWidgets.QMessageBox.warning(self, "Configurações", "Cada envio precisa usar uma tecla de atalho diferente.")
+            QtWidgets.QMessageBox.warning(self, "Configurações", "Cada ação precisa usar uma tecla de atalho diferente.")
             return
         self.preferences = save_preferences({
             "capture_directory": str(capture_directory),
@@ -1535,6 +1603,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ensure_capture_engine()
         self._refresh_farm_catalog()
         self._render_overview()
+        self._apply_monitor_shortcut_labels(shortcuts)
         self._sync_global_hotkeys(shortcuts)
         self.setting_storage.setText(f"Capturas: {capture_directory}\nPreferências salvas para a interface estável e para o preview.")
         if self.site_profile.connected:
@@ -1639,6 +1708,18 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.global_hotkeys.stop()
         self.global_hotkeys.start(shortcuts)
+
+    def _apply_monitor_shortcut_labels(
+        self, shortcuts: dict[str, str] | None = None
+    ) -> None:
+        shortcuts = shortcuts or {}
+        for mode, controls in self.monitor_controls.items():
+            shortcut = str(
+                shortcuts.get(f"monitor_{mode}")
+                or DEFAULT_GLOBAL_SHORTCUTS[f"monitor_{mode}"]
+            )
+            controls["shortcut"] = shortcut
+            self._update_monitor_button(mode)
 
     def _rename_client(self, index: int) -> None:
         current = str(self.preferences.get(f"character{index + 1}") or "")
@@ -2946,12 +3027,16 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if getattr(sys, "frozen", False):
             rollback = UPDATES_DIR / "rollback" / "RFNextInfo"
-            shutil.rmtree(rollback, ignore_errors=True)
-            shutil.copytree(
-                Path(sys.executable).parent,
-                rollback,
-                ignore=shutil.ignore_patterns("Uninstall.exe"),
-            )
+            try:
+                create_rollback(Path(sys.executable).parent, rollback)
+            except (OSError, ValueError) as error:
+                self.log.exception("update_rollback_failed")
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Atualização cancelada",
+                    f"Não foi possível preservar a versão atual:\n{error}",
+                )
+                return
         escaped = str(installer).replace("'", "''")
         script = (
             f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; "
@@ -3600,12 +3685,57 @@ class MainWindow(QtWidgets.QMainWindow):
     def _monitor_interval_changed(self, mode: str) -> None:
         self.monitor_next_due[mode] = 0.0
 
-    def _toggle_monitor(self, mode: str, enabled: bool) -> None:
-        self.monitor_enabled[mode] = enabled
+    def _update_monitor_button(self, mode: str) -> None:
         controls = self.monitor_controls[mode]
+        enabled = controls["enabled"].isChecked()
         action = "Desligar monitor" if enabled else "Ligar monitor"
-        controls["enabled"].setText(f"{action}  {controls['shortcut']}")
+        tabs = controls.get("tabs")
+        client = f" Cliente {chr(65 + tabs.currentIndex())}" if tabs else ""
+        controls["enabled"].setText(
+            f"{action}{client}  {controls['shortcut']}"
+        )
+
+    def _monitor_client_changed(self, mode: str, index: int) -> None:
+        controls = self.monitor_controls[mode]
+        enabled = controls["enabled"]
+        enabled.blockSignals(True)
+        enabled.setChecked(self.monitor_client_enabled[mode][index])
+        enabled.blockSignals(False)
+        for card_index, card in enumerate(self.combat_page_layouts[mode]["cards"]):
+            card.setVisible(card_index == index)
+        self._update_monitor_button(mode)
+        self._sync_combat_layout()
+        self._render_combat()
+
+    def _disable_monitor_mode(self, mode: str) -> None:
+        if mode in self.monitor_client_enabled:
+            self.monitor_client_enabled[mode] = [False, False]
+        self.monitor_enabled[mode] = False
+        controls = self.monitor_controls[mode]
+        controls["enabled"].blockSignals(True)
+        controls["enabled"].setChecked(False)
+        controls["enabled"].blockSignals(False)
+        self._update_monitor_button(mode)
+
+    def _resume_active_monitors(self) -> None:
+        if not any(self.monitor_enabled.values()) or self.capture_busy:
+            return
+        monitor = self._ensure_monitor_engine()
+        if not monitor.active:
+            self.top_last_read.setText("Monitores — iniciando stream em memória…")
+            self._run_capture_operation("monitor:start", monitor.start)
+
+    def _toggle_monitor(self, mode: str, enabled: bool) -> None:
+        controls = self.monitor_controls[mode]
+        tabs = controls.get("tabs")
+        if tabs is not None:
+            self.monitor_client_enabled[mode][tabs.currentIndex()] = enabled
+            self.monitor_enabled[mode] = any(self.monitor_client_enabled[mode])
+        else:
+            self.monitor_enabled[mode] = enabled
+        self._update_monitor_button(mode)
         self.monitor_next_due[mode] = 0.0
+        self._render_combat()
         if not any(self.monitor_enabled.values()):
             if self.monitor_engine and self.monitor_engine.active:
                 try:
@@ -3618,10 +3748,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if capture and capture.active:
             self._capture_tick()
             return
-        monitor = self._ensure_monitor_engine()
-        if not monitor.active and not self.capture_busy:
-            self.top_last_read.setText("Monitores — iniciando stream em memória…")
-            self._run_capture_operation("monitor:start", monitor.start)
+        self._resume_active_monitors()
 
     def _toggle_boss_overlay(self, enabled: bool) -> None:
         if not enabled:
@@ -3717,7 +3844,12 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 self.capture_operation_done.emit(name, callback(), None)
             except Exception as error:
-                self.log.exception("capture_operation_failed name=%s", name)
+                self.log.exception(
+                    "capture_operation_failed name=%s error_type=%s detail=%s",
+                    name,
+                    type(error).__name__,
+                    error,
+                )
                 self.capture_operation_done.emit(name, None, error)
             finally:
                 self.log.debug(
@@ -3859,9 +3991,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.top_last_read.setToolTip(str(error))
                 for mode, enabled in self.monitor_enabled.items():
                     if enabled:
-                        self.monitor_controls[mode]["enabled"].setChecked(False)
+                        self._disable_monitor_mode(mode)
                 return
-            self.top_capture.setText(f"Captura — falha: {error}")
+            detail = str(error)
+            if name == "start" and "Outra captura PktMon" in detail:
+                self.top_capture.setText("Captura — outra sessão já está ativa")
+                self.top_capture.setToolTip(detail)
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Captura já ativa",
+                    "Já existe outra instância do RF NEXT QOL capturando. "
+                    "Encerre essa sessão pelo programa que já está aberto e tente novamente.",
+                )
+            else:
+                self.top_capture.setText(f"Captura — falha: {error}")
+                self.top_capture.setToolTip(detail)
             if name in {"read", "preview"}:
                 if name == "preview":
                     now_mono = time.monotonic()
@@ -4005,13 +4149,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.top_capture.setText("Captura — pausada")
             self._load_readonly_data()
             if any(self.monitor_enabled.values()):
-                QtCore.QTimer.singleShot(
-                    0,
-                    lambda: self._toggle_monitor(
-                        next(mode for mode, value in self.monitor_enabled.items() if value),
-                        True,
-                    ),
-                )
+                QtCore.QTimer.singleShot(0, self._resume_active_monitors)
         elif name == "stop":
             self.last_capture_session = str(data.get("session_id") or self.last_capture_session)
             failures = list(data.get("failures") or [])
@@ -4027,13 +4165,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.pending_observation_session = self.last_capture_session
             self._load_readonly_data()
             if any(self.monitor_enabled.values()):
-                QtCore.QTimer.singleShot(
-                    0,
-                    lambda: self._toggle_monitor(
-                        next(mode for mode, value in self.monitor_enabled.items() if value),
-                        True,
-                    ),
-                )
+                QtCore.QTimer.singleShot(0, self._resume_active_monitors)
             self.top_next_read.setText("Próx. leitura: —")
             if not failures and self.setting_auto_export.isChecked():
                 target = Path(self.setting_capture_directory.text()) / "Exportados"
@@ -4063,17 +4195,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.capture_engine = None
             self.capture_recovery_attempted = False
             if any(self.monitor_enabled.values()):
-                QtCore.QTimer.singleShot(
-                    0,
-                    lambda: self._toggle_monitor(
-                        next(
-                            mode
-                            for mode, value in self.monitor_enabled.items()
-                            if value
-                        ),
-                        True,
-                    ),
-                )
+                QtCore.QTimer.singleShot(0, self._resume_active_monitors)
         self._set_capture_controls()
         pending, self.pending_capture_action = self.pending_capture_action, None
         if pending == "pause":
@@ -4191,11 +4313,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 widgets["heading"].setText(
                     f"Cliente {chr(65 + index)} · {character or 'aguardando personagem'}"
                 )
+                if (
+                    mode in self.monitor_client_enabled
+                    and not self.monitor_client_enabled[mode][index]
+                ):
+                    self._render_nearby(widgets, [], mode, {})
+                    widgets["target"].setText("Último alvo confirmado: —")
+                    widgets["status"].setText(
+                        f"Monitor desligado para o Cliente {chr(65 + index)}."
+                    )
+                    widgets["progress"].setValue(0)
+                    for name in ("current_hp", "max_hp", "hp_percent", "dps_hp"):
+                        if name in widgets:
+                            widgets[name].setText("—")
+                    continue
                 if mode == "boss":
-                    self._render_bosses(widgets, list((monitor or {}).get("bosses") or []))
+                    bosses = list((monitor or {}).get("bosses") or [])
+                    self._render_bosses(widgets, bosses)
+                    self.combat_page_layouts[mode]["cards"][index].setVisible(
+                        bool(bosses)
+                    )
                     widgets["status"].setText(
                         "Bosses próximos confirmados pelo stream em memória."
-                        if (monitor or {}).get("bosses")
+                        if bosses
                         else "Nenhum boss confirmado próximo."
                     )
                     continue
@@ -4243,6 +4383,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     if target.get("stale")
                     else f"Atualizado há {age:.1f} s{direction}".replace(".", ",")
                 )
+        boss_page = self.combat_page_layouts.get("boss")
+        if boss_page:
+            has_boss = any(not card.isHidden() for card in boss_page["cards"])
+            boss_page["empty"].setVisible(not has_boss)
+        self._sync_combat_layout()
         self._update_boss_overlay(monitors)
         self._update_pvp_overlay(monitors)
 
@@ -4474,34 +4619,29 @@ class MainWindow(QtWidgets.QMainWindow):
                     "muted",
                 )
             )
-            top = list(boss.get("top_damage_players") or [])
-            if top:
-                column.addWidget(
-                    _label(
-                        "Top dano: "
-                        + " · ".join(
-                            f"{item.get('name')}: {self._format_count(item.get('damage'))}"
-                            for item in top[:3]
-                        ),
-                        "muted",
-                    )
-                )
             for title, key in (
-                ("Guildas", "top_damage_guilds"),
-                ("Grupos", "top_damage_groups"),
+                ("DPS por jogador · 10 s", "top_damage_players"),
+                ("DPS por guilda · 10 s", "top_damage_guilds"),
+                ("DPS por grupo · 10 s", "top_damage_groups"),
             ):
                 ranking = list(boss.get(key) or [])
                 if ranking:
-                    column.addWidget(
-                        _label(
-                            f"{title}: "
-                            + " · ".join(
-                                f"{item.get('name')}: {self._format_count(item.get('damage'))}"
-                                for item in ranking[:3]
-                            ),
-                            "muted",
+                    column.addWidget(_label(title, "subtitle"))
+                    for position, item in enumerate(ranking[:10], 1):
+                        ranking_row = QtWidgets.QHBoxLayout()
+                        name = str(item.get("name") or "Não identificado")
+                        guild = str(item.get("guild_name") or "").strip()
+                        if guild:
+                            name += f" · {guild}"
+                        ranking_row.addWidget(_label(f"{position}. {name}", "muted"), 1)
+                        ranking_row.addWidget(
+                            _label(
+                                f"{self._format_count(item.get('dps_hp'))}/s "
+                                f"· dano {self._format_count(item.get('damage'))}",
+                                "data",
+                            )
                         )
-                    )
+                        column.addLayout(ranking_row)
             progress = QtWidgets.QProgressBar()
             progress.setRange(0, 1000)
             progress.setValue(max(0, min(1000, round(float(percent) * 10))) if isinstance(percent, (int, float)) else 0)
@@ -4785,6 +4925,21 @@ QPushButton:hover { border-color: #D4A64D; color: #FFFFFF; }
 QPushButton:focus { border: 2px solid #38BDF8; }
 QPushButton:checked { background: #3A301B; border-color: #D4A64D; color: #F6BE3B; }
 QPushButton:disabled { color: #6D7578; border-color: #26333A; background: #0A0E10; }
+QTabBar { background: transparent; }
+QTabBar::tab {
+    background: #0A1115;
+    color: #F4F2EB;
+    border: 1px solid #314149;
+    border-bottom-color: #D4A64D;
+    padding: 9px 22px;
+    min-width: 96px;
+}
+QTabBar::tab:selected {
+    background: #3A301B;
+    color: #F6BE3B;
+    border-color: #D4A64D;
+}
+QTabBar::tab:hover { color: #FFFFFF; border-color: #D4A64D; }
 QMessageBox { background: #081820; }
 QMessageBox QLabel { color: #F4F2EB; background: transparent; }
 QMessageBox QPushButton { color: #F4F2EB; min-width: 90px; }

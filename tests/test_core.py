@@ -26,7 +26,7 @@ from core.combat_monitor import summarize_combat
 from core.ingest import _decode_stream_resync, _pcapng_to_pcap, _safe_parse
 from core.live_stream import LiveEventDecoder
 from core.knowledge import KnowledgeStore
-from core.rfnext_frame_decode import pcap_tcp_streams
+from core.rfnext_frame_decode import parse_observation_payload, pcap_tcp_streams
 from core.store import CaptureStore
 
 
@@ -208,6 +208,88 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(result["pvp"]["hp_percent"], 80.0)
         self.assertEqual(result["pvp"]["dps_hp"], 20.0)
 
+    def test_combat_monitor_uses_confirmed_main_target_and_named_npcs_only(self):
+        events = [
+            {
+                "ts_ns": 1_000_000_000,
+                "type": "appear_player_list",
+                "data": {"units": [
+                    {"character_uid": 111, "uid": 10, "name": "Local"},
+                ]},
+            },
+            {
+                "ts_ns": 1_000_000_000,
+                "type": "appear_monster_list",
+                "data": {"units": [
+                    {"uid": 30, "npc_index": 100, "max_hp": 1000, "current_hp": 1000},
+                    {"uid": 31, "npc_index": 999, "max_hp": 1000, "current_hp": 1000},
+                ]},
+            },
+            {
+                "ts_ns": 2_000_000_000,
+                "type": "use_skill_result",
+                "data": {
+                    "ret": 0,
+                    "caster_uid": 10,
+                    "main_target_uid": 30,
+                    "effect_results": [
+                        {"uid": 30, "hp_damage": 100, "final_hp": 900},
+                        {"uid": 31, "hp_damage": 200, "final_hp": 800},
+                    ],
+                },
+            },
+        ]
+
+        result = summarize_combat(
+            events, "111", {100: "Alvo definido"}, now_ns=3_000_000_000
+        )
+
+        self.assertEqual(result["pve"]["uid"], 30)
+        self.assertEqual(result["pve"]["name"], "Alvo definido")
+        self.assertEqual(
+            [(item["npc_index"], item["name"]) for item in result["nearby_monsters"]],
+            [(100, "Alvo definido")],
+        )
+
+    def test_target_request_drives_monitor_without_local_appearance(self):
+        events = [
+            {
+                "ts_ns": 1_000_000_000,
+                "type": "appear_monster_list",
+                "data": {"units": [
+                    {"uid": 30, "npc_index": 100, "max_hp": 1000, "current_hp": 900},
+                ]},
+            },
+            {
+                "ts_ns": 2_000_000_000,
+                "type": "select_target_request",
+                "data": {"target_uid": 30},
+            },
+        ]
+
+        result = summarize_combat(
+            events, "111", {100: "Alvo selecionado"}, now_ns=3_000_000_000
+        )
+
+        self.assertIsNone(result["local_combat_uid"])
+        self.assertEqual(result["pve"]["uid"], 30)
+        self.assertEqual(result["pve"]["name"], "Alvo selecionado")
+
+    def test_observation_decoder_reads_outgoing_target_requests(self):
+        target_frame = bytearray(10)
+        target_frame[4:6] = (0x0609).to_bytes(2, "little")
+        target_frame[6:] = struct.pack("<I", 0x34031FBA)
+        target = parse_observation_payload(bytes(target_frame))
+        self.assertEqual(target["type"], "select_target_request")
+        self.assertEqual(target["target_uid"], 0x34031FBA)
+
+        skill_frame = bytearray(18)
+        skill_frame[4:6] = (0x0601).to_bytes(2, "little")
+        skill_frame[6:] = struct.pack("<III", 1_080_024, 629, 0x34031FBA)
+        skill = parse_observation_payload(bytes(skill_frame))
+        self.assertEqual(skill["type"], "use_skill_request")
+        self.assertEqual(skill["target_uid"], 0x34031FBA)
+
     def test_combat_monitor_reclassifies_reused_combat_uid(self):
         events = [
             {"ts_ns": 1, "type": "appear_player_list", "data": {"units": [
@@ -256,6 +338,8 @@ class CoreTest(unittest.TestCase):
             [(item["character_uid"], item["name"]) for item in result["nearby_players"]],
             [(222, "Rival atual"), (333, "Vizinho")],
         )
+        expired = summarize_combat(events, "111", now_ns=8_000_000_000)
+        self.assertEqual(expired["nearby_players"], [])
 
     def test_combat_monitor_lists_only_catalogued_live_bosses(self):
         events = [
@@ -293,12 +377,19 @@ class CoreTest(unittest.TestCase):
             result["bosses"][0]["top_damage_players"][0]["damage"], 1000
         )
         self.assertEqual(
+            result["bosses"][0]["top_damage_players"][0]["dps_hp"], 1000.0
+        )
+        self.assertEqual(
+            result["bosses"][0]["top_damage_players"][0]["guild_name"],
+            "Karvalho",
+        )
+        self.assertEqual(
             result["bosses"][0]["top_damage_guilds"],
-            [{"name": "Karvalho", "damage": 1000}],
+            [{"name": "Karvalho", "damage": 1000, "dps_hp": 1000.0}],
         )
         self.assertEqual(
             result["bosses"][0]["top_damage_groups"],
-            [{"name": "9", "damage": 1000}],
+            [{"name": "9", "damage": 1000, "dps_hp": 1000.0}],
         )
 
         events.append({"ts_ns": 4_000_000_000, "type": "dying_unit", "data": {"uid": 30}})
@@ -350,7 +441,10 @@ class CoreTest(unittest.TestCase):
             self.assertEqual(result[0]["type"], "appear_player_list")
             self.assertEqual(result[1]["type"], "appear_monster_list")
             self.assertEqual(result[-1]["type"], "use_skill_result")
-            self.assertEqual(summarize_combat(result, "111")["pve"]["uid"], 30)
+            self.assertEqual(
+                summarize_combat(result, "111", {5: "Mob definido"})["pve"]["uid"],
+                30,
+            )
 
     def test_capture_heartbeat_timeout_is_one_minute(self):
         capture = PktmonCapture(Path("capture-test"), runner=lambda *_a, **_k: None)

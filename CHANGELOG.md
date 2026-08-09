@@ -1,5 +1,48 @@
 # Changelog
 
+## 3.0.9 — beta
+
+- lê o alvo selecionado diretamente dos pedidos `0x0609` e `0x0601` do cliente;
+- mantém o alvo PvE/PvP funcional mesmo quando o personagem local não aparece em `0x0305`;
+- diferencia outra captura já ativa de uma interrupção real ao iniciar;
+- registra no log o tipo e a mensagem completos das falhas de captura.
+
+## 3.0.8 — beta
+
+- separa os monitores PvE e PvP em abas dos Clientes A e B, com ativação independente;
+- corrige o alvo PvE em ataques de área usando o alvo principal confirmado pelo protocolo;
+- limita o monitor PvE a NPCs com nomes definidos no catálogo;
+- remove jogadores próximos antigos após cinco segundos sem nova confirmação;
+- move o filtro numérico de nível para antes da lista de mobs e compacta seus campos;
+- move a observação para baixo do cliente e remove a linha redundante de nível dos mobs.
+
+## 3.0.7 — beta
+
+- corrige a assinatura da API nativa do Windows usada para medir a memória;
+- volta a exibir no topo o consumo atual de RAM do RF NEXT QOL;
+- adiciona teste real do contador de memória, sem depender de valor simulado.
+
+## 3.0.6 — beta
+
+- mostra na aba Boss somente os clientes que detectaram ao menos um Boss;
+- faz um único cartão ocupar toda a largura quando só um cliente detectar Boss;
+- amplia o ranking para até 10 jogadores com DPS e dano na janela de 10 segundos;
+- separa os rankings por jogador, guilda e grupo quando essas identidades estiverem disponíveis.
+
+## 3.0.5 — beta
+
+- permite alterar individualmente os atalhos globais dos monitores PvE, PvP e Boss;
+- aplica os novos atalhos imediatamente e os preserva entre atualizações;
+- permite habilitar ou desabilitar o envio automático de Leilão/Mercado;
+- mantém o envio manual de Mercado disponível quando o automático está desligado.
+
+## 3.0.4 — beta
+
+- corrige a cópia recursiva da instalação para dentro do próprio rollback;
+- exclui banco, capturas, logs, cache e atualizações do backup local;
+- limita o rollback a 1 GiB e cancela a atualização se o backup falhar;
+- preserva somente os binários, a licença e as preferências necessárias.
+
 ## 3.0.3 — beta
 
 - preserva o último Biosuit/classe e Rover confirmados para cada UID;

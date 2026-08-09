@@ -264,15 +264,21 @@ class CaptureEngineTest(unittest.TestCase):
         definitions = GlobalHotkeys.definitions({
             "character": "F5", "market": "F6",
             "codex": "F7", "memory_chips": "F10",
+            "monitor_pve": "Alt+F10",
+            "monitor_pvp": "Shift+F11",
+            "monitor_boss": "Ctrl+F12",
         })
         actions = {action: (key, modifiers) for _, action, key, modifiers in definitions}
         self.assertEqual(actions["character"], (0x74, 0x4000))
         self.assertEqual(actions["memory_chips"], (0x79, 0x4000))
         self.assertEqual(actions["start"], (0x77, 0x4002))
-        self.assertEqual(actions["monitor_pve"], (0x74, 0x4002))
-        self.assertEqual(actions["monitor_pvp"], (0x75, 0x4002))
+        self.assertEqual(actions["monitor_pve"], (0x79, 0x4001))
+        self.assertEqual(actions["monitor_pvp"], (0x7A, 0x4004))
+        self.assertEqual(actions["monitor_boss"], (0x7B, 0x4002))
         self.assertEqual(actions["overlay_pvp"], (0x75, 0x4006))
         self.assertEqual(actions["overlay_boss"], (0x76, 0x4006))
+        self.assertIsNone(GlobalHotkeys.parse_shortcut("Ctrl+X"))
+        self.assertIsNone(GlobalHotkeys.parse_shortcut("Ctrl+Ctrl+F5"))
 
     def test_site_loot_rows_use_numeric_contract_and_drop_empty_items(self):
         self.assertEqual(

@@ -38,7 +38,7 @@ from app.paths import (
 )
 from app.site_profile import SiteProfileClient
 from app.support_log import configure as configure_log, recent_lines
-from app.updater import download_verified, latest
+from app.updater import create_rollback, download_verified, latest
 from core.capture import GIB, PktmonCapture
 from core.connections import (
     clients_for_executable,
@@ -54,7 +54,7 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "3.0.3"
+VERSION = "3.0.9"
 MACHINE_STATE_DIR = STATE_DIR
 ASSETS = ROOT / "assets"
 WM_HOTKEY = 0x0312
@@ -6544,12 +6544,15 @@ class App(tk.Tk):
                 source = Path(sys.executable).parent
                 if (source / "_internal").is_dir():
                     target = rollback_root / "RFNextInfo"
-                    shutil.rmtree(target, ignore_errors=True)
-                    shutil.copytree(
-                        source,
-                        target,
-                        ignore=shutil.ignore_patterns("Uninstall.exe"),
-                    )
+                    try:
+                        create_rollback(source, target)
+                    except (OSError, ValueError) as rollback_error:
+                        self.log.exception("update_rollback_failed")
+                        return messagebox.showerror(
+                            "Atualização cancelada",
+                            "Não foi possível preservar a versão atual:\n"
+                            f"{rollback_error}",
+                        )
                 else:
                     rollback_root.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(

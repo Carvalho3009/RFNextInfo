@@ -43,7 +43,12 @@ from app.support_log import (
     set_detailed,
 )
 import app.support_log as support_log_module
-from app.updater import UPDATE_SIGNATURE_CONTEXT, download_verified, verify_manifest
+from app.updater import (
+    UPDATE_SIGNATURE_CONTEXT,
+    create_rollback,
+    download_verified,
+    verify_manifest,
+)
 import app.main as main_module
 
 
@@ -1665,6 +1670,44 @@ class AppLogicTest(unittest.TestCase):
         launch.assert_called_once_with(Path("setup.exe"))
         app.store.close.assert_called_once()
         app.destroy.assert_called_once()
+
+    def test_rollback_excludes_recursive_and_runtime_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "RF NEXT INFO"
+            target = source / "updates" / "rollback" / "RFNextInfo"
+            for relative in (
+                "_internal",
+                "data",
+                "database",
+                "logs",
+                "cache",
+                "Capturas",
+                "updates/rollback/old",
+            ):
+                (source / relative).mkdir(parents=True, exist_ok=True)
+            (source / "RFNextInfo.exe").write_bytes(b"exe")
+            (source / "_internal/library.dll").write_bytes(b"dll")
+            (source / "data/license.dat").write_bytes(b"license")
+            (source / "database/capture.sqlite3").write_bytes(b"database")
+            (source / "Capturas/session.etl").write_bytes(b"capture")
+            (source / "updates/rollback/old/sentinel").write_bytes(b"recursive")
+
+            self.assertEqual(create_rollback(source, target), target.resolve())
+            self.assertTrue((target / "RFNextInfo.exe").is_file())
+            self.assertTrue((target / "_internal/library.dll").is_file())
+            self.assertTrue((target / "data/license.dat").is_file())
+            for excluded in ("database", "logs", "cache", "Capturas", "updates"):
+                self.assertFalse((target / excluded).exists())
+
+    def test_rollback_refuses_oversized_payload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "RF NEXT INFO"
+            target = source / "updates" / "rollback" / "RFNextInfo"
+            source.mkdir()
+            (source / "RFNextInfo.exe").write_bytes(b"too-large")
+            with self.assertRaisesRegex(ValueError, "limite"):
+                create_rollback(source, target, max_bytes=1)
+            self.assertFalse(target.exists())
 
     def test_verified_download_reports_progress(self):
         private = Ed25519PrivateKey.generate()
