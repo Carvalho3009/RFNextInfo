@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 GIB = 1024**3
-LOGGER = logging.getLogger("rfnextinfo")
+LOGGER = logging.getLogger("rfqol")
 
 
 def _pktmon_state(status: str) -> bool | None:
@@ -291,7 +291,7 @@ class PktmonCapture:
                     self._command(
                         "filter",
                         "add",
-                        f"RFNextInfo{index}",
+                        f"RFQOL{index}",
                         "-t",
                         "TCP",
                         "-p",
@@ -368,7 +368,7 @@ class PktmonCapture:
                 self._command(
                     "filter",
                     "add",
-                    f"RFNextInfo{index}",
+                    f"RFQOL{index}",
                     "-t",
                     "TCP",
                     "-p",

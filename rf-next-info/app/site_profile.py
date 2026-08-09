@@ -20,7 +20,7 @@ class SiteProfileClient:
     ) -> None:
         self.path = Path(state_dir) / "site-profile.dat"
         self.server = server.rstrip("/")
-        self.user_agent = f"RFNextInfo/{version}"
+        self.user_agent = f"RFQOL/{version}"
         self.state = self._load()
         if not self.state:
             for legacy_path in map(Path, legacy_paths):

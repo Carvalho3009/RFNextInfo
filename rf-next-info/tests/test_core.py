@@ -1047,7 +1047,7 @@ class CoreTest(unittest.TestCase):
         self.assertTrue(_pktmon_running("O Monitor de Pacotes está ativo."))
         self.assertTrue(_pktmon_running(
             "Dados Coletados: Contadores de pacotes, captura de pacotes "
-            "Filtros de Pacote: 1 RFNextInfo1 TCP 12000"
+            "Filtros de Pacote: 1 RFQOL1 TCP 12000"
         ))
         self.assertIsNone(_pktmon_state("resposta ainda não disponível"))
 
@@ -1064,7 +1064,7 @@ class CoreTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             capture = PktmonCapture(Path(tmp), runner=Runner())
             capture._active = True
-            with self.assertLogs("rfnextinfo", level="WARNING") as logged:
+            with self.assertLogs("rfqol", level="WARNING") as logged:
                 status = capture.status()
                 capture.status()
             self.assertTrue(status.active)
@@ -1130,7 +1130,7 @@ class CoreTest(unittest.TestCase):
             runner = Runner()
             capture = PktmonCapture(Path(tmp), runner=runner, poll_seconds=0)
             capture._active = True
-            with self.assertLogs("rfnextinfo", level="WARNING") as logged:
+            with self.assertLogs("rfqol", level="WARNING") as logged:
                 capture._watch_disk()
             self.assertEqual(runner.checks, 3)
             self.assertFalse(capture.active)

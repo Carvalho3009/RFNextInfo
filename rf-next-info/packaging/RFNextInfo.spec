@@ -5,7 +5,8 @@ root = Path(SPEC).resolve().parent.parent
 assets = root / "assets"
 job1 = root.parent / "rf-next" / "analysis" / "1.28.5" / "job1"
 data_files = [
-    (str(assets / "karvalho-symbol-gold.png"), "assets"),
+    (str(assets / "rf-qol-symbol-v1.png"), "assets"),
+    (str(assets / "rf-qol-primary-v1.png"), "assets"),
     (str(assets / "Saira.ttf"), "assets"),
     (str(assets / "SairaSemiCondensed-Bold.ttf"), "assets"),
     (str(assets / "class-icons"), "assets/class-icons"),
@@ -40,11 +41,11 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="RFNextInfo",
+    name="RF QOL",
     console=False,
     debug=False,
     upx=False,
-    icon=str(assets / "karvalho-symbol-gold.png"),
+    icon=str(assets / "rf-qol-symbol-v1.png"),
     uac_admin=True,
 )
 coll = COLLECT(
@@ -53,5 +54,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="RFNextInfo",
+    name="RF QOL",
 )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import ctypes
+import json
 import math
 import subprocess
 import threading
@@ -33,17 +34,14 @@ from app.main import (
     LOG_PATH,
     MACHINE_STATE_DIR,
     ROVERS,
+    RELEASE_SEQUENCE,
     STATE_DIR,
     VERSION,
     _recycle,
 )
 from app.paths import (
-    INSTALL_DIR,
     KNOWLEDGE_DB_PATH,
-    LEGACY_MACHINE_STATE_DIR,
-    LEGACY_USER_STATE_DIR,
     UPDATES_DIR,
-    RUNTIME_DIRS,
     ensure_runtime_layout,
 )
 from app.site_profile import SiteProfileClient
@@ -53,7 +51,13 @@ from app.support_log import (
     recent_lines,
     set_detailed,
 )
-from app.updater import create_rollback, download_verified, latest
+from app.updater import (
+    download_verified,
+    latest,
+    verify_authenticode,
+    verify_downloaded,
+    verify_manifest,
+)
 from app.ui_qt.operations import (
     CaptureEngine,
     DEFAULT_GLOBAL_SHORTCUTS,
@@ -88,7 +92,8 @@ MONITOR_SHORTCUT_OPTIONS = tuple(
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
 MOB_ICONS = ASSETS / "mob-icons"
-INSTANCE_SERVER_NAME = "Karvalho.RFNextQOL"
+INSTANCE_SERVER_NAME = "RFQOL.App"
+DISCORD_URL = "https://discord.gg/D3hhdMgkj"
 
 SUBSESSION_COLUMNS = (
     ("select", "", 28, True),
@@ -273,7 +278,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pending_export_cleanup = False
         self.pending_observation_session = ""
         self.pending_auto_market: tuple[str, str] | None = None
-        self.snapshot_reader = ReadOnlySnapshotReader(self.database_path)
         try:
             self.log_path = LOG_PATH
             self.log = configure_log(self.log_path, VERSION)
@@ -281,22 +285,14 @@ class MainWindow(QtWidgets.QMainWindow):
             raise OSError(f"Não foi possível gravar o log em {LOG_PATH}") from error
         install_exception_hooks(self.log)
         self.license_client = LicenseClient(
-            STATE_DIR,
-            version=VERSION,
-            legacy_paths=(
-                LEGACY_USER_STATE_DIR / "license.dat",
-                LEGACY_USER_STATE_DIR / "license.json",
-                LEGACY_MACHINE_STATE_DIR / "license.dat",
-                LEGACY_MACHINE_STATE_DIR / "license.json",
-            ),
+            MACHINE_STATE_DIR, version=VERSION
+        )
+        self.license_client.record_release_sequence(RELEASE_SEQUENCE)
+        self.snapshot_reader = ReadOnlySnapshotReader(
+            self.database_path, self.license_client
         )
         self.site_profile = SiteProfileClient(
-            STATE_DIR,
-            version=VERSION,
-            legacy_paths=(
-                LEGACY_USER_STATE_DIR / "site-profile.dat",
-                LEGACY_MACHINE_STATE_DIR / "site-profile.dat",
-            ),
+            STATE_DIR, version=VERSION
         )
         self.site_uploader = SiteUploadEngine(
             self.database_path, self.site_profile, self.license_client
@@ -308,11 +304,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.combat_load_pending = False
         self.controls_initialized = False
         self.setObjectName("mainWindow")
-        self.setWindowTitle(f"RF NEXT QOL — {VERSION}")
+        self.setWindowTitle(f"RF QOL — {VERSION}")
         self.setMinimumSize(1180, 664)
         self.resize(1440, 810)
 
-        icon = QtGui.QIcon(str(ASSETS / "karvalho-symbol-gold.png"))
+        icon = QtGui.QIcon(str(ASSETS / "rf-qol-symbol-v1.png"))
         self.setWindowIcon(icon)
         self._tray = self._build_tray(icon)
 
@@ -419,10 +415,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
             return None
         tray = QtWidgets.QSystemTrayIcon(icon, self)
-        tray.setToolTip(f"RF NEXT QOL — {VERSION}")
+        tray.setToolTip(f"RF QOL — {VERSION}")
         menu = QtWidgets.QMenu(self)
         self.tray_menu = menu
-        show_action = menu.addAction("Abrir RF NEXT QOL")
+        show_action = menu.addAction("Abrir RF QOL")
         show_action.triggered.connect(self._show_from_tray)
         menu.addSeparator()
         self.tray_start_action = menu.addAction("Iniciar / continuar")
@@ -556,12 +552,12 @@ class MainWindow(QtWidgets.QMainWindow):
         column.setSpacing(8)
 
         logo = QtWidgets.QLabel(objectName="brandLogo")
-        pixmap = QtGui.QPixmap(str(ASSETS / "karvalho-symbol-gold.png"))
+        pixmap = QtGui.QPixmap(str(ASSETS / "rf-qol-primary-v1.png"))
         logo.setPixmap(pixmap.scaled(72, 72, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                                      QtCore.Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         column.addWidget(logo)
-        brand = _label("KARVALHO", "brand")
+        brand = _label("RF QOL", "brand")
         brand.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         column.addWidget(brand)
         column.addSpacing(20)
@@ -1498,7 +1494,7 @@ class MainWindow(QtWidgets.QMainWindow):
         license_layout.addWidget(self.license_details)
         self.license_key = QtWidgets.QLineEdit()
         self.license_key.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self.license_key.setPlaceholderText("KRV-…")
+        self.license_key.setPlaceholderText("RFQ-…")
         license_layout.addWidget(self.license_key)
         self.activate_license_button = QtWidgets.QPushButton("Ativar licença")
         self.activate_license_button.clicked.connect(self._activate_license)
@@ -1509,7 +1505,7 @@ class MainWindow(QtWidgets.QMainWindow):
         support = QtWidgets.QFrame(objectName="panel")
         support_layout = QtWidgets.QVBoxLayout(support)
         support_layout.addWidget(_label("Suporte e atualização", "subtitle"))
-        support_layout.addWidget(_label("Discord Carvalho · carvalho@tuta.com", "muted"))
+        support_layout.addWidget(_label("Discord oficial · carvalho@tuta.com", "muted"))
         support_layout.addWidget(_label(f"Versão instalada: {VERSION}", "muted"))
         update_row = QtWidgets.QHBoxLayout()
         self.update_channel = QtWidgets.QComboBox(); self.update_channel.addItem("Estável", "stable"); self.update_channel.addItem("Beta", "beta")
@@ -1522,6 +1518,7 @@ class MainWindow(QtWidgets.QMainWindow):
         support_layout.addWidget(self.update_progress); support_layout.addWidget(self.update_status)
         support_actions = QtWidgets.QGridLayout()
         for index, (text, callback) in enumerate((
+            ("Abrir Discord", self._open_discord),
             ("Enviar log técnico", self._send_diagnostic),
             ("Salvar cópia do log", self._save_log_copy),
             ("Abrir pasta do log", self._open_log_folder),
@@ -2962,6 +2959,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         os.startfile(self.log_path.parent)
 
+    def _open_discord(self) -> None:
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(DISCORD_URL))
+
     def _save_log_copy(self) -> None:
         lines = recent_lines(self.log_path)
         if not lines:
@@ -2972,7 +2972,7 @@ class MainWindow(QtWidgets.QMainWindow):
         target, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Salvar cópia sanitizada do log",
-            str(Path.home() / "Downloads" / f"RFNextInfo-log-{datetime.now():%Y%m%d-%H%M%S}.txt"),
+            str(Path.home() / "Downloads" / f"RFQOL-log-{datetime.now():%Y%m%d-%H%M%S}.txt"),
             "Arquivo de texto (*.txt)",
         )
         if not target:
@@ -3045,26 +3045,31 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _download_update(self, release: dict[str, object]) -> None:
-        public_key = self.license_client.state.get("public_key")
-        if not public_key:
-            self.update_button.setEnabled(True)
-            QtWidgets.QMessageBox.warning(
-                self, "Atualização", "Ative a licença antes de atualizar."
-            )
-            return
         self._run_site_operation(
             "update:download",
             lambda: download_verified(
                 release,
-                public_key,
                 lambda phase, downloaded, total: self.update_progress_changed.emit(
                     phase, downloaded, total
                 ),
                 UPDATES_DIR,
+                current_sequence=self.license_client.highest_release_sequence,
             ),
         )
-
     def _launch_update(self, installer: Path) -> None:
+        try:
+            manifest = verify_manifest(
+                json.loads((UPDATES_DIR / "update-manifest.json").read_text(encoding="utf-8")),
+                current_sequence=self.license_client.highest_release_sequence,
+            )
+            verify_downloaded(installer, manifest)
+            verify_authenticode(installer)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            self.log.exception("update_reverification_failed")
+            QtWidgets.QMessageBox.critical(
+                self, "Atualização rejeitada", f"O instalador não é confiável:\n{error}"
+            )
+            return
         engine = self.capture_engine
         if self.capture_busy or (engine and engine.current_session):
             QtWidgets.QMessageBox.warning(
@@ -3076,30 +3081,18 @@ class MainWindow(QtWidgets.QMainWindow):
         if QtWidgets.QMessageBox.question(
             self,
             "Atualização verificada",
-            "O RF NEXT QOL será fechado e o instalador será aberto. Continuar?",
+            "O RF QOL será fechado e o instalador assinado será aberto. Continuar?",
         ) != QtWidgets.QMessageBox.StandardButton.Yes:
             return
-        if getattr(sys, "frozen", False):
-            rollback = UPDATES_DIR / "rollback" / "RFNextInfo"
-            try:
-                create_rollback(Path(sys.executable).parent, rollback)
-            except (OSError, ValueError) as error:
-                self.log.exception("update_rollback_failed")
-                QtWidgets.QMessageBox.critical(
-                    self,
-                    "Atualização cancelada",
-                    f"Não foi possível preservar a versão atual:\n{error}",
-                )
-                return
-        escaped = str(installer).replace("'", "''")
         script = (
-            f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; "
-            f"Start-Process -FilePath '{escaped}'"
+            "Wait-Process -Id $args[0] -ErrorAction SilentlyContinue; "
+            "Start-Process -FilePath $args[1]"
         )
         subprocess.Popen(
             [
                 "powershell.exe", "-NoProfile", "-NonInteractive",
                 "-WindowStyle", "Hidden", "-Command", script,
+                str(os.getpid()), str(installer.resolve()),
             ],
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
@@ -3107,13 +3100,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.close()
 
     def _rollback(self) -> None:
-        previous = UPDATES_DIR / "rollback" / "RFNextInfo" / "RFNextInfo.exe"
-        if not previous.is_file():
-            QtWidgets.QMessageBox.information(
-                self, "Versão anterior", "Ainda não existe uma versão anterior preservada."
-            )
-            return
-        os.startfile(previous)
+        QtWidgets.QMessageBox.information(
+            self,
+            "Versão anterior",
+            "O rollback só será oferecido quando existir um instalador anterior "
+            "com manifesto e assinaturas válidas.",
+        )
 
     def _connect_site_profile(self) -> None:
         profile = self.setting_profile.text().strip()
@@ -3159,7 +3151,9 @@ class MainWindow(QtWidgets.QMainWindow):
                             )
                 finally:
                     store.close()
-            snapshot = ReadOnlySnapshotReader(self.database_path).load(language)
+            snapshot = ReadOnlySnapshotReader(
+                self.database_path, self.license_client
+            ).load(language)
             return self.site_uploader.send_mode(mode, target, snapshot, language)
 
         self._run_site_operation(
@@ -3526,7 +3520,9 @@ class MainWindow(QtWidgets.QMainWindow):
         def worker() -> None:
             try:
                 language = str(self.preferences.get("item_name_language") or "pt")
-                reader = ReadOnlySnapshotReader(self.database_path)
+                reader = ReadOnlySnapshotReader(
+                    self.database_path, self.license_client
+                )
                 payload = (
                     reader.load_live_combat(
                         list(self.live_combat_events),
@@ -3594,7 +3590,9 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda: self.site_uploader.send_mode(
                 "market",
                 0,
-                ReadOnlySnapshotReader(self.database_path).load(language),
+                ReadOnlySnapshotReader(
+                    self.database_path, self.license_client
+                ).load(language),
                 language,
             ),
         )
@@ -3712,6 +3710,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.capture_engine = CaptureEngine(
                 directory,
                 self.database_path,
+                self.license_client,
                 profile=str(self.preferences.get("profile") or "Profile"),
                 session_counter=self._bounded(
                     self.preferences.get("session_counter"), 0, 999999, 0
@@ -3733,7 +3732,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _ensure_monitor_engine(self) -> MonitorEngine:
         if self.monitor_engine is None:
-            self.monitor_engine = MonitorEngine()
+            self.monitor_engine = MonitorEngine(self.license_client)
         return self.monitor_engine
 
     def _monitor_interval_changed(self, mode: str) -> None:
@@ -3811,7 +3810,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.boss_overlay = None
             return
         overlay = _MovableOverlay(self)
-        overlay.setWindowTitle("RF NEXT QOL · Boss")
+        overlay.setWindowTitle("RF QOL · Boss")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
@@ -3851,7 +3850,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.pvp_overlay = None
             return
         overlay = _MovableOverlay(self)
-        overlay.setWindowTitle("RF NEXT QOL · PvP próximo")
+        overlay.setWindowTitle("RF QOL · PvP próximo")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
@@ -4107,7 +4106,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QMessageBox.warning(
                     self,
                     "Captura já ativa",
-                    "Já existe outra instância do RF NEXT QOL capturando. "
+                    "Já existe outra instância do RF QOL capturando. "
                     "Encerre essa sessão pelo programa que já está aberto e tente novamente.",
                 )
             else:
@@ -5121,7 +5120,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 
 
 def create_application(argv: list[str] | None = None) -> QtWidgets.QApplication:
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(argv or ["rf-next-qol-qt-preview"])
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(argv or ["rf-qol-qt-preview"])
     if not hasattr(app, "_rfnext_translator"):
         translator = QtCore.QTranslator(app)
         translator.load(
@@ -5162,7 +5161,7 @@ def _claim_instance_server(
     QtNetwork.QLocalServer.removeServer(name)
     if not server.listen(name):
         lock.unlock()
-        raise RuntimeError("Não foi possível reservar a instância única do RF NEXT QOL.")
+        raise RuntimeError("Não foi possível reservar a instância única do RF QOL.")
     app._rfnext_instance_lock = lock
     return server
 
@@ -5207,10 +5206,8 @@ def main() -> int:
             and (ROOT / "core" / "collection_requirements.csv").is_file()
             and (ROOT / "core" / "job1_pending_layouts.json").is_file()
             and (ROOT / "core" / "job1_all_opcodes.csv").is_file()
-            and all(
-                directory.resolve().is_relative_to(INSTALL_DIR.resolve())
-                for directory in RUNTIME_DIRS
-            )
+            and MACHINE_STATE_DIR != STATE_DIR
+            and UPDATES_DIR.parent == MACHINE_STATE_DIR
         )
         window.capture_timer.stop()
         window.exit_requested = True

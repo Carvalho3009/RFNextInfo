@@ -7,7 +7,7 @@ import app.paths as paths
 
 
 class RuntimePathsTest(unittest.TestCase):
-    def test_runtime_layout_is_install_local_and_migrates_without_deleting(self):
+    def test_runtime_layout_is_clean_and_does_not_migrate_old_state(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             install = root / "install"
@@ -26,9 +26,11 @@ class RuntimePathsTest(unittest.TestCase):
             logs = install / "logs"
             cache = install / "cache"
             updates = install / "updates"
+            machine = install / "machine-data"
             captures = install / "Capturas"
             with (
                 patch.object(paths, "STATE_DIR", state),
+                patch.object(paths, "MACHINE_STATE_DIR", machine),
                 patch.object(paths, "DATABASE_DIR", database),
                 patch.object(paths, "LOG_DIR", logs),
                 patch.object(paths, "CACHE_DIR", cache),
@@ -36,37 +38,36 @@ class RuntimePathsTest(unittest.TestCase):
                 patch.object(paths, "CAPTURE_DIR", captures),
                 patch.object(paths, "PREFERENCES_PATH", state / "preferences.json"),
                 patch.object(paths, "DB_PATH", database / "capture.sqlite3"),
-                patch.object(paths, "LEGACY_USER_STATE_DIR", legacy_user),
-                patch.object(paths, "LEGACY_MACHINE_STATE_DIR", legacy_machine),
                 patch.object(
                     paths,
                     "RUNTIME_DIRS",
-                    (state, database, logs, cache, updates, captures),
+                    (state, machine, database, logs, cache, updates, captures),
                 ),
             ):
                 migrated = paths.ensure_runtime_layout()
 
-            self.assertIn(legacy_user / "preferences.json", migrated)
-            self.assertEqual(
-                (state / "preferences.json").read_bytes(),
-                (legacy_user / "preferences.json").read_bytes(),
-            )
-            self.assertEqual(
-                (state / "license.dat").read_bytes(),
-                (legacy_user / "license.dat").read_bytes(),
-            )
+            self.assertEqual(migrated, ())
+            self.assertTrue(all(path.is_dir() for path in (
+                state, machine, database, logs, cache, updates, captures
+            )))
+            self.assertFalse((state / "preferences.json").exists())
+            self.assertFalse((machine / "license.dat").exists())
             self.assertTrue((legacy_user / "preferences.json").exists())
             self.assertTrue((legacy_user / "license.dat").exists())
             self.assertTrue((legacy_machine / "site-profile.dat").exists())
 
-    def test_installers_do_not_write_app_state_to_appdata(self):
+    def test_installers_keep_machine_trust_state_outside_user_appdata(self):
         root = Path(__file__).resolve().parents[1]
         installer_text = "\n".join(
             (root / "packaging" / name).read_text(encoding="utf-8")
             for name in ("installer.iss", "installer.nsi")
         ).lower()
-        self.assertNotIn("commonappdata", installer_text)
         self.assertNotIn("$appdata", installer_text)
+        self.assertIn("{commonappdata}\\karvalho\\rf qol", installer_text)
+        self.assertIn("$programdata\\karvalho\\rf qol", installer_text)
+        self.assertNotIn(
+            'name: "{app}\\updates"; permissions: users-modify', installer_text
+        )
         self.assertIn("{app}\\logs\\install.log", installer_text)
         self.assertIn("$instdir\\logs\\install.log", installer_text)
 

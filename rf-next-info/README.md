@@ -1,13 +1,13 @@
-# RF NEXT QOL
+# RF QOL
 
 Cliente Windows 10/11 x64 para captura passiva do RF NEXT 1.28.5, leitura local
 e exportação JSON/CSV para o site RF NEXT.
 
-Contato: Discord `Carvalho` · `carvalho@tuta.com`
+Suporte: [Discord oficial](https://discord.gg/D3hhdMgkj) · `carvalho@tuta.com`
 
 ## Recursos atuais
 
-- executável autônomo, interface Karvalho e instalador padrão;
+- executável autônomo, identidade RF QOL própria e instalador padrão;
 - seleção única do executável e detecção automática das conexões TCP atuais;
 - lista limitada aos executáveis `ProjectRF*`;
 - captura nativa Pktmon limitada às portas conhecidas do RF NEXT e às portas
@@ -30,10 +30,11 @@ Contato: Discord `Carvalho` · `carvalho@tuta.com`
 - recuperação de captura PktMon pendente após fechamento inesperado, sem
   apagar os segmentos ETL;
 - curva de EXP 1–200 e catálogo local de 1.322 itens de loot conhecidos;
-- chave enviada somente na ativação; depois, lease Ed25519 renovada a cada
-  24 horas, com tolerância offline de até 72 horas;
+- chave enviada somente na ativação; depois, lease Ed25519 v2 renovada
+  periodicamente, com tolerância offline máxima de 24 horas;
 - estado da licença protegido pelo DPAPI do Windows e recuperável por backup
   criptografado após reinício ou atualização;
+- captura, leitura, monitores, exportação e envio bloqueados sem lease válida;
 - exportação com lease e `installation_id`, nunca com a chave da licença;
 - atualização GitHub sempre visível, com changelog, confirmação, assinatura
   Ed25519 e SHA-256; sem atualização silenciosa;
@@ -55,9 +56,11 @@ segmentos para a Lixeira. Nenhuma exclusão permanente é automática.
 
 O Windows solicita elevação porque o Pktmon precisa de permissão
 administrativa. O instalador permite escolher a pasta e coloca nela o
-executável, dependências, configurações, banco, logs, cache, atualizações e a
+executável, dependências, configurações, banco, logs, cache e a
 pasta inicial de capturas. A pasta de capturas e exportações pode ser alterada
 dentro do aplicativo. Não existe fallback silencioso para `%AppData%`.
+O estado de licença, anti-downgrade e staging de atualização ficam separados em
+`%ProgramData%\Karvalho\RF QOL`, com acesso administrativo.
 
 Na primeira abertura:
 
@@ -76,13 +79,15 @@ atalho.
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m PyInstaller --clean --noconfirm .\packaging\RFNextInfo.spec
-makensis.exe .\packaging\installer.nsi
-.\dist\RFNextInfo\RFNextInfo.exe --self-test
+.\packaging\bootstrap-build.ps1 -Wheelhouse .\tmp\wheels
+.\packaging\build.ps1
+.\dist\RF QOL\RF QOL.exe --self-test
 ```
 
-O instalador ainda não possui assinatura Authenticode. A autenticidade das
-atualizações é validada internamente por Ed25519 e SHA-256.
+O build de desenvolvimento permanece sem assinatura. O build `-Release` exige
+chaves públicas de produção, certificado Authenticode, timestamp, manifesto v2
+assinado e Inno Setup; enquanto esses recursos não estiverem disponíveis, a
+publicação é bloqueada.
 
 ### Diagnóstico da atualização durante a captura
 

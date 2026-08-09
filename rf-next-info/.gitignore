@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .deps/
 .deps313/
+.venv313/
 .toolchain/
 build/
 dist/
@@ -9,10 +10,12 @@ dist/
 diagnostics/
 logs/
 data/
+machine-data/
 database/
 cache/
 updates/
 Capturas/
+tmp/
 *.etl
 *.pcap
 *.pcapng

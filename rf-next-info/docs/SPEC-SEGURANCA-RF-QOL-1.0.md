@@ -221,7 +221,7 @@ v2 e rejeitar product/audience/instalação/status divergentes.
   "published_at": "UTC ISO-8601",
   "expires_at": "UTC ISO-8601",
   "key_id": "update-AAAA-NN",
-  "file": "RFQOL-Setup-1.0.0.exe",
+  "file": "RF QOL Setup 1.0.0.exe",
   "size": 0,
   "sha256": "hexadecimal de 64 caracteres",
   "rollback_compatible_from": [],

@@ -304,7 +304,7 @@ class RealtimeCapture:
 
     def _add_port_constraint(self, port: int, *, source: bool) -> None:
         constraint = _ProtocolConstraint()
-        constraint.name = f"RFNextInfo-{port}-{'src' if source else 'dst'}"
+        constraint.name = f"RFQOL-{port}-{'src' if source else 'dst'}"
         constraint.transport_protocol = TCP_PROTOCOL
         constraint.present = (1 << 5) | (1 << (11 if source else 12))
         if source:
@@ -334,7 +334,7 @@ class RealtimeCapture:
             _check(
                 self._api.PacketMonitorCreateLiveSession(
                     self._handle,
-                    "RFNextInfo-Realtime",
+                    "RFQOL-Realtime",
                     ctypes.byref(self._session),
                 ),
                 "criação da sessão",

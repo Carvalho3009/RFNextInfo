@@ -24,11 +24,11 @@ publicação não autorizada
 |---|---|---|---|
 | M0 | Baseline 3.0.11 e riscos confirmados | Concluído | — |
 | M1 | SPEC e roadmap aprovados | Concluído | G0 |
-| M2 | Lease v2, chaves e autorização central | Em execução | G1 |
-| M3 | Emissor/site v2 integrados | Pendente | G1 |
-| M4 | Update/rollback/ACL seguros | Pendente | G1 |
-| M5 | Build assinado e rastreável | Pendente | G2 |
-| M6 | RC validada em ambiente real | Pendente | G3 |
+| M2 | Lease v2, chaves e autorização central | Concluído localmente; produção pendente | G1 |
+| M3 | Emissor/site v2 integrados | Parcial: site pronto, emissor externo pendente | G1 |
+| M4 | Update/rollback/ACL seguros | Parcial: update/ACL prontos, rollback assinado pendente | G1 |
+| M5 | Build assinado e rastreável | Parcial: portátil/SBOM/procedência prontos, assinatura pendente | G2 |
+| M6 | RC validada em ambiente real | Parcial: RC portátil local; matriz limpa pendente | G3 |
 | M7 | Release RF QOL 1.0 | Pendente | G4 |
 
 ## Fase 0 — Baseline e proposta
@@ -54,6 +54,9 @@ Aceite:
 G0 aprovado pelo owner em 09 ago 2026.
 
 ## Fase 1 — Cerimônia e contratos de segurança
+
+Estado real: contrato, runbook, vetor público e bloqueios `-pending` concluídos;
+cerimônia com chaves/certificado reais pendente.
 
 Objetivo: fechar os formatos antes do código.
 
@@ -87,6 +90,10 @@ ou certificados reais continuam condicionados à disponibilidade externa.
 
 ## Fase 2 — Base de confiança e licença no cliente
 
+Estado real: concluída na implementação local isolada. Lease v2, UUID de
+instalação, prefixo RFQ, estados normativos, 24 h, recuo de relógio, DPAPI/ACL e
+gates das duas interfaces possuem testes automatizados.
+
 Objetivo: substituir confiança mutável por âncoras pinadas e aplicar 24 horas.
 
 Tarefas:
@@ -119,6 +126,10 @@ Rollback:
 
 ## Fase 3 — Emissor e site
 
+Estado real: parcial. O site exige introspecção v2, produto, audience e
+instalação; o emissor é serviço externo sem código localizado no monorepo e seu
+contrato está em `docs/CONTRATO-EMISSOR-LEASE-V2.md`.
+
 Objetivo: emitir e impor lease v2 ponta a ponta.
 
 Tarefas:
@@ -147,6 +158,11 @@ Rollback:
 - as duas linhas não compartilham chaves nem banco lógico de autorização.
 
 ## Fase 4 — Update, anti-downgrade, ACL e rollback
+
+Estado real: manifesto v2, hash/tamanho, anti-downgrade, staging admin-only,
+reverificação e Authenticode foram implementados. O rollback inseguro foi
+removido e permanece deliberadamente indisponível até existir um instalador
+anterior assinado e compatível; por isso a fase não está concluída.
 
 Objetivo: impedir execução de artefato não confiável.
 
@@ -180,6 +196,10 @@ Rollback:
 
 ## Fase 5 — Cadeia de build e assinatura
 
+Estado real: lock com hashes, instalação offline, SBOM, procedência, build
+portátil e self-test concluídos. Inno Setup, certificado real, timestamp e
+chave offline de update não estavam disponíveis; o gate de release os exige.
+
 Objetivo: produzir artefato rastreável e reconhecido pelo Windows.
 
 Tarefas:
@@ -188,7 +208,7 @@ Tarefas:
 2. Gerar SBOM.
 3. Construir em ambiente limpo a partir de commit limpo.
 4. Executar testes, self-test, scan de segredos e scanner de dados proibidos.
-5. Assinar `RFQOL.exe` e instalador com Authenticode SHA-256.
+5. Assinar `RF QOL.exe` e instalador com Authenticode SHA-256.
 6. Aplicar timestamp RFC 3161 SHA-256.
 7. Calcular hashes após assinatura.
 8. Gerar procedência/atestação do build.
@@ -210,6 +230,10 @@ Rollback:
 Gate: G2 para uso do certificado real.
 
 ## Fase 6 — RC e validação real
+
+Estado real: pacote portátil local gerado com Python 3.13 e autoteste aprovado.
+Instalador, Windows limpo 10/11, ativação real e teste com dois clientes seguem
+pendentes de ambiente externo.
 
 Objetivo: provar o sistema fora do ambiente do implementador.
 

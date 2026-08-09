@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 
 
 def run_smoke() -> dict[str, object]:
@@ -9,9 +11,23 @@ def run_smoke() -> dict[str, object]:
 
     from PySide6 import QtCore, QtWidgets, __version__ as pyside_version
 
+    existing = QtWidgets.QApplication.instance()
+    if existing is not None and existing.platformName() != "offscreen":
+        environment = dict(os.environ)
+        environment["QT_QPA_PLATFORM"] = "offscreen"
+        completed = subprocess.run(
+            [sys.executable, "-m", "app.ui_qt.smoke"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=environment,
+        )
+        return json.loads(completed.stdout.strip().splitlines()[-1])
+
     from app.ui_qt.main import MainWindow, PAGES, create_application
 
-    app = create_application(["rf-next-qol-qt-smoke"])
+    app = create_application(["rf-qol-qt-smoke"])
     window = MainWindow(load_data=False)
     window.resize(window.minimumSize())
     window.show()

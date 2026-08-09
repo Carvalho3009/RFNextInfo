@@ -51,7 +51,7 @@ def protect(value: bytes) -> bytes:
     target = _DataBlob()
     if not crypt32.CryptProtectData(
         ctypes.byref(source),
-        "RF NEXT INFO licença",
+        "RF QOL licença",
         None,
         None,
         None,

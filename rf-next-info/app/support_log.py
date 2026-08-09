@@ -8,7 +8,7 @@ import traceback
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-LOGGER_NAME = "rfnextinfo"
+LOGGER_NAME = "rfqol"
 MAX_UPLOAD_BYTES = 256 * 1024
 MAX_UPLOAD_LINES = 2_000
 STANDARD_LOG_BYTES = 1024 * 1024
@@ -18,7 +18,7 @@ DETAILED_LOG_BACKUPS = 5
 _HOOKS_INSTALLED = False
 
 _REDACTIONS = (
-    (re.compile(r"KRV(?:-[A-Z2-7]{5}){6}", re.IGNORECASE), "<LICENCA>"),
+    (re.compile(r"(?:RFQ|KRV)(?:-[A-Z2-7]{5}){6}", re.IGNORECASE), "<LICENCA>"),
     (
         re.compile(
             r"(?i)\b(authorization|token|ticket|password|secret)\s*[=:]\s*\S+"

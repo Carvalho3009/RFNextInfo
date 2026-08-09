@@ -122,13 +122,50 @@ class _FakeStore:
         pass
 
 
+class _AllowedLicense:
+    installation_id = "install-1"
+    lease = "lease-1"
+
+    @staticmethod
+    def require(_capability):
+        return {"active": True}
+
+
+class _DeniedLicense:
+    installation_id = "install-1"
+    lease = None
+
+    @staticmethod
+    def require(_capability):
+        raise PermissionError("licença necessária")
+
+
 class CaptureEngineTest(unittest.TestCase):
+    def test_denied_license_cannot_start_capture_or_monitor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                _DeniedLicense(),
+                capture_factory=_FakeCapture,
+            )
+            monitor = MonitorEngine(
+                _DeniedLicense(), live_factory=_MemoryLive
+            )
+            with self.assertRaises(PermissionError):
+                capture.start()
+            with self.assertRaises(PermissionError):
+                monitor.start()
+            self.assertFalse(list(root.glob("*.etl")))
+
     def test_stop_without_reading_preserves_raw_files_and_session(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             engine = CaptureEngine(
                 root,
                 root / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_FakeCapture,
                 live_factory=_FakeLive,
                 process_reader=lambda _ports: {
@@ -152,6 +189,7 @@ class CaptureEngineTest(unittest.TestCase):
 
     def test_independent_monitor_uses_memory_only_stream(self):
         monitor = MonitorEngine(
+            _AllowedLicense(),
             live_factory=_MemoryLive,
             process_reader=lambda _ports: {
                 "ProjectRF.exe": ((101,), (50000,), (12020,))
@@ -181,6 +219,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 root,
                 root / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_FakeCapture,
             )
 
@@ -203,6 +242,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 root,
                 root / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_FakeCapture,
                 live_factory=_FakeLive,
                 process_reader=lambda _ports: {
@@ -236,6 +276,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 root,
                 root / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_FakeCapture,
                 live_factory=_FakeLive,
                 process_reader=lambda _ports: {
@@ -315,6 +356,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 Path(directory),
                 Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_FakeCapture,
                 live_factory=_FakeLive,
                 process_reader=lambda _ports: {
@@ -333,6 +375,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 Path(directory),
                 Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_RunningCapture,
                 process_reader=lambda _ports: {
                     r"C:\ProjectRF.exe": ({10}, {50000}, {12020})
@@ -353,6 +396,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 Path(directory),
                 Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
                 profile="Teste",
                 capture_factory=_FakeCapture,
                 live_factory=_FakeLive,
@@ -389,6 +433,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 Path(directory),
                 Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_FakeCapture,
                 live_factory=_BrokenLive,
                 process_reader=lambda _ports: {
@@ -425,6 +470,7 @@ class CaptureEngineTest(unittest.TestCase):
             engine = CaptureEngine(
                 Path(directory),
                 Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
                 capture_factory=_FakeCapture,
                 live_factory=_FakeLive,
                 process_reader=lambda _ports: {
@@ -454,7 +500,7 @@ class SiteUploadEngineTest(unittest.TestCase):
                 self.sent = (mode, payload, key)
                 return {"receipt": "ok"}
 
-        class License:
+        class License(_AllowedLicense):
             installation_id = "install-1"
             lease = "lease-1"
 
@@ -530,7 +576,7 @@ class SiteUploadEngineTest(unittest.TestCase):
                 self.sent = (mode, payload, key)
                 return {"receipt": "ok"}
 
-        class License:
+        class License(_AllowedLicense):
             installation_id = "install-1"
             lease = "lease-1"
 
@@ -589,8 +635,18 @@ class SiteUploadEngineTest(unittest.TestCase):
 
 
 class ExportEngineTest(unittest.TestCase):
+    def test_denied_license_fails_before_creating_export_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "out"
+            with self.assertRaises(PermissionError):
+                ExportEngine(
+                    root / "capture.sqlite3", _DeniedLicense()
+                ).export("session", target, "Profile")
+            self.assertFalse(target.exists())
+
     def test_export_writes_detected_equipment_to_json(self):
-        class License:
+        class License(_AllowedLicense):
             installation_id = "install-1"
             lease = "lease-1"
 

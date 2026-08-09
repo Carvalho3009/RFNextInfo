@@ -3257,7 +3257,7 @@ def capture_license_claim(payload):
     installation_id = payload.get("installation_id") or metadata.get("installation_id")
     if not isinstance(lease, str) or not 20 <= len(lease) <= 4096:
         raise ValueError("Comprovante de licença ausente")
-    if installation_id is not None and (not isinstance(installation_id, str) or len(installation_id) > 200):
+    if not isinstance(installation_id, str) or not 1 <= len(installation_id) <= 200:
         raise ValueError("Instalação inválida")
     return lease, installation_id
 
@@ -3334,12 +3334,18 @@ def introspect_license_lease(lease):
 def validate_capture_license(payload):
     lease, installation_id = capture_license_claim(payload)
     result = introspect_license_lease(lease)
-    if not result["active"] or (
-        installation_id and result.get("installation_id") != installation_id
+    if (
+        not result["active"]
+        or result.get("v") != 2
+        or result.get("product") != "rf-qol"
+        or result.get("aud") != "rf-qol-windows"
+        or result.get("installation_id") != installation_id
     ):
         raise PermissionError("Licença inativa ou expirada.")
     return {
         "active": True,
+        "product": result["product"],
+        "aud": result["aud"],
         "installation_id": result.get("installation_id"),
         "valid_until": result.get("valid_until"),
     }
@@ -5683,6 +5689,9 @@ if __name__ == "__main__":
             original_introspect = introspect_license_lease
             introspect_license_lease = lambda _lease: {
                 "active": True,
+                "v": 2,
+                "product": "rf-qol",
+                "aud": "rf-qol-windows",
                 "installation_id": "install-1",
                 "valid_until": "2026-12-31T00:00:00Z",
             }
@@ -5946,6 +5955,9 @@ if __name__ == "__main__":
             assert b"RegisteredAds" in exported and b"1000150" in exported
             introspect_license_lease = lambda _lease: {
                 "active": True,
+                "v": 2,
+                "product": "rf-qol",
+                "aud": "rf-qol-windows",
                 "installation_id": "install-1",
                 "valid_until": "2026-12-31T00:00:00Z",
             }

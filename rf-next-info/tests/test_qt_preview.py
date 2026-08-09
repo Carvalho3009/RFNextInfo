@@ -11,6 +11,14 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_discord_action_opens_exact_official_url(self):
+        from app.ui_qt.main import DISCORD_URL, MainWindow
+
+        with mock.patch("app.ui_qt.main.QtGui.QDesktopServices.openUrl") as opened:
+            MainWindow._open_discord(None)
+        self.assertEqual(DISCORD_URL, "https://discord.gg/D3hhdMgkj")
+        self.assertEqual(opened.call_args.args[0].toString(), DISCORD_URL)
+
     @unittest.skipUnless(os.name == "nt", "Contador de RAM disponível no Windows")
     def test_process_memory_reader_returns_current_working_set(self):
         from app.ui_qt.main import _process_memory_bytes
@@ -733,7 +741,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         from app.ui_qt.main import _claim_instance_server, create_application
 
         app = create_application(["single-instance-test"])
-        server_name = f"Karvalho.RFNextQOL.test.{uuid.uuid4().hex}"
+        server_name = f"RFQOL.test.{uuid.uuid4().hex}"
         server = _claim_instance_server(app, server_name)
         try:
             self.assertIsNotNone(server)
@@ -753,7 +761,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         if tray is None:
             self.skipTest("Área de notificação indisponível neste ambiente")
         actions = [action.text() for action in window.tray_menu.actions()]
-        self.assertIn("Abrir RF NEXT QOL", actions)
+        self.assertIn("Abrir RF QOL", actions)
         self.assertIn("Sair", actions)
         window.exit_requested = True
         window.close()
@@ -769,7 +777,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF NEXT QOL — 3.0.11")
+        self.assertEqual(result["title"], "RF QOL — 1.0.0")
         self.assertEqual(result["page_count"], 9)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

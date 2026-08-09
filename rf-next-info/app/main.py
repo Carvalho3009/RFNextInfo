@@ -27,9 +27,8 @@ from app.license import LicenseClient
 from app.paths import (
     CAPTURE_DIR,
     DB_PATH,
-    LEGACY_MACHINE_STATE_DIR,
-    LEGACY_USER_STATE_DIR,
     LOG_PATH,
+    MACHINE_STATE_DIR,
     PREFERENCES_PATH,
     PREVIEW_DIR,
     STATE_DIR,
@@ -38,7 +37,13 @@ from app.paths import (
 )
 from app.site_profile import SiteProfileClient
 from app.support_log import configure as configure_log, recent_lines
-from app.updater import create_rollback, download_verified, latest
+from app.updater import (
+    download_verified,
+    latest,
+    verify_authenticode,
+    verify_downloaded,
+    verify_manifest,
+)
 from core.capture import GIB, PktmonCapture
 from core.connections import (
     clients_for_executable,
@@ -54,8 +59,8 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "3.0.11"
-MACHINE_STATE_DIR = STATE_DIR
+VERSION = "1.0.0"
+RELEASE_SEQUENCE = 1
 ASSETS = ROOT / "assets"
 WM_HOTKEY = 0x0312
 WM_QUIT = 0x0012
@@ -770,7 +775,7 @@ class App(tk.Tk):
         if ui_self_test:
             self.withdraw()
         _register_private_fonts()
-        self.title("RF NEXT QOL")
+        self.title("RF QOL")
         self.geometry("1440x810")
         self.minsize(1180, 664)
         self.configure(bg="#070909")
@@ -789,22 +794,11 @@ class App(tk.Tk):
             VERSION,
         )
         self.license = LicenseClient(
-            STATE_DIR,
-            version=VERSION,
-            legacy_paths=(
-                LEGACY_USER_STATE_DIR / "license.dat",
-                LEGACY_USER_STATE_DIR / "license.json",
-                LEGACY_MACHINE_STATE_DIR / "license.dat",
-                LEGACY_MACHINE_STATE_DIR / "license.json",
-            ),
+            MACHINE_STATE_DIR, version=VERSION
         )
+        self.license.record_release_sequence(RELEASE_SEQUENCE)
         self.site_profile = SiteProfileClient(
-            STATE_DIR,
-            version=VERSION,
-            legacy_paths=(
-                LEGACY_USER_STATE_DIR / "site-profile.dat",
-                LEGACY_MACHINE_STATE_DIR / "site-profile.dat",
-            ),
+            STATE_DIR, version=VERSION
         )
         self.log.info(
             "license_state_loaded source=%s has_lease=%s",
@@ -873,6 +867,8 @@ class App(tk.Tk):
         self._info_worker_cache: dict[str, Any] = {}
         self._runtime_refresh_running = False
         self._next_runtime_refresh = 0.0
+        self._license_refresh_running = False
+        self._next_license_refresh = 0.0
         self._runtime_snapshot = {
             "total_bytes": 0,
             "free_bytes": 0,
@@ -1268,7 +1264,7 @@ class App(tk.Tk):
         product.pack_propagate(False)
         ttk.Label(
             product,
-            text="RF NEXT QOL",
+            text="RF QOL",
             style="Product.TLabel",
         ).pack(side=LEFT)
         indicators = ttk.Frame(
@@ -1344,16 +1340,16 @@ class App(tk.Tk):
         try:
             from PIL import Image, ImageDraw, ImageTk
 
-            with Image.open(ASSETS / "karvalho-symbol-gold.png") as source:
+            with Image.open(ASSETS / "rf-qol-symbol-v1.png") as source:
                 source = source.crop(source.getbbox())
                 source.thumbnail((32, 32), Image.Resampling.LANCZOS)
                 self.app_icon = ImageTk.PhotoImage(source.copy())
             self.iconphoto(True, self.app_icon)
-            with Image.open(ASSETS / "karvalho-symbol-gold.png") as source:
+            with Image.open(ASSETS / "rf-qol-symbol-v1.png") as source:
                 source = source.crop(source.getbbox())
                 source.thumbnail((54, 54), Image.Resampling.LANCZOS)
                 self.logo = ImageTk.PhotoImage(source.copy())
-            with Image.open(ASSETS / "rf-next-qol-logo.png") as source:
+            with Image.open(ASSETS / "rf-qol-primary-v1.png") as source:
                 source = source.crop(source.getbbox())
                 source.thumbnail((166, 42), Image.Resampling.LANCZOS)
                 self.product_logo = ImageTk.PhotoImage(source.copy())
@@ -1391,7 +1387,7 @@ class App(tk.Tk):
                 style="Sidebar.TLabel",
             ).pack(pady=(0, 18))
         except (OSError, tk.TclError):
-            ttk.Label(sidebar, text="RF NEXT QOL", style="Version.TLabel").pack(
+            ttk.Label(sidebar, text="RF QOL", style="Version.TLabel").pack(
                 pady=(0, 10)
             )
 
@@ -2881,7 +2877,7 @@ class App(tk.Tk):
             self.prefs["minimize_to_tray"] = messagebox.askyesno(
                 "Comportamento ao fechar",
                 "Ao fechar a janela, manter a captura visível na área de notificação?\n\n"
-                "Você poderá encerrar pelo ícone Karvalho.",
+                "Você poderá encerrar pelo ícone RF QOL.",
             )
         self.minimize_to_tray = bool(self.prefs["minimize_to_tray"])
         self.profile.set(str(self.prefs.get("profile", "")))
@@ -3395,6 +3391,8 @@ class App(tk.Tk):
         *,
         notify: bool = True,
     ) -> None:
+        if not self._authorize_or_warn("enviar dados", "Envio bloqueado"):
+            return
         if mode not in self.quick_mode_labels:
             return
         if self._send_uploading or self._pending_send_mode:
@@ -4033,6 +4031,8 @@ class App(tk.Tk):
         }
 
     def send_selected_subsessions(self) -> None:
+        if not self._authorize_or_warn("enviar subsessões", "Envio bloqueado"):
+            return
         if self._send_uploading:
             return messagebox.showwarning(
                 "Envio", "Aguarde o envio atual terminar."
@@ -4620,6 +4620,8 @@ class App(tk.Tk):
         self._run(upload, done)
 
     def export_and_upload(self) -> None:
+        if not self._authorize_or_warn("exportar e enviar", "Envio bloqueado"):
+            return
         if self._capture_is_active():
             return messagebox.showwarning(
                 "Envio",
@@ -4765,17 +4767,49 @@ class App(tk.Tk):
         )
 
     def _license_checked(self, result, error) -> None:
+        self._license_refresh_running = False
         allowed, message = (
             (False, f"Falha ao verificar: {type(error).__name__}")
             if error
             else result
         )
         self._apply_license_status(allowed, message)
+        if not allowed and self._capture_is_active():
+            self._halt_capture_for_license(message)
 
     def _refresh_license(self) -> tuple[bool, str]:
         allowed, message = self.license.refresh_if_due(VERSION)
         self._apply_license_status(allowed, message)
         return allowed, message
+
+    def _authorize_or_warn(self, capability: str, title: str) -> bool:
+        try:
+            self.license.require(capability)
+            return True
+        except PermissionError as error:
+            self._apply_license_status(False, str(error))
+            messagebox.showwarning(title, str(error))
+            return False
+
+    def _halt_capture_for_license(self, message: str) -> None:
+        self._close_live_preview()
+        try:
+            if self.capture.status().active:
+                self.capture.stop()
+        except Exception as error:
+            self.log.exception(
+                "license_capture_stop_failed reason=%s", _safe_error_code(error)
+            )
+        self.prefs["capture_pending"] = True
+        self._save_preferences()
+        self._apply_license_status(False, message)
+        self.capture_state.configure(
+            text=(
+                "Captura encerrada por licença · arquivos brutos preservados · "
+                "nenhuma leitura ou exportação executada"
+            )
+        )
+        self.log.warning("capture_stopped_license_required")
 
     def _capture_is_active(self) -> bool:
         if not self.current_session:
@@ -5030,6 +5064,11 @@ class App(tk.Tk):
         self.stop_capture()
 
     def stop_capture(self) -> None:
+        try:
+            self.license.require("ler captura encerrada")
+        except PermissionError as error:
+            self._halt_capture_for_license(str(error))
+            return
         if self._ingesting:
             return
         if self._live_ingesting is True:
@@ -5220,6 +5259,7 @@ class App(tk.Tk):
         append_only: bool = False,
         progress=None,
     ) -> tuple[int, list[str], int]:
+        self.license.require("ler captura")
         with self._ingest_lock:
             store = CaptureStore(DB_PATH)
             try:
@@ -5311,6 +5351,7 @@ class App(tk.Tk):
         )
 
     def _open_live_preview(self) -> None:
+        self.license.require("monitorar captura")
         if not self.current_session or not self._live_ports:
             return
         target = self._next_live_target()
@@ -5567,6 +5608,8 @@ class App(tk.Tk):
         return result
 
     def export(self) -> None:
+        if not self._authorize_or_warn("exportar", "Exportação bloqueada"):
+            return
         if self.capture.status().active:
             return messagebox.showwarning(
                 "Captura ativa",
@@ -5633,7 +5676,7 @@ class App(tk.Tk):
             title="Salvar cópia sanitizada do log",
             defaultextension=".txt",
             initialfile=(
-                f"RFNextInfo-log-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
+                f"RFQOL-log-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
             ),
             filetypes=(("Arquivo de texto", "*.txt"),),
         )
@@ -5699,6 +5742,7 @@ class App(tk.Tk):
     def _export_to(
         self, target: Path, *, offer_cleanup: bool = True
     ) -> list:
+        self.license.require("exportar")
         if not self.current_session:
             return []
         profile = self.profile.get().strip() or "Profile"
@@ -6480,14 +6524,6 @@ class App(tk.Tk):
             self.update_button.configure(state="normal")
             self.update_status.configure(text="Atualização cancelada.")
             return
-        public_key = self.license.state.get("public_key")
-        if not public_key:
-            self.update_button.configure(state="normal")
-            self.update_status.configure(text="Ative a licença antes de atualizar.")
-            return messagebox.showwarning(
-                "Atualização",
-                "Ative a licença para obter a chave pública de verificação.",
-            )
         def progress(phase: str, downloaded: int, total: int | None) -> None:
             self.after(
                 0,
@@ -6498,7 +6534,10 @@ class App(tk.Tk):
 
         self._run(
             lambda: download_verified(
-                release, public_key, progress, UPDATES_DIR
+                release,
+                progress,
+                UPDATES_DIR,
+                current_sequence=self.license.highest_release_sequence,
             ),
             self._update_downloaded,
         )
@@ -6537,31 +6576,22 @@ class App(tk.Tk):
         if messagebox.askyesno(
             "Atualização verificada",
             "Assinatura e SHA-256 conferem.\n\n"
-            "O RF NEXT QOL será fechado e o instalador será aberto. Continuar?",
+            "O RF QOL será fechado e o instalador será aberto. Continuar?",
         ):
-            if getattr(sys, "frozen", False):
-                rollback_root = UPDATES_DIR / "rollback"
-                source = Path(sys.executable).parent
-                if (source / "_internal").is_dir():
-                    target = rollback_root / "RFNextInfo"
-                    try:
-                        create_rollback(source, target)
-                    except (OSError, ValueError) as rollback_error:
-                        self.log.exception("update_rollback_failed")
-                        return messagebox.showerror(
-                            "Atualização cancelada",
-                            "Não foi possível preservar a versão atual:\n"
-                            f"{rollback_error}",
-                        )
-                else:
-                    rollback_root.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(
-                        sys.executable, rollback_root / "RFNextInfo.exe"
-                    )
             self._save_preferences()
             try:
+                manifest = verify_manifest(
+                    json.loads(
+                        (UPDATES_DIR / "update-manifest.json").read_text(
+                            encoding="utf-8"
+                        )
+                    ),
+                    current_sequence=self.license.highest_release_sequence,
+                )
+                verify_downloaded(installer, manifest)
+                verify_authenticode(installer)
                 os.startfile(installer)
-            except OSError as launch_error:
+            except (OSError, ValueError, json.JSONDecodeError) as launch_error:
                 self.log.exception("update_installer_launch_failed")
                 return messagebox.showerror(
                     "Não foi possível abrir o instalador", str(launch_error)
@@ -6573,20 +6603,11 @@ class App(tk.Tk):
             self.destroy()
 
     def rollback(self) -> None:
-        previous = UPDATES_DIR / "rollback" / "RFNextInfo" / "RFNextInfo.exe"
-        if not previous.is_file():
-            previous = UPDATES_DIR / "rollback" / "RFNextInfo.exe"
-        if not previous.is_file():
-            return messagebox.showinfo(
-                "Versão anterior",
-                "Ainda não existe uma versão anterior preservada.",
-            )
-        if messagebox.askyesno(
-            "Abrir versão anterior",
-            "A versão anterior será aberta como executável preservado. "
-            "Feche a versão atual antes de capturar.",
-        ):
-            os.startfile(previous)
+        messagebox.showinfo(
+            "Versão anterior",
+            "O rollback só será oferecido quando existir um instalador anterior "
+            "com manifesto e assinaturas válidas.",
+        )
 
     def _request_runtime_refresh(self, active: bool) -> None:
         now = time.monotonic()
@@ -6737,6 +6758,20 @@ class App(tk.Tk):
         try:
             status = self.capture.cached_status
             active = self._capture_is_active()
+            if active:
+                try:
+                    self.license.require("continuar captura")
+                except PermissionError as error:
+                    self._halt_capture_for_license(str(error))
+                    active = False
+            now = time.monotonic()
+            if now >= self._next_license_refresh and not self._license_refresh_running:
+                self._next_license_refresh = now + 60
+                self._license_refresh_running = True
+                self._run(
+                    lambda: self.license.refresh_if_due(VERSION),
+                    self._license_checked,
+                )
             if active:
                 self.capture.heartbeat()
             self._request_runtime_refresh(active)
@@ -6934,11 +6969,11 @@ class App(tk.Tk):
                 from PIL import Image
 
                 if not self.tray:
-                    image = Image.open(ASSETS / "karvalho-symbol-gold.png")
+                    image = Image.open(ASSETS / "rf-qol-symbol-v1.png")
                     self.tray = pystray.Icon(
-                        "RF NEXT QOL",
+                        "RF QOL",
                         image,
-                        "RF NEXT QOL · captura visível",
+                        "RF QOL · captura visível",
                         pystray.Menu(
                             pystray.MenuItem(
                                 "Abrir", lambda: self.after(0, self.deiconify)

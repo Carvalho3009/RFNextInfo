@@ -7,18 +7,38 @@ import re
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .protected_state import protect, unprotect
 
-KEY_RE = re.compile(r"^KRV(?:-[A-Z2-7]{5}){6}$")
+KEY_RE = re.compile(r"^RFQ(?:-[A-Z2-7]{5}){6}$")
+ISSUER = "rflicenca.karvalho.dev.br"
+PRODUCT = "rf-qol"
+AUDIENCE = "rf-qol-windows"
+MAX_OFFLINE = timedelta(hours=24)
+MAX_NEXT_CHECK = timedelta(hours=6)
+CLOCK_SKEW = timedelta(minutes=5)
+
+# Chave pública sem material privado correspondente, usada para manter builds
+# de desenvolvimento fechados até a cerimônia das chaves de produção.
+LEASE_PUBLIC_KEYS = {
+    "lease-production-pending": "jnT3G4gf029nyovdOhYiym2p_Pt_NH0fd3AGDilJrRE",
+}
+
+
+def validate_release_configuration() -> None:
+    if any(key.endswith("-pending") for key in LEASE_PUBLIC_KEYS):
+        raise RuntimeError("Chave pública de lease de produção ainda não foi instalada")
 
 
 def _utc(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("Data sem fuso horário")
+    return parsed.astimezone(timezone.utc)
 
 
 def _b64(value: str) -> bytes:
@@ -35,19 +55,79 @@ def _activation_error(error: urllib.error.HTTPError) -> str:
     return f"{detail or 'servidor recusou a ativação'} (HTTP {error.code}{reference})"
 
 
-def verify_lease(lease: str, public_key: str) -> dict:
-    payload, signature = lease.split(".", 1)
-    raw = _b64(payload)
-    Ed25519PublicKey.from_public_bytes(_b64(public_key)).verify(_b64(signature), raw)
-    claims = json.loads(raw)
-    required = {"v", "iss", "license_id", "installation_id", "valid_until", "next_check_at"}
-    if (
-        claims.get("v") != 1
-        or claims.get("iss") != "rflicenca.karvalho.dev.br"
-        or not required.issubset(claims)
-    ):
-        raise ValueError("Comprovante de licença inválido")
-    return claims
+def verify_lease(
+    lease: str,
+    public_keys: dict[str, str] | str = LEASE_PUBLIC_KEYS,
+    *,
+    installation_id: str | None = None,
+    now: datetime | None = None,
+) -> dict:
+    """Valida assinatura, papel, produto, instalação e janela da lease v2."""
+    try:
+        payload, signature = lease.split(".", 1)
+        raw = _b64(payload)
+        if len(raw) > 32 * 1024:
+            raise ValueError
+        claims = json.loads(raw)
+        if not isinstance(claims, dict):
+            raise ValueError
+        required = {
+            "v",
+            "iss",
+            "product",
+            "aud",
+            "key_id",
+            "lease_id",
+            "license_id",
+            "installation_id",
+            "issued_at",
+            "next_check_at",
+            "valid_until",
+            "entitlement_expires_at",
+        }
+        if not required.issubset(claims):
+            raise ValueError
+        key_id = claims["key_id"]
+        if not isinstance(key_id, str) or not key_id.startswith("lease-"):
+            raise ValueError
+        public_key = (
+            public_keys
+            if isinstance(public_keys, str)
+            else public_keys.get(key_id)
+        )
+        if not public_key:
+            raise ValueError
+        Ed25519PublicKey.from_public_bytes(_b64(public_key)).verify(
+            _b64(signature), raw
+        )
+        if (
+            claims["v"] != 2
+            or claims["iss"] != ISSUER
+            or claims["product"] != PRODUCT
+            or claims["aud"] != AUDIENCE
+        ):
+            raise ValueError
+        for field in ("lease_id", "license_id", "installation_id"):
+            if not isinstance(claims[field], str) or not 1 <= len(claims[field]) <= 200:
+                raise ValueError
+        if str(uuid.UUID(claims["installation_id"])) != claims["installation_id"].lower():
+            raise ValueError
+        if installation_id is not None and claims["installation_id"] != installation_id:
+            raise ValueError
+        issued = _utc(claims["issued_at"])
+        next_check = _utc(claims["next_check_at"])
+        valid_until = _utc(claims["valid_until"])
+        entitlement = _utc(claims["entitlement_expires_at"])
+        if not issued <= next_check <= valid_until <= entitlement:
+            raise ValueError
+        if next_check - issued > MAX_NEXT_CHECK or valid_until - issued > MAX_OFFLINE:
+            raise ValueError
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        if issued > current + CLOCK_SKEW or current > valid_until:
+            raise ValueError
+        return claims
+    except Exception as error:
+        raise ValueError("Comprovante de licença inválido") from error
 
 
 class LicenseClient:
@@ -56,13 +136,15 @@ class LicenseClient:
         state_dir: Path,
         server: str = "https://rflicenca.karvalho.dev.br",
         version: str = "unknown",
-        legacy_paths: tuple[Path, ...] = (),
+        trusted_public_keys: dict[str, str] | None = None,
     ) -> None:
         self.state_dir = Path(state_dir)
         self.path = self.state_dir / "license.dat"
         self.backup_path = self.state_dir / "license.backup.dat"
         self.server = server.rstrip("/")
-        self.user_agent = f"RFNextInfo/{version}"
+        self.user_agent = f"RFQOL/{version}"
+        self.trusted_public_keys = dict(trusted_public_keys or LEASE_PUBLIC_KEYS)
+        self._validated_online = False
         primary = self._read_protected(self.path)
         backup = self._read_protected(self.backup_path)
         self.load_status = (
@@ -75,64 +157,17 @@ class LicenseClient:
             else "none"
         )
         self.state = primary or backup or {"installation_id": str(uuid.uuid4())}
-        legacy_json = [
-            self.state_dir / "license.json",
-            self.state_dir / "license.backup.json",
-        ]
-        legacy_protected = []
-        for legacy_path in map(Path, legacy_paths):
-            if legacy_path.suffix == ".dat":
-                legacy_protected.extend(
-                    (
-                        legacy_path,
-                        legacy_path.with_name("license.backup.dat"),
-                    )
-                )
-            else:
-                legacy_json.extend(
-                    (
-                        legacy_path,
-                        legacy_path.with_name("license.backup.json"),
-                    )
-                )
-        migrated = False
-        if not self.lease:
-            for legacy_path in dict.fromkeys(legacy_protected):
-                legacy_state = self._read_protected(legacy_path)
-                if legacy_state and legacy_state.get("lease"):
-                    self.state = legacy_state
-                    migrated = True
-                    self.load_status = "migrated"
-                    break
-        if not self.lease:
-            for legacy_path in dict.fromkeys(legacy_json):
-                legacy_state = self._read_json(legacy_path)
-                if legacy_state and legacy_state.get("lease"):
-                    self.state = legacy_state
-                    migrated = True
-                    self.load_status = "migrated"
-                    break
+        removed_mutable_key = self.state.pop("public_key", None) is not None
         if self.lease:
             try:
                 self._sync_dates(self.claims())
-            except Exception:
+            except ValueError:
                 self.load_status = "invalid"
-        if primary is None and (self.lease or not self.path.exists()):
+        if removed_mutable_key or primary is None:
             self._save()
-        # Keep legacy files as a recovery copy. They are never deleted silently.
 
     @staticmethod
-    def _read_json(path: Path) -> dict | None:
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(value, dict) and value.get("installation_id"):
-                return value
-        except (OSError, ValueError):
-            pass
-        return None
-
-    @classmethod
-    def _read_protected(cls, path: Path) -> dict | None:
+    def _read_protected(path: Path) -> dict | None:
         try:
             value = json.loads(unprotect(path.read_bytes()))
             if isinstance(value, dict) and value.get("installation_id"):
@@ -142,18 +177,19 @@ class LicenseClient:
         return None
 
     def _sync_dates(self, claims: dict) -> None:
+        previous = self.state.get("last_server_time")
+        issued = claims["issued_at"]
+        if not previous or _utc(issued) > _utc(previous):
+            self.state["last_server_time"] = issued
         self.state.update(
-            license_started_at=claims.get(
-                "license_starts_at", claims.get("issued_at")
-            ),
-            license_expires_at=claims.get(
-                "license_expires_at", claims.get("valid_until")
-            ),
-            next_check_at=claims.get("next_check_at"),
-            offline_valid_until=claims.get("valid_until"),
+            license_started_at=issued,
+            license_expires_at=claims["entitlement_expires_at"],
+            next_check_at=claims["next_check_at"],
+            offline_valid_until=claims["valid_until"],
         )
 
     def _save(self) -> None:
+        self.state.pop("public_key", None)
         self.state_dir.mkdir(parents=True, exist_ok=True)
         payload = protect(
             json.dumps(
@@ -173,7 +209,9 @@ class LicenseClient:
             pass
 
     def _json(self, path: str, payload: dict | None = None) -> dict:
-        body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+        body = None if payload is None else json.dumps(
+            payload, separators=(",", ":")
+        ).encode()
         request = urllib.request.Request(
             self.server + path,
             data=body,
@@ -185,70 +223,194 @@ class LicenseClient:
             method="GET" if body is None else "POST",
         )
         with urllib.request.urlopen(request, timeout=12) as response:
-            return json.loads(response.read(32 * 1024))
+            result = json.loads(response.read(32 * 1024))
+        if not isinstance(result, dict):
+            raise ValueError("Resposta inválida do servidor de licença")
+        return result
 
     def activate(self, key: str, version: str) -> dict:
         key = key.strip().upper()
         if not KEY_RE.fullmatch(key):
-            raise ValueError("Formato inválido. Use KRV-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX.")
+            raise ValueError("Formato inválido. Use RFQ-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX.")
         try:
-            public = self._json("/api/v1/public-key")
-            response = self._json("/api/v1/activate", {
-                "license_key": key,
-                "installation_id": self.state["installation_id"],
-                "app_version": version,
-            })
+            response = self._json(
+                "/api/v2/activate",
+                {
+                    "license_key": key,
+                    "installation_id": self.installation_id,
+                    "app_version": version,
+                    "product": PRODUCT,
+                    "audience": AUDIENCE,
+                },
+            )
         except urllib.error.HTTPError as error:
             raise ValueError(_activation_error(error)) from None
-        claims = verify_lease(response["lease"], public["public_key"])
-        if claims["installation_id"] != self.state["installation_id"]:
-            raise ValueError("Servidor vinculou outra instalação")
-        self.state.update(lease=response["lease"], public_key=public["public_key"])
+        claims = verify_lease(
+            response["lease"],
+            self.trusted_public_keys,
+            installation_id=self.installation_id,
+        )
+        self.state["lease"] = response["lease"]
         self._sync_dates(claims)
+        self._validated_online = True
         self._save()
         return claims
 
     def refresh_if_due(self, version: str) -> tuple[bool, str]:
         try:
             claims = self.claims()
-        except Exception:
-            return False, "Ative uma licença para iniciar capturas."
+        except (KeyError, TypeError, ValueError):
+            return False, "Ative uma licença válida para usar os recursos protegidos."
         now = datetime.now(timezone.utc)
         if now < _utc(claims["next_check_at"]):
-            return now <= _utc(claims["valid_until"]), "Licença válida."
+            return True, "Licença válida."
         try:
-            response = self._json("/api/v1/validate", {
-                "lease": self.state["lease"], "app_version": version
-            })
-            claims = verify_lease(response["lease"], self.state["public_key"])
-            if claims["installation_id"] != self.installation_id:
-                raise ValueError("Servidor vinculou outra instalação")
+            response = self._json(
+                "/api/v2/validate",
+                {
+                    "lease": self.lease,
+                    "app_version": version,
+                    "product": PRODUCT,
+                    "audience": AUDIENCE,
+                },
+            )
+            refreshed = verify_lease(
+                response["lease"],
+                self.trusted_public_keys,
+                installation_id=self.installation_id,
+            )
             self.state["lease"] = response["lease"]
-            self._sync_dates(claims)
+            self._sync_dates(refreshed)
+            self._validated_online = True
             self._save()
             return True, "Licença validada agora."
         except urllib.error.HTTPError:
+            self._clear_lease()
             return False, "Licença inativa, expirada ou revogada."
         except (OSError, urllib.error.URLError, ValueError, KeyError):
-            if now <= _utc(claims["valid_until"]):
-                return True, f"Servidor indisponível; prazo offline até {claims['valid_until']}."
-            return False, "Prazo offline encerrado. Exporte os dados ou conecte para validar."
+            self._validated_online = False
+            try:
+                self.claims(now=now)
+            except ValueError:
+                return False, "Prazo offline encerrado. Conecte para validar."
+            return True, f"Servidor indisponível; prazo offline até {claims['valid_until']}."
 
-    def claims(self) -> dict:
-        claims = verify_lease(self.state["lease"], self.state["public_key"])
-        if claims["installation_id"] != self.installation_id:
-            raise ValueError("Comprovante pertence a outra instalação")
+    def _clear_lease(self) -> None:
+        for field in (
+            "lease",
+            "license_started_at",
+            "license_expires_at",
+            "next_check_at",
+            "offline_valid_until",
+        ):
+            self.state.pop(field, None)
+        self.load_status = "revoked"
+        self._validated_online = False
+        self._save()
+
+    def claims(self, *, now: datetime | None = None) -> dict:
+        claims = verify_lease(
+            self.state["lease"],
+            self.trusted_public_keys,
+            installation_id=self.installation_id,
+            now=now,
+        )
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        last_server = self.state.get("last_server_time")
+        if last_server and current + CLOCK_SKEW < _utc(last_server):
+            raise ValueError("Relógio local requer revalidação online")
         return claims
 
-    def upload_diagnostic(self, path: Path, version: str) -> dict:
+    def require(self, capability: str) -> dict:
+        try:
+            return self.claims()
+        except (KeyError, TypeError, ValueError) as error:
+            label = capability.replace("_", " ")
+            raise PermissionError(
+                f"Licença válida obrigatória para {label}."
+            ) from error
+
+    def local_status(self) -> dict:
+        try:
+            claims = self.claims()
+            return {
+                "active": True,
+                "state": (
+                    "ACTIVE_ONLINE" if self._validated_online else "ACTIVE_OFFLINE"
+                ),
+                "message": "Licença válida",
+                "source": self.load_status,
+                "valid_until": claims["valid_until"],
+                "next_check_at": claims["next_check_at"],
+            }
+        except (KeyError, TypeError, ValueError):
+            state = self.license_state()
+            return {
+                "active": False,
+                "state": state,
+                "message": (
+                    "Licença expirada"
+                    if state == "EXPIRED"
+                    else "Relógio local requer revalidação online"
+                    if state == "REVALIDATION_REQUIRED"
+                    else "Licença revogada"
+                    if state == "REVOKED"
+                    else "Comprovante local inválido"
+                    if state == "INVALID_STATE"
+                    else "Licença ainda não ativada"
+                ),
+                "source": self.load_status,
+                "valid_until": None,
+                "next_check_at": None,
+            }
+
+    def license_state(self, *, now: datetime | None = None) -> str:
+        if self.load_status == "revoked":
+            return "REVOKED"
         if not self.lease:
-            raise ValueError("Ative a licença antes de enviar o diagnóstico")
+            return (
+                "INVALID_STATE"
+                if self.load_status in {"corrupt", "invalid"}
+                else "UNACTIVATED"
+            )
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        last_server = self.state.get("last_server_time")
+        try:
+            if last_server and current + CLOCK_SKEW < _utc(last_server):
+                return "REVALIDATION_REQUIRED"
+            self.claims(now=current)
+            return "ACTIVE_ONLINE" if self._validated_online else "ACTIVE_OFFLINE"
+        except (KeyError, TypeError, ValueError):
+            try:
+                payload = self.lease.split(".", 1)[0]
+                unsigned = json.loads(_b64(payload))
+                if current > _utc(unsigned["valid_until"]):
+                    return "EXPIRED"
+            except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                pass
+            return "INVALID_STATE"
+
+    @property
+    def highest_release_sequence(self) -> int:
+        try:
+            return max(0, int(self.state.get("release_sequence", 0)))
+        except (TypeError, ValueError):
+            return 0
+
+    def record_release_sequence(self, sequence: int) -> None:
+        sequence = int(sequence)
+        if sequence > self.highest_release_sequence:
+            self.state["release_sequence"] = sequence
+            self._save()
+
+    def upload_diagnostic(self, path: Path, version: str) -> dict:
+        self.require("enviar diagnóstico")
         raw = Path(path).read_bytes()
         if len(raw) > 5 * 1024 * 1024:
             raise ValueError("Diagnóstico excede o limite de 5 MiB")
         diagnostic = json.loads(raw)
         return self._json(
-            "/api/v1/diagnostics",
+            "/api/v2/diagnostics",
             {
                 "lease": self.lease,
                 "app_version": version,

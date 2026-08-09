@@ -4,11 +4,10 @@ import csv
 import json
 import os
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.license import LicenseClient, verify_lease
+from app.license import LicenseClient
 from app.main import (
     App as StableApp,
     CLASS_ICON_FILES,
@@ -36,8 +35,9 @@ class ReadOnlySnapshotReader:
     _character_exports = StableApp._character_exports
     _load_info_snapshot = StableApp._load_info_snapshot
 
-    def __init__(self, database_path: Path = DB_PATH) -> None:
+    def __init__(self, database_path: Path, license_client) -> None:
         self.database_path = Path(database_path)
+        self.license = license_client
         self.current_session: str | None = None
         self._last_session_stats = {
             "recognized": 0,
@@ -48,6 +48,7 @@ class ReadOnlySnapshotReader:
         self._info_worker_cache: dict[str, Any] = {}
 
     def load(self, language: str = "pt") -> dict[str, Any]:
+        self.license.require("leitura dos dados capturados")
         if not self.database_path.exists():
             return self._empty()
         database = CaptureStore(self.database_path, readonly=True)
@@ -96,6 +97,7 @@ class ReadOnlySnapshotReader:
 
     def load_combat(self, language: str = "pt") -> dict[str, Any]:
         """Lê somente os monitores sem reconstruir toda a sessão."""
+        self.license.require("leitura dos monitores")
         if not self.database_path.exists():
             return {"session_id": None, "combat_monitors": []}
         database = CaptureStore(self.database_path, readonly=True)
@@ -131,6 +133,7 @@ class ReadOnlySnapshotReader:
         language: str = "pt",
     ) -> dict[str, Any]:
         """Resume eventos efêmeros do Pktmon sem gravá-los no banco."""
+        self.license.require("leitura do monitor em tempo real")
         session_id = None
         profiles: list[dict[str, Any]] = []
         if self.database_path.exists():
@@ -291,54 +294,5 @@ def load_license_status(
     state_dir: Path = STATE_DIR,
     machine_state_dir: Path = MACHINE_STATE_DIR,
 ) -> dict[str, Any]:
-    candidates = (
-        ("principal", Path(state_dir) / "license.dat"),
-        ("backup", Path(state_dir) / "license.backup.dat"),
-        ("máquina", Path(machine_state_dir) / "license.dat"),
-        ("backup da máquina", Path(machine_state_dir) / "license.backup.dat"),
-    )
-    for source, path in candidates:
-        state = LicenseClient._read_protected(path)
-        if not state or not state.get("lease") or not state.get("public_key"):
-            continue
-        try:
-            claims = verify_lease(state["lease"], state["public_key"])
-            valid_until = _utc(claims["valid_until"])
-            next_check = _utc(claims["next_check_at"])
-            now = datetime.now(timezone.utc)
-            if now > valid_until:
-                return _license_result(False, "Prazo offline encerrado", source, claims)
-            if now >= next_check:
-                return _license_result(True, "Validação online pendente", source, claims)
-            return _license_result(True, "Licença válida", source, claims)
-        except (KeyError, TypeError, ValueError):
-            return {
-                "active": False,
-                "message": "Comprovante local inválido",
-                "source": source,
-                "valid_until": None,
-                "next_check_at": None,
-            }
-    return {
-        "active": False,
-        "message": "Licença ainda não ativada",
-        "source": "nenhuma",
-        "valid_until": None,
-        "next_check_at": None,
-    }
-
-
-def _utc(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
-
-
-def _license_result(
-    active: bool, message: str, source: str, claims: dict[str, Any]
-) -> dict[str, Any]:
-    return {
-        "active": active,
-        "message": message,
-        "source": source,
-        "valid_until": claims.get("valid_until"),
-        "next_check_at": claims.get("next_check_at"),
-    }
+    del state_dir
+    return LicenseClient(Path(machine_state_dir)).local_status()

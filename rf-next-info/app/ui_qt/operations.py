@@ -32,7 +32,7 @@ from core.knowledge import KnowledgeStore
 from core.store import CaptureStore
 
 
-LOG = logging.getLogger("rfnextinfo")
+LOG = logging.getLogger("rfqol")
 LOG.addHandler(logging.NullHandler())
 
 DEFAULT_GLOBAL_SHORTCUTS = {
@@ -102,6 +102,7 @@ class SiteUploadEngine:
     def send_mode(
         self, mode: str, client_index: int, snapshot: dict, language: str
     ) -> dict[str, object]:
+        self.license.require("envio ao site")
         if not self.site_profile.connected:
             raise ValueError("Valide o token do Profile antes de enviar")
         session_id = str(snapshot.get("session_id") or "")
@@ -182,6 +183,7 @@ class SiteUploadEngine:
     def send_subsessions(
         self, identifiers: list[str], snapshot: dict, language: str
     ) -> dict[str, object]:
+        self.license.require("envio de subsessões")
         if not self.site_profile.connected:
             raise ValueError("Valide o token do Profile antes de enviar")
         session_id = str(snapshot.get("session_id") or "")
@@ -303,6 +305,7 @@ class SiteUploadEngine:
     def send_observations(
         self, session_id: str, knowledge_path: Path
     ) -> dict[str, object]:
+        self.license.require("envio de observações")
         if not self.site_profile.connected:
             return {"skipped": True, "reason": "profile_not_connected"}
         capture = CaptureStore(self.database_path, readonly=True)
@@ -432,6 +435,7 @@ class ExportEngine:
         profile: str,
         language: str = "pt",
     ) -> dict[str, object]:
+        self.license.require("exportação")
         if not session_id:
             raise ValueError("Nenhuma sessão capturada está disponível")
         target = Path(target)
@@ -637,11 +641,13 @@ class MonitorEngine:
 
     def __init__(
         self,
+        license_client,
         *,
         live_factory: Callable[[Path | None, tuple[int, ...]], RealtimeCapture] = RealtimeCapture,
         process_reader: Callable[..., dict] = connected_processes,
         client_reader: Callable[..., list] = clients_for_executable,
     ) -> None:
+        self.license = license_client
         self.live_factory = live_factory
         self.process_reader = process_reader
         self.client_reader = client_reader
@@ -656,6 +662,7 @@ class MonitorEngine:
         return self.live_capture is not None
 
     def start(self) -> dict[str, object]:
+        self.license.require("monitor em tempo real")
         with self._lock:
             if self.active:
                 return self.snapshot()
@@ -715,6 +722,7 @@ class MonitorEngine:
             self.live_capture.add_ports(ports)
 
     def snapshot(self) -> dict[str, object]:
+        self.license.require("leitura do monitor")
         with self._lock:
             if not self.live_capture:
                 return {"available": False, "active": False, "events": []}
@@ -761,6 +769,7 @@ class CaptureEngine:
         self,
         capture_directory: Path,
         database_path: Path,
+        license_client,
         *,
         profile: str = "Profile",
         session_counter: int = 0,
@@ -771,6 +780,7 @@ class CaptureEngine:
     ) -> None:
         self.capture_directory = Path(capture_directory)
         self.database_path = Path(database_path)
+        self.license = license_client
         self.profile = profile.strip() or "Profile"
         self.session_counter = int(session_counter)
         self.capture_factory = capture_factory
@@ -795,6 +805,7 @@ class CaptureEngine:
 
     def restore(self, preferences: dict[str, object]) -> dict[str, object] | None:
         """Recupera uma captura pendente sem iniciar uma sessão nova."""
+        self.license.require("recuperação de captura")
         if self.current_session or not preferences.get("capture_pending"):
             return None
         session_id = str(preferences.get("last_session") or "").strip()
@@ -847,6 +858,7 @@ class CaptureEngine:
         )
 
     def start(self) -> dict[str, object]:
+        self.license.require("captura")
         with self._lock:
             if self.active:
                 raise RuntimeError("A captura já está ativa")
@@ -891,7 +903,7 @@ class CaptureEngine:
             capture = self.capture_factory(self.capture_directory)
             if capture.system_running():
                 raise RuntimeError(
-                    "Outra captura PktMon já está ativa em outra sessão do RF NEXT QOL. "
+                    "Outra captura PktMon já está ativa em outra sessão do RF QOL. "
                     "Encerre-a pelo programa que já está aberto antes de iniciar uma nova captura."
                 )
             capture.start_for_ports(prefix, ports)
@@ -961,6 +973,12 @@ class CaptureEngine:
             self.live_capture.add_ports(ports)
 
     def heartbeat(self) -> None:
+        try:
+            self.license.require("captura")
+        except PermissionError:
+            if self.active:
+                self.stop_without_reading()
+            raise
         if self.capture:
             self.capture.heartbeat()
 
@@ -972,6 +990,7 @@ class CaptureEngine:
         return sum(path.stat().st_size for path in dict.fromkeys(files) if path.exists())
 
     def read_live(self) -> dict[str, object]:
+        self.license.require("leitura de captura")
         with self._lock:
             if not self.current_session:
                 return {"added": 0, "available": False}
@@ -1028,6 +1047,7 @@ class CaptureEngine:
 
     def preview_live(self) -> dict[str, object]:
         """Entrega eventos efêmeros já lidos da RAM, sem reler o PCAP."""
+        self.license.require("processamento de captura")
         with self._lock:
             if not self.current_session or not self.live_capture:
                 return {"added": 0, "available": False, "fast": False}
@@ -1105,6 +1125,7 @@ class CaptureEngine:
             }
 
     def stop(self, *, pause: bool = False) -> dict[str, object]:
+        self.license.require("processamento de captura")
         with self._lock:
             if not self.current_session:
                 raise RuntimeError("Não existe sessão atual para encerrar")

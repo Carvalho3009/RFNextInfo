@@ -10,7 +10,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -45,11 +45,13 @@ from app.support_log import (
 import app.support_log as support_log_module
 from app.updater import (
     UPDATE_SIGNATURE_CONTEXT,
-    create_rollback,
     download_verified,
+    verify_authenticode,
+    verify_downloaded,
     verify_manifest,
 )
 import app.main as main_module
+from tools import sign_update_manifest
 
 
 def b64(value: bytes) -> str:
@@ -57,6 +59,22 @@ def b64(value: bytes) -> str:
 
 
 class AppLogicTest(unittest.TestCase):
+    def test_public_lease_v2_vector(self):
+        fixture = json.loads(
+            (Path(__file__).parent / "fixtures" / "lease-v2-valid.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            verify_lease(
+                fixture["lease"],
+                fixture["public_keys"],
+                installation_id=fixture["expected_claims"]["installation_id"],
+                now=datetime.fromisoformat(fixture["verification_time"]),
+            ),
+            fixture["expected_claims"],
+        )
+
     def test_function_key_virtual_codes_for_global_shortcuts(self):
         self.assertEqual(_function_key_vk("F1"), 0x70)
         self.assertEqual(_function_key_vk("f12"), 0x7B)
@@ -1663,7 +1681,12 @@ class AppLogicTest(unittest.TestCase):
         app = Mock()
         app.capture.attached = False
         app.tray = None
+        manifest = {"file": "setup.exe"}
         with patch("app.main.messagebox.askyesno", return_value=True), patch(
+            "app.main.verify_manifest", return_value=manifest
+        ), patch("app.main.verify_downloaded"), patch(
+            "app.main.verify_authenticode"
+        ), patch("pathlib.Path.read_text", return_value="{}"), patch(
             "app.main.os.startfile"
         ) as launch:
             App._update_downloaded(app, Path("setup.exe"), None)
@@ -1671,53 +1694,62 @@ class AppLogicTest(unittest.TestCase):
         app.store.close.assert_called_once()
         app.destroy.assert_called_once()
 
-    def test_rollback_excludes_recursive_and_runtime_data(self):
-        with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "RF NEXT INFO"
-            target = source / "updates" / "rollback" / "RFNextInfo"
-            for relative in (
-                "_internal",
-                "data",
-                "database",
-                "logs",
-                "cache",
-                "Capturas",
-                "updates/rollback/old",
-            ):
-                (source / relative).mkdir(parents=True, exist_ok=True)
-            (source / "RFNextInfo.exe").write_bytes(b"exe")
-            (source / "_internal/library.dll").write_bytes(b"dll")
-            (source / "data/license.dat").write_bytes(b"license")
-            (source / "database/capture.sqlite3").write_bytes(b"database")
-            (source / "Capturas/session.etl").write_bytes(b"capture")
-            (source / "updates/rollback/old/sentinel").write_bytes(b"recursive")
+    def test_authenticode_requires_valid_expected_publisher(self):
+        result = Mock(
+            stdout='{"Status":"Valid","Subject":"CN=Karvalho"}\n'
+        )
+        with patch("app.updater.subprocess.run", return_value=result) as run:
+            verify_authenticode(Path(__file__))
+        environment = run.call_args.kwargs["env"]
+        self.assertEqual(environment["RFQOL_VERIFY_PATH"], str(Path(__file__).resolve()))
 
-            self.assertEqual(create_rollback(source, target), target.resolve())
-            self.assertTrue((target / "RFNextInfo.exe").is_file())
-            self.assertTrue((target / "_internal/library.dll").is_file())
-            self.assertTrue((target / "data/license.dat").is_file())
-            for excluded in ("database", "logs", "cache", "Capturas", "updates"):
-                self.assertFalse((target / excluded).exists())
+        result.stdout = '{"Status":"Valid","Subject":"CN=Outro"}\n'
+        with patch("app.updater.subprocess.run", return_value=result):
+            with self.assertRaises(ValueError):
+                verify_authenticode(Path(__file__))
 
-    def test_rollback_refuses_oversized_payload(self):
-        with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "RF NEXT INFO"
-            target = source / "updates" / "rollback" / "RFNextInfo"
-            source.mkdir()
-            (source / "RFNextInfo.exe").write_bytes(b"too-large")
-            with self.assertRaisesRegex(ValueError, "limite"):
-                create_rollback(source, target, max_bytes=1)
-            self.assertFalse(target.exists())
+    def test_unsafe_executable_copy_rollback_is_removed(self):
+        root = Path(__file__).resolve().parents[1]
+        sources = "\n".join(
+            (root / relative).read_text(encoding="utf-8")
+            for relative in ("app/updater.py", "app/main.py", "app/ui_qt/main.py")
+        )
+        self.assertNotIn("create_rollback", sources)
+        self.assertNotIn("updates/rollback/RFNextInfo.exe", sources)
+
+    def test_legacy_ingest_and_export_fail_before_side_effects_without_license(self):
+        app = Mock()
+        app.license.require.side_effect = PermissionError("licença obrigatória")
+        with patch("app.main.CaptureStore") as store:
+            with self.assertRaises(PermissionError):
+                App._ingest_files(app, (), "session-1", ())
+        store.assert_not_called()
+
+        target = Path("saida-nao-criada")
+        with self.assertRaises(PermissionError):
+            App._export_to(app, target)
+        self.assertFalse(target.exists())
 
     def test_verified_download_reports_progress(self):
         private = Ed25519PrivateKey.generate()
         public = b64(private.public_key().public_bytes_raw())
         installer = b"instalador-verificado" * 100
-        name = "RFNextInfo-Test-Progress.exe"
+        name = "RF QOL Setup 1.0.1.exe"
+        now = datetime.now(timezone.utc)
         manifest = {
-            "version": "test",
+            "manifest_version": 2,
+            "product": "rf-qol",
+            "channel": "stable",
+            "architecture": "windows-x64",
+            "version": "1.0.1",
+            "release_sequence": 2,
+            "published_at": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(days=1)).isoformat(),
+            "key_id": "update-test",
             "file": name,
+            "size": len(installer),
             "sha256": __import__("hashlib").sha256(installer).hexdigest(),
+            "rollback_compatible_from": ["1.0.0"],
         }
         canonical = json.dumps(
             manifest, separators=(",", ":"), sort_keys=True
@@ -1763,17 +1795,46 @@ class AppLogicTest(unittest.TestCase):
                 self.assertEqual(
                     download_verified(
                         release,
-                        public,
                         lambda phase, done, total: progress.append(
                             (phase, done, total)
                         ),
                         Path(update_directory),
+                        public_keys={"update-test": public},
+                        current_sequence=1,
                     ),
                     target,
                 )
             self.assertEqual(target.read_bytes(), installer)
             self.assertEqual(progress[0][0], "manifest")
             self.assertEqual(progress[-1], ("verify", len(installer), len(installer)))
+
+    def test_offline_manifest_signer_matches_client_verifier(self):
+        private = Ed25519PrivateKey.generate()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            installer = root / "RF QOL Setup 1.0.1.exe"
+            installer.write_bytes(b"instalador-assinado-para-vetor")
+            key = root / "update-private.key"
+            key.write_text(b64(private.private_bytes_raw()), encoding="ascii")
+            output = root / "update-manifest.json"
+            arguments = [
+                "sign_update_manifest.py",
+                "--installer", str(installer),
+                "--version", "1.0.1",
+                "--sequence", "2",
+                "--key-id", "update-test",
+                "--private-key", str(key),
+                "--out", str(output),
+                "--rollback-compatible-from", "1.0.0",
+            ]
+            with patch("sys.argv", arguments):
+                self.assertEqual(sign_update_manifest.main(), 0)
+            manifest = verify_manifest(
+                json.loads(output.read_text(encoding="utf-8")),
+                {"update-test": b64(private.public_key().public_bytes_raw())},
+                current_sequence=1,
+            )
+            self.assertEqual(verify_downloaded(installer, manifest), installer)
 
     def test_activation_diagnostics_and_local_format_check(self):
         error = urllib.error.HTTPError(
@@ -1818,7 +1879,7 @@ class AppLogicTest(unittest.TestCase):
             logger = configure(path, "test")
             try:
                 logger.error(
-                    "KRV-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA "
+                    "RFQ-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA "
                     "carvalho@tuta.com 192.168.0.10 "
                     r"C:\Users\Carlos\Documents "
                     "123e4567-e89b-12d3-a456-426614174000"
@@ -1832,7 +1893,7 @@ class AppLogicTest(unittest.TestCase):
                     lines.splitlines()[0],
                     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4} ",
                 )
-                self.assertNotIn("KRV-AAAAA", lines)
+                self.assertNotIn("RFQ-AAAAA", lines)
                 self.assertNotIn("carvalho@tuta.com", lines)
                 self.assertNotIn("192.168.0.10", lines)
                 self.assertNotIn(r"C:\Users\Carlos", lines)
@@ -1881,21 +1942,57 @@ class AppLogicTest(unittest.TestCase):
 
     def test_signed_lease_and_site_profile(self):
         private = Ed25519PrivateKey.generate()
+        now = datetime.now(timezone.utc)
+        issued = now - timedelta(hours=1)
+        installation_id = "4fdb6d24-dc9d-4e74-97d4-aa1ae6c3b021"
         claims = {
-            "v": 1,
+            "v": 2,
             "iss": "rflicenca.karvalho.dev.br",
+            "product": "rf-qol",
+            "aud": "rf-qol-windows",
+            "key_id": "lease-test",
+            "lease_id": "lease-1",
             "license_id": "license-1",
-            "installation_id": "install-1",
-            "issued_at": "2026-07-27T00:00:00Z",
-            "license_starts_at": "2026-07-01T00:00:00Z",
-            "license_expires_at": "2999-12-31T00:00:00Z",
-            "next_check_at": "2000-01-01T00:00:00Z",
-            "valid_until": "2999-01-01T00:00:00Z",
+            "installation_id": installation_id,
+            "issued_at": issued.isoformat(),
+            "next_check_at": (issued + timedelta(minutes=30)).isoformat(),
+            "valid_until": (issued + timedelta(hours=24)).isoformat(),
+            "entitlement_expires_at": (now + timedelta(days=30)).isoformat(),
         }
         payload = json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
         lease = f"{b64(payload)}.{b64(private.sign(payload))}"
         public = b64(private.public_key().public_bytes_raw())
-        self.assertEqual(verify_lease(lease, public)["installation_id"], "install-1")
+        self.assertEqual(
+            verify_lease(
+                lease,
+                {"lease-test": public},
+                installation_id=installation_id,
+            )["installation_id"],
+            installation_id,
+        )
+        with self.assertRaises(ValueError):
+            verify_lease(
+                lease,
+                {"lease-test": public},
+                installation_id="outra-instalação",
+            )
+        for field, value in (
+            ("product", "rf-next-qol"),
+            ("key_id", "update-test"),
+            ("valid_until", (issued + timedelta(hours=24, seconds=1)).isoformat()),
+        ):
+            invalid = {**claims, field: value}
+            invalid_payload = json.dumps(
+                invalid, separators=(",", ":"), sort_keys=True
+            ).encode()
+            invalid_lease = (
+                f"{b64(invalid_payload)}.{b64(private.sign(invalid_payload))}"
+            )
+            with self.assertRaises(ValueError, msg=field):
+                verify_lease(
+                    invalid_lease,
+                    {"lease-test": public, "update-test": public},
+                )
 
         summary, marks = _capture_summary({"events": [{
             "type": "collection_snapshot_chunk",
@@ -1907,51 +2004,66 @@ class AppLogicTest(unittest.TestCase):
         self.assertEqual(summary["character"], "Carvalho")
         self.assertEqual(marks, {"1001": [1, 3]})
 
-        manifest = {"version": "1.0.1", "file": "setup.exe", "sha256": "a" * 64}
+        manifest = {
+            "manifest_version": 2,
+            "product": "rf-qol",
+            "channel": "stable",
+            "architecture": "windows-x64",
+            "version": "1.0.1",
+            "release_sequence": 2,
+            "published_at": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(days=1)).isoformat(),
+            "key_id": "update-test",
+            "file": "RF QOL Setup 1.0.1.exe",
+            "size": 123,
+            "sha256": "a" * 64,
+            "rollback_compatible_from": ["1.0.0"],
+        }
         canonical = json.dumps(manifest, separators=(",", ":"), sort_keys=True).encode()
         manifest["signature"] = b64(private.sign(UPDATE_SIGNATURE_CONTEXT + canonical))
-        self.assertEqual(verify_manifest(manifest, public)["version"], "1.0.1")
+        self.assertEqual(
+            verify_manifest(manifest, {"update-test": public})["version"],
+            "1.0.1",
+        )
+        with self.assertRaises(ValueError):
+            verify_manifest(
+                manifest, {"update-test": public}, current_sequence=2
+            )
+        tampered_manifest = {**manifest, "version": "9.9.9"}
+        with self.assertRaises(ValueError):
+            verify_manifest(tampered_manifest, {"update-test": public})
 
         with tempfile.TemporaryDirectory() as directory:
-            client = LicenseClient(Path(directory))
-            client.state.update(lease=lease, public_key=public, installation_id="install-1")
+            trusted = {"lease-test": public}
+            client = LicenseClient(Path(directory), trusted_public_keys=trusted)
+            client.state.update(
+                lease=lease,
+                public_key=b64(Ed25519PrivateKey.generate().public_key().public_bytes_raw()),
+                installation_id=installation_id,
+            )
             client._save()
-            remembered = LicenseClient(Path(directory))
+            remembered = LicenseClient(
+                Path(directory), trusted_public_keys=trusted
+            )
             self.assertEqual(remembered.lease, lease)
-            self.assertEqual(remembered.installation_id, "install-1")
+            self.assertEqual(remembered.installation_id, installation_id)
+            self.assertEqual(remembered.license_state(), "ACTIVE_OFFLINE")
+            self.assertEqual(remembered.local_status()["state"], "ACTIVE_OFFLINE")
             self.assertEqual(
                 remembered.state["license_expires_at"],
-                "2999-12-31T00:00:00Z",
+                claims["entitlement_expires_at"],
             )
+            self.assertNotIn("public_key", remembered.state)
             self.assertNotIn(
                 lease.encode(), (Path(directory) / "license.dat").read_bytes()
             )
-            legacy = Path(directory) / "legacy-license.json"
-            legacy.write_text(
-                json.dumps(client.state), encoding="utf-8"
-            )
-            machine = LicenseClient(
-                Path(directory) / "machine",
-                legacy_paths=(legacy,),
-            )
-            self.assertEqual(machine.lease, lease)
-            self.assertTrue(legacy.exists())
-            protected = Path(directory) / "machine" / "license.dat"
-            self.assertTrue(protected.is_file())
-            local = LicenseClient(
-                Path(directory) / "local",
-                legacy_paths=(protected,),
-            )
-            self.assertEqual(local.lease, lease)
-            self.assertEqual(local.load_status, "migrated")
-            self.assertEqual(
-                LicenseClient(Path(directory) / "local").lease,
-                lease,
-            )
+            protected = Path(directory) / "license.dat"
             protected.write_bytes(
                 protected.read_bytes()[:-1] + b"\0"
             )
-            recovered = LicenseClient(Path(directory) / "machine")
+            recovered = LicenseClient(
+                Path(directory), trusted_public_keys=trusted
+            )
             self.assertEqual(recovered.lease, lease)
             self.assertEqual(recovered.load_status, "backup")
             client._json = Mock(side_effect=urllib.error.HTTPError(
@@ -1959,9 +2071,11 @@ class AppLogicTest(unittest.TestCase):
             ))
             allowed, _ = client.refresh_if_due("1.0.0")
             self.assertFalse(allowed)
-            client.state["installation_id"] = "outra-instalacao"
+            self.assertIsNone(client.lease)
+            self.assertEqual(client.license_state(), "REVOKED")
+            remembered.state["installation_id"] = "outra-instalacao"
             with self.assertRaises(ValueError):
-                client.claims()
+                remembered.claims()
 
             diagnostic = Path(directory) / "diagnostic.json"
             diagnostic.write_text(
@@ -1973,10 +2087,16 @@ class AppLogicTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            remembered._json = Mock(return_value={"receipt": "test-1"})
+            recovered._json = Mock(return_value={"receipt": "test-1"})
             self.assertEqual(
-                remembered.upload_diagnostic(diagnostic, "1.0.0")["receipt"],
+                recovered.upload_diagnostic(diagnostic, "1.0.0")["receipt"],
                 "test-1",
+            )
+
+            unactivated = LicenseClient(Path(directory) / "new")
+            self.assertEqual(unactivated.license_state(), "UNACTIVATED")
+            self.assertEqual(
+                unactivated.refresh_if_due("1.0.0")[0], False
             )
 
 

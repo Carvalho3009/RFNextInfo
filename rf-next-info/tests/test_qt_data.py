@@ -5,11 +5,19 @@ from pathlib import Path
 from app.ui_qt.data import ReadOnlySnapshotReader, load_license_status
 
 
+class _AllowedLicense:
+    @staticmethod
+    def require(_capability):
+        return {"active": True}
+
+
 class QtReadOnlyDataTest(unittest.TestCase):
     def test_missing_state_is_empty_and_never_exposes_lease(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            snapshot = ReadOnlySnapshotReader(root / "missing.sqlite3").load()
+            snapshot = ReadOnlySnapshotReader(
+                root / "missing.sqlite3", _AllowedLicense()
+            ).load()
             license_status = load_license_status(root / "local", root / "machine")
 
         self.assertIsNone(snapshot["session_id"])

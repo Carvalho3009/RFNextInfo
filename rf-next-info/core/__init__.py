@@ -1,4 +1,4 @@
-"""Núcleo offline do RF NEXT INFO."""
+"""Núcleo offline do RF QOL."""
 
 from .capture import CaptureStatus, PktmonCapture
 from .store import CaptureStore, ExportResult
