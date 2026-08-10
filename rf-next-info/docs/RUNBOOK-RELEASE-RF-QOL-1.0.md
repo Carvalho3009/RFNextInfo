@@ -31,6 +31,8 @@ comercial sob as licenças zlib/libpng, bzip2 e CPLv1 aplicáveis.
    `SHA256SUMS.txt` correspondem aos bytes finais.
 8. Confirmar que `update-manifest.json`, `rollback-manifest.json` e
    `release-provenance-signature.json` não foram gerados no modo manual.
+9. Confirmar que o NSIS exibe os Termos de Uso 1.0 e impede o avanço até o
+   usuário marcar “Li e aceito os Termos de Uso”.
 
 Atualização e rollback automáticos estão desativados. O programa abre o Discord
 oficial para avisos; o usuário baixa e executa manualmente o instalador completo.
@@ -68,6 +70,7 @@ No modo automático futuro, o manifesto volta a ser o último artefato assinado.
 ## Matriz de RC
 
 - instalação do zero sem importar licença/estado da linha anterior;
+- aceite obrigatório e leitura dos Termos de Uso 1.0 antes da instalação;
 - ACL de `%ProgramData%\Karvalho\RF QOL` somente Administradores/SYSTEM;
 - primeira ativação RFQ, renovação, offline <24 h, limite de 24 h e revogação;
 - bloqueio de captura, leitura, monitores, exportação e envio sem lease;

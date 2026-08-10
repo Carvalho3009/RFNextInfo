@@ -75,6 +75,7 @@ sem publicação do instalador
 | 10 ago 2026 | Interface/Captura | A barra lateral foi dividida em PC e Emuladores. Os slots A/B ficaram reservados aos clientes PC e C-G aos cinco BlueStacks, com descoberta independente por processo e as mesmas páginas/módulos em cada categoria. A suíte completa passou com 214 testes e 1 skip ambiental; o computador confirmou descoberta separada de dois ProjectRF e um HD-Player. | Concluído local; cinco BlueStacks físicos não executados |
 | 10 ago 2026 | Licença/Conexões | A lease v2 passou a assinar o plano de conexões `2 PC + 1 emulador` ou `2 PC + 5 emuladores`. Emissor, painel, migração aditiva, introspecção, cliente, captura, monitor e interface aplicam o mesmo limite; leases antigas sem o claim são recusadas e licenças RFQ existentes migram para o primeiro plano. | Concluído local; não publicado |
 | 10 ago 2026 | Build | O instalador manual 1.0.0 foi reconstruído do commit `0bb7443`, com os planos de conexão, passou regressão, autoteste, procedência, SHA-256 e ensaio isolado de instalação/desinstalação. | Artefato gerado; não instalado nem publicado |
+| 10 ago 2026 | Instalador/Termos | Os Termos de Uso 1.0 fornecidos pelo owner foram incorporados integralmente ao NSIS. A instalação normal exige marcar “Li e aceito os Termos de Uso” antes de escolher a pasta. | Concluído no instalador; não publicado |
 | 10 ago 2026 | Licença/Produção | O emissor `7a1e199` foi promovido após backup e staging. As 20 licenças existentes migraram para 2 PC + 1 emulador; lease descartável 2+5 passou pela superfície pública e pelo cliente antes de ser revogada. | Produção concluída |
 
 ## Evidências e comandos de validação
@@ -202,6 +203,13 @@ sem publicação do instalador
   passou 217 testes em 143,209 s; o ensaio `DEV_SMOKE` instalou, executou o
   autoteste e desinstalou sem deixar o executável. Ambos permanecem
   deliberadamente `NotSigned` por decisão do owner.
+- Build com Termos de Uso 1.0: commit
+  `ce5784a37da91e4b004e26d6eda20be994f9d5eb`, 218 testes aprovados em
+  134,862 s, instalador com 40.096.878 bytes e SHA-256
+  `e02e5f16e5a742888b23294dcb68d5db5dfed2f8c14a40c5ba9e0f4569e5295e`.
+  `SHA256SUMS.txt` e a procedência correspondem; `dirty=false`, modo manual,
+  `NotSigned`. O ensaio isolado instalou, executou o autoteste e desinstalou
+  sem deixar o executável.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
