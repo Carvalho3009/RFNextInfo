@@ -3267,6 +3267,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 ports=DEFAULT_PORTS,
                                 client_ports=engine.client_ports,
                                 append_only=True,
+                                restrict_to_clients=bool(engine.client_ports),
                             )
                 finally:
                     store.close()

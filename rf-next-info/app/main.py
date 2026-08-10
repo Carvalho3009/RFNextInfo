@@ -5096,6 +5096,7 @@ class App(tk.Tk):
                         )
                         if client_ports:
                             route_options["client_ports"] = client_ports
+                            route_options["restrict_to_clients"] = True
                         added += store.ingest(
                             path,
                             session_id=session_id,

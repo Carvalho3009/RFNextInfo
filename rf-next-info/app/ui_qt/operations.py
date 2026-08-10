@@ -1031,6 +1031,7 @@ class CaptureEngine:
                             session_id=self.current_session,
                             ports=DEFAULT_PORTS,
                             client_ports=self.client_ports,
+                            restrict_to_clients=bool(self.client_ports),
                         )
                         for path in completed
                         if path.exists()
@@ -1057,6 +1058,7 @@ class CaptureEngine:
                     ports=DEFAULT_PORTS,
                     client_ports=self.client_ports,
                     append_only=True,
+                    restrict_to_clients=bool(self.client_ports),
                 )
             finally:
                 store.close()
@@ -1177,6 +1179,7 @@ class CaptureEngine:
                             ports=DEFAULT_PORTS,
                             client_ports=self.client_ports,
                             append_only=path in live_files,
+                            restrict_to_clients=bool(self.client_ports),
                         )
                     except Exception as error:
                         LOG.exception(

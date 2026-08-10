@@ -71,6 +71,7 @@ sem publicação do instalador
 | 10 ago 2026 | F4/F5 | Owner escolheu instalação manual para a 1.0. Cliente passou a bloquear consulta, download, execução e rollback automáticos; a interface abre o Discord oficial. O build manual gera instalador, procedência e `SHA256SUMS.txt` sem exigir chave de update. | Concluído local |
 | 10 ago 2026 | Interface | Owner separou o overlay Boss em vida e DPS, com posições independentes, e removeu os atalhos F1–F4 de envio. Botões de envio e atalhos de captura/monitores foram preservados. | Concluído local |
 | 10 ago 2026 | Licença | Owner autorizou a promoção imediata do emissor v2. Backup criptografado e recuperação da chave foram verificados; `lease-2026-01` recebeu ACL restrita em produção; API e backup foram recriados a partir de `d16b770`; gateway liberou somente as rotas v2 aprovadas. `/api/v1` permaneceu compatível, a base continuou íntegra com 19 licenças e o painel exibiu o gerador RFQ. | Produção concluída |
+| 10 ago 2026 | Captura | Tráfego do BlueStacks em `HD-Player` usando a mesma porta remota `12020` contaminava a sessão dos dois clientes PC. A ingestão ao vivo passou a aceitar somente fluxos ligados às portas locais detectadas dos processos `ProjectRF.exe`; importações offline continuam inalteradas. | Concluído local |
 
 ## Evidências e comandos de validação
 
@@ -166,6 +167,15 @@ sem publicação do instalador
   descartáveis com cliente, emissor, portátil e instalação de ensaio: zero
   ocorrências; o portátil também ficou sem PCAP, banco ou diretório de runtime.
   Evidência: `local-readiness-result.json` no staging do ensaio instalado.
+- Reprodução real do isolamento de clientes: dois processos
+  `ProjectRF-Win64-Shipping` estavam conectados pelas portas locais `21530` e
+  `21531`, enquanto `HD-Player` usava `57003`, todos contra `12020`. O segmento
+  real que identificava `Xonz` como Cliente A continha 1.202 eventos; a nova
+  ingestão manteve 1.196 eventos dos clientes PC, excluiu os 6 do fluxo do
+  BlueStacks e deixou zero evento de `57003` na base temporária.
+- Após o isolamento do BlueStacks, a suíte fechada CPython 3.13/Qt passou com
+  209 testes em 224,223 s (`1` skip ambiental da bandeja); o self-test do
+  decoder também retornou `ok`.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;

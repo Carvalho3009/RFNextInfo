@@ -318,6 +318,10 @@ permanece implementado para eventual reativação do modo automático.
 ## 9. Privacidade e captura passiva
 
 - Captura primária: Pktmon nativo.
+- Na captura ao vivo, somente eventos cujo fluxo use uma porta local vinculada
+  aos processos `ProjectRF.exe` detectados podem alimentar personagens,
+  sessões, coleções e envios. Outros processos são excluídos mesmo quando usam
+  a mesma porta remota do jogo; a importação offline permanece sem esse filtro.
 - Npcap só pode entrar após licença OEM e gate específico.
 - É proibido injetar DLL, abrir/escrever memória do jogo, criar thread remota,
   instalar hook invasivo, desativar Defender ou usar ofuscação agressiva/UPX.

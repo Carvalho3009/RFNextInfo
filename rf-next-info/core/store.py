@@ -382,6 +382,7 @@ class CaptureStore:
         ingestion_key: str = "",
         client_ports: tuple[tuple[int, ...], ...] = (),
         append_only: bool = False,
+        restrict_to_clients: bool = False,
     ) -> int:
         if not session_id or len(session_id) > 128:
             raise ValueError("session_id inválido")
@@ -408,8 +409,13 @@ class CaptureStore:
         )
 
         raw_events = [
-            event for event in events
+            event
+            for event in events
             if event.get("opcode") != SENSITIVE_OPCODE
+            and (
+                not restrict_to_clients
+                or _client_key(event.get("flow", ""), client_ports) is not None
+            )
         ]
         binding_rows = self.conn.execute(
             """SELECT client_key,character_uid,binding_source
@@ -846,6 +852,7 @@ class CaptureStore:
         ports: tuple[int, ...] = DEFAULT_PORTS,
         client_ports: tuple[tuple[int, ...], ...] = (),
         append_only: bool = False,
+        restrict_to_clients: bool = False,
     ) -> int:
         ports = tuple(dict.fromkeys(ports or DEFAULT_PORTS))
         client_ports = tuple(tuple(dict.fromkeys(group)) for group in client_ports)
@@ -853,6 +860,7 @@ class CaptureStore:
             decoder_identity(decoder_path, ports)
             + "|clients="
             + ";".join(",".join(map(str, group)) for group in client_ports)
+            + f"|trusted_clients={int(restrict_to_clients)}"
         )
         return self.add_events(
             source,
@@ -861,6 +869,7 @@ class CaptureStore:
             ingestion_key,
             client_ports,
             append_only,
+            restrict_to_clients,
         )
 
     def clear_exported(self, session_id: str | None = None) -> None:

@@ -2528,6 +2528,57 @@ class CoreTest(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_live_ingest_ignores_flow_outside_detected_pc_clients(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "three-clients.pcap"
+            source.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                events = [
+                    {
+                        "flow": f"10.0.0.1:12020 -> 127.0.0.1:{port}",
+                        "stream_offset": index,
+                        "bundle_seq": 0,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": uid,
+                            "character_name": name,
+                        }},
+                    }
+                    for index, (port, uid, name) in enumerate((
+                        (50001, 101, "Alice"),
+                        (50002, 202, "Bob"),
+                        (57003, 303, "BlueStacks"),
+                    ), 1)
+                ]
+
+                added = store.add_events(
+                    source,
+                    events,
+                    "session",
+                    client_ports=((50001,), (50002,)),
+                    restrict_to_clients=True,
+                )
+
+                self.assertEqual(added, 2)
+                self.assertEqual(
+                    store.session_profiles("session"),
+                    [
+                        {"uid": "101", "name": "Alice", "client_key": "client:a"},
+                        {"uid": "202", "name": "Bob", "client_key": "client:b"},
+                    ],
+                )
+                self.assertEqual(
+                    store.conn.execute(
+                        "SELECT COUNT(*) FROM events WHERE flow LIKE '%:57003'"
+                    ).fetchone()[0],
+                    0,
+                )
+            finally:
+                store.close()
+
     def test_latest_collection_snapshot_survives_a_new_capture_session(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
