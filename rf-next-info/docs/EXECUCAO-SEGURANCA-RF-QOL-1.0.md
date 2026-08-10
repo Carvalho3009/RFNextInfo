@@ -4,12 +4,15 @@ Branch: `feat/rf-qol-security-1.0`
 Worktree: `K:\MCP\_worktrees\rf-qol-security-implementation`
 Base: `c85d3b2fd41ed40ff10e8c0ca43f52fe9424b7bd`
 Início: 09 ago 2026
-Estado: em execução local isolada; sem publicação ou alteração de produção
+Estado: cliente em execução local isolada; servidor de licenças v2 promovido,
+sem publicação do instalador
 
 ## Limites autorizados
 
 - Implementação, chaves efêmeras de teste, staging e testes locais: autorizados.
-- Chaves privadas reais, produção e release pública: não executados nesta branch.
+- A privada real de lease e o servidor de licenças v2 foram promovidos em
+  produção por autorização posterior do owner. Release pública do cliente não
+  foi executada nesta branch.
 - O owner decidiu que o RF QOL 1.0 não terá certificado Authenticode; compra,
   uso e timestamp de certificado foram removidos do escopo.
 - A Beta 3.0.11 permanece na worktree `rf-next-qol-realtime` e não recebe estas
@@ -67,6 +70,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 10 ago 2026 | F6 | Owner cancelou definitivamente a validação externa e aceitou a matriz local como escopo final. Windows limpos, observação externa de UAC/SmartScreen, dois clientes externos e revisor independente foram convertidos em riscos residuais aceitos. A decisão não autoriza publicação/produção nem reativar o modo automático sem sua chave definitiva. | G3 encerrado pelo owner |
 | 10 ago 2026 | F4/F5 | Owner escolheu instalação manual para a 1.0. Cliente passou a bloquear consulta, download, execução e rollback automáticos; a interface abre o Discord oficial. O build manual gera instalador, procedência e `SHA256SUMS.txt` sem exigir chave de update. | Concluído local |
 | 10 ago 2026 | Interface | Owner separou o overlay Boss em vida e DPS, com posições independentes, e removeu os atalhos F1–F4 de envio. Botões de envio e atalhos de captura/monitores foram preservados. | Concluído local |
+| 10 ago 2026 | Licença | Owner autorizou a promoção imediata do emissor v2. Backup criptografado e recuperação da chave foram verificados; `lease-2026-01` recebeu ACL restrita em produção; API e backup foram recriados a partir de `d16b770`; gateway liberou somente as rotas v2 aprovadas. `/api/v1` permaneceu compatível, a base continuou íntegra com 19 licenças e o painel exibiu o gerador RFQ. | Produção concluída |
 
 ## Evidências e comandos de validação
 
@@ -117,6 +121,13 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   `SHA256SUMS.txt` corresponde ao instalador e o ensaio em
   `K:\MCP\_staging\rf-qol-boss-overlays-20260810-r1` comprovou instalação,
   self-test e desinstalação sem deixar o executável.
+- Promoção do emissor v2 em 10 ago 2026: backup
+  `rf-licenca-20260810T043200Z.sqlite3.aesgcm` criado e validado; imagem anterior
+  preservada como `rf-licenca-api:rollback-pre-v2-20260810`; API saudável;
+  SQLite íntegro com 19 licenças; 15 testes aprovados na imagem promovida;
+  `/api/v1/public-key`, `/api/v1/updates`, `/api/v2/updates` e
+  `/api/v2/introspect` validados pela superfície pública. O painel redireciona
+  ao Authentik e, pelo proxy confiável, contém `Gerar chave RFQ`.
 - Emissor: 14 testes aprovados; configuração Docker de staging validada.
 - Emissor após módulos: 15 testes aprovados. Cliente: 190 testes aprovados,
   nenhum ignorado, em 97,024 s no ambiente CPython 3.13/Qt fechado; vetor
