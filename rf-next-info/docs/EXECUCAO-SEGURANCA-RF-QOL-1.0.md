@@ -58,14 +58,14 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Chaves | Carlos confirmou como revisor humano `lease-2026-01`, a pública, o SHA-256, a ACL e que a privada permanece fora da produção. Backup de recuperação continua pendente e bloqueia promoção. | Revisão concluída |
 | 09 ago 2026 | Chaves | Backup local AES-256-GCM criado em `D:` com chave de recuperação separada em `E:`; origem permanece em `K:`. ACL restrita, restauração exata aprovada, chave errada rejeitada e nenhum segredo encontrado nos arquivos rastreados dos dois repositórios. Cópia off-site segue recomendada. | Backup local validado |
 | 09 ago 2026 | Licença | Texto residual da interface corrigido de 72 para o limite offline real de 24 horas; a regra de autorização já aplicava 24 horas. | Concluído local |
-| 09 ago 2026 | Chaves | Kit `update-2026-01` v4 fechado sem chave real: duas cópias PEM cifradas, restauração, limpeza de escrita parcial, senha solicitada interativamente, wheelhouse offline e assinatura de update/rollback/procedência. ZIP validado em ambiente novo apenas com seus próprios arquivos; v1/v2/v3 ficaram supersedidos. | Preparado; cerimônia física pendente |
+| 09 ago 2026 | Chaves | Kit `update-2026-01` v4 fechado sem chave real: duas cópias PEM cifradas, restauração, limpeza de escrita parcial, senha solicitada interativamente, wheelhouse offline e assinatura de update/rollback/procedência. ZIP validado em ambiente novo apenas com seus próprios arquivos; v1/v2/v3 ficaram supersedidos. | Preparado; cerimônia adiada pelo modo manual |
 | 09 ago 2026 | F4 | Owner aprovou o manifesto de rollback dedicado. Cliente agora exige alvo idêntico à versão/sequência instalada, compatibilidade assinada com a versão nova, expiração, cache administrativo, segunda reverificação e backup SQLite íntegro antes do UAC. Build exige o bundle completo a partir da segunda release e atesta seu hash. | Concluído local |
 | 09 ago 2026 | F4 | Build portátil recompilado lendo versão/sequência do próprio candidato; executável empacotado passou no autoteste. NSIS não estava no PATH daquela sessão, portanto nenhum instalador novo foi emitido. | Supersedido pelo ensaio instalado |
-| 09 ago 2026 | Chaves | Owner decidiu pular por enquanto a cerimônia física de `update-2026-01`. O trabalho local pode continuar com chave descartável; chave definitiva, publicação e produção continuam bloqueadas. | Gate adiado, não dispensado |
+| 09 ago 2026 | Chaves | Owner decidiu pular por enquanto a cerimônia física de `update-2026-01`. Naquele ponto, chave definitiva, publicação e produção continuavam bloqueadas; a decisão posterior pelo modo manual dispensou a chave apenas da 1.0 manual. | Supersedido pela decisão manual |
 | 09 ago 2026 | F6 | NSIS 3.12 portátil localizado em `K:\MCP\_tools`. RC1 `1.0.0/1` e RC2 `1.0.1/2` foram construídas em worktrees separadas e instaladas sequencialmente em staging `DEV_SMOKE`: RC1 -> RC2 -> manifesto/compatibilidade/backup -> RC1. Hash final retornou exatamente à RC1 e o banco SQLite foi preservado. | Ensaio instalado local concluído |
 | 10 ago 2026 | F6 | Owner decidiu esgotar a validação local e deixar o teste externo para o futuro. Cliente passou 201 testes, emissor passou 15, UI Qt offscreen e executável instalado passaram no smoke, licença oficial/staging permaneceu saudável e a varredura de 22 materiais secretos encontrou zero ocorrências no código e artefatos. | Matriz local concluída |
 | 10 ago 2026 | F6 | Owner cancelou definitivamente a validação externa e aceitou a matriz local como escopo final. Windows limpos, observação externa de UAC/SmartScreen, dois clientes externos e revisor independente foram convertidos em riscos residuais aceitos. A decisão não autoriza publicação/produção nem reativar o modo automático sem sua chave definitiva. | G3 encerrado pelo owner |
-| 10 ago 2026 | F4/F5 | Owner escolheu instalação manual para a 1.0. Cliente passou a bloquear consulta, download, execução e rollback automáticos; a interface abre o Discord oficial. O build manual gera instalador, procedência e `SHA256SUMS.txt` sem exigir chave de update. | Em implementação local |
+| 10 ago 2026 | F4/F5 | Owner escolheu instalação manual para a 1.0. Cliente passou a bloquear consulta, download, execução e rollback automáticos; a interface abre o Discord oficial. O build manual gera instalador, procedência e `SHA256SUMS.txt` sem exigir chave de update. | Concluído local |
 
 ## Evidências e comandos de validação
 
@@ -87,13 +87,26 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   função de rollback inseguro removida.
 - A validação Authenticode anterior permanece apenas como evidência histórica;
   o código correspondente foi removido após a decisão do owner.
-- Gates de release de lease/update falharam como esperado enquanto as públicas
-  têm `-production-pending`.
-- Builds do RF QOL são deliberadamente `NotSigned`; o build de desenvolvimento
-  atual não é release e não deve ser distribuído.
+- Nos ensaios iniciais, os gates de release de lease/update falharam como
+  esperado enquanto as públicas tinham `-production-pending`.
+- Builds do RF QOL são deliberadamente `NotSigned`. O candidato manual foi
+  gerado localmente para validação, mas não foi publicado e não deve ser
+  distribuído antes de G4.
 - Antes da decisão manual, o build recusava release sem NSIS e chave privada de
   update. No modo vigente, continua exigindo NSIS e confiança de lease, mas
   gera `SHA256SUMS.txt` sem chave ou manifesto de update.
+- Fechamento do modo manual em 10 ago 2026: regressão CPython 3.13/Qt passou
+  com 205 testes em 109,971 s e um skip ambiental da bandeja. O build de
+  release saiu do commit `2613a7e54a5b89f143a062803738e2a7bb4bbd61`, com
+  `update_mode=manual`, `dirty=false`, `authenticode=false` e zero artefatos
+  de update/rollback automático. O instalador final tem SHA-256
+  `4e5c7f6fd1c606821c9331570d62c82efc79aafa379a16704d46908713f88996`,
+  idêntico a `SHA256SUMS.txt`.
+- O ensaio isolado em
+  `K:\MCP\_staging\rf-qol-manual-installer-20260810-r1` compilou o mesmo
+  pacote em `DEV_SMOKE`, instalou, comprovou o self-test pós-instalação e
+  desinstalou sem deixar o executável. O resultado persistido registra
+  `status=passed`, NSIS 3.12 e `NotSigned`.
 - Emissor: 14 testes aprovados; configuração Docker de staging validada.
 - Emissor após módulos: 15 testes aprovados. Cliente: 190 testes aprovados,
   nenhum ignorado, em 97,024 s no ambiente CPython 3.13/Qt fechado; vetor
