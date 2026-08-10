@@ -247,10 +247,12 @@ Gate: G2 para uso das chaves Ed25519 definitivas.
 
 ## Fase 6 — RC e validação real
 
-Estado real: pacote e instalador locais gerados com Python 3.13; instalação,
-autoteste e desinstalação passaram em destino isolado no Windows 11 atual.
-Windows limpos 10/11, licença/chaves de produção e teste com dois clientes
-seguem pendentes. Ativação, revogação e cutover passaram em staging.
+Estado real: pacote e instalador locais gerados com Python 3.13. Instalação,
+autoteste, desinstalação e o ciclo instalado RC1 -> RC2 -> RC1 passaram em
+destino isolado no Windows 11 atual; o rollback usou manifesto descartável,
+alvo exato e backup SQLite íntegro. Windows limpos 10/11, UAC, fluxo pela
+interface, licença/chaves de produção e teste com dois clientes seguem
+pendentes. Ativação, revogação e cutover passaram em staging.
 
 Objetivo: provar o sistema fora do ambiente do implementador.
 

@@ -41,7 +41,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | F3 | Homologação Docker paralela em `127.0.0.1:8788` passou ativação, cliente, renovação, introspecção, diagnóstico, site e revogação; produção v1 permaneceu saudável. | Concluído staging |
 | 09 ago 2026 | F4 | Manifesto v2 fechado, chave distinta `update-*`, SHA-256, tamanho, expiração, sequência e download parcial implementados. | Concluído local |
 | 09 ago 2026 | F4 | Authenticode nativo corrigido e testado antes da decisão posterior do owner de não usar certificado. | Supersedido |
-| 09 ago 2026 | F4 | Rollback por cópia de EXE removido. Rollback assinado continua desativado até haver RC anterior e compatibilidade de schema. | Parcial seguro |
+| 09 ago 2026 | F4 | Rollback por cópia de EXE removido. O rollback assinado permaneceu desativado até haver RC anterior e contrato de compatibilidade. | Supersedido pela implementação posterior |
 | 09 ago 2026 | F5 | Dependências CPython 3.13 fechadas por versão/hash e instaladas offline na própria worktree; SBOM e procedência gerados. | Concluído local |
 | 09 ago 2026 | F5 | NSIS 3.12 oficial validado por hash e licença aberta; build portátil e instalador `RF QOL Setup 1.0.0.exe` gerados com procedência ampliada. | Concluído local |
 | 09 ago 2026 | F5 | Instalador de ensaio não administrativo instalou, executou o autoteste interno e externo e desinstalou sem deixar executável ou registro. | Concluído local |
@@ -60,7 +60,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Licença | Texto residual da interface corrigido de 72 para o limite offline real de 24 horas; a regra de autorização já aplicava 24 horas. | Concluído local |
 | 09 ago 2026 | Chaves | Kit `update-2026-01` v4 fechado sem chave real: duas cópias PEM cifradas, restauração, limpeza de escrita parcial, senha solicitada interativamente, wheelhouse offline e assinatura de update/rollback/procedência. ZIP validado em ambiente novo apenas com seus próprios arquivos; v1/v2/v3 ficaram supersedidos. | Preparado; cerimônia física pendente |
 | 09 ago 2026 | F4 | Owner aprovou o manifesto de rollback dedicado. Cliente agora exige alvo idêntico à versão/sequência instalada, compatibilidade assinada com a versão nova, expiração, cache administrativo, segunda reverificação e backup SQLite íntegro antes do UAC. Build exige o bundle completo a partir da segunda release e atesta seu hash. | Concluído local |
-| 09 ago 2026 | F4 | Build portátil recompilado lendo versão/sequência do próprio candidato; executável empacotado passou no autoteste. NSIS não estava no PATH desta sessão, portanto nenhum instalador novo foi emitido. | Concluído portátil |
+| 09 ago 2026 | F4 | Build portátil recompilado lendo versão/sequência do próprio candidato; executável empacotado passou no autoteste. NSIS não estava no PATH daquela sessão, portanto nenhum instalador novo foi emitido. | Supersedido pelo ensaio instalado |
+| 09 ago 2026 | Chaves | Owner decidiu pular por enquanto a cerimônia física de `update-2026-01`. O trabalho local pode continuar com chave descartável; chave definitiva, publicação e produção continuam bloqueadas. | Gate adiado, não dispensado |
+| 09 ago 2026 | F6 | NSIS 3.12 portátil localizado em `K:\MCP\_tools`. RC1 `1.0.0/1` e RC2 `1.0.1/2` foram construídas em worktrees separadas e instaladas sequencialmente em staging `DEV_SMOKE`: RC1 -> RC2 -> manifesto/compatibilidade/backup -> RC1. Hash final retornou exatamente à RC1 e o banco SQLite foi preservado. | Ensaio instalado local concluído |
 
 ## Evidências e comandos de validação
 
@@ -112,6 +114,12 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   com chave descartável: bundle e compatibilidade aceitos, cache sem
   `users-modify`, backup SQLite íntegro/hasheado, adulteração rejeitada e
   reverificação final aprovada. O instalador descartável não foi executado.
+- Ensaio instalado persistido em
+  `K:\MCP\_staging\rf-qol-installed-rollback-20260809-r1` executou instaladores
+  `NotSigned` reais em modo `DEV_SMOKE`: hashes comprovaram RC1 -> RC2 -> RC1,
+  manifesto descartável e alvo exato foram aceitos, backup SQLite passou em
+  integridade e o dado sentinela foi preservado. Registro/UAC, máquinas limpas
+  e chave definitiva não fizeram parte desse ensaio.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
@@ -155,11 +163,12 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 ## Pendências externas reais
 
-1. copiar o kit para ambiente desconectado, conectar duas mídias físicas e
-   executar a cerimônia testemunhada de `update-2026-01`; cópia externa/off-site
-   do backup de lease também segue recomendada;
-2. executar rollback entre duas RCs instaladas reais quando RC2 existir;
-3. Windows 10/11 limpos, licença real e teste com até dois clientes;
+1. cerimônia testemunhada de `update-2026-01`, adiada pelo owner, continua
+   obrigatória antes de release/produção; cópia externa/off-site do backup de
+   lease também segue recomendada;
+2. Windows 10/11 limpos, licença real e teste com até dois clientes, incluindo
+   UAC e o fluxo de update/rollback acionado pela interface;
+3. confirmar o ensaio RC1 -> RC2 -> RC1 fora do ambiente do implementador;
 4. G4 do owner para qualquer publicação ou produção.
 
 ## Rollback
