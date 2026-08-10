@@ -98,9 +98,9 @@ Ele não contém a privada.
 ## Preparação — update-2026-01
 
 - kit offline fechado em
-  `K:\MCP\_ceremony\rf-qol-1.0\update-2026-01-offline-kit-v3.zip`;
+  `K:\MCP\_ceremony\rf-qol-1.0\update-2026-01-offline-kit-v4.zip`;
 - SHA-256 do ZIP:
-  `b3807fb1f1636c235a843ca31d9f358bbc09a9513dd2418bd07a35785aa3b838`;
+  `3cb9c09a458fbbec0de572956f4c42544f19ab2c5bd3f9ad2a0f42eebe86857c`;
 - wheelhouse fechado para CPython 3.13 x64, instalação sem rede validada;
 - gerador exige confirmação offline, senha de no mínimo 20 caracteres, duas
   unidades distintas e destinos novos;
@@ -109,6 +109,6 @@ Ele não contém a privada.
 - assinadores de manifesto e procedência aceitam diretamente o PEM cifrado e
   pedem a senha sem colocá-la em argumento ou variável persistida;
 - autoteste descartável do ZIP aprovou geração/restauração, senha errada,
-  assinatura e verificação de manifesto e procedência;
+  assinatura e verificação de manifesto, rollback compatível e procedência;
 - a chave definitiva não foi gerada: ainda faltam computador desconectado,
   duas mídias físicas e testemunha humana.

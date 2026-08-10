@@ -16,12 +16,15 @@ $Python = if ($env:RFQOL_BUILD_PYTHON) {
 
 Push-Location $Project
 try {
+    $Version = (& $Python -c 'from app.main import VERSION; print(VERSION)').Trim()
+    $Sequence = [int](& $Python -c 'from app.main import RELEASE_SEQUENCE; print(RELEASE_SEQUENCE)')
     $Dirty = [bool](git status --porcelain)
     if ($Release -and $Dirty) {
         throw 'Build de release exige commit limpo.'
     }
     foreach ($Generated in @(
         '.\dist\update-manifest.json',
+        '.\dist\rollback-manifest.json',
         '.\dist\release-provenance-signature.json'
     )) {
         if (Test-Path -LiteralPath $Generated -PathType Leaf) {
@@ -90,9 +93,9 @@ try {
         if ($Release) { throw 'NSIS é obrigatório para o instalador de release.' }
         Write-Warning 'NSIS não encontrado; somente o pacote portátil foi gerado.'
     } else {
-        & $NsisPath '/V2' '/WX' '.\packaging\installer.nsi'
+        & $NsisPath '/V2' '/WX' "/DAPP_VERSION=$Version" '.\packaging\installer.nsi'
         if ($LASTEXITCODE) { throw 'Falha ao gerar o instalador.' }
-        $Installer = Join-Path $Project 'dist\RF QOL Setup 1.0.0.exe'
+        $Installer = Join-Path $Project "dist\RF QOL Setup $Version.exe"
     }
 
     if ($Release) {
@@ -102,16 +105,42 @@ try {
             }
         }
         & $Python '.\tools\sign_update_manifest.py' `
-            --installer $Installer --version '1.0.0' --sequence 1 `
+            --installer $Installer --version $Version --sequence $Sequence `
             --key-id $env:RFQOL_UPDATE_KEY_ID `
             --private-key $env:RFQOL_UPDATE_PRIVATE_KEY `
             --out '.\dist\update-manifest.json'
         if ($LASTEXITCODE) { throw 'Falha ao assinar o manifesto v2.' }
+        $RollbackValues = @(
+            $env:RFQOL_ROLLBACK_INSTALLER,
+            $env:RFQOL_ROLLBACK_VERSION,
+            $env:RFQOL_ROLLBACK_SEQUENCE
+        ) | Where-Object { $_ }
+        if ($RollbackValues.Count -notin @(0, 3)) {
+            throw 'Rollback exige instalador, versão e sequência anteriores.'
+        }
+        if ($Sequence -gt 1 -and $RollbackValues.Count -ne 3) {
+            throw 'Release posterior à inicial exige o bundle completo de rollback.'
+        }
+        if ($RollbackValues.Count -eq 3) {
+            $RollbackSequence = [int]$env:RFQOL_ROLLBACK_SEQUENCE
+            if ($RollbackSequence -ge $Sequence) {
+                throw 'Sequência de rollback deve ser anterior à release nova.'
+            }
+            & $Python '.\tools\sign_update_manifest.py' `
+                --installer $env:RFQOL_ROLLBACK_INSTALLER `
+                --version $env:RFQOL_ROLLBACK_VERSION `
+                --sequence $RollbackSequence `
+                --key-id $env:RFQOL_UPDATE_KEY_ID `
+                --private-key $env:RFQOL_UPDATE_PRIVATE_KEY `
+                --out '.\dist\rollback-manifest.json' `
+                --rollback-compatible-from $Version
+            if ($LASTEXITCODE) { throw 'Falha ao assinar o manifesto de rollback.' }
+        }
     }
 
     $Provenance = [ordered]@{
         product = 'rf-qol'
-        version = '1.0.0'
+        version = $Version
         commit = (git rev-parse HEAD)
         dirty = $Dirty
         python = (& $Python --version 2>&1 | Out-String).Trim()
@@ -121,6 +150,9 @@ try {
         sbom_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Dist 'sbom-python.json')).Hash
         manifest_sha256 = if (Test-Path -LiteralPath '.\dist\update-manifest.json') {
             (Get-FileHash -Algorithm SHA256 -LiteralPath '.\dist\update-manifest.json').Hash
+        } else { $null }
+        rollback_manifest_sha256 = if (Test-Path -LiteralPath '.\dist\rollback-manifest.json') {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath '.\dist\rollback-manifest.json').Hash
         } else { $null }
         pyinstaller = (& $Python -m PyInstaller --version 2>&1 | Out-String).Trim()
         nsis = if ($NsisPath) { (& $NsisPath '/VERSION' | Out-String).Trim() } else { $null }

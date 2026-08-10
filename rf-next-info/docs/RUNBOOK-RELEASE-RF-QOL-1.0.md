@@ -34,6 +34,25 @@ comercial sob as licenças zlib/libpng, bzip2 e CPLv1 aplicáveis.
    assinatura destacada usa contexto próprio e não altera o instalador nem o
    manifesto já assinados.
 
+A partir da segunda release, copiar para a cerimônia offline o instalador
+anterior original, definir os três dados do rollback e executar o build com a
+versão/sequência novas. O script gera `rollback-manifest.json` e inclui seu hash
+na procedência:
+
+```powershell
+$env:RFQOL_ROLLBACK_INSTALLER = '<INSTALADOR_ANTERIOR>'
+$env:RFQOL_ROLLBACK_VERSION = '<VERSAO_ANTERIOR>'
+$env:RFQOL_ROLLBACK_SEQUENCE = '<SEQUENCIA_ANTERIOR>'
+.\packaging\build.ps1 -Release
+```
+
+Versão e sequência novas são lidas de `app.main.VERSION` e
+`app.main.RELEASE_SEQUENCE`; o build não aceita valores externos divergentes.
+
+Publicar na release nova o instalador anterior e esse manifesto dedicado. O
+cliente recusa a atualização se o par não corresponder exatamente à versão e
+à sequência atualmente instaladas.
+
 Antes do RC, executar o ensaio sem elevação com `packaging/test-installer.ps1`.
 Esse modo não cria registro/atalhos, usa pasta temporária e
 `RFQOL_SELF_TEST=1`; ele confirma `NotSigned` e comprova instalação, autoteste
@@ -55,9 +74,11 @@ instalador invalida o manifesto e exige gerá-lo novamente.
 - Windows 10 e 11 x64, até dois clientes, sem injeção/hook;
 - varredura de logs, banco, PCAP/diagnóstico e staging por segredos proibidos.
 
-Rollback permanece indisponível na interface até existir instalador anterior
-coberto por manifesto Ed25519 original e compatibilidade de schema declarada.
-Não liberar 1.0 afirmando rollback automático antes desse teste real.
+Rollback fica disponível somente quando o cache administrativo contém o
+instalador anterior e `rollback-manifest.json` válidos para a versão atual. A
+ação exige confirmação, captura encerrada, reverificação, backup SQLite com
+integridade/SHA-256 e UAC. Não liberar 1.0 afirmando rollback validado em campo
+antes do ensaio RC2 -> RC1 real.
 
 ## Publicação (somente após G4)
 

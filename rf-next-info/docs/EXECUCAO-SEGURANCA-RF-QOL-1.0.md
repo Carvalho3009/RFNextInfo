@@ -58,8 +58,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Chaves | Carlos confirmou como revisor humano `lease-2026-01`, a pública, o SHA-256, a ACL e que a privada permanece fora da produção. Backup de recuperação continua pendente e bloqueia promoção. | Revisão concluída |
 | 09 ago 2026 | Chaves | Backup local AES-256-GCM criado em `D:` com chave de recuperação separada em `E:`; origem permanece em `K:`. ACL restrita, restauração exata aprovada, chave errada rejeitada e nenhum segredo encontrado nos arquivos rastreados dos dois repositórios. Cópia off-site segue recomendada. | Backup local validado |
 | 09 ago 2026 | Licença | Texto residual da interface corrigido de 72 para o limite offline real de 24 horas; a regra de autorização já aplicava 24 horas. | Concluído local |
-| 09 ago 2026 | Chaves | Kit `update-2026-01` v3 fechado sem chave real: duas cópias PEM cifradas, restauração, limpeza de escrita parcial, senha solicitada interativamente, wheelhouse offline e assinadores de manifesto/procedência. ZIP validado em ambiente novo apenas com seus próprios arquivos; v1/v2 ficaram supersedidos. | Preparado; cerimônia física pendente |
-| 09 ago 2026 | F4 | Auditoria do rollback confirmou três lacunas: compatibilidade assinada ainda não é aplicada, manifesto expira em sete dias e cache anterior não é populado. Botão permanece informativo; nenhuma verificação foi relaxada. Proposta de manifesto de rollback dedicado aguarda gate do owner. | Contrato pendente |
+| 09 ago 2026 | Chaves | Kit `update-2026-01` v4 fechado sem chave real: duas cópias PEM cifradas, restauração, limpeza de escrita parcial, senha solicitada interativamente, wheelhouse offline e assinatura de update/rollback/procedência. ZIP validado em ambiente novo apenas com seus próprios arquivos; v1/v2/v3 ficaram supersedidos. | Preparado; cerimônia física pendente |
+| 09 ago 2026 | F4 | Owner aprovou o manifesto de rollback dedicado. Cliente agora exige alvo idêntico à versão/sequência instalada, compatibilidade assinada com a versão nova, expiração, cache administrativo, segunda reverificação e backup SQLite íntegro antes do UAC. Build exige o bundle completo a partir da segunda release e atesta seu hash. | Concluído local |
+| 09 ago 2026 | F4 | Build portátil recompilado lendo versão/sequência do próprio candidato; executável empacotado passou no autoteste. NSIS não estava no PATH desta sessão, portanto nenhum instalador novo foi emitido. | Concluído portátil |
 
 ## Evidências e comandos de validação
 
@@ -99,10 +100,18 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   de lease está aberto e o gate independente de update permanece fechado.
 - Após preparar o fluxo cifrado de update e corrigir o texto de 72 horas, a
   regressão CPython 3.13/Qt passou com 194 testes, nenhum ignorado, em 97,331 s.
+- Após implementar o contrato aprovado de rollback, a regressão CPython
+  3.13/Qt passou com 201 testes em 111,343 s; um teste de ícone da bandeja foi
+  ignorado porque a área de notificação não estava disponível nesse ensaio.
 - O ZIP offline passou por verificação de hashes, instalação sem índice de rede
   em ambiente virtual novo, duas restaurações descartáveis, rejeição de senha
   errada e assinatura/verificação de manifesto e procedência. Nenhuma chave
   definitiva foi gerada nesse ensaio.
+- Ensaio persistido em
+  `K:\MCP\_staging\rf-qol-rollback-contract-20260809-r1` simulou RC2 -> RC1
+  com chave descartável: bundle e compatibilidade aceitos, cache sem
+  `users-modify`, backup SQLite íntegro/hasheado, adulteração rejeitada e
+  reverificação final aprovada. O instalador descartável não foi executado.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
@@ -149,8 +158,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 1. copiar o kit para ambiente desconectado, conectar duas mídias físicas e
    executar a cerimônia testemunhada de `update-2026-01`; cópia externa/off-site
    do backup de lease também segue recomendada;
-2. aprovar o contrato do manifesto de rollback dedicado; depois implementar e
-   testar com RC anterior Ed25519 compatível;
+2. executar rollback entre duas RCs instaladas reais quando RC2 existir;
 3. Windows 10/11 limpos, licença real e teste com até dois clientes;
 4. G4 do owner para qualquer publicação ou produção.
 

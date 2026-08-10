@@ -4,10 +4,13 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import urllib.request
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -18,6 +21,9 @@ UPDATE_SIGNATURE_CONTEXT = b"RFQOL-UPDATE-V2\0"
 HEADERS = {"Accept": "application/json", "User-Agent": "RFQOL"}
 ARCHITECTURE = "windows-x64"
 MAX_INSTALLER_BYTES = 2 * 1024 * 1024 * 1024
+UPDATE_MANIFEST_NAME = "update-manifest.json"
+ROLLBACK_MANIFEST_NAME = "rollback-manifest.json"
+VERSION_RE = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
 UPDATE_PUBLIC_KEYS = {
     "update-production-pending": "hMzgTmtD3bwxGXzSBj-bUEcE6aVY9cwRu176tGgoJdM",
 }
@@ -34,6 +40,7 @@ def verify_manifest(
     now: datetime | None = None,
     current_sequence: int = 0,
     rollback: bool = False,
+    rollback_from_version: str | None = None,
 ) -> dict:
     """Valida por completo o manifesto v2 antes de confiar em qualquer campo."""
     try:
@@ -78,12 +85,15 @@ def verify_manifest(
             or unsigned["architecture"] != ARCHITECTURE
         ):
             raise ValueError
-        if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", unsigned["version"]):
+        if not re.fullmatch(VERSION_RE, unsigned["version"]):
             raise ValueError
         sequence = unsigned["release_sequence"]
         if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= 0:
             raise ValueError
-        if not rollback and sequence <= int(current_sequence):
+        if rollback:
+            if sequence >= int(current_sequence):
+                raise ValueError
+        elif sequence <= int(current_sequence):
             raise ValueError
         published = _utc(unsigned["published_at"])
         expires = _utc(unsigned["expires_at"])
@@ -107,7 +117,12 @@ def verify_manifest(
             raise ValueError
         compatible = unsigned["rollback_compatible_from"]
         if not isinstance(compatible, list) or not all(
-            isinstance(item, str) and len(item) <= 80 for item in compatible
+            isinstance(item, str) and re.fullmatch(VERSION_RE, item)
+            for item in compatible
+        ):
+            raise ValueError
+        if rollback and (
+            not rollback_from_version or rollback_from_version not in compatible
         ):
             raise ValueError
         return unsigned
@@ -139,6 +154,108 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _release_assets(release: dict) -> dict[str, str]:
+    assets: dict[str, str] = {}
+    for asset in release.get("assets", []):
+        if not isinstance(asset, dict):
+            continue
+        name = asset.get("name")
+        url = asset.get("browser_download_url")
+        if not isinstance(name, str) or not name or not isinstance(url, str):
+            continue
+        if name in assets or urlsplit(url).scheme.casefold() != "https":
+            raise ValueError("Assets de atualização inválidos")
+        assets[name] = url
+    return assets
+
+
+def _verified_manifest(
+    release: dict,
+    manifest_name: str,
+    public_keys: dict[str, str] | str,
+    *,
+    current_sequence: int,
+    rollback: bool = False,
+    rollback_from_version: str | None = None,
+) -> tuple[dict[str, str], bytes, dict]:
+    assets = _release_assets(release)
+    manifest_url = assets.get(manifest_name)
+    if not manifest_url:
+        raise ValueError(f"Versão sem {manifest_name}")
+    request = urllib.request.Request(manifest_url, headers=HEADERS)
+    with urllib.request.urlopen(request, timeout=20) as response:
+        raw_manifest = response.read(64 * 1024 + 1)
+    if len(raw_manifest) > 64 * 1024:
+        raise ValueError("Manifesto excede 64 KiB")
+    manifest = verify_manifest(
+        json.loads(raw_manifest),
+        public_keys,
+        current_sequence=current_sequence,
+        rollback=rollback,
+        rollback_from_version=rollback_from_version,
+    )
+    if manifest["file"] not in assets:
+        raise ValueError("Instalador não encontrado")
+    return assets, raw_manifest, manifest
+
+
+def _download_asset(
+    assets: dict[str, str],
+    raw_manifest: bytes,
+    manifest: dict,
+    manifest_name: str,
+    progress: Callable[[str, int, int | None], None] | None,
+    download_dir: Path,
+) -> Path:
+    target_dir = Path(download_dir).resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = (target_dir / manifest["file"]).resolve()
+    if target.parent != target_dir:
+        raise ValueError("Destino de atualização inválido")
+    partial = target.with_suffix(target.suffix + ".part")
+    manifest_target = target_dir / manifest_name
+    manifest_partial = manifest_target.with_suffix(manifest_target.suffix + ".part")
+    partial.unlink(missing_ok=True)
+    manifest_partial.unlink(missing_ok=True)
+    installer_request = urllib.request.Request(
+        assets[manifest["file"]], headers={"User-Agent": "RFQOL"}
+    )
+    try:
+        with urllib.request.urlopen(installer_request, timeout=120) as response, partial.open("xb") as output:
+            header = response.headers.get("Content-Length")
+            total = int(header) if header and header.isdigit() else None
+            if total is not None and total != manifest["size"]:
+                raise ValueError("Tamanho anunciado do instalador não confere")
+            downloaded = 0
+            if progress:
+                progress("download", downloaded, manifest["size"])
+            while chunk := response.read(1024 * 1024):
+                output.write(chunk)
+                downloaded += len(chunk)
+                if downloaded > manifest["size"]:
+                    raise ValueError("Instalador excede o tamanho assinado")
+                if progress:
+                    progress("download", downloaded, manifest["size"])
+        if progress:
+            progress("verify", downloaded, manifest["size"])
+        if (
+            partial.stat().st_size != manifest["size"]
+            or _sha256(partial).casefold() != manifest["sha256"].casefold()
+        ):
+            raise ValueError("Instalador baixado não corresponde ao manifesto")
+        with manifest_partial.open("xb") as output:
+            output.write(raw_manifest)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(partial, target)
+        os.replace(manifest_partial, manifest_target)
+        return target
+    except Exception:
+        partial.unlink(missing_ok=True)
+        manifest_partial.unlink(missing_ok=True)
+        raise
+
+
 def verify_downloaded(installer: Path, manifest: dict) -> Path:
     installer = Path(installer)
     if installer.name != manifest["file"]:
@@ -158,63 +275,141 @@ def download_verified(
     public_keys: dict[str, str] | str = UPDATE_PUBLIC_KEYS,
     current_sequence: int = 0,
     rollback: bool = False,
+    rollback_from_version: str | None = None,
+    manifest_name: str = UPDATE_MANIFEST_NAME,
 ) -> Path:
-    assets = {
-        asset["name"]: asset["browser_download_url"]
-        for asset in release.get("assets", [])
-        if isinstance(asset, dict) and asset.get("name") and asset.get("browser_download_url")
-    }
-    manifest_url = assets.get("update-manifest.json")
-    if not manifest_url:
-        raise ValueError("Versão sem manifesto assinado")
     if progress:
         progress("manifest", 0, None)
-    request = urllib.request.Request(manifest_url, headers=HEADERS)
-    with urllib.request.urlopen(request, timeout=20) as response:
-        raw_manifest = response.read(64 * 1024)
-    manifest = verify_manifest(
-        json.loads(raw_manifest),
+    assets, raw_manifest, manifest = _verified_manifest(
+        release,
+        manifest_name,
         public_keys,
         current_sequence=current_sequence,
         rollback=rollback,
+        rollback_from_version=rollback_from_version,
     )
-    file_name = manifest["file"]
-    if file_name not in assets:
-        raise ValueError("Instalador não encontrado")
-    target_dir = Path(download_dir or Path.cwd() / "updates").resolve()
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = (target_dir / file_name).resolve()
-    if target.parent != target_dir:
-        raise ValueError("Destino de atualização inválido")
-    partial = target.with_suffix(target.suffix + ".part")
-    installer_request = urllib.request.Request(
-        assets[file_name], headers={"User-Agent": "RFQOL"}
+    return _download_asset(
+        assets,
+        raw_manifest,
+        manifest,
+        manifest_name,
+        progress,
+        Path(download_dir or Path.cwd() / "updates"),
     )
+
+
+def download_release_with_rollback(
+    release: dict,
+    progress: Callable[[str, int, int | None], None] | None,
+    download_dir: Path,
+    *,
+    current_version: str,
+    current_sequence: int,
+    public_keys: dict[str, str] | str = UPDATE_PUBLIC_KEYS,
+) -> Path:
+    assets, raw_manifest, manifest = _verified_manifest(
+        release,
+        UPDATE_MANIFEST_NAME,
+        public_keys,
+        current_sequence=current_sequence,
+    )
+    if current_sequence > 0:
+        rollback_assets, rollback_raw, rollback_manifest = _verified_manifest(
+            release,
+            ROLLBACK_MANIFEST_NAME,
+            public_keys,
+            current_sequence=manifest["release_sequence"],
+            rollback=True,
+            rollback_from_version=manifest["version"],
+        )
+        if (
+            rollback_manifest["version"] != current_version
+            or rollback_manifest["release_sequence"] != current_sequence
+        ):
+            raise ValueError("Rollback não corresponde à versão instalada")
+        _download_asset(
+            rollback_assets,
+            rollback_raw,
+            rollback_manifest,
+            ROLLBACK_MANIFEST_NAME,
+            None,
+            Path(download_dir) / "rollback",
+        )
+    if progress:
+        progress("manifest", 0, None)
+    return _download_asset(
+        assets,
+        raw_manifest,
+        manifest,
+        UPDATE_MANIFEST_NAME,
+        progress,
+        Path(download_dir),
+    )
+
+
+def cached_rollback(
+    rollback_dir: Path,
+    *,
+    current_version: str,
+    current_sequence: int,
+    public_keys: dict[str, str] | str = UPDATE_PUBLIC_KEYS,
+) -> Path:
+    root = Path(rollback_dir).resolve()
+    manifest = verify_manifest(
+        json.loads((root / ROLLBACK_MANIFEST_NAME).read_text(encoding="utf-8")),
+        public_keys,
+        current_sequence=current_sequence,
+        rollback=True,
+        rollback_from_version=current_version,
+    )
+    installer = (root / manifest["file"]).resolve()
+    if installer.parent != root:
+        raise ValueError("Cache de rollback inválido")
+    return verify_downloaded(installer, manifest)
+
+
+def backup_database(database: Path, backup_dir: Path, version: str) -> tuple[Path, Path]:
+    source = Path(database).resolve(strict=True)
+    root = Path(backup_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    target = root / f"database-before-rollback-{stamp}.sqlite3"
+    partial = target.with_suffix(".sqlite3.part")
+    evidence = target.with_suffix(".json")
+    evidence_partial = evidence.with_suffix(".json.part")
     try:
-        with urllib.request.urlopen(installer_request, timeout=120) as response, partial.open("wb") as output:
-            header = response.headers.get("Content-Length")
-            total = int(header) if header and header.isdigit() else None
-            if total is not None and total != manifest["size"]:
-                raise ValueError("Tamanho anunciado do instalador não confere")
-            downloaded = 0
-            if progress:
-                progress("download", downloaded, manifest["size"])
-            while chunk := response.read(1024 * 1024):
-                output.write(chunk)
-                downloaded += len(chunk)
-                if downloaded > manifest["size"]:
-                    raise ValueError("Instalador excede o tamanho assinado")
-                if progress:
-                    progress("download", downloaded, manifest["size"])
-        if progress:
-            progress("verify", downloaded, manifest["size"])
-        if partial.stat().st_size != manifest["size"] or _sha256(partial).casefold() != manifest["sha256"].casefold():
-            raise ValueError("Instalador baixado não corresponde ao manifesto")
+        with closing(sqlite3.connect(source)) as origin, closing(
+            sqlite3.connect(partial)
+        ) as copy:
+            origin.backup(copy)
+        with closing(
+            sqlite3.connect(f"file:{partial.as_posix()}?mode=ro", uri=True)
+        ) as copy:
+            if copy.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise ValueError("Backup do banco não passou na integridade")
         os.replace(partial, target)
-        (target_dir / "update-manifest.json").write_bytes(raw_manifest)
-        return target
+        record = {
+            "schema_version": 1,
+            "product": "rf-qol",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "source_version": version,
+            "file": target.name,
+            "size": target.stat().st_size,
+            "sha256": _sha256(target),
+            "integrity_check": "ok",
+        }
+        with evidence_partial.open("x", encoding="utf-8", newline="\n") as output:
+            json.dump(record, output, ensure_ascii=False, indent=2)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(evidence_partial, evidence)
+        return target, evidence
     except Exception:
         partial.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
+        evidence_partial.unlink(missing_ok=True)
+        evidence.unlink(missing_ok=True)
         raise
 
 

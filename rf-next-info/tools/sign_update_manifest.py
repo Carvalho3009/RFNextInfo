@@ -5,13 +5,14 @@ import base64
 import getpass
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from app.updater import ARCHITECTURE, UPDATE_SIGNATURE_CONTEXT
+from app.updater import ARCHITECTURE, UPDATE_SIGNATURE_CONTEXT, VERSION_RE
 
 
 def _b64(value: bytes) -> str:
@@ -57,8 +58,19 @@ def main() -> int:
     args = parser.parse_args()
 
     installer = args.installer.resolve(strict=True)
-    if args.sequence <= 0 or not args.key_id.startswith("update-") or args.key_id.endswith("-pending"):
-        raise ValueError("Sequência ou key_id inválido")
+    if (
+        args.sequence <= 0
+        or not args.key_id.startswith("update-")
+        or args.key_id.endswith("-pending")
+        or not re.fullmatch(VERSION_RE, args.version)
+        or len(set(args.rollback_compatible_from))
+        != len(args.rollback_compatible_from)
+        or not all(
+            re.fullmatch(VERSION_RE, version)
+            for version in args.rollback_compatible_from
+        )
+    ):
+        raise ValueError("Parâmetros do manifesto inválidos")
     if installer.name != Path(installer.name).name or not installer.name.casefold().endswith(".exe"):
         raise ValueError("Nome do instalador inválido")
     now = datetime.now(timezone.utc)

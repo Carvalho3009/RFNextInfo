@@ -52,7 +52,9 @@ from app.support_log import (
     set_detailed,
 )
 from app.updater import (
-    download_verified,
+    backup_database,
+    cached_rollback,
+    download_release_with_rollback,
     latest,
     verify_downloaded,
     verify_manifest,
@@ -3053,12 +3055,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _download_update(self, release: dict[str, object]) -> None:
         self._run_site_operation(
             "update:download",
-            lambda: download_verified(
+            lambda: download_release_with_rollback(
                 release,
                 lambda phase, downloaded, total: self.update_progress_changed.emit(
                     phase, downloaded, total
                 ),
                 UPDATES_DIR,
+                current_version=VERSION,
                 current_sequence=self.license_client.highest_release_sequence,
             ),
         )
@@ -3108,12 +3111,69 @@ class MainWindow(QtWidgets.QMainWindow):
         self.close()
 
     def _rollback(self) -> None:
-        QtWidgets.QMessageBox.information(
+        try:
+            installer = cached_rollback(
+                UPDATES_DIR / "rollback",
+                current_version=VERSION,
+                current_sequence=self.license_client.highest_release_sequence,
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            QtWidgets.QMessageBox.information(
+                self,
+                "Versão anterior",
+                "Não existe uma versão anterior compatível e assinada no cache.",
+            )
+            return
+        engine = self.capture_engine
+        if self.capture_busy or (engine and engine.current_session):
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Captura pendente",
+                "Encerre a captura e aguarde a leitura terminar antes do rollback.",
+            )
+            return
+        if QtWidgets.QMessageBox.question(
             self,
-            "Versão anterior",
-            "O rollback só será oferecido quando existir um instalador anterior "
-            "com manifesto e assinaturas válidas.",
+            "Restaurar versão anterior",
+            "A versão anterior possui manifesto Ed25519, compatibilidade, "
+            "tamanho e SHA-256 válidos. Um backup verificado do banco será "
+            "criado e o Windows pedirá confirmação administrativa. Continuar?",
+        ) != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        try:
+            installer = cached_rollback(
+                UPDATES_DIR / "rollback",
+                current_version=VERSION,
+                current_sequence=self.license_client.highest_release_sequence,
+            )
+            backup_database(
+                self.database_path,
+                UPDATES_DIR / "database-backups",
+                VERSION,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            self.log.exception("rollback_installer_launch_failed")
+            QtWidgets.QMessageBox.critical(self, "Rollback rejeitado", str(error))
+            return
+        script = (
+            "Wait-Process -Id $args[0] -ErrorAction SilentlyContinue; "
+            "Start-Process -FilePath $args[1]"
         )
+        try:
+            subprocess.Popen(
+                [
+                    "powershell.exe", "-NoProfile", "-NonInteractive",
+                    "-WindowStyle", "Hidden", "-Command", script,
+                    str(os.getpid()), str(installer.resolve()),
+                ],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError as error:
+            self.log.exception("rollback_installer_launch_failed")
+            QtWidgets.QMessageBox.critical(self, "Rollback rejeitado", str(error))
+            return
+        self.exit_requested = True
+        self.close()
 
     def _connect_site_profile(self) -> None:
         profile = self.setting_profile.text().strip()

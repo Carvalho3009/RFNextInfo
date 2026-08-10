@@ -3,6 +3,7 @@ import ast
 import json
 import logging
 import inspect
+import sqlite3
 import struct
 import tempfile
 import threading
@@ -50,7 +51,11 @@ from app.support_log import (
 )
 import app.support_log as support_log_module
 from app.updater import (
+    ROLLBACK_MANIFEST_NAME,
     UPDATE_SIGNATURE_CONTEXT,
+    backup_database,
+    cached_rollback,
+    download_release_with_rollback,
     download_verified,
     verify_downloaded,
     verify_manifest,
@@ -1703,6 +1708,29 @@ class AppLogicTest(unittest.TestCase):
         app.store.close.assert_called_once()
         app.destroy.assert_called_once()
 
+    def test_signed_rollback_reverifies_backs_up_and_closes_current_app(self):
+        app = Mock()
+        app.capture.attached = False
+        app.license.highest_release_sequence = 2
+        app.store.path = Path("capture.sqlite3")
+        app.tray = None
+        installer = Path("RF QOL Setup 1.0.0.exe")
+        with patch(
+            "app.main.cached_rollback", side_effect=(installer, installer)
+        ) as cached, patch(
+            "app.main.backup_database"
+        ) as backup, patch(
+            "app.main.messagebox.askyesno", return_value=True
+        ), patch(
+            "app.main.os.startfile"
+        ) as launch:
+            App.rollback(app)
+        self.assertEqual(cached.call_count, 2)
+        backup.assert_called_once()
+        launch.assert_called_once_with(installer)
+        app.store.close.assert_called_once()
+        app.destroy.assert_called_once()
+
     def test_unsafe_executable_copy_rollback_is_removed(self):
         root = Path(__file__).resolve().parents[1]
         sources = "\n".join(
@@ -1802,6 +1830,172 @@ class AppLogicTest(unittest.TestCase):
             self.assertEqual(target.read_bytes(), installer)
             self.assertEqual(progress[0][0], "manifest")
             self.assertEqual(progress[-1], ("verify", len(installer), len(installer)))
+
+    def test_release_bundle_caches_only_compatible_signed_rollback(self):
+        private = Ed25519PrivateKey.generate()
+        public = b64(private.public_key().public_bytes_raw())
+        now = datetime.now(timezone.utc)
+        old_installer = b"instalador-rc1"
+        new_installer = b"instalador-rc2"
+
+        def signed(version, sequence, name, body, compatible):
+            manifest = {
+                "manifest_version": 2,
+                "product": "rf-qol",
+                "channel": "stable",
+                "architecture": "windows-x64",
+                "version": version,
+                "release_sequence": sequence,
+                "published_at": (now - timedelta(minutes=1)).isoformat(),
+                "expires_at": (now + timedelta(days=1)).isoformat(),
+                "key_id": "update-test",
+                "file": name,
+                "size": len(body),
+                "sha256": __import__("hashlib").sha256(body).hexdigest(),
+                "rollback_compatible_from": compatible,
+            }
+            canonical = json.dumps(
+                manifest, separators=(",", ":"), sort_keys=True
+            ).encode()
+            manifest["signature"] = b64(
+                private.sign(UPDATE_SIGNATURE_CONTEXT + canonical)
+            )
+            return manifest
+
+        old_name = "RF QOL Setup 1.0.0.exe"
+        new_name = "RF QOL Setup 1.0.1.exe"
+        update_manifest = signed("1.0.1", 2, new_name, new_installer, ["1.0.0"])
+        rollback_manifest = signed("1.0.0", 1, old_name, old_installer, ["1.0.1"])
+        release = {"assets": [
+            {"name": "update-manifest.json", "browser_download_url": "https://example/update-manifest"},
+            {"name": ROLLBACK_MANIFEST_NAME, "browser_download_url": "https://example/rollback-manifest"},
+            {"name": new_name, "browser_download_url": "https://example/new-installer"},
+            {"name": old_name, "browser_download_url": "https://example/old-installer"},
+        ]}
+
+        class Response(BytesIO):
+            def __init__(self, body: bytes):
+                super().__init__(body)
+                self.headers = {"Content-Length": str(len(body))}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                self.close()
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            urllib.request,
+            "urlopen",
+            side_effect=[
+                Response(json.dumps(update_manifest).encode()),
+                Response(json.dumps(rollback_manifest).encode()),
+                Response(old_installer),
+                Response(new_installer),
+            ],
+        ):
+            root = Path(directory)
+            installed = download_release_with_rollback(
+                release,
+                None,
+                root,
+                current_version="1.0.0",
+                current_sequence=1,
+                public_keys={"update-test": public},
+            )
+            self.assertEqual(installed.read_bytes(), new_installer)
+            cached = cached_rollback(
+                root / "rollback",
+                current_version="1.0.1",
+                current_sequence=2,
+                public_keys={"update-test": public},
+            )
+            self.assertEqual(cached.read_bytes(), old_installer)
+            cached.write_bytes(b"alterado")
+            with self.assertRaisesRegex(ValueError, "não confere"):
+                cached_rollback(
+                    root / "rollback",
+                    current_version="1.0.1",
+                    current_sequence=2,
+                    public_keys={"update-test": public},
+                )
+
+        incompatible = signed("1.0.0", 1, old_name, old_installer, ["1.0.2"])
+        with self.assertRaisesRegex(ValueError, "Manifesto"):
+            verify_manifest(
+                incompatible,
+                {"update-test": public},
+                current_sequence=2,
+                rollback=True,
+                rollback_from_version="1.0.1",
+            )
+
+    def test_release_bundle_requires_rollback_asset_after_first_release(self):
+        private = Ed25519PrivateKey.generate()
+        body = b"instalador-rc2"
+        now = datetime.now(timezone.utc)
+        manifest = {
+            "manifest_version": 2,
+            "product": "rf-qol",
+            "channel": "stable",
+            "architecture": "windows-x64",
+            "version": "1.0.1",
+            "release_sequence": 2,
+            "published_at": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(days=1)).isoformat(),
+            "key_id": "update-test",
+            "file": "RF QOL Setup 1.0.1.exe",
+            "size": len(body),
+            "sha256": __import__("hashlib").sha256(body).hexdigest(),
+            "rollback_compatible_from": ["1.0.0"],
+        }
+        canonical = json.dumps(manifest, separators=(",", ":"), sort_keys=True).encode()
+        manifest["signature"] = b64(private.sign(UPDATE_SIGNATURE_CONTEXT + canonical))
+        release = {"assets": [
+            {"name": "update-manifest.json", "browser_download_url": "https://example/manifest"},
+            {"name": manifest["file"], "browser_download_url": "https://example/installer"},
+        ]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            urllib.request,
+            "urlopen",
+            return_value=BytesIO(json.dumps(manifest).encode()),
+        ):
+            with self.assertRaisesRegex(ValueError, ROLLBACK_MANIFEST_NAME):
+                download_release_with_rollback(
+                    release,
+                    None,
+                    Path(directory),
+                    current_version="1.0.0",
+                    current_sequence=1,
+                    public_keys={
+                        "update-test": b64(private.public_key().public_bytes_raw())
+                    },
+                )
+
+    def test_database_backup_is_consistent_and_hashed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            connection = sqlite3.connect(database)
+            try:
+                connection.execute("CREATE TABLE sample(value TEXT NOT NULL)")
+                connection.execute("INSERT INTO sample VALUES ('preservado')")
+                connection.commit()
+            finally:
+                connection.close()
+            backup, evidence = backup_database(database, root / "backups", "1.0.1")
+            record = json.loads(evidence.read_text(encoding="utf-8"))
+            self.assertEqual(record["integrity_check"], "ok")
+            self.assertEqual(record["size"], backup.stat().st_size)
+            self.assertEqual(record["sha256"], __import__("hashlib").sha256(backup.read_bytes()).hexdigest())
+            connection = sqlite3.connect(backup)
+            try:
+                self.assertEqual(
+                    connection.execute("SELECT value FROM sample").fetchone()[0],
+                    "preservado",
+                )
+            finally:
+                connection.close()
 
     def test_offline_manifest_signer_matches_client_verifier(self):
         private = Ed25519PrivateKey.generate()

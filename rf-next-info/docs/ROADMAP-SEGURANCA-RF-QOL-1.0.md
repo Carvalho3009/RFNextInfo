@@ -29,7 +29,7 @@ Karvalho, conforme decisão posterior do owner em 09 ago 2026.
 | M1 | SPEC e roadmap aprovados | Concluído | G0 |
 | M2 | Lease v2, chaves e autorização central | Concluído localmente; produção pendente | G1 |
 | M3 | Emissor/site v2 integrados | Concluído em staging isolado; produção pendente | G1 |
-| M4 | Update/rollback/ACL seguros | Parcial: update/ACL prontos, rollback assinado pendente | G1 |
+| M4 | Update/rollback/ACL seguros | Concluído localmente; ensaio entre RCs reais pendente | G1 |
 | M5 | Build rastreável e conteúdo assinado | Parcial: portátil/instalador/SBOM/procedência prontos, chave Ed25519 definitiva pendente | G2 |
 | M6 | RC validada em ambiente real | Parcial: instalador validado localmente; matriz limpa pendente | G3 |
 | M7 | Release RF QOL 1.0 | Pendente | G4 |
@@ -171,20 +171,13 @@ Rollback:
 
 ## Fase 4 — Update, anti-downgrade, ACL e rollback
 
-Estado real: manifesto v2, hash/tamanho, anti-downgrade, staging admin-only e
-reverificação foram implementados. O rollback inseguro foi
-removido e permanece deliberadamente indisponível até existir um instalador
-anterior coberto por manifesto Ed25519 e compatível; por isso a fase não está
-concluída.
-
-Diagnóstico de 09 ago 2026: `rollback_compatible_from` ainda é validado apenas
-como lista, o manifesto gerado expira em sete dias e não existe rotina para
-popular o cache do instalador anterior. A proposta mínima ainda não aprovada é
-publicar, junto da nova release, um manifesto de rollback dedicado e assinado
-para o instalador anterior; o cliente exigirá a versão atual na lista de
-compatibilidade, manterá expiração/assinatura/tamanho/hash e só então guardará
-ambos no diretório admin-only. Nenhuma exceção de expiração ou assinatura será
-implementada sem novo gate do owner.
+Estado real: concluído localmente. Manifesto v2, hash/tamanho, anti-downgrade,
+staging admin-only e reverificação foram implementados. O rollback inseguro foi
+removido; o contrato dedicado aprovado pelo owner exige o instalador anterior,
+manifesto Ed25519 ainda válido, alvo idêntico à versão instalada,
+compatibilidade assinada, cache administrativo, segunda reverificação e backup
+SQLite íntegro antes de abrir o instalador. O ensaio entre duas RCs reais segue
+na Fase 6.
 
 Objetivo: impedir execução de artefato não confiável.
 

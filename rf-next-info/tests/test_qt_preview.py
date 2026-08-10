@@ -11,6 +11,61 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_signed_rollback_reverifies_backs_up_and_closes_qt_app(self):
+        from PySide6 import QtWidgets
+        from app.ui_qt.main import MainWindow
+
+        window = mock.Mock()
+        window.license_client.highest_release_sequence = 2
+        window.capture_engine = None
+        window.capture_busy = False
+        window.database_path = Path("capture.sqlite3")
+        installer = Path("RF QOL Setup 1.0.0.exe")
+        with mock.patch(
+            "app.ui_qt.main.cached_rollback", side_effect=(installer, installer)
+        ) as cached, mock.patch(
+            "app.ui_qt.main.backup_database"
+        ) as backup, mock.patch.object(
+            QtWidgets.QMessageBox,
+            "question",
+            return_value=QtWidgets.QMessageBox.StandardButton.Yes,
+        ), mock.patch(
+            "app.ui_qt.main.subprocess.Popen"
+        ) as launched:
+            MainWindow._rollback(window)
+        self.assertEqual(cached.call_count, 2)
+        backup.assert_called_once()
+        launched.assert_called_once()
+        self.assertTrue(window.exit_requested)
+        window.close.assert_called_once()
+
+    def test_signed_rollback_keeps_qt_app_open_when_installer_cannot_start(self):
+        from PySide6 import QtWidgets
+        from app.ui_qt.main import MainWindow
+
+        window = mock.Mock()
+        window.license_client.highest_release_sequence = 2
+        window.capture_engine = None
+        window.capture_busy = False
+        window.database_path = Path("capture.sqlite3")
+        installer = Path("RF QOL Setup 1.0.0.exe")
+        with mock.patch(
+            "app.ui_qt.main.cached_rollback", side_effect=(installer, installer)
+        ), mock.patch(
+            "app.ui_qt.main.backup_database"
+        ), mock.patch.object(
+            QtWidgets.QMessageBox,
+            "question",
+            return_value=QtWidgets.QMessageBox.StandardButton.Yes,
+        ), mock.patch.object(
+            QtWidgets.QMessageBox, "critical"
+        ) as critical, mock.patch(
+            "app.ui_qt.main.subprocess.Popen", side_effect=OSError("falha simulada")
+        ):
+            MainWindow._rollback(window)
+        critical.assert_called_once()
+        window.close.assert_not_called()
+
     def test_discord_action_opens_exact_official_url(self):
         from app.ui_qt.main import DISCORD_URL, MainWindow
 

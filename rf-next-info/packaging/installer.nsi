@@ -25,7 +25,7 @@ InstallDirRegKey HKLM "Software\Karvalho\RFQOL" "InstallDir"
 SetCompressor /SOLID lzma
 CRCCheck on
 
-VIProductVersion "1.0.0.0"
+VIProductVersion "${APP_VERSION}.0"
 VIAddVersionKey /LANG=1046 "ProductName" "RF QOL"
 VIAddVersionKey /LANG=1046 "CompanyName" "Karvalho"
 VIAddVersionKey /LANG=1046 "FileDescription" "Instalador do RF QOL"

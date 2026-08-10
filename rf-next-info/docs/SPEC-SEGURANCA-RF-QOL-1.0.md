@@ -259,6 +259,12 @@ O feed não é fonte de confiança. O cliente seleciona somente manifesto válid
 e rejeita update com `release_sequence` menor ou igual ao maior já instalado,
 exceto rollback explícito e assinado.
 
+O update normal usa `update-manifest.json`. A partir da segunda release, ela
+também publica `rollback-manifest.json`, assinado no mesmo formato, apontando
+para o instalador completo da versão imediatamente instalada antes do update.
+Nesse manifesto dedicado, `rollback_compatible_from` declara as versões novas
+cujos dados/schema podem voltar ao instalador anterior.
+
 ### 7.2 Download e execução
 
 - Download ocorre em staging admin-only.
@@ -275,15 +281,19 @@ exceto rollback explícito e assinado.
 
 - Copiar e abrir o executável instalado numa pasta gravável é proibido.
 - O rollback usa o instalador completo da versão anterior.
-- O instalador anterior fica em cache admin-only e conserva manifesto e
-  assinatura originais.
+- Antes de baixar a nova versão, o cliente exige na mesma release o manifesto
+  dedicado de rollback, ainda dentro da validade, e confirma que versão e
+  sequência do alvo são exatamente as atualmente instaladas.
+- O instalador anterior fica em cache admin-only com o manifesto dedicado e
+  sua assinatura original.
 - Antes de executar rollback, o cliente repete verificação Ed25519, tamanho,
-  SHA-256 e compatibilidade declarada.
+  SHA-256, expiração, sequência inferior e presença da versão atual em
+  `rollback_compatible_from`.
 - Rollback exige confirmação e UAC.
 - O anti-downgrade só é dispensado para esta ação explícita; as demais
   verificações continuam obrigatórias.
-- Se o manifesto não declarar compatibilidade com o schema atual, o rollback é
-  bloqueado e o usuário recebe instrução de recuperação.
+- Se o manifesto não declarar compatibilidade da versão/schema atual, o
+  rollback é bloqueado e o usuário recebe instrução de recuperação.
 - Antes de alterar dados, deve existir backup verificável e compatível.
 
 ## 9. Privacidade e captura passiva

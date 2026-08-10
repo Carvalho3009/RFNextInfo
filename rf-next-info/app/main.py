@@ -38,7 +38,9 @@ from app.paths import (
 from app.site_profile import SiteProfileClient
 from app.support_log import configure as configure_log, recent_lines
 from app.updater import (
-    download_verified,
+    backup_database,
+    cached_rollback,
+    download_release_with_rollback,
     latest,
     verify_downloaded,
     verify_manifest,
@@ -6532,10 +6534,11 @@ class App(tk.Tk):
             )
 
         self._run(
-            lambda: download_verified(
+            lambda: download_release_with_rollback(
                 release,
                 progress,
                 UPDATES_DIR,
+                current_version=VERSION,
                 current_sequence=self.license.highest_release_sequence,
             ),
             self._update_downloaded,
@@ -6603,11 +6606,49 @@ class App(tk.Tk):
             self.destroy()
 
     def rollback(self) -> None:
-        messagebox.showinfo(
-            "Versão anterior",
-            "O rollback só será oferecido quando existir um instalador anterior "
-            "com manifesto e assinaturas válidas.",
-        )
+        try:
+            installer = cached_rollback(
+                UPDATES_DIR / "rollback",
+                current_version=VERSION,
+                current_sequence=self.license.highest_release_sequence,
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            return messagebox.showinfo(
+                "Versão anterior",
+                "Não existe uma versão anterior compatível e assinada no cache.",
+            )
+        if self.capture.attached and self.capture.status().active:
+            return messagebox.showwarning(
+                "Captura ativa",
+                "Pare a captura e aguarde a leitura terminar antes do rollback.",
+            )
+        if not messagebox.askyesno(
+            "Restaurar versão anterior",
+            "A versão anterior possui manifesto Ed25519, compatibilidade, "
+            "tamanho e SHA-256 válidos. Um backup verificado do banco será "
+            "criado e o Windows pedirá confirmação administrativa. Continuar?",
+        ):
+            return
+        try:
+            installer = cached_rollback(
+                UPDATES_DIR / "rollback",
+                current_version=VERSION,
+                current_sequence=self.license.highest_release_sequence,
+            )
+            backup_database(
+                self.store.path,
+                UPDATES_DIR / "database-backups",
+                VERSION,
+            )
+            os.startfile(installer)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            self.log.exception("rollback_installer_launch_failed")
+            return messagebox.showerror("Rollback rejeitado", str(error))
+        if self.tray:
+            self.tray.stop()
+        self.store.close()
+        self.log.info("app_closed_for_rollback")
+        self.destroy()
 
     def _request_runtime_refresh(self, active: bool) -> None:
         now = time.monotonic()

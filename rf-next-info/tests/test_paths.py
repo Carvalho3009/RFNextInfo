@@ -87,6 +87,23 @@ class RuntimePathsTest(unittest.TestCase):
         self.assertIn("execshellwait", installer)
         self.assertIn("self-test.ok", installer)
 
+    def test_release_build_requires_and_attests_complete_rollback_bundle(self):
+        root = Path(__file__).resolve().parents[1]
+        build = (root / "packaging" / "build.ps1").read_text(
+            encoding="utf-8"
+        )
+        for field in (
+            "from app.main import VERSION",
+            "from app.main import RELEASE_SEQUENCE",
+            "RFQOL_ROLLBACK_INSTALLER",
+            "RFQOL_ROLLBACK_VERSION",
+            "RFQOL_ROLLBACK_SEQUENCE",
+            "rollback-manifest.json",
+            "rollback_manifest_sha256",
+            "Release posterior à inicial exige o bundle completo de rollback.",
+        ):
+            self.assertIn(field, build)
+
 
 if __name__ == "__main__":
     unittest.main()

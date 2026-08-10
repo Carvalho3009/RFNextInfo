@@ -12,7 +12,9 @@
   permissão, PvE/PvP continuam visíveis e bloqueados enquanto Boss fica oculto;
 - separa as chaves de licença e atualização e remove a chave mutável do estado local;
 - implementa manifesto de update v2, anti-downgrade e reverificação de tamanho/hash;
-- remove o rollback por cópia executável em diretório gravável;
+- substitui o rollback por cópia executável por instalador anterior, manifesto
+  dedicado Ed25519, compatibilidade assinada, cache administrativo e backup
+  SQLite verificado;
 - separa estado de confiança e staging em diretório de máquina com ACL administrativo;
 - fecha dependências e adiciona lock de wheels com SHA-256 para Windows x64/Python 3.13;
 - registra a decisão de distribuir executável e instalador sem Authenticode;
