@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import getpass
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
@@ -19,9 +20,15 @@ def _b64(value: bytes) -> str:
 
 def _private_key(path: Path) -> Ed25519PrivateKey:
     raw = path.read_bytes()
-    try:
-        key = serialization.load_pem_private_key(raw, password=None)
-    except ValueError:
+    if raw.lstrip().startswith(b"-----BEGIN"):
+        password = None
+        if b"ENCRYPTED PRIVATE KEY" in raw[:80]:
+            password = getpass.getpass("Senha da chave privada de update: ").encode()
+        try:
+            key = serialization.load_pem_private_key(raw, password=password)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Chave privada inválida ou senha incorreta") from error
+    else:
         decoded = base64.urlsafe_b64decode(raw.strip() + b"=" * (-len(raw.strip()) % 4))
         key = Ed25519PrivateKey.from_private_bytes(decoded)
     if not isinstance(key, Ed25519PrivateKey):

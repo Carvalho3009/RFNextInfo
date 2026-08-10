@@ -19,6 +19,9 @@
 - mantém publicação bloqueada até chaves Ed25519 de produção e testes reais.
 - fixa a pública definitiva de lease `lease-2026-01`; a privada continua fora
   do repositório e a chave offline de update ainda bloqueia a release.
+- prepara a cerimônia offline de update com duas cópias privadas cifradas,
+  restauração verificada e assinatura direta a partir do PEM protegido;
+- corrige o texto da ativação para informar o limite offline real de 24 horas;
 - adiciona vetor público, contrato do emissor, cerimônia de chaves e runbook de release.
 
 ## 3.0.11 — beta

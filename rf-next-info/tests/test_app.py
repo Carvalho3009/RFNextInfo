@@ -15,6 +15,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.license import (
@@ -55,7 +56,7 @@ from app.updater import (
     verify_manifest,
 )
 import app.main as main_module
-from tools import sign_provenance, sign_update_manifest
+from tools import generate_update_key, sign_provenance, sign_update_manifest
 
 
 def b64(value: bytes) -> str:
@@ -1829,6 +1830,62 @@ class AppLogicTest(unittest.TestCase):
                 current_sequence=1,
             )
             self.assertEqual(verify_downloaded(installer, manifest), installer)
+
+    def test_offline_signer_accepts_encrypted_private_key(self):
+        private = Ed25519PrivateKey.generate()
+        password = "senha-de-recuperacao-com-mais-de-vinte"
+        with tempfile.TemporaryDirectory() as directory:
+            key = Path(directory) / "update-private.pem"
+            key.write_bytes(private.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.BestAvailableEncryption(password.encode()),
+            ))
+            with patch(
+                "tools.sign_update_manifest.getpass.getpass", return_value=password
+            ):
+                restored = sign_update_manifest._private_key(key)
+            self.assertEqual(
+                restored.public_key().public_bytes_raw(),
+                private.public_key().public_bytes_raw(),
+            )
+
+    def test_update_key_ceremony_creates_two_recoverable_encrypted_copies(self):
+        password = "senha-de-recuperacao-com-mais-de-vinte"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copies = [root / "copy-one.pem", root / "copy-two.pem"]
+            with patch(
+                "tools.generate_update_key._storage_id", side_effect=("disk-one", "disk-two")
+            ):
+                evidence = generate_update_key.create_key(
+                    "update-test", copies, root / "public.b64",
+                    root / "evidence.json", password,
+                )
+            self.assertNotEqual(copies[0].read_bytes(), copies[1].read_bytes())
+            for copy in copies:
+                restored = serialization.load_pem_private_key(
+                    copy.read_bytes(), password=password.encode()
+                )
+                self.assertEqual(
+                    b64(restored.public_key().public_bytes_raw()),
+                    evidence["public_key_b64url"],
+                )
+            self.assertEqual(evidence["copy_restore_tests"], "passed")
+            with self.assertRaises((TypeError, ValueError)):
+                serialization.load_pem_private_key(
+                    copies[0].read_bytes(), password=b"senha-errada"
+                )
+
+    def test_update_key_ceremony_rejects_copies_on_the_same_drive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "unidades distintas"):
+                generate_update_key.create_key(
+                    "update-test", [root / "one.pem", root / "two.pem"],
+                    root / "public.b64", root / "evidence.json",
+                    "senha-de-recuperacao-com-mais-de-vinte",
+                )
 
     def test_local_provenance_has_detached_update_key_signature(self):
         private = Ed25519PrivateKey.generate()

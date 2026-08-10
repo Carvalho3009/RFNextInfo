@@ -58,8 +58,9 @@ G0 aprovado pelo owner em 09 ago 2026.
 
 ## Fase 1 — Cerimônia e contratos de segurança
 
-Estado real: contrato, runbook, vetor público e bloqueios `-pending` concluídos;
-cerimônia com chaves Ed25519 definitivas pendente.
+Estado real: contrato, runbook e vetor público concluídos; lease definitiva
+gerada, revisada e recuperável; kit de update validado, mas a geração da chave
+definitiva continua pendente de execução física offline.
 
 Objetivo: fechar os formatos antes do código.
 
@@ -305,8 +306,9 @@ Critérios de aceite:
 
 - G0 — aprovado em 09 ago 2026.
 - G1 — aprovado para implementação e staging isolados.
-- G2 — Authenticode removido do escopo pelo owner; cerimônia das chaves Ed25519
-  definitivas permanece pendente.
+- G2 — Authenticode removido do escopo pelo owner; lease definitiva concluída
+  e kit de update validado; chave definitiva de update permanece pendente da
+  cerimônia física offline.
 - G3 — aprovado para RC e testes locais isolados.
 - G4 — pendente; nenhuma publicação/release ou mudança de produção.
 

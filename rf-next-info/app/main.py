@@ -2740,7 +2740,7 @@ class App(tk.Tk):
             text=(
                 "A ativação fica lembrada neste computador e é preservada nas "
                 "atualizações. A chave é enviada uma vez e não fica salva; "
-                "a licença valida a cada 24 horas e possui até 72 horas offline."
+                "a licença valida a cada 24 horas e possui até 24 horas offline."
             ),
             style="PanelMuted.TLabel",
             wraplength=820,

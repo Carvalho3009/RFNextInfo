@@ -57,6 +57,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Chaves | Emissor Docker efêmero 8789 assinou Base+Boss com `lease-2026-01`; cliente com a pública definitiva aceitou Boss, negou PvP e a licença de ensaio foi revogada. Contêiner efêmero removido; 8787/8788 permaneceram saudáveis. | Concluído staging |
 | 09 ago 2026 | Chaves | Carlos confirmou como revisor humano `lease-2026-01`, a pública, o SHA-256, a ACL e que a privada permanece fora da produção. Backup de recuperação continua pendente e bloqueia promoção. | Revisão concluída |
 | 09 ago 2026 | Chaves | Backup local AES-256-GCM criado em `D:` com chave de recuperação separada em `E:`; origem permanece em `K:`. ACL restrita, restauração exata aprovada, chave errada rejeitada e nenhum segredo encontrado nos arquivos rastreados dos dois repositórios. Cópia off-site segue recomendada. | Backup local validado |
+| 09 ago 2026 | Licença | Texto residual da interface corrigido de 72 para o limite offline real de 24 horas; a regra de autorização já aplicava 24 horas. | Concluído local |
+| 09 ago 2026 | Chaves | Kit `update-2026-01` v3 fechado sem chave real: duas cópias PEM cifradas, restauração, limpeza de escrita parcial, senha solicitada interativamente, wheelhouse offline e assinadores de manifesto/procedência. ZIP validado em ambiente novo apenas com seus próprios arquivos; v1/v2 ficaram supersedidos. | Preparado; cerimônia física pendente |
 
 ## Evidências e comandos de validação
 
@@ -94,6 +96,12 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 - Após pinar `lease-2026-01`, a regressão CPython 3.13/Qt passou com 191
   testes, nenhum ignorado, em 88,464 s. O teste adicional confirma que o gate
   de lease está aberto e o gate independente de update permanece fechado.
+- Após preparar o fluxo cifrado de update e corrigir o texto de 72 horas, a
+  regressão CPython 3.13/Qt passou com 194 testes, nenhum ignorado, em 97,331 s.
+- O ZIP offline passou por verificação de hashes, instalação sem índice de rede
+  em ambiente virtual novo, duas restaurações descartáveis, rejeição de senha
+  errada e assinatura/verificação de manifesto e procedência. Nenhuma chave
+  definitiva foi gerada nesse ensaio.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
@@ -137,8 +145,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 ## Pendências externas reais
 
-1. cópia externa/off-site recomendada do backup de lease e cerimônia offline
-   da chave de update;
+1. copiar o kit para ambiente desconectado, conectar duas mídias físicas e
+   executar a cerimônia testemunhada de `update-2026-01`; cópia externa/off-site
+   do backup de lease também segue recomendada;
 2. RC anterior coberta por manifesto Ed25519 para implementar/testar rollback seguro;
 3. Windows 10/11 limpos, licença real e teste com até dois clientes;
 4. G4 do owner para qualquer publicação ou produção.
