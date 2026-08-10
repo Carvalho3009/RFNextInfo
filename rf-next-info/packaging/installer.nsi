@@ -36,6 +36,9 @@ VIAddVersionKey /LANG=1046 "LegalCopyright" "Karvalho"
 !include "MUI2.nsh"
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_LICENSEPAGE_CHECKBOX
+!define MUI_LICENSEPAGE_CHECKBOX_TEXT "Li e aceito os Termos de Uso"
+!insertmacro MUI_PAGE_LICENSE "..\docs\TERMOS-DE-USO-RF-QOL-1.0.txt"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH

@@ -87,6 +87,21 @@ class RuntimePathsTest(unittest.TestCase):
         self.assertIn("execshellwait", installer)
         self.assertIn("self-test.ok", installer)
 
+    def test_nsis_installer_requires_terms_acceptance(self):
+        root = Path(__file__).resolve().parents[1]
+        installer = (root / "packaging" / "installer.nsi").read_text(
+            encoding="utf-8"
+        )
+        terms = (root / "docs" / "TERMOS-DE-USO-RF-QOL-1.0.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("MUI_LICENSEPAGE_CHECKBOX", installer)
+        self.assertIn("Li e aceito os Termos de Uso", installer)
+        self.assertIn("MUI_PAGE_LICENSE", installer)
+        self.assertIn("TERMOS-DE-USO-RF-QOL-1.0.txt", installer)
+        self.assertIn("Versão dos Termos: 1.0", terms)
+        self.assertIn("Contato: carvalho@tuta.com", terms)
+
     def test_release_build_supports_manual_hash_and_future_signed_bundle(self):
         root = Path(__file__).resolve().parents[1]
         build = (root / "packaging" / "build.ps1").read_text(
