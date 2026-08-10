@@ -85,6 +85,10 @@ e `next`; após a janela aprovada, a chave antiga é removida. Comprometimento d
 chave de update exige bloquear o feed e distribuir instalador manual pelo canal
 oficial, com hashes publicados por um canal independente.
 
+Decisão vigente em 10 ago 2026: a versão 1.0 nasce em modo de instalação
+manual. A chave e o protocolo de update permanecem documentados e testados,
+mas não participam do build/release enquanto `UPDATE_MODE=manual`.
+
 ## 4. Lease v2
 
 ### 4.1 Claims obrigatórios
@@ -230,6 +234,12 @@ v2 e rejeitar product/audience/instalação/status divergentes.
 
 ## 7. Manifesto e atualização v2
 
+Modo vigente: manual. O cliente NÃO consulta feed, NÃO baixa instalador e NÃO
+inicia atualização. A interface informa o modo manual e abre somente o Discord
+oficial. O build publica o instalador completo e `SHA256SUMS.txt`. As regras
+abaixo ficam dormentes e voltam a ser obrigatórias somente se o owner reativar
+`UPDATE_MODE=automatic` e concluir uma chave definitiva de update.
+
 ### 7.1 Campos obrigatórios
 
 ```json
@@ -278,6 +288,11 @@ cujos dados/schema podem voltar ao instalador anterior.
 - TLS padrão permanece obrigatório; `verify=False` ou equivalente é proibido.
 
 ## 8. Rollback
+
+No modo manual, o botão de rollback fica indisponível e nenhum cache é
+consumido pelo cliente. Recuo de versão exige instalador completo oficialmente
+indicado como compatível e backup prévio do banco. O contrato assinado abaixo
+permanece implementado para eventual reativação do modo automático.
 
 - Copiar e abrir o executável instalado numa pasta gravável é proibido.
 - O rollback usa o instalador completo da versão anterior.
@@ -335,9 +350,13 @@ interpretada como licença válida no servidor.
 - Executável e instalador permanecem sem Authenticode por decisão do owner.
 - A procedência declara explicitamente `authenticode=false`.
 - Hashes publicados devem ser calculados sobre os bytes finais.
-- Manifesto é assinado por último, com o hash do instalador final.
-- Release pública sem manifesto v2, procedência Ed25519 ou testes negativos é
-  proibida.
+- No modo manual, `SHA256SUMS.txt` é calculado sobre o instalador final e a
+  procedência registra `update_mode=manual`.
+- Se o modo automático for reativado, o manifesto volta a ser assinado por
+  último, com o hash do instalador final, e a procedência volta a receber
+  assinatura Ed25519.
+- Release pública sem SBOM, procedência, hashes finais ou testes negativos do
+  modo vigente é proibida.
 
 ## 12. Critérios de aceite obrigatórios
 
@@ -355,10 +374,13 @@ interpretada como licença válida no servidor.
 
 ### Update e rollback
 
-- Manifesto forjado, expirado, canal/produto errado, sequence antigo, tamanho ou
-  hash divergente são rejeitados.
-- Instalador ausente do manifesto Ed25519 ou com tamanho/hash divergente é
-  rejeitado.
+- No modo manual, não ocorre consulta a feed, download, execução ou rollback
+  automático; a ação de atualização abre somente o Discord oficial.
+- `SHA256SUMS.txt` corresponde aos bytes finais do instalador completo.
+- Se o automático for reativado, manifesto forjado, expirado, canal/produto
+  errado, sequence antigo, tamanho ou hash divergente são rejeitados.
+- Nesse modo futuro, instalador ausente do manifesto Ed25519 ou com
+  tamanho/hash divergente é rejeitado.
 - Executável e instalador finais são confirmados como `NotSigned`, conforme a
   decisão registrada, sem tratar metadados de empresa como prova criptográfica.
 - Nenhum código executável fica em caminho `users-modify`.
@@ -381,14 +403,14 @@ Windows 10/11 limpos, observação externa de UAC/SmartScreen, captura externa
 com dois clientes e revisor independente permanecem como recomendações não
 executadas, com risco residual aceito. A matriz local documentada passa a ser
 o escopo final de validação pré-release; esta exceção não autoriza publicação,
-produção nem substitui a chave definitiva de update.
+produção nem a reativação do modo automático sem sua chave definitiva.
 
 ## 13. Gates do owner
 
 - G0: aprovado em 09 ago 2026.
 - G1: aprovado para implementação isolada, staging e chaves de desenvolvimento.
-- G2: certificado Authenticode removido do escopo por decisão do owner; resta a
-  cerimônia das chaves Ed25519 definitivas.
+- G2: encerrado para instalação manual. Authenticode foi removido do escopo e
+  a chave definitiva de update só será exigida se o modo automático voltar.
 - G3: encerrado pelo owner com a matriz local; validação externa cancelada em
   10 ago 2026 e riscos residuais registrados.
 - G4: pendente; publicação/release e produção não fazem parte desta autorização.

@@ -87,7 +87,7 @@ class RuntimePathsTest(unittest.TestCase):
         self.assertIn("execshellwait", installer)
         self.assertIn("self-test.ok", installer)
 
-    def test_release_build_requires_and_attests_complete_rollback_bundle(self):
+    def test_release_build_supports_manual_hash_and_future_signed_bundle(self):
         root = Path(__file__).resolve().parents[1]
         build = (root / "packaging" / "build.ps1").read_text(
             encoding="utf-8"
@@ -95,6 +95,10 @@ class RuntimePathsTest(unittest.TestCase):
         for field in (
             "from app.main import VERSION",
             "from app.main import RELEASE_SEQUENCE",
+            "from app.updater import UPDATE_MODE",
+            "SHA256SUMS.txt",
+            "update_mode = $UpdateMode",
+            "$UpdateMode -eq 'automatic'",
             "RFQOL_ROLLBACK_INSTALLER",
             "RFQOL_ROLLBACK_VERSION",
             "RFQOL_ROLLBACK_SEQUENCE",

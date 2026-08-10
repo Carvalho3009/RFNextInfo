@@ -52,6 +52,7 @@ from app.support_log import (
     set_detailed,
 )
 from app.updater import (
+    UPDATE_MODE,
     backup_database,
     cached_rollback,
     download_release_with_rollback,
@@ -1516,13 +1517,22 @@ class MainWindow(QtWidgets.QMainWindow):
         support_layout.addWidget(_label("Discord oficial · carvalho@tuta.com", "muted"))
         support_layout.addWidget(_label(f"Versão instalada: {VERSION}", "muted"))
         update_row = QtWidgets.QHBoxLayout()
+        manual_update = UPDATE_MODE == "manual"
         self.update_channel = QtWidgets.QComboBox(); self.update_channel.addItem("Estável", "stable"); self.update_channel.addItem("Beta", "beta")
-        self.update_button = QtWidgets.QPushButton("Verificar atualização"); self.update_button.clicked.connect(self._check_update)
-        self.rollback_button = QtWidgets.QPushButton("Abrir versão anterior"); self.rollback_button.clicked.connect(self._rollback)
+        self.update_channel.setEnabled(not manual_update)
+        self.update_button = QtWidgets.QPushButton("Abrir Discord para atualizações" if manual_update else "Verificar atualização")
+        self.update_button.clicked.connect(self._open_discord if manual_update else self._check_update)
+        self.rollback_button = QtWidgets.QPushButton("Rollback somente por instalação manual" if manual_update else "Abrir versão anterior")
+        self.rollback_button.clicked.connect(self._rollback)
+        self.rollback_button.setEnabled(not manual_update)
         update_row.addWidget(self.update_channel); update_row.addWidget(self.update_button); update_row.addWidget(self.rollback_button)
         support_layout.addLayout(update_row)
         self.update_progress = QtWidgets.QProgressBar(); self.update_progress.setRange(0,100); self.update_progress.setValue(0)
-        self.update_status = _label("Atualização não verificada.", "muted")
+        self.update_status = _label(
+            "Atualização automática desativada. Instale novas versões manualmente."
+            if manual_update else "Atualização não verificada.",
+            "muted",
+        )
         support_layout.addWidget(self.update_progress); support_layout.addWidget(self.update_status)
         support_actions = QtWidgets.QGridLayout()
         for index, (text, callback) in enumerate((
@@ -3030,6 +3040,11 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _check_update(self) -> None:
+        if UPDATE_MODE == "manual":
+            self.update_status.setText(
+                "Atualização automática desativada. Use o Discord oficial."
+            )
+            return
         self.update_button.setEnabled(False)
         self.update_progress.setValue(0)
         self.update_status.setText("Consultando atualizações…")
@@ -3053,6 +3068,9 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _download_update(self, release: dict[str, object]) -> None:
+        if UPDATE_MODE == "manual":
+            self.update_status.setText("Download automático desativado.")
+            return
         self._run_site_operation(
             "update:download",
             lambda: download_release_with_rollback(
@@ -3066,6 +3084,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ),
         )
     def _launch_update(self, installer: Path) -> None:
+        if UPDATE_MODE == "manual":
+            self.update_status.setText("Instalação automática desativada.")
+            return
         try:
             manifest = verify_manifest(
                 json.loads((UPDATES_DIR / "update-manifest.json").read_text(encoding="utf-8")),
@@ -3111,6 +3132,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.close()
 
     def _rollback(self) -> None:
+        if UPDATE_MODE == "manual":
+            QtWidgets.QMessageBox.information(
+                self,
+                "Instalação manual",
+                "Para voltar de versão, use somente um instalador compatível "
+                "fornecido oficialmente.",
+            )
+            return
         try:
             installer = cached_rollback(
                 UPDATES_DIR / "rollback",

@@ -18,6 +18,7 @@ Push-Location $Project
 try {
     $Version = (& $Python -c 'from app.main import VERSION; print(VERSION)').Trim()
     $Sequence = [int](& $Python -c 'from app.main import RELEASE_SEQUENCE; print(RELEASE_SEQUENCE)')
+    $UpdateMode = (& $Python -c 'from app.updater import UPDATE_MODE; print(UPDATE_MODE)').Trim()
     $Dirty = [bool](git status --porcelain)
     if ($Release -and $Dirty) {
         throw 'Build de release exige commit limpo.'
@@ -25,6 +26,7 @@ try {
     foreach ($Generated in @(
         '.\dist\update-manifest.json',
         '.\dist\rollback-manifest.json',
+        '.\dist\SHA256SUMS.txt',
         '.\dist\release-provenance-signature.json'
     )) {
         if (Test-Path -LiteralPath $Generated -PathType Leaf) {
@@ -98,7 +100,7 @@ try {
         $Installer = Join-Path $Project "dist\RF QOL Setup $Version.exe"
     }
 
-    if ($Release) {
+    if ($Release -and $UpdateMode -eq 'automatic') {
         foreach ($name in 'RFQOL_UPDATE_PRIVATE_KEY', 'RFQOL_UPDATE_KEY_ID') {
             if (-not (Get-Item -LiteralPath "env:$name" -ErrorAction SilentlyContinue).Value) {
                 throw "$name é obrigatório para assinar o manifesto."
@@ -136,11 +138,16 @@ try {
                 --rollback-compatible-from $Version
             if ($LASTEXITCODE) { throw 'Falha ao assinar o manifesto de rollback.' }
         }
+    } elseif ($Release) {
+        $InstallerDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash.ToLowerInvariant()
+        "$InstallerDigest  $(Split-Path -Leaf $Installer)" |
+            Set-Content -LiteralPath '.\dist\SHA256SUMS.txt' -Encoding ascii
     }
 
     $Provenance = [ordered]@{
         product = 'rf-qol'
         version = $Version
+        update_mode = $UpdateMode
         commit = (git rev-parse HEAD)
         dirty = $Dirty
         python = (& $Python --version 2>&1 | Out-String).Trim()
@@ -154,6 +161,9 @@ try {
         rollback_manifest_sha256 = if (Test-Path -LiteralPath '.\dist\rollback-manifest.json') {
             (Get-FileHash -Algorithm SHA256 -LiteralPath '.\dist\rollback-manifest.json').Hash
         } else { $null }
+        sha256sums_sha256 = if (Test-Path -LiteralPath '.\dist\SHA256SUMS.txt') {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath '.\dist\SHA256SUMS.txt').Hash
+        } else { $null }
         pyinstaller = (& $Python -m PyInstaller --version 2>&1 | Out-String).Trim()
         nsis = if ($NsisPath) { (& $NsisPath '/VERSION' | Out-String).Trim() } else { $null }
         nsis_sha256 = if ($NsisPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath $NsisPath).Hash } else { $null }
@@ -161,7 +171,7 @@ try {
         release = [bool]$Release
     }
     $Provenance | ConvertTo-Json | Set-Content -LiteralPath '.\dist\release-provenance.json' -Encoding UTF8
-    if ($Release) {
+    if ($Release -and $UpdateMode -eq 'automatic') {
         & $Python '.\tools\sign_provenance.py' `
             --provenance '.\dist\release-provenance.json' `
             --key-id $env:RFQOL_UPDATE_KEY_ID `

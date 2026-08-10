@@ -21,6 +21,7 @@ UPDATE_SIGNATURE_CONTEXT = b"RFQOL-UPDATE-V2\0"
 HEADERS = {"Accept": "application/json", "User-Agent": "RFQOL"}
 ARCHITECTURE = "windows-x64"
 MAX_INSTALLER_BYTES = 2 * 1024 * 1024 * 1024
+UPDATE_MODE = "manual"
 UPDATE_MANIFEST_NAME = "update-manifest.json"
 ROLLBACK_MANIFEST_NAME = "rollback-manifest.json"
 VERSION_RE = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
@@ -131,6 +132,8 @@ def verify_manifest(
 
 
 def latest(channel: str = "stable") -> dict:
+    if UPDATE_MODE != "automatic":
+        raise RuntimeError("Atualizações automáticas estão desativadas")
     if channel not in {"stable", "beta"}:
         raise ValueError("Canal de atualização inválido")
     request = urllib.request.Request(RELEASES, headers=HEADERS)
@@ -414,5 +417,9 @@ def backup_database(database: Path, backup_dir: Path, version: str) -> tuple[Pat
 
 
 def validate_release_configuration() -> None:
+    if UPDATE_MODE not in {"manual", "automatic"}:
+        raise RuntimeError("Modo de atualização inválido")
+    if UPDATE_MODE == "manual":
+        return
     if any(key.endswith("-pending") for key in UPDATE_PUBLIC_KEYS):
         raise RuntimeError("Chave pública de update de produção ainda não foi instalada")

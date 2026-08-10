@@ -13,6 +13,7 @@ import shutil
 import sys
 import threading
 import time
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, filedialog, messagebox, simpledialog, ttk
@@ -38,6 +39,7 @@ from app.paths import (
 from app.site_profile import SiteProfileClient
 from app.support_log import configure as configure_log, recent_lines
 from app.updater import (
+    UPDATE_MODE,
     backup_database,
     cached_rollback,
     download_release_with_rollback,
@@ -62,6 +64,7 @@ from core.store import LEVEL_CURVE, CaptureStore
 
 VERSION = "1.0.0"
 RELEASE_SEQUENCE = 1
+DISCORD_URL = "https://discord.gg/D3hhdMgkj"
 ASSETS = ROOT / "assets"
 WM_HOTKEY = 0x0312
 WM_QUIT = 0x0012
@@ -2799,12 +2802,14 @@ class App(tk.Tk):
             updates, text="Atualizações do programa", style="PanelTitle.TLabel"
         ).pack(anchor="w")
         self.channel = tk.StringVar(value="stable")
+        manual_update = UPDATE_MODE == "manual"
         ttk.Radiobutton(
             updates,
             text="Estável",
             value="stable",
             variable=self.channel,
             command=self._save_preferences,
+            state="disabled" if manual_update else "normal",
         ).pack(anchor="w", pady=(8, 0))
         ttk.Radiobutton(
             updates,
@@ -2812,12 +2817,13 @@ class App(tk.Tk):
             value="beta",
             variable=self.channel,
             command=self._save_preferences,
+            state="disabled" if manual_update else "normal",
         ).pack(anchor="w")
         self.update_button = ttk.Button(
             updates,
-            text="Verificar atualização",
+            text=("Abrir Discord para atualizações" if manual_update else "Verificar atualização"),
             style="Quiet.TButton",
-            command=self.check_update,
+            command=(lambda: webbrowser.open(DISCORD_URL)) if manual_update else self.check_update,
         )
         self.update_button.pack(anchor="w", pady=(10, 6))
         self.update_progress = ttk.Progressbar(
@@ -2825,15 +2831,22 @@ class App(tk.Tk):
         )
         self.update_progress.pack(fill=X)
         self.update_status = ttk.Label(
-            updates, text="", style="PanelMuted.TLabel"
+            updates,
+            text=(
+                "Atualização automática desativada. Instale novas versões manualmente."
+                if manual_update else ""
+            ),
+            style="PanelMuted.TLabel",
         )
         self.update_status.pack(anchor="w", pady=(4, 8))
-        ttk.Button(
+        self.rollback_button = ttk.Button(
             updates,
-            text="Abrir versão anterior",
+            text="Rollback somente por instalação manual" if manual_update else "Abrir versão anterior",
             style="Quiet.TButton",
             command=self.rollback,
-        ).pack(anchor="w")
+            state="disabled" if manual_update else "normal",
+        )
+        self.rollback_button.pack(anchor="w")
 
     def _tutorial_ui(self) -> None:
         text = (
@@ -6499,12 +6512,22 @@ class App(tk.Tk):
         self._last_kills = session_kills
 
     def check_update(self) -> None:
+        if UPDATE_MODE == "manual":
+            self.update_status.configure(
+                text="Atualização automática desativada. Use o Discord oficial."
+            )
+            return
         self.update_button.configure(state="disabled")
         self.update_progress.configure(value=0)
         self.update_status.configure(text="Consultando atualizações…")
         self._run(lambda: latest(self.channel.get()), self._update_found)
 
     def _update_found(self, release, error) -> None:
+        if UPDATE_MODE == "manual":
+            self.update_status.configure(
+                text="Atualização automática desativada. Use o Discord oficial."
+            )
+            return
         if error:
             self.update_button.configure(state="normal")
             return self.update_status.configure(
@@ -6563,6 +6586,9 @@ class App(tk.Tk):
         )
 
     def _update_downloaded(self, installer, error) -> None:
+        if UPDATE_MODE == "manual":
+            self.update_status.configure(text="Instalação automática desativada.")
+            return
         self.update_button.configure(state="normal")
         if error:
             self.update_progress.configure(value=0)
@@ -6606,6 +6632,12 @@ class App(tk.Tk):
             self.destroy()
 
     def rollback(self) -> None:
+        if UPDATE_MODE == "manual":
+            return messagebox.showinfo(
+                "Instalação manual",
+                "Para voltar de versão, use somente um instalador compatível "
+                "fornecido oficialmente.",
+            )
         try:
             installer = cached_rollback(
                 UPDATES_DIR / "rollback",

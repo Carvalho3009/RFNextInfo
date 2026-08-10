@@ -64,7 +64,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Chaves | Owner decidiu pular por enquanto a cerimônia física de `update-2026-01`. O trabalho local pode continuar com chave descartável; chave definitiva, publicação e produção continuam bloqueadas. | Gate adiado, não dispensado |
 | 09 ago 2026 | F6 | NSIS 3.12 portátil localizado em `K:\MCP\_tools`. RC1 `1.0.0/1` e RC2 `1.0.1/2` foram construídas em worktrees separadas e instaladas sequencialmente em staging `DEV_SMOKE`: RC1 -> RC2 -> manifesto/compatibilidade/backup -> RC1. Hash final retornou exatamente à RC1 e o banco SQLite foi preservado. | Ensaio instalado local concluído |
 | 10 ago 2026 | F6 | Owner decidiu esgotar a validação local e deixar o teste externo para o futuro. Cliente passou 201 testes, emissor passou 15, UI Qt offscreen e executável instalado passaram no smoke, licença oficial/staging permaneceu saudável e a varredura de 22 materiais secretos encontrou zero ocorrências no código e artefatos. | Matriz local concluída |
-| 10 ago 2026 | F6 | Owner cancelou definitivamente a validação externa e aceitou a matriz local como escopo final. Windows limpos, observação externa de UAC/SmartScreen, dois clientes externos e revisor independente foram convertidos em riscos residuais aceitos. A decisão não autoriza publicação/produção nem substitui a chave definitiva de update. | G3 encerrado pelo owner |
+| 10 ago 2026 | F6 | Owner cancelou definitivamente a validação externa e aceitou a matriz local como escopo final. Windows limpos, observação externa de UAC/SmartScreen, dois clientes externos e revisor independente foram convertidos em riscos residuais aceitos. A decisão não autoriza publicação/produção nem reativar o modo automático sem sua chave definitiva. | G3 encerrado pelo owner |
+| 10 ago 2026 | F4/F5 | Owner escolheu instalação manual para a 1.0. Cliente passou a bloquear consulta, download, execução e rollback automáticos; a interface abre o Discord oficial. O build manual gera instalador, procedência e `SHA256SUMS.txt` sem exigir chave de update. | Em implementação local |
 
 ## Evidências e comandos de validação
 
@@ -90,8 +91,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   têm `-production-pending`.
 - Builds do RF QOL são deliberadamente `NotSigned`; o build de desenvolvimento
   atual não é release e não deve ser distribuído.
-- O build recusará release sem NSIS, chave privada offline de update e
-  substituição das públicas placeholder.
+- Antes da decisão manual, o build recusava release sem NSIS e chave privada de
+  update. No modo vigente, continua exigindo NSIS e confiança de lease, mas
+  gera `SHA256SUMS.txt` sem chave ou manifesto de update.
 - Emissor: 14 testes aprovados; configuração Docker de staging validada.
 - Emissor após módulos: 15 testes aprovados. Cliente: 190 testes aprovados,
   nenhum ignorado, em 97,024 s no ambiente CPython 3.13/Qt fechado; vetor
@@ -136,10 +138,9 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   resultado registrado como `sem resultado`, sem substituir por outro modelo
   e sem alterar ou promover a chave. Custo da assinatura: `unknown`.
 - Após a indisponibilidade do Fable, o owner decidiu prosseguir sem esse
-  parecer automatizado. A dispensa se limita ao Fable: testemunha humana,
-  backup de recuperação, chave offline de update, testes RC e G4 permanecem
-  como gates obrigatórios antes de promoção ou publicação. Testemunha e backup
-  local foram concluídos depois; os demais gates continuam abertos.
+  parecer automatizado. Testemunha e backup local foram concluídos depois; as
+  decisões posteriores também encerraram a validação externa e adiaram a chave
+  de update ao escolher instalação manual. G4 permanece separado.
 - Integração real em staging: o verificador do cliente recebeu a pública de
   staging somente no teste (`client-verify-ok`); o site aceitou lease v2 válida
   e rejeitou instalação divergente e lease revogada.
@@ -173,9 +174,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 
 ## Riscos residuais aceitos e gates restantes
 
-1. cerimônia testemunhada de `update-2026-01`, adiada pelo owner, continua
-   obrigatória antes de release/produção; cópia externa/off-site do backup de
-   lease também segue recomendada;
+1. `update-2026-01` fica adiada e só será necessária se o modo automático for
+   reativado; cópia externa/off-site do backup de lease segue recomendada;
 2. não serão executados: Windows 10/11 limpos, observação externa de
    UAC/SmartScreen, teste externo com dois clientes e revisão independente; o
    owner aceitou expressamente esse risco residual em 10 ago 2026;

@@ -18,9 +18,11 @@
 - separa estado de confiança e staging em diretório de máquina com ACL administrativo;
 - fecha dependências e adiciona lock de wheels com SHA-256 para Windows x64/Python 3.13;
 - registra a decisão de distribuir executável e instalador sem Authenticode;
-- mantém publicação bloqueada até chaves Ed25519 de produção e testes reais.
+- define instalação manual para a 1.0: não consulta feed, não baixa executável,
+  abre o Discord oficial para avisos e gera `SHA256SUMS.txt` no build de release;
+- mantém publicação bloqueada até G4.
 - fixa a pública definitiva de lease `lease-2026-01`; a privada continua fora
-  do repositório e a chave offline de update ainda bloqueia a release.
+  do repositório e a chave offline de update fica adiada enquanto o modo for manual.
 - prepara a cerimônia offline de update com duas cópias privadas cifradas,
   restauração verificada e assinatura direta a partir do PEM protegido;
 - corrige o texto da ativação para informar o limite offline real de 24 horas;

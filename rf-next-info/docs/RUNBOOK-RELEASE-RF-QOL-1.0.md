@@ -6,11 +6,10 @@ Estado: preparado; não autorizado para publicação (G4 pendente)
 
 - branch aprovada, commit limpo e revisão concluída;
 - emissor/site v2 validados em staging;
-- chaves públicas de produção instaladas e placeholders removidos;
+- chave pública definitiva de lease instalada;
 - NSIS 3.12 disponível;
-- Windows 10 e 11 x64 limpos para a matriz de RC;
-- `RFQOL_UPDATE_PRIVATE_KEY` e `RFQOL_UPDATE_KEY_ID` fornecidos apenas ao
-  processo de release offline.
+- `app.updater.UPDATE_MODE` igual a `manual`;
+- matriz local aprovada pelo owner; validação externa foi dispensada.
 
 O compilador pode ser fornecido por `RFQOL_NSIS`. A ferramenta usada no
 desenvolvimento isolado é NSIS 3.12 extraído do pacote cujo SHA-256 foi
@@ -25,21 +24,26 @@ comercial sob as licenças zlib/libpng, bzip2 e CPLv1 aplicáveis.
 2. Confirmar tree limpa e commit/tag candidato.
 3. Rodar toda a regressão e o self-test do servidor.
 4. Executar `packaging/build.ps1 -Release`.
-5. Confirmar que o script recusou qualquer chave `-pending`.
+5. Confirmar `update_mode=manual` na procedência.
 6. Confirmar que `RF QOL.exe` e `RF QOL Setup 1.0.0.exe` permanecem
    `NotSigned`, conforme a decisão do owner.
 7. Verificar que `release-provenance.json`, `sbom-python.json`, lock e
-   `update-manifest.json` correspondem aos bytes finais.
-8. Verificar `release-provenance-signature.json` com a pública de update. A
-   assinatura destacada usa contexto próprio e não altera o instalador nem o
-   manifesto já assinados.
+   `SHA256SUMS.txt` correspondem aos bytes finais.
+8. Confirmar que `update-manifest.json`, `rollback-manifest.json` e
+   `release-provenance-signature.json` não foram gerados no modo manual.
 
-A partir da segunda release, copiar para a cerimônia offline o instalador
-anterior original, definir os três dados do rollback e executar o build com a
-versão/sequência novas. O script gera `rollback-manifest.json` e inclui seu hash
-na procedência:
+Atualização e rollback automáticos estão desativados. O programa abre o Discord
+oficial para avisos; o usuário baixa e executa manualmente o instalador completo.
+Para voltar de versão, usar somente um instalador oficialmente indicado como
+compatível. O programa não baixa nem inicia executáveis.
+
+Se o owner reativar atualização automática no futuro, mudar `UPDATE_MODE` para
+`automatic`, concluir `update-2026-01`, repetir a matriz de update/rollback e
+então fornecer ao build:
 
 ```powershell
+$env:RFQOL_UPDATE_KEY_ID = 'update-2026-01'
+$env:RFQOL_UPDATE_PRIVATE_KEY = '<MIDIA_PRIVADA>:\RF-QOL\update-2026-01.private.pem'
 $env:RFQOL_ROLLBACK_INSTALLER = '<INSTALADOR_ANTERIOR>'
 $env:RFQOL_ROLLBACK_VERSION = '<VERSAO_ANTERIOR>'
 $env:RFQOL_ROLLBACK_SEQUENCE = '<SEQUENCIA_ANTERIOR>'
@@ -59,8 +63,7 @@ Esse modo não cria registro/atalhos, usa pasta temporária e
 pós-instalação e desinstalação sem
 alterar o `AppId`, `%ProgramFiles%` ou `%ProgramData%` da futura release.
 
-O manifesto é sempre o último artefato assinado. Alterar ou reassinar o
-instalador invalida o manifesto e exige gerá-lo novamente.
+No modo automático futuro, o manifesto volta a ser o último artefato assinado.
 
 ## Matriz de RC
 
@@ -70,23 +73,19 @@ instalador invalida o manifesto e exige gerá-lo novamente.
 - bloqueio de captura, leitura, monitores, exportação e envio sem lease;
 - preservação dos PCAPs ao perder autorização durante captura;
 - link exato `https://discord.gg/D3hhdMgkj` no navegador padrão;
-- update RC1 -> RC2 com manifesto Ed25519, tamanho e SHA-256 reverificados;
-- Windows 10 e 11 x64, até dois clientes, sem injeção/hook;
+- controles automáticos desativados e botão apontando ao Discord oficial;
+- `SHA256SUMS.txt` correspondendo ao instalador final;
 - varredura de logs, banco, PCAP/diagnóstico e staging por segredos proibidos.
 
-Rollback fica disponível somente quando o cache administrativo contém o
-instalador anterior e `rollback-manifest.json` válidos para a versão atual. A
-ação exige confirmação, captura encerrada, reverificação, backup SQLite com
-integridade/SHA-256 e UAC. Não liberar 1.0 afirmando rollback validado em campo
-antes do ensaio RC2 -> RC1 real.
+Rollback é manual e não aparece como ação disponível. Não orientar downgrade
+sem confirmar compatibilidade de dados e preservar um backup íntegro do banco.
 
 ## Publicação (somente após G4)
 
-1. Publicar instalador, manifesto, SBOM, procedência, assinatura destacada e
-   hashes aprovados.
+1. Publicar instalador, `SHA256SUMS.txt`, SBOM e procedência aprovados.
 2. Baixar novamente da superfície pública.
-3. Repetir SHA-256, Ed25519, confirmação `NotSigned` e self-test no download.
-4. Confirmar feed estável e ausência de draft/prerelease indevido.
+3. Repetir SHA-256, confirmação `NotSigned` e self-test no download.
+4. Confirmar que o programa não consulta feed nem oferece download automático.
 5. Ativar licença nova real e validar upload v2; comprovar rejeição de lease v1.
 6. Registrar hashes, horários, responsáveis e URLs na ata final.
 

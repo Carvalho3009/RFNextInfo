@@ -21,7 +21,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.capture_busy = False
         window.database_path = Path("capture.sqlite3")
         installer = Path("RF QOL Setup 1.0.0.exe")
-        with mock.patch(
+        with mock.patch("app.ui_qt.main.UPDATE_MODE", "automatic"), mock.patch(
             "app.ui_qt.main.cached_rollback", side_effect=(installer, installer)
         ) as cached, mock.patch(
             "app.ui_qt.main.backup_database"
@@ -49,7 +49,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.capture_busy = False
         window.database_path = Path("capture.sqlite3")
         installer = Path("RF QOL Setup 1.0.0.exe")
-        with mock.patch(
+        with mock.patch("app.ui_qt.main.UPDATE_MODE", "automatic"), mock.patch(
             "app.ui_qt.main.cached_rollback", side_effect=(installer, installer)
         ), mock.patch(
             "app.ui_qt.main.backup_database"
@@ -73,6 +73,19 @@ class QtPreviewSmokeTest(unittest.TestCase):
             MainWindow._open_discord(None)
         self.assertEqual(DISCORD_URL, "https://discord.gg/D3hhdMgkj")
         self.assertEqual(opened.call_args.args[0].toString(), DISCORD_URL)
+
+    def test_manual_update_ui_opens_discord_and_disables_rollback(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["manual-update-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        self.assertEqual(window.update_button.text(), "Abrir Discord para atualizações")
+        self.assertFalse(window.update_channel.isEnabled())
+        self.assertFalse(window.rollback_button.isEnabled())
+        self.assertIn("automática desativada", window.update_status.text())
+        window.exit_requested = True
+        window.close()
 
     @unittest.skipUnless(os.name == "nt", "Contador de RAM disponível no Windows")
     def test_process_memory_reader_returns_current_working_set(self):
@@ -675,7 +688,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             for button in window.findChildren(QtWidgets.QPushButton)
         }
         for text in (
-            "Ativar licença", "Verificar atualização", "Enviar log técnico",
+            "Ativar licença", "Abrir Discord para atualizações", "Enviar log técnico",
             "Salvar cópia do log", "Abrir pasta do log", "Exportar sessão",
         ):
             self.assertTrue(buttons[text], text)

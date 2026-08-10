@@ -72,6 +72,34 @@ class AppLogicTest(unittest.TestCase):
     def test_production_lease_public_key_is_configured(self):
         validate_license_release()
 
+    def test_manual_update_mode_blocks_network_checks(self):
+        from app.updater import UPDATE_MODE, latest
+
+        self.assertEqual(UPDATE_MODE, "manual")
+        with patch("app.updater.urllib.request.urlopen") as request:
+            with self.assertRaisesRegex(RuntimeError, "automáticas estão desativadas"):
+                latest()
+        request.assert_not_called()
+
+    def test_legacy_manual_update_action_never_starts_network_operation(self):
+        app = Mock()
+
+        App.check_update(app)
+
+        app._run.assert_not_called()
+        app.update_status.configure.assert_called_once_with(
+            text="Atualização automática desativada. Use o Discord oficial."
+        )
+
+    def test_manual_update_mode_never_launches_downloaded_installer(self):
+        app = Mock()
+        with patch("app.main.os.startfile") as launch:
+            App._update_downloaded(app, Path("setup.exe"), None)
+        launch.assert_not_called()
+        app.update_status.configure.assert_called_once_with(
+            text="Instalação automática desativada."
+        )
+
     def test_public_lease_v2_vector(self):
         fixture = json.loads(
             (Path(__file__).parent / "fixtures" / "lease-v2-valid.json").read_text(
@@ -1695,7 +1723,9 @@ class AppLogicTest(unittest.TestCase):
         app.capture.attached = False
         app.tray = None
         manifest = {"file": "setup.exe"}
-        with patch("app.main.messagebox.askyesno", return_value=True), patch(
+        with patch("app.main.UPDATE_MODE", "automatic"), patch(
+            "app.main.messagebox.askyesno", return_value=True
+        ), patch(
             "app.main.verify_manifest", return_value=manifest
         ), patch("app.main.verify_downloaded") as verify_file, patch(
             "pathlib.Path.read_text", return_value="{}"
@@ -1715,7 +1745,7 @@ class AppLogicTest(unittest.TestCase):
         app.store.path = Path("capture.sqlite3")
         app.tray = None
         installer = Path("RF QOL Setup 1.0.0.exe")
-        with patch(
+        with patch("app.main.UPDATE_MODE", "automatic"), patch(
             "app.main.cached_rollback", side_effect=(installer, installer)
         ) as cached, patch(
             "app.main.backup_database"
