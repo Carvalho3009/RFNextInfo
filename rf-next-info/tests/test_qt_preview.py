@@ -87,6 +87,28 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.exit_requested = True
         window.close()
 
+    def test_sidebar_switches_between_pc_and_five_emulator_slots(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["client-categories-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        self.assertEqual(window.active_category, "pc")
+        self.assertFalse(window.client_buttons[0].isHidden())
+        self.assertFalse(window.client_buttons[1].isHidden())
+        self.assertTrue(all(button.isHidden() for button in window.client_buttons[2:]))
+
+        window.category_buttons["emulator"].click()
+
+        self.assertEqual(window.active_category, "emulator")
+        self.assertTrue(all(button.isHidden() for button in window.client_buttons[:2]))
+        self.assertTrue(all(not button.isHidden() for button in window.client_buttons[2:]))
+        pve_tabs = window.monitor_controls["pve"]["tabs"]
+        self.assertTrue(all(not pve_tabs.isTabVisible(index) for index in range(2)))
+        self.assertTrue(all(pve_tabs.isTabVisible(index) for index in range(2, 7)))
+        window.exit_requested = True
+        window.close()
+
     def test_send_shortcuts_are_absent_from_ui_and_settings(self):
         from PySide6 import QtWidgets
 
@@ -377,17 +399,26 @@ class QtPreviewSmokeTest(unittest.TestCase):
             pve["tabs"].setCurrentIndex(1)
             pve["enabled"].setChecked(True)
 
-            self.assertEqual(window.monitor_client_enabled["pve"], [False, True])
+            self.assertEqual(
+                window.monitor_client_enabled["pve"],
+                [False, True, False, False, False, False, False],
+            )
             self.assertTrue(window.monitor_enabled["pve"])
             self.assertIn("Cliente B", pve["enabled"].text())
 
             pve["tabs"].setCurrentIndex(0)
             self.assertFalse(pve["enabled"].isChecked())
-            self.assertEqual(window.monitor_client_enabled["pve"], [False, True])
+            self.assertEqual(
+                window.monitor_client_enabled["pve"],
+                [False, True, False, False, False, False, False],
+            )
 
             pvp = window.monitor_controls["pvp"]
             pvp["enabled"].setChecked(True)
-            self.assertEqual(window.monitor_client_enabled["pvp"], [True, False])
+            self.assertEqual(
+                window.monitor_client_enabled["pvp"],
+                [True, False, False, False, False, False, False],
+            )
             self.assertTrue(window.monitor_enabled["pvp"])
         window.close()
 
@@ -566,7 +597,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 )
                 self.assertTrue(page["cards"][1].isHidden())
                 tabs = window.monitor_controls[mode]["tabs"]
-                self.assertEqual(tabs.count(), 2)
+                self.assertEqual(tabs.count(), 7)
                 tabs.setCurrentIndex(1)
                 app.processEvents()
                 self.assertTrue(page["cards"][0].isHidden())

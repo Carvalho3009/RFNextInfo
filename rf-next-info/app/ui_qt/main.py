@@ -83,6 +83,9 @@ PAGES = (
     ("Configurações", "Preferências do programa e do Profile."),
     ("Tutorial", "Primeiros passos e atalhos."),
 )
+PC_SLOT_COUNT = 2
+EMULATOR_SLOT_COUNT = 5
+CLIENT_SLOT_COUNT = PC_SLOT_COUNT + EMULATOR_SLOT_COUNT
 MONITOR_PAGES = {2: "pve", 3: "pvp", 4: "boss"}
 MONITOR_FEATURES = {
     "pve": "monitor-pve",
@@ -184,6 +187,18 @@ def _label(text: str, role: str = "") -> QtWidgets.QLabel:
     return label
 
 
+def _client_key(index: int) -> str:
+    return f"client:{chr(97 + index)}"
+
+
+def _client_label(index: int) -> str:
+    return (
+        f"Cliente {chr(65 + index)}"
+        if index < PC_SLOT_COUNT
+        else f"Emulador {index - PC_SLOT_COUNT + 1}"
+    )
+
+
 class _MovableOverlay(QtWidgets.QDialog):
     position_changed = QtCore.Signal(QtCore.QPoint)
 
@@ -249,6 +264,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.preferences_path = Path(preferences_path)
         self.active_client = 0
+        self.active_category = "pc"
         self.snapshot: dict[str, object] = {}
         self.preferences: dict[str, object] = {}
         self.selected_subsessions: set[str] = set()
@@ -258,8 +274,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.monitor_engine: MonitorEngine | None = None
         self.monitor_enabled = {"pve": False, "pvp": False, "boss": False}
         self.monitor_client_enabled = {
-            "pve": [False, False],
-            "pvp": [False, False],
+            "pve": [False] * CLIENT_SLOT_COUNT,
+            "pvp": [False] * CLIENT_SLOT_COUNT,
         }
         self.monitor_next_due = {"pve": 0.0, "pvp": 0.0, "boss": 0.0}
         self.monitor_controls: dict[str, dict[str, Any]] = {}
@@ -576,11 +592,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.nav_group = QtWidgets.QButtonGroup(self)
         self.nav_group.setExclusive(True)
         self.nav_buttons: list[QtWidgets.QPushButton] = []
+        category_row = QtWidgets.QHBoxLayout()
+        self.category_group = QtWidgets.QButtonGroup(self)
+        self.category_group.setExclusive(True)
+        self.category_buttons: dict[str, QtWidgets.QPushButton] = {}
+        for category, title in (("pc", "PC"), ("emulator", "Emuladores")):
+            button = QtWidgets.QPushButton(title)
+            button.setCheckable(True)
+            button.setChecked(category == "pc")
+            button.clicked.connect(
+                lambda checked=False, selected=category: self._select_category(selected)
+            )
+            self.category_group.addButton(button)
+            self.category_buttons[category] = button
+            category_row.addWidget(button)
+        column.addLayout(category_row)
+        column.addSpacing(6)
+
         for index, (title, _) in enumerate(PAGES):
             button = QtWidgets.QPushButton(title)
             button.setObjectName(f"nav{index}")
             button.setCheckable(True)
-            button.setMinimumHeight(46)
+            button.setMinimumHeight(38)
             button.clicked.connect(lambda checked=False, page=index: self.page_stack.setCurrentIndex(page))
             self.nav_group.addButton(button, index)
             self.nav_buttons.append(button)
@@ -593,12 +626,18 @@ class MainWindow(QtWidgets.QMainWindow):
         bar = QtWidgets.QWidget(objectName="clientBar")
         row = QtWidgets.QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(12)
+        row.setSpacing(4)
         self.client_group = QtWidgets.QButtonGroup(bar)
         self.client_group.setExclusive(True)
         self.client_buttons: list[QtWidgets.QPushButton] = []
         self.client_uid_buttons: list[QtWidgets.QToolButton] = []
-        for index, name in enumerate(("Cliente A · Definir nome", "Cliente B · Definir nome")):
+        self.client_rename_buttons: list[QtWidgets.QToolButton] = []
+        for index in range(CLIENT_SLOT_COUNT):
+            name = (
+                f"{_client_label(index)} · Definir nome"
+                if index < PC_SLOT_COUNT
+                else _client_label(index)
+            )
             button = QtWidgets.QPushButton(name)
             button.setProperty("client", True)
             button.setCheckable(True)
@@ -609,21 +648,28 @@ class MainWindow(QtWidgets.QMainWindow):
             row.addWidget(button)
             rename = QtWidgets.QToolButton()
             rename.setText("✎")
-            rename.setToolTip(f"Definir nome manual do Cliente {chr(65 + index)}")
+            rename.setFixedWidth(30)
+            rename.setToolTip(f"Definir nome manual do {_client_label(index)}")
             rename.clicked.connect(
                 lambda checked=False, client=index: self._rename_client(client)
             )
             row.addWidget(rename)
             uid = QtWidgets.QToolButton()
             uid.setText("UID: Auto")
+            uid.setFixedWidth(72)
             uid.setToolTip(
-                f"Escolher um personagem confirmado para o Cliente {chr(65 + index)}"
+                f"Escolher um personagem confirmado para o {_client_label(index)}"
             )
             uid.clicked.connect(
                 lambda checked=False, client=index: self._choose_client_uid(client)
             )
             self.client_uid_buttons.append(uid)
             row.addWidget(uid)
+            visible = index < PC_SLOT_COUNT
+            button.setVisible(visible)
+            rename.setVisible(visible)
+            uid.setVisible(visible)
+            self.client_rename_buttons.append(rename)
         row.addStretch(1)
         return bar
 
@@ -658,12 +704,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if mode in {"pve", "pvp"}:
             client_tabs = QtWidgets.QTabBar()
             client_tabs.setExpanding(False)
-            client_tabs.addTab("Cliente A")
-            client_tabs.addTab("Cliente B")
+            for index in range(CLIENT_SLOT_COUNT):
+                client_tabs.addTab(_client_label(index))
+                client_tabs.setTabVisible(index, index < PC_SLOT_COUNT)
             column.addWidget(client_tabs)
         controls = QtWidgets.QHBoxLayout()
         monitor_shortcut = DEFAULT_GLOBAL_SHORTCUTS[f"monitor_{mode}"]
-        client_suffix = " Cliente A" if client_tabs is not None else ""
+        client_suffix = f" {_client_label(0)}" if client_tabs is not None else ""
         enabled = QtWidgets.QPushButton(
             f"Ligar monitor{client_suffix}  {monitor_shortcut}"
         )
@@ -741,12 +788,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         widgets = []
         cards = []
-        for index in range(2):
+        for index in range(CLIENT_SLOT_COUNT):
             card = QtWidgets.QFrame(objectName="panel")
             layout = QtWidgets.QVBoxLayout(card)
             layout.setContentsMargins(20, 16, 20, 16)
             layout.setSpacing(10)
-            heading = _label(f"Cliente {chr(65 + index)} · aguardando personagem", "subtitle")
+            heading = _label(f"{_client_label(index)} · aguardando personagem", "subtitle")
             target = _label("Último alvo confirmado: —", "subtitle")
             status = _label("Aguardando eventos confirmados de combate.", "muted")
             progress = QtWidgets.QProgressBar()
@@ -808,7 +855,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.addLayout(stats)
             layout.addWidget(status)
             content_layout.addWidget(card, index, 0, 1, 2)
-            if client_tabs is not None and index:
+            if index >= PC_SLOT_COUNT or (client_tabs is not None and index):
                 card.hide()
             cards.append(card)
             widgets.append(
@@ -1167,7 +1214,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.send_status_labels[mode] = status
             card_layout.addWidget(status)
             actions = QtWidgets.QHBoxLayout()
-            labels = ("Enviar Mercado · geral",) if general else ("Enviar Cliente A", "Enviar Cliente B")
+            labels = (
+                ("Enviar Mercado · geral",)
+                if general
+                else tuple(f"Enviar {_client_label(i)}" for i in range(CLIENT_SLOT_COUNT))
+            )
             for client_index, text in enumerate(labels):
                 button = QtWidgets.QPushButton(text)
                 target_index = -1 if general else client_index
@@ -1178,6 +1229,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 self.send_buttons[(mode, target_index)] = button
                 actions.addWidget(button)
+                if target_index >= PC_SLOT_COUNT:
+                    button.hide()
             card_layout.addLayout(actions)
             grid.addWidget(card, index // 2, index % 2)
         content_layout.addLayout(grid)
@@ -1243,7 +1296,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_search.textChanged.connect(self._reset_subsession_page)
         filters.addWidget(self.subsession_search, 1)
         self.subsession_filter = QtWidgets.QComboBox()
-        self.subsession_filter.addItems(("Todas", "Cliente A", "Cliente B", "Em andamento", "Encerradas", "Enviadas", "Não enviadas"))
+        self.subsession_filter.addItems((
+            "Todas",
+            *(_client_label(index) for index in range(CLIENT_SLOT_COUNT)),
+            "Em andamento",
+            "Encerradas",
+            "Enviadas",
+            "Não enviadas",
+        ))
         self.subsession_filter.currentTextChanged.connect(self._reset_subsession_page)
         filters.addWidget(self.subsession_filter)
         self.subsession_page_size = QtWidgets.QComboBox()
@@ -1345,7 +1405,9 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.setContentsMargins(4, 4, 12, 4)
         layout.setSpacing(10)
         self.subsession_client = QtWidgets.QComboBox()
-        self.subsession_client.addItems(("Cliente A", "Cliente B"))
+        self.subsession_client.addItems(
+            tuple(_client_label(index) for index in range(CLIENT_SLOT_COUNT))
+        )
         self.subsession_favorite = QtWidgets.QComboBox()
         load_favorite = QtWidgets.QPushButton("Carregar")
         load_favorite.clicked.connect(self._load_subsession_favorite)
@@ -1795,7 +1857,7 @@ class MainWindow(QtWidgets.QMainWindow):
         current = str(self.preferences.get(f"character{index + 1}") or "")
         name, accepted = QtWidgets.QInputDialog.getText(
             self,
-            f"Cliente {chr(65 + index)}",
+            _client_label(index),
             "Nome manual (somente para visualização):",
             text=current,
         )
@@ -1988,7 +2050,7 @@ class MainWindow(QtWidgets.QMainWindow):
             control.setValue(self._bounded(values.get(key), 0, 999, 0))
             control.blockSignals(False)
         self.subsession_client.setCurrentIndex(
-            self._bounded(values.get("client"), 0, 1, 0)
+            self._bounded(values.get("client"), 0, CLIENT_SLOT_COUNT - 1, 0)
         )
         self.subsession_map.setCurrentText(str(values.get("map") or ""))
         self.subsession_spot.setCurrentText(str(values.get("spot") or ""))
@@ -2024,7 +2086,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_subsession_favorites()
 
     def _client_uid_for(self, index: int) -> str | None:
-        key = f"client:{chr(97 + index)}"
+        key = _client_key(index)
         profiles = list(self.snapshot.get("profiles") or [])
         profile = next((item for item in profiles if item.get("client_key") == key), None)
         if profile is None and not any(item.get("client_key") for item in profiles):
@@ -2035,7 +2097,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self, index: int
     ) -> tuple[dict[str, Any] | None, dict[str, Any], bool]:
         """Retorna o personagem atual com fallback seguro do histórico."""
-        key = f"client:{chr(97 + index)}"
+        key = _client_key(index)
         characters = list(self.snapshot.get("characters") or [])
         routed = any(item.get("client_key") for item in characters)
         character = next(
@@ -2107,7 +2169,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return {
             str(key): str(uid)
             for key, uid in (value.items() if isinstance(value, dict) else ())
-            if key in {"client:a", "client:b"} and uid
+            if key in {_client_key(index) for index in range(CLIENT_SLOT_COUNT)} and uid
         }
 
     def _refresh_client_uid_buttons(self) -> None:
@@ -2118,12 +2180,12 @@ class MainWindow(QtWidgets.QMainWindow):
         }
         selections = self._uid_selections()
         for index, button in enumerate(self.client_uid_buttons):
-            uid = selections.get(f"client:{chr(97 + index)}")
+            uid = selections.get(_client_key(index))
             button.setText(
                 f"UID: {history.get(uid) or uid}" if uid else "UID: Auto"
             )
             button.setToolTip(
-                f"Vínculo do Cliente {chr(65 + index)}: "
+                f"Vínculo do {_client_label(index)}: "
                 + (f"{history.get(uid) or 'personagem conhecido'} · UID {uid}" if uid else "detecção automática")
             )
 
@@ -2144,14 +2206,14 @@ class MainWindow(QtWidgets.QMainWindow):
             for item in history if item.get("uid")
         )
         labels = [label for label, _uid in choices]
-        current_uid = self._uid_selections().get(f"client:{chr(97 + index)}")
+        current_uid = self._uid_selections().get(_client_key(index))
         current = next(
             (position for position, (_label, uid) in enumerate(choices) if uid == current_uid),
             0,
         )
         selected, accepted = QtWidgets.QInputDialog.getItem(
             self,
-            f"UID do Cliente {chr(65 + index)}",
+            f"UID do {_client_label(index)}",
             "Escolha um personagem confirmado anteriormente:",
             labels,
             current,
@@ -2166,10 +2228,12 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Vínculo de UID", str(error))
 
     def _set_client_uid_selection(self, index: int, uid: str | None) -> None:
-        key = f"client:{chr(97 + index)}"
-        other = "client:b" if key == "client:a" else "client:a"
+        key = _client_key(index)
         selections = self._uid_selections()
-        if uid and selections.get(other) == uid:
+        if uid and any(
+            selected == uid and selected_key != key
+            for selected_key, selected in selections.items()
+        ):
             raise ValueError("O UID já está selecionado no outro cliente")
         session_id = str(
             (self.capture_engine.current_session if self.capture_engine else None)
@@ -2323,7 +2387,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if not item:
             return
         self.editing_subsession_id = str(item["id"])
-        self.subsession_client.setCurrentIndex(1 if item.get("client_key") == "client:b" else 0)
+        key = str(item.get("client_key") or "client:a")
+        self.subsession_client.setCurrentIndex(
+            max(0, min(CLIENT_SLOT_COUNT - 1, ord(key[-1]) - 97))
+        )
         self.subsession_map.setCurrentText(str(item.get("map_name") or ""))
         self.subsession_spot.setCurrentText(str(item.get("spot_name") or ""))
         chosen = set(item.get("mobs") or [])
@@ -2573,8 +2640,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def _filtered_subsessions(self) -> list[dict[str, object]]:
         items = list(self.snapshot.get("subsessions") or [])
         view = self.subsession_filter.currentText()
-        if view == "Cliente A": items = [item for item in items if item.get("client_key") != "client:b"]
-        elif view == "Cliente B": items = [item for item in items if item.get("client_key") == "client:b"]
+        labels = {
+            _client_label(index): _client_key(index)
+            for index in range(CLIENT_SLOT_COUNT)
+        }
+        if view in labels:
+            items = [item for item in items if item.get("client_key") == labels[view]]
         elif view == "Em andamento": items = [item for item in items if item.get("ended_ns") is None]
         elif view == "Encerradas": items = [item for item in items if item.get("ended_ns") is not None]
         elif view == "Enviadas": items = [item for item in items if item.get("upload_state") == "sent"]
@@ -2639,7 +2710,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 "name": str(item.get("name") or "—")
                 + (f"\n{location}" if location else ""),
                 "character": character,
-                "client": "Cliente B" if item.get("client_key") == "client:b" else "Cliente A",
+                "client": _client_label(
+                    max(0, min(
+                        CLIENT_SLOT_COUNT - 1,
+                        ord(str(item.get("client_key") or "client:a")[-1]) - 97,
+                    ))
+                ),
                 "status": "Em andamento" if item.get("ended_ns") is None else "Encerrada",
                 "time": f"{duration // 3600:02d}:{duration // 60 % 60:02d}:{duration % 60:02d}",
                 "map": str(item.get("map_name") or "—"),
@@ -3249,7 +3325,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.send_status_labels[mode].setText(
             "Lendo e enviando Mercado geral…"
             if mode == "market"
-            else f"Lendo e enviando Cliente {chr(65 + target)}…"
+            else f"Lendo e enviando {_client_label(target)}…"
         )
         language = str(self.preferences.get("item_name_language") or "pt")
 
@@ -3497,7 +3573,7 @@ class MainWindow(QtWidgets.QMainWindow):
         steps = (
             "Ative esta instalação em Configurações, na área Licença. A ativação será lembrada nas próximas aberturas.",
             "Abra o RF NEXT. O programa detecta automaticamente até dois clientes e separa as conexões de cada um.",
-            "Use Cliente A e Cliente B para alternar a visão. Se necessário, renomeie apenas a identificação visual do cliente.",
+            "Use PC ou Emuladores no menu lateral e escolha o cliente desejado. Se necessário, renomeie apenas a identificação visual.",
             "Em Envios, Personagem, Mercado, Codex e Memory Chips enviam dados já lidos; eles não iniciam outra captura.",
             "Em Configurações, informe o Profile e o token do site. Subsessões encerradas podem ser selecionadas e enviadas sem duplicidade.",
             "Cada parada encerra uma sessão independente. Confira o tamanho antes de exportar e mova os segmentos à Lixeira somente após validar a exportação.",
@@ -3945,7 +4021,7 @@ class MainWindow(QtWidgets.QMainWindow):
         enabled = controls["enabled"].isChecked()
         action = "Desligar monitor" if enabled else "Ligar monitor"
         tabs = controls.get("tabs")
-        client = f" Cliente {chr(65 + tabs.currentIndex())}" if tabs else ""
+        client = f" {_client_label(tabs.currentIndex())}" if tabs else ""
         controls["enabled"].setText(
             f"{action}{client}  {controls['shortcut']}"
         )
@@ -3964,7 +4040,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _disable_monitor_mode(self, mode: str) -> None:
         if mode in self.monitor_client_enabled:
-            self.monitor_client_enabled[mode] = [False, False]
+            self.monitor_client_enabled[mode] = [False] * CLIENT_SLOT_COUNT
         self.monitor_enabled[mode] = False
         controls = self.monitor_controls[mode]
         controls["enabled"].blockSignals(True)
@@ -4294,6 +4370,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 "capture_ports": [],
                 "capture_client_ports": [],
                 "capture_client_pids": [],
+                "capture_pc_client_pids": [],
+                "capture_emulator_client_pids": [],
             }, self.preferences_path)
             self.capture_engine = None
             self.capture_recovery_attempted = True
@@ -4438,7 +4516,8 @@ class MainWindow(QtWidgets.QMainWindow):
             now_mono = time.monotonic()
             if name == "monitor:start":
                 self.top_last_read.setText(
-                    f"Monitores — ativos · {data.get('clients', 0)} cliente(s)"
+                    f"Monitores — ativos · {data.get('pc_clients', 0)} PC · "
+                    f"{data.get('emulators', 0)} emulador(es)"
                 )
             else:
                 self.live_combat_events = list(data.get("events") or [])
@@ -4473,10 +4552,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 "capture_ports": data.get("capture_ports"),
                 "capture_client_ports": data.get("capture_client_ports"),
                 "capture_client_pids": data.get("capture_client_pids"),
+                "capture_pc_client_pids": data.get("capture_pc_client_pids"),
+                "capture_emulator_client_pids": data.get(
+                    "capture_emulator_client_pids"
+                ),
             }, self.preferences_path)
             self.next_read_at = time.monotonic() + 3
             self.top_capture.setText(
-                f"Captura — ativa · {data.get('clients', 0)} cliente(s)"
+                f"Captura — ativa · {data.get('pc_clients', 0)} PC · "
+                f"{data.get('emulators', 0)} emulador(es)"
             )
             if not data.get("live"):
                 live_error = str(data.get("live_error") or "leitura ao encerrar")
@@ -4682,6 +4766,44 @@ class MainWindow(QtWidgets.QMainWindow):
             self.monitor_next_due[mode] = 0.0
             self._capture_tick()
 
+    def _category_slots(self) -> range:
+        return (
+            range(PC_SLOT_COUNT)
+            if self.active_category == "pc"
+            else range(PC_SLOT_COUNT, CLIENT_SLOT_COUNT)
+        )
+
+    def _select_category(self, category: str) -> None:
+        if category not in {"pc", "emulator"}:
+            return
+        self.active_category = category
+        slots = self._category_slots()
+        first = slots.start
+        self.active_client = first
+        for index in range(CLIENT_SLOT_COUNT):
+            visible = index in slots
+            self.client_buttons[index].setVisible(visible)
+            self.client_rename_buttons[index].setVisible(visible)
+            self.client_uid_buttons[index].setVisible(visible)
+        self.client_buttons[first].setChecked(True)
+        for (mode, index), button in self.send_buttons.items():
+            if index >= 0:
+                button.setVisible(index in slots)
+        for mode, controls in self.monitor_controls.items():
+            tabs = controls.get("tabs")
+            if tabs is not None:
+                for index in range(CLIENT_SLOT_COUNT):
+                    tabs.setTabVisible(index, index in slots)
+                tabs.setCurrentIndex(first)
+            elif mode == "boss":
+                for index, card in enumerate(
+                    self.combat_page_layouts[mode]["cards"]
+                ):
+                    card.setVisible(index in slots)
+        self._render_overview()
+        self._render_combat()
+        self._sync_combat_layout()
+
     @staticmethod
     def _format_bytes(value: int) -> str:
         amount = float(max(0, value))
@@ -4701,7 +4823,7 @@ class MainWindow(QtWidgets.QMainWindow):
         routed = any(item.get("client_key") for item in monitors)
         for mode, groups in self.combat_widgets.items():
             for index, widgets in enumerate(groups):
-                key = f"client:{chr(97 + index)}"
+                key = _client_key(index)
                 monitor = next(
                     (item for item in monitors if item.get("client_key") == key),
                     None,
@@ -4710,7 +4832,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     monitor = monitors[index]
                 character = str((monitor or {}).get("character_name") or "").strip()
                 widgets["heading"].setText(
-                    f"Cliente {chr(65 + index)} · {character or 'aguardando personagem'}"
+                    f"{_client_label(index)} · {character or 'aguardando personagem'}"
                 )
                 if (
                     mode in self.monitor_client_enabled
@@ -4719,7 +4841,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._render_nearby(widgets, [], mode, {})
                     widgets["target"].setText("Último alvo confirmado: —")
                     widgets["status"].setText(
-                        f"Monitor desligado para o Cliente {chr(65 + index)}."
+                        f"Monitor desligado para o {_client_label(index)}."
                     )
                     widgets["progress"].setValue(0)
                     for name in ("current_hp", "max_hp", "hp_percent", "dps_hp"):
@@ -4730,7 +4852,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     bosses = list((monitor or {}).get("bosses") or [])
                     self._render_bosses(widgets, bosses)
                     self.combat_page_layouts[mode]["cards"][index].setVisible(
-                        bool(bosses)
+                        index in self._category_slots() and bool(bosses)
                     )
                     widgets["status"].setText(
                         "Bosses próximos confirmados pelo stream em memória."
@@ -5089,7 +5211,7 @@ class MainWindow(QtWidgets.QMainWindow):
         profiles = list(snapshot.get("profiles") or [])
         characters = list(snapshot.get("characters") or [])
         for index, button in enumerate(self.client_buttons):
-            key = f"client:{chr(97 + index)}"
+            key = _client_key(index)
             profile = next((item for item in profiles if item.get("client_key") == key), None)
             if profile is None and not any(item.get("client_key") for item in profiles):
                 profile = profiles[index] if index < len(profiles) else None
@@ -5101,10 +5223,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 next(value for value in (manual, captured) if value.casefold() == folded)
                 for folded in names
             )
-            button.setText(f"Cliente {chr(65 + index)} · {display or 'Definir nome'}")
+            suffix = display or ("Definir nome" if index < PC_SLOT_COUNT else "")
+            button.setText(
+                _client_label(index) + (f" · {suffix}" if suffix else "")
+            )
         self._refresh_client_uid_buttons()
 
-        key = f"client:{chr(97 + self.active_client)}"
+        key = _client_key(self.active_client)
         character, summary, historical_identity = self._overview_character(
             self.active_client
         )
@@ -5178,12 +5303,16 @@ class MainWindow(QtWidgets.QMainWindow):
             f"{active.get('name')} · {active.get('map_name') or active.get('location') or 'local não informado'}"
             if active else "Nenhuma subsessão em andamento."
         )
-        self._render_secondary_overview(1 - self.active_client, duration)
+        other = next(
+            (index for index in self._category_slots() if index != self.active_client),
+            self.active_client,
+        )
+        self._render_secondary_overview(other, duration)
 
     def _render_secondary_overview(self, index: int, duration: int) -> None:
         if not hasattr(self, "overview_secondary"):
             return
-        key = f"client:{chr(97 + index)}"
+        key = _client_key(index)
         character, summary, historical_identity = self._overview_character(index)
         captured = str(character.get("name") or "").strip() if character else ""
         manual = str(self.preferences.get(f"character{index + 1}") or "").strip()
@@ -5193,7 +5322,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else captured or manual or "Aguardando personagem"
         )
         self.secondary_character_name.setText(
-            f"Cliente {chr(65 + index)} · {name}"
+            f"{_client_label(index)} · {name}"
         )
         details = [
             f"Nível {summary['level']}" if summary.get("level") is not None else "Nível —",
@@ -5378,7 +5507,10 @@ QMenu::item:disabled { color: #6D7578; }
 QMenu::separator { background: #26333A; height: 1px; margin: 4px 8px; }
 #sidebar QPushButton { text-align: left; border-color: transparent; padding-left: 18px; }
 #sidebar QPushButton:checked { border-left: 3px solid #F6BE3B; }
-QPushButton[client='true'] { min-width: 210px; }
+QPushButton[client='true'] { min-width: 132px; padding-left: 8px; padding-right: 8px; }
+QToolButton { background: #0A1115; color: #F4F2EB; border: 1px solid #314149; border-radius: 5px; padding: 6px; }
+QToolButton:hover { border-color: #D4A64D; color: #FFFFFF; }
+QToolButton:disabled { color: #6D7578; border-color: #26333A; background: #0A0E10; }
 QLineEdit, QComboBox, QSpinBox, QListWidget, QTableWidget {
     background: #0A1115;
     color: #F4F2EB;

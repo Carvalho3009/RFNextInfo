@@ -272,7 +272,8 @@ Matriz mínima:
 - online, offline abaixo de 24h e expiração no limite;
 - recuo de relógio;
 - revogação online;
-- captura com até dois clientes;
+- captura local com até dois clientes PC e cinco emuladores BlueStacks,
+  mantendo slots e dados separados por categoria;
 - perda de licença durante captura;
 - bloqueio de leitura/processamento/exportação/envio;
 - preservação de brutos;

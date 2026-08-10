@@ -24,6 +24,7 @@ from .ingest import (
 SCHEMA_VERSION = 1
 MAX_EXPORT_BYTES = 512 * 1024 * 1024
 SENSITIVE_KEYS = ("token", "ticket", "password", "secret", "authorization", "jwt")
+CLIENT_KEYS = tuple(f"client:{chr(97 + index)}" for index in range(7))
 
 
 def _level_curve() -> dict[int, int]:
@@ -146,7 +147,7 @@ def _client_key(
     if not match:
         return None
     endpoints = {int(match.group(1)), int(match.group(2))}
-    for index, ports in enumerate(client_ports[:2]):
+    for index, ports in enumerate(client_ports[:len(CLIENT_KEYS)]):
         if endpoints.intersection(ports):
             return f"client:{chr(97 + index)}"
     return None
@@ -580,7 +581,7 @@ class CaptureStore:
                     client_key = next(
                         (
                             key
-                            for key in ("client:a", "client:b")
+                            for key in CLIENT_KEYS
                             if key not in reserved_routes
                         ),
                         None,
@@ -978,7 +979,7 @@ class CaptureStore:
         client_key: str,
         character_uid: str | None,
     ) -> None:
-        if not session_id or client_key not in {"client:a", "client:b"}:
+        if not session_id or client_key not in CLIENT_KEYS:
             raise ValueError("Sessão ou cliente inválido")
         with self.conn:
             current = self.conn.execute(
@@ -1114,7 +1115,7 @@ class CaptureStore:
         self, session_id: str, targets: list[tuple[str, float]]
     ) -> list[dict[str, str | float]]:
         flows = self.unidentified_exp_flows(session_id)
-        if not targets or len(flows) < len(targets) or len(targets) > 2:
+        if not targets or len(flows) < len(targets) or len(targets) > 7:
             return []
         best = min(
             itertools.permutations(flows, len(targets)),
@@ -1317,7 +1318,7 @@ class CaptureStore:
     ) -> None:
         name, location = name.strip(), location.strip()
         client_key = client_key.strip().casefold()
-        if client_key not in {"", "client:a", "client:b"}:
+        if client_key not in {"", *CLIENT_KEYS}:
             raise ValueError("cliente da subsessão inválido")
         map_name, spot_name = map_name.strip(), spot_name.strip()
         mobs = [str(mob).strip() for mob in (mobs or []) if str(mob).strip()]
@@ -1434,7 +1435,7 @@ class CaptureStore:
         if (
             not subsession_id
             or not name
-            or client_key not in {"client:a", "client:b"}
+            or client_key not in CLIENT_KEYS
             or not 0 <= duration_minutes <= 1440
         ):
             raise ValueError("subsessão inválida")

@@ -325,9 +325,10 @@ def _merge_client_routes(
     pids: list[int],
     port_groups: list[tuple[int, ...]],
     connections: list[dict[str, object]],
+    limit: int = 2,
 ) -> tuple[list[int], list[tuple[int, ...]]]:
-    merged_pids = list(pids[:2])
-    merged_ports = [set(group) for group in port_groups[:2]]
+    merged_pids = list(pids[:limit])
+    merged_ports = [set(group) for group in port_groups[:limit]]
     while len(merged_ports) < len(merged_pids):
         merged_ports.append(set())
     active_pids = {int(connection["pid"]) for connection in connections}
@@ -335,7 +336,7 @@ def _merge_client_routes(
         pid = int(connection["pid"])
         if pid in merged_pids:
             index = merged_pids.index(pid)
-        elif len(merged_pids) < 2:
+        elif len(merged_pids) < limit:
             merged_pids.append(pid)
             merged_ports.append(set())
             index = len(merged_pids) - 1
@@ -354,7 +355,7 @@ def _merge_client_routes(
             merged_pids[index] = pid
         merged_ports[index].update(connection["local_ports"])
     return merged_pids, [
-        tuple(sorted(ports)) for ports in merged_ports[:2]
+        tuple(sorted(ports)) for ports in merged_ports[:limit]
     ]
 
 
@@ -5367,7 +5368,7 @@ class App(tk.Tk):
                         value,
                     )
         stats = stats or database.session_stats(session)
-        if len(detected) > 2 or not detected:
+        if len(detected) > 7 or not detected:
             return [
                 {
                     "uid": None,

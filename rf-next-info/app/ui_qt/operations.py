@@ -25,7 +25,11 @@ from app.main import (
     _merge_client_routes,
 )
 from core.capture import PktmonCapture
-from core.connections import clients_for_executable, connected_processes
+from core.connections import (
+    clients_for_executable,
+    connected_processes,
+    emulator_processes,
+)
 from core.pktmon_realtime import RealtimeCapture
 from core.live_stream import LiveEventStream
 from core.knowledge import KnowledgeStore
@@ -167,7 +171,11 @@ class SiteUploadEngine:
                     "loadout": summary["loadout"] if mode == "character" else {},
                     "subsession_reports": [],
                 }
-                target = f"Cliente {chr(65 + client_index)}"
+                target = (
+                    f"Cliente {chr(65 + client_index)}"
+                    if client_index < 2
+                    else f"Emulador {client_index - 1}"
+                )
         finally:
             store.close()
         stable = {**payload, "metadata": {k: v for k, v in metadata.items() if k != "captured_at"}}
@@ -351,7 +359,7 @@ class ExportEngine:
     def _targets(store: CaptureStore, session_id: str) -> list[dict[str, object]]:
         detected = store.session_profiles(session_id)
         stats = store.session_stats(session_id)
-        if len(detected) > 2 or not detected:
+        if len(detected) > 7 or not detected:
             return [{
                 "uid": None,
                 "name": "Nao-identificado",
@@ -644,6 +652,28 @@ def _safe_name(value: str, fallback: str) -> str:
     return cleaned or fallback
 
 
+def _route_groups(
+    groups: Iterable[Iterable[int]], size: int
+) -> tuple[tuple[int, ...], ...]:
+    normalized: list[tuple[int, ...]] = []
+    for group in groups:
+        ports = tuple(group)
+        if ports:
+            normalized.append(ports)
+    return tuple(normalized[:size])
+
+
+def _combined_route_groups(
+    pc_groups: Iterable[Iterable[int]],
+    emulator_groups: Iterable[Iterable[int]],
+) -> tuple[tuple[int, ...], ...]:
+    pc = _route_groups(pc_groups, 2)
+    emulators = _route_groups(emulator_groups, 5)
+    if emulators:
+        pc = pc + ((),) * (2 - len(pc))
+    return (*pc, *emulators)
+
+
 class MonitorEngine:
     """Stream Pktmon somente em memória, independente da captura histórica."""
 
@@ -653,15 +683,24 @@ class MonitorEngine:
         *,
         live_factory: Callable[[Path | None, tuple[int, ...]], RealtimeCapture] = RealtimeCapture,
         process_reader: Callable[..., dict] = connected_processes,
+        emulator_reader: Callable[..., dict] | None = None,
         client_reader: Callable[..., list] = clients_for_executable,
     ) -> None:
         self.license = license_client
         self.live_factory = live_factory
         self.process_reader = process_reader
+        self.emulator_reader = emulator_reader or (
+            emulator_processes
+            if process_reader is connected_processes
+            else lambda _ports: {}
+        )
         self.client_reader = client_reader
         self.live_capture: RealtimeCapture | None = None
         self.events = LiveEventStream()
         self.executable = ""
+        self.emulator_executable = ""
+        self.pc_client_ports: tuple[tuple[int, ...], ...] = ()
+        self.emulator_client_ports: tuple[tuple[int, ...], ...] = ()
         self.client_ports: tuple[tuple[int, ...], ...] = ()
         self._lock = threading.RLock()
 
@@ -684,21 +723,47 @@ class MonitorEngine:
             if self.active:
                 return self.snapshot(features)
             processes = self.process_reader(DEFAULT_PORTS)
-            if not processes:
-                raise RuntimeError("Abra um cliente ProjectRF e entre no jogo")
+            emulators = self.emulator_reader(DEFAULT_PORTS)
+            if not processes and not emulators:
+                raise RuntimeError("Abra um cliente PC ou emulador e entre no jogo")
             executable, (pids, local_ports, remote_ports) = max(
                 processes.items(), key=lambda item: len(item[1][0])
-            )
+            ) if processes else ("", (set(), set(), set()))
+            emulator_executable, (emulator_pids, emulator_local, emulator_remote) = max(
+                emulators.items(), key=lambda item: len(item[1][0])
+            ) if emulators else ("", (set(), set(), set()))
             if len(pids) > 2:
                 raise RuntimeError("Foram encontrados mais de dois clientes ProjectRF")
-            routes = self.client_reader(executable, DEFAULT_PORTS)
+            if len(emulator_pids) > 5:
+                raise RuntimeError("Foram encontrados mais de cinco emuladores")
+            routes = self.client_reader(executable, DEFAULT_PORTS) if executable else []
+            emulator_routes = (
+                self.client_reader(emulator_executable, DEFAULT_PORTS)
+                if emulator_executable else []
+            )
             _pids, groups = _merge_client_routes([], [], routes)
+            _emulator_pids, emulator_groups = _merge_client_routes(
+                [], [], emulator_routes, 5
+            )
             self.executable = executable
-            self.client_ports = tuple(group for group in groups if group) or (
-                tuple(sorted(local_ports)),
+            self.emulator_executable = emulator_executable
+            self.pc_client_ports = _route_groups(groups, 2) or (
+                (tuple(sorted(local_ports)),) if local_ports else ()
+            )
+            self.emulator_client_ports = _route_groups(emulator_groups, 5) or (
+                (tuple(sorted(emulator_local)),) if emulator_local else ()
+            )
+            self.client_ports = _combined_route_groups(
+                self.pc_client_ports, self.emulator_client_ports
             )
             ports = tuple(
-                dict.fromkeys((*DEFAULT_PORTS, *local_ports, *remote_ports))
+                dict.fromkeys((
+                    *DEFAULT_PORTS,
+                    *local_ports,
+                    *remote_ports,
+                    *emulator_local,
+                    *emulator_remote,
+                ))
             )
             self.events.clear()
             self.events.start()
@@ -714,23 +779,46 @@ class MonitorEngine:
             return {
                 "available": True,
                 "active": True,
-                "clients": len(pids),
+                "clients": len(pids) + len(emulator_pids),
+                "pc_clients": len(pids),
+                "emulators": len(emulator_pids),
                 "client_ports": [list(group) for group in self.client_ports],
                 "events": [],
             }
 
     def _refresh_routes(self) -> None:
-        if not self.executable or not self.live_capture:
+        if not self.live_capture:
             return
-        routes = self.client_reader(self.executable, DEFAULT_PORTS)
-        _pids, groups = _merge_client_routes([], list(self.client_ports), routes)
-        active_groups = tuple(group for group in groups if group)
-        if active_groups:
-            self.client_ports = active_groups
+        if not self.executable:
+            processes = self.process_reader(DEFAULT_PORTS)
+            if processes:
+                self.executable, _details = max(
+                    processes.items(), key=lambda item: len(item[1][0])
+                )
+        if not self.emulator_executable:
+            emulators = self.emulator_reader(DEFAULT_PORTS)
+            if emulators:
+                self.emulator_executable, _details = max(
+                    emulators.items(), key=lambda item: len(item[1][0])
+                )
+        routes = self.client_reader(self.executable, DEFAULT_PORTS) if self.executable else []
+        emulator_routes = (
+            self.client_reader(self.emulator_executable, DEFAULT_PORTS)
+            if self.emulator_executable else []
+        )
+        _pids, groups = _merge_client_routes([], list(self.pc_client_ports), routes)
+        _emulator_pids, emulator_groups = _merge_client_routes(
+            [], list(self.emulator_client_ports), emulator_routes, 5
+        )
+        self.pc_client_ports = _route_groups(groups, 2)
+        self.emulator_client_ports = _route_groups(emulator_groups, 5)
+        self.client_ports = _combined_route_groups(
+            self.pc_client_ports, self.emulator_client_ports
+        )
         ports = tuple(
             dict.fromkeys(
                 port
-                for route in routes
+                for route in (*routes, *emulator_routes)
                 for field in ("local_ports", "remote_ports")
                 for port in route.get(field, ())
             )
@@ -793,6 +881,7 @@ class CaptureEngine:
         capture_factory: Callable[[Path], PktmonCapture] = PktmonCapture,
         live_factory: Callable[[Path, tuple[int, ...]], RealtimeCapture] = RealtimeCapture,
         process_reader: Callable[..., dict] = connected_processes,
+        emulator_reader: Callable[..., dict] | None = None,
         client_reader: Callable[..., list] = clients_for_executable,
     ) -> None:
         self.capture_directory = Path(capture_directory)
@@ -803,11 +892,21 @@ class CaptureEngine:
         self.capture_factory = capture_factory
         self.live_factory = live_factory
         self.process_reader = process_reader
+        self.emulator_reader = emulator_reader or (
+            emulator_processes
+            if process_reader is connected_processes
+            else lambda _ports: {}
+        )
         self.client_reader = client_reader
         self.capture: PktmonCapture | None = None
         self.live_capture: RealtimeCapture | None = None
         self.current_session: str | None = None
         self.executable = ""
+        self.emulator_executable = ""
+        self.pc_client_pids: list[int] = []
+        self.emulator_client_pids: list[int] = []
+        self.pc_client_ports: tuple[tuple[int, ...], ...] = ()
+        self.emulator_client_ports: tuple[tuple[int, ...], ...] = ()
         self.client_pids: list[int] = []
         self.client_ports: tuple[tuple[int, ...], ...] = ()
         self.live_files: list[Path] = []
@@ -819,6 +918,14 @@ class CaptureEngine:
         self.route_identity_trusted = True
         self.live_events = LiveEventStream()
         self._lock = threading.RLock()
+
+    def _sync_client_routes(self) -> None:
+        self.pc_client_ports = _route_groups(self.pc_client_ports, 2)
+        self.emulator_client_ports = _route_groups(self.emulator_client_ports, 5)
+        self.client_pids = [*self.pc_client_pids, *self.emulator_client_pids]
+        self.client_ports = _combined_route_groups(
+            self.pc_client_ports, self.emulator_client_ports
+        )
 
     def restore(self, preferences: dict[str, object]) -> dict[str, object] | None:
         """Recupera uma captura pendente sem iniciar uma sessão nova."""
@@ -842,11 +949,22 @@ class CaptureEngine:
         self.current_session = session_id
         self.paused = not status.active
         self.pending_files = list(status.files)
-        # Portas são transitórias; somente os PIDs preservam os slots A/B.
-        self.client_ports = ()
-        self.client_pids = [
-            int(pid) for pid in preferences.get("capture_client_pids") or ()
+        # Portas são transitórias; somente os PIDs preservam os sete slots.
+        self.pc_client_ports = ()
+        self.emulator_client_ports = ()
+        self.pc_client_pids = [
+            int(pid)
+            for pid in (
+                preferences.get("capture_pc_client_pids")
+                or preferences.get("capture_client_pids")
+                or ()
+            )
         ][:2]
+        self.emulator_client_pids = [
+            int(pid)
+            for pid in preferences.get("capture_emulator_client_pids") or ()
+        ][:5]
+        self._sync_client_routes()
         self.route_identity_trusted = bool(self.client_pids)
         return {
             "session_id": session_id,
@@ -881,30 +999,54 @@ class CaptureEngine:
                 raise RuntimeError("A captura já está ativa")
             resuming = self.paused and bool(self.current_session)
             processes = self.process_reader(DEFAULT_PORTS)
-            if not processes:
-                raise RuntimeError("Abra um cliente ProjectRF e entre no jogo")
+            emulators = self.emulator_reader(DEFAULT_PORTS)
+            if not processes and not emulators:
+                raise RuntimeError("Abra um cliente PC ou emulador e entre no jogo")
             executable, (pids, local_ports, remote_ports) = max(
                 processes.items(), key=lambda item: len(item[1][0])
-            )
+            ) if processes else ("", (set(), set(), set()))
+            emulator_executable, (emulator_pids, emulator_local, emulator_remote) = max(
+                emulators.items(), key=lambda item: len(item[1][0])
+            ) if emulators else ("", (set(), set(), set()))
             if len(pids) > 2:
                 raise RuntimeError("Foram encontrados mais de dois clientes ProjectRF")
-            routes = self.client_reader(executable, DEFAULT_PORTS)
+            if len(emulator_pids) > 5:
+                raise RuntimeError("Foram encontrados mais de cinco emuladores")
+            routes = self.client_reader(executable, DEFAULT_PORTS) if executable else []
+            emulator_routes = (
+                self.client_reader(emulator_executable, DEFAULT_PORTS)
+                if emulator_executable else []
+            )
             self.executable = executable
-            known_pids = list(self.client_pids)
+            self.emulator_executable = emulator_executable
+            known_pids = [*self.pc_client_pids, *self.emulator_client_pids]
+            active_pids = {*pids, *emulator_pids}
             self.route_identity_trusted = bool(
                 not resuming
-                or known_pids and set(known_pids).intersection(pids)
+                or known_pids and set(known_pids).intersection(active_pids)
             )
             if self.route_identity_trusted:
-                self.client_pids, groups = _merge_client_routes(
-                    known_pids if resuming else [],
-                    [],
+                self.pc_client_pids, groups = _merge_client_routes(
+                    self.pc_client_pids if resuming else [], [],
                     routes,
                 )
-                self.client_ports = tuple(groups) or (tuple(sorted(local_ports)),)
+                self.emulator_client_pids, emulator_groups = _merge_client_routes(
+                    self.emulator_client_pids if resuming else [], [],
+                    emulator_routes,
+                    5,
+                )
+                self.pc_client_ports = tuple(groups) or (
+                    (tuple(sorted(local_ports)),) if local_ports else ()
+                )
+                self.emulator_client_ports = tuple(emulator_groups) or (
+                    (tuple(sorted(emulator_local)),) if emulator_local else ()
+                )
             else:
-                self.client_pids = []
-                self.client_ports = ()
+                self.pc_client_pids = []
+                self.emulator_client_pids = []
+                self.pc_client_ports = ()
+                self.emulator_client_ports = ()
+            self._sync_client_routes()
             if not resuming:
                 self.session_counter += 1
                 stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -915,7 +1057,12 @@ class CaptureEngine:
                 self.capture_index = 0
                 self.pending_files.clear()
             prefix = self._next_capture_prefix()
-            ports = tuple(dict.fromkeys((*local_ports, *remote_ports)))
+            ports = tuple(dict.fromkeys((
+                *local_ports,
+                *remote_ports,
+                *emulator_local,
+                *emulator_remote,
+            )))
             self.capture_ports = ports
             capture = self.capture_factory(self.capture_directory)
             if capture.system_running():
@@ -951,34 +1098,64 @@ class CaptureEngine:
                 "capture_ports": list(ports),
                 "capture_client_ports": [list(group) for group in self.client_ports],
                 "capture_client_pids": list(self.client_pids),
-                "clients": len(pids),
-                "connections": len(local_ports),
+                "capture_pc_client_pids": list(self.pc_client_pids),
+                "capture_emulator_client_pids": list(self.emulator_client_pids),
+                "clients": len(pids) + len(emulator_pids),
+                "pc_clients": len(pids),
+                "emulators": len(emulator_pids),
+                "connections": len(local_ports) + len(emulator_local),
                 "live": self.live_capture is not None,
                 "live_error": live_error,
             }
 
     def _refresh_routes(self) -> None:
         if not self.executable:
-            return
-        routes = self.client_reader(self.executable, DEFAULT_PORTS)
-        active_pids = {int(route["pid"]) for route in routes}
+            processes = self.process_reader(DEFAULT_PORTS)
+            if processes:
+                self.executable, _details = max(
+                    processes.items(), key=lambda item: len(item[1][0])
+                )
+        if not self.emulator_executable:
+            emulators = self.emulator_reader(DEFAULT_PORTS)
+            if emulators:
+                self.emulator_executable, _details = max(
+                    emulators.items(), key=lambda item: len(item[1][0])
+                )
+        routes = self.client_reader(self.executable, DEFAULT_PORTS) if self.executable else []
+        emulator_routes = (
+            self.client_reader(self.emulator_executable, DEFAULT_PORTS)
+            if self.emulator_executable else []
+        )
+        active_pids = {
+            int(route["pid"]) for route in (*routes, *emulator_routes)
+        }
         if (
             self.route_identity_trusted
             and self.client_pids
             and not active_pids.intersection(self.client_pids)
         ):
             self.route_identity_trusted = False
-            self.client_pids = []
-            self.client_ports = ()
+            self.pc_client_pids = []
+            self.emulator_client_pids = []
+            self.pc_client_ports = ()
+            self.emulator_client_ports = ()
         if self.route_identity_trusted:
-            self.client_pids, groups = _merge_client_routes(
-                self.client_pids, list(self.client_ports), routes
+            self.pc_client_pids, groups = _merge_client_routes(
+                self.pc_client_pids, list(self.pc_client_ports), routes
             )
-            self.client_ports = tuple(groups)
+            self.emulator_client_pids, emulator_groups = _merge_client_routes(
+                self.emulator_client_pids,
+                list(self.emulator_client_ports),
+                emulator_routes,
+                5,
+            )
+            self.pc_client_ports = tuple(groups)
+            self.emulator_client_ports = tuple(emulator_groups)
+        self._sync_client_routes()
         ports = tuple(
             dict.fromkeys(
                 port
-                for route in routes
+                for route in (*routes, *emulator_routes)
                 for field in ("local_ports", "remote_ports")
                 for port in route.get(field, ())
             )
@@ -1031,7 +1208,7 @@ class CaptureEngine:
                             session_id=self.current_session,
                             ports=DEFAULT_PORTS,
                             client_ports=self.client_ports,
-                            restrict_to_clients=bool(self.client_ports),
+                            restrict_to_clients=any(self.client_ports),
                         )
                         for path in completed
                         if path.exists()
@@ -1058,7 +1235,7 @@ class CaptureEngine:
                     ports=DEFAULT_PORTS,
                     client_ports=self.client_ports,
                     append_only=True,
-                    restrict_to_clients=bool(self.client_ports),
+                    restrict_to_clients=any(self.client_ports),
                 )
             finally:
                 store.close()
@@ -1179,7 +1356,7 @@ class CaptureEngine:
                             ports=DEFAULT_PORTS,
                             client_ports=self.client_ports,
                             append_only=path in live_files,
-                            restrict_to_clients=bool(self.client_ports),
+                            restrict_to_clients=any(self.client_ports),
                         )
                     except Exception as error:
                         LOG.exception(

@@ -159,7 +159,7 @@ class ReadOnlySnapshotReader:
             for profile in profiles
             if profile.get("uid")
         }
-        for index, ports in enumerate(client_ports[:2]):
+        for index, ports in enumerate(client_ports[:7]):
             key = f"client:{chr(97 + index)}"
             if key in identities:
                 continue
@@ -176,7 +176,7 @@ class ReadOnlySnapshotReader:
                     }
                     break
         monitors = []
-        for index, ports in enumerate(client_ports[:2]):
+        for index, ports in enumerate(client_ports[:7]):
             key = f"client:{chr(97 + index)}"
             profile = identities.get(key)
             if not profile:

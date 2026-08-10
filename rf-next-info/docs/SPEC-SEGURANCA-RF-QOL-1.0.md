@@ -319,9 +319,19 @@ permanece implementado para eventual reativação do modo automático.
 
 - Captura primária: Pktmon nativo.
 - Na captura ao vivo, somente eventos cujo fluxo use uma porta local vinculada
-  aos processos `ProjectRF.exe` detectados podem alimentar personagens,
-  sessões, coleções e envios. Outros processos são excluídos mesmo quando usam
-  a mesma porta remota do jogo; a importação offline permanece sem esse filtro.
+  a um cliente PC `ProjectRF.exe` ou a uma instância BlueStacks `HD-Player.exe`
+  detectada podem alimentar personagens, sessões, coleções e envios. Outros
+  processos são excluídos mesmo quando usam a mesma porta remota do jogo; a
+  importação offline permanece sem esse filtro.
+- A identidade física é separada em sete slots estáveis: `client:a` e
+  `client:b` pertencem exclusivamente à categoria PC; `client:c` a `client:g`
+  pertencem exclusivamente a Emuladores 1 a 5. Slots vazios não são
+  compactados e uma origem não pode migrar entre categorias.
+- A barra lateral oferece as categorias PC e Emuladores. As páginas atuais e
+  seus módulos licenciados são compartilhados, mas a categoria selecionada
+  mostra e opera somente os slots daquela origem.
+- O limite simultâneo é de dois clientes PC e cinco instâncias BlueStacks. Uma
+  sexta instância não recebe slot nem pode contaminar os cinco slots aceitos.
 - Npcap só pode entrar após licença OEM e gate específico.
 - É proibido injetar DLL, abrir/escrever memória do jogo, criar thread remota,
   instalar hook invasivo, desativar Defender ou usar ofuscação agressiva/UPX.
@@ -400,6 +410,8 @@ interpretada como licença válida no servidor.
 
 - Scanner não encontra token, ticket, `0x0101`, licença ou credencial em banco,
   arquivos, IPC, logs e diagnóstico.
+- Regressão confirma dois slots PC fixos, cinco slots de emulador fixos e
+  ausência de eventos cruzados entre essas categorias.
 - Regressão completa do cliente passa.
 - Self-test do executável instalado passa.
 - Instalação limpa é validada em Windows 10 e 11 x64.

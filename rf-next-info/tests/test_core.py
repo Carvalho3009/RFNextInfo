@@ -20,6 +20,7 @@ from core.pktmon_realtime import (
 from core.connections import (
     clients_for_executable,
     connected_processes,
+    emulator_processes,
     ports_for_executable,
 )
 from core.combat_monitor import summarize_combat
@@ -1173,6 +1174,57 @@ class CoreTest(unittest.TestCase):
             )
         self.assertEqual((local_ports, remote_ports, clients), ((50100,), (12020,), 1))
         self.assertEqual(routes[0]["local_ports"], (50100,))
+
+    def test_pc_and_bluestacks_connections_are_discovered_separately(self):
+        paths = {
+            10: r"C:\Games\ProjectRF.exe",
+            20: r"C:\Program Files\BlueStacks_nxt\HD-Player.exe",
+            30: r"C:\Browser\browser.exe",
+        }
+        rows = [
+            (10, 50100, 12020),
+            (20, 57001, 12020),
+            (30, 58001, 12020),
+        ]
+        with patch("core.connections._tcp_rows", return_value=rows), patch(
+            "core.connections._process_path", side_effect=paths.get
+        ):
+            pc = connected_processes((12020,))
+            emulators = emulator_processes((12020,))
+        self.assertEqual(next(iter(pc.values()))[0], {10})
+        self.assertEqual(next(iter(emulators.values()))[0], {20})
+        self.assertNotIn(30, next(iter(pc.values()))[0])
+        self.assertNotIn(30, next(iter(emulators.values()))[0])
+
+    def test_seventh_route_is_stored_as_emulator_five(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "emulator-five.pcap"
+            source.write_bytes(b"capture")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    source,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:57005",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "opcode": 0x0307,
+                        "type": "update_exp",
+                        "data": {"fields": {"gain_exp": 10}},
+                    }],
+                    "session",
+                    client_ports=(
+                        (50001,), (50002,), (57001,), (57002,),
+                        (57003,), (57004,), (57005,),
+                    ),
+                )
+                owner = store.conn.execute(
+                    "SELECT character_uid FROM events WHERE session_id='session'"
+                ).fetchone()[0]
+            finally:
+                store.close()
+        self.assertEqual(owner, "client:g")
 
     def test_unidentified_flows_are_matched_to_closest_exp(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -117,11 +117,12 @@ def _process_path(pid: int) -> str | None:
         kernel.CloseHandle(handle)
 
 
-def connected_processes(
-    allowed_remote_ports: tuple[int, ...] = (),
+def _connected_processes(
+    allowed_remote_ports: tuple[int, ...],
+    executable_prefixes: tuple[str, ...],
 ) -> dict[str, tuple[set[int], set[int], set[int]]]:
-    """Retorna caminho -> (PIDs, portas locais, portas remotas), sem IPs."""
     allowed = set(allowed_remote_ports)
+    prefixes = tuple(value.casefold() for value in executable_prefixes)
     result: dict[str, tuple[set[int], set[int], set[int]]] = {}
     paths: dict[int, str | None] = {}
     for pid, local_port, remote_port in _tcp_rows():
@@ -130,7 +131,7 @@ def connected_processes(
         path = paths[pid]
         if not path:
             continue
-        if not os.path.basename(path).casefold().startswith("projectrf"):
+        if not os.path.basename(path).casefold().startswith(prefixes):
             continue
         if allowed and remote_port not in allowed:
             continue
@@ -142,6 +143,20 @@ def connected_processes(
         local_ports.add(local_port)
         remote_ports.add(remote_port)
     return result
+
+
+def connected_processes(
+    allowed_remote_ports: tuple[int, ...] = (),
+) -> dict[str, tuple[set[int], set[int], set[int]]]:
+    """Retorna clientes PC ProjectRF por executável, sem expor IPs."""
+    return _connected_processes(allowed_remote_ports, ("projectrf",))
+
+
+def emulator_processes(
+    allowed_remote_ports: tuple[int, ...] = (),
+) -> dict[str, tuple[set[int], set[int], set[int]]]:
+    """Retorna instâncias BlueStacks pelo processo proprietário HD-Player."""
+    return _connected_processes(allowed_remote_ports, ("hd-player",))
 
 
 def ports_for_executable(

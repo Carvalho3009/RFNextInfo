@@ -214,6 +214,67 @@ class CaptureEngineTest(unittest.TestCase):
         monitor.stop()
         self.assertFalse(monitor.active)
 
+    def test_pc_and_emulators_keep_separate_fixed_slots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def routes(executable, _ports):
+                if "HD-Player" in executable:
+                    return [
+                        {"pid": 30, "local_ports": (57001,), "remote_ports": (12020,)},
+                        {"pid": 40, "local_ports": (57002,), "remote_ports": (12020,)},
+                    ]
+                return [
+                    {"pid": 10, "local_ports": (50000,), "remote_ports": (12020,)}
+                ]
+
+            engine = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                _AllowedLicense(),
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\Games\ProjectRF.exe": ({10}, {50000}, {12020})
+                },
+                emulator_reader=lambda _ports: {
+                    r"C:\BlueStacks\HD-Player.exe": (
+                        {30, 40}, {57001, 57002}, {12020}
+                    )
+                },
+                client_reader=routes,
+            )
+
+            started = engine.start()
+
+            self.assertEqual(started["pc_clients"], 1)
+            self.assertEqual(started["emulators"], 2)
+            self.assertEqual(
+                started["capture_client_ports"],
+                [[50000], [], [57001], [57002]],
+            )
+            self.assertEqual(engine.client_pids, [10, 30, 40])
+            engine.stop_without_reading()
+
+    def test_capture_rejects_more_than_five_emulators(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            engine = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                _AllowedLicense(),
+                capture_factory=_FakeCapture,
+                process_reader=lambda _ports: {},
+                emulator_reader=lambda _ports: {
+                    r"C:\BlueStacks\HD-Player.exe": (
+                        set(range(1, 7)), set(range(57001, 57007)), {12020}
+                    )
+                },
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "mais de cinco emuladores"):
+                engine.start()
+
     def test_restore_pending_capture_keeps_the_same_session(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

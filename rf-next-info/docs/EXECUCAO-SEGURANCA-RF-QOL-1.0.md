@@ -72,6 +72,7 @@ sem publicação do instalador
 | 10 ago 2026 | Interface | Owner separou o overlay Boss em vida e DPS, com posições independentes, e removeu os atalhos F1–F4 de envio. Botões de envio e atalhos de captura/monitores foram preservados. | Concluído local |
 | 10 ago 2026 | Licença | Owner autorizou a promoção imediata do emissor v2. Backup criptografado e recuperação da chave foram verificados; `lease-2026-01` recebeu ACL restrita em produção; API e backup foram recriados a partir de `d16b770`; gateway liberou somente as rotas v2 aprovadas. `/api/v1` permaneceu compatível, a base continuou íntegra com 19 licenças e o painel exibiu o gerador RFQ. | Produção concluída |
 | 10 ago 2026 | Captura | Tráfego do BlueStacks em `HD-Player` usando a mesma porta remota `12020` contaminava a sessão dos dois clientes PC. A ingestão ao vivo passou a aceitar somente fluxos ligados às portas locais detectadas dos processos `ProjectRF.exe`; importações offline continuam inalteradas. | Concluído local |
+| 10 ago 2026 | Interface/Captura | A barra lateral foi dividida em PC e Emuladores. Os slots A/B ficaram reservados aos clientes PC e C-G aos cinco BlueStacks, com descoberta independente por processo e as mesmas páginas/módulos em cada categoria. A suíte completa passou com 214 testes e 1 skip ambiental; o computador confirmou descoberta separada de dois ProjectRF e um HD-Player. | Concluído local; cinco BlueStacks físicos não executados |
 
 ## Evidências e comandos de validação
 
@@ -176,6 +177,14 @@ sem publicação do instalador
 - Após o isolamento do BlueStacks, a suíte fechada CPython 3.13/Qt passou com
   209 testes em 224,223 s (`1` skip ambiental da bandeja); o self-test do
   decoder também retornou `ok`.
+- Após criar as categorias PC e Emuladores, a suíte fechada CPython 3.13/Qt
+  passou com 214 testes em 277,251 s (`1` skip ambiental da bandeja). Os testes
+  provaram slots A/B exclusivos para PC, C-G para até cinco BlueStacks,
+  rejeição da sexta instância e persistência do Emulador 5 como `client:g`.
+  Uma inspeção somente leitura do computador encontrou simultaneamente dois
+  processos ProjectRF e um `HD-Player`, cada família com suas portas locais;
+  não foi iniciada captura adicional. O cenário físico com cinco BlueStacks
+  permanece não executado e não é apresentado como validado.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
