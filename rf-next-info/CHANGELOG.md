@@ -38,6 +38,8 @@
   uma nova tentativa após falha;
 - mantém os envios de Codex e Memory Chips bloqueados até existir um pacote real
   do respectivo tipo, mesmo durante uma captura ativa.
+- preserva por UID o último snapshot completo de Codex e Memory Chips entre
+  sessões de captura e aplica as adições posteriores antes de exibir ou enviar.
 
 ## 3.0.11 — beta
 

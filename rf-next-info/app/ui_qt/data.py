@@ -63,15 +63,23 @@ class ReadOnlySnapshotReader:
                 database.capture_windows(self.current_session)
                 if self.current_session else []
             )
-            snapshot["collection_type_counts"] = (
-                database.collection_type_counts(self.current_session)
-                if self.current_session else {}
-            )
             snapshot["character_history"] = database.character_history()
             snapshot["client_bindings"] = (
                 database.client_bindings(self.current_session)
                 if self.current_session else []
             )
+            collection_counts_by_uid = {
+                str(character["uid"]): database.latest_collection_envelope(
+                    str(character["uid"])
+                )["collection_type_counts"]
+                for character in snapshot.get("characters", [])
+                if character.get("uid")
+            }
+            snapshot["collection_type_counts_by_uid"] = collection_counts_by_uid
+            snapshot["collection_type_counts"] = {
+                kind: sum(int(counts.get(kind) or 0) for counts in collection_counts_by_uid.values())
+                for kind in (1, 2)
+            }
             snapshot["combat_monitors"] = []
             if self.current_session:
                 names = load_npc_names(language)
@@ -198,6 +206,7 @@ class ReadOnlySnapshotReader:
             "subsession_summaries": {},
             "capture_windows": [],
             "collection_type_counts": {},
+            "collection_type_counts_by_uid": {},
             "combat_monitors": [],
             "character_history": [],
             "client_bindings": [],

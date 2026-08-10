@@ -684,6 +684,23 @@ def _collection_marks(
     for event in envelope.get("events", []):
         data = event.get("data") or {}
         records = data.get("records")
+        if event.get("type") == "collection_add_response":
+            collection_type = data.get("collection_type")
+            if isinstance(collection_type, int):
+                seen_types.add(collection_type)
+            if (
+                data.get("result_code") == 0
+                and data.get("item_complete") is True
+                and (allowed_types is None or collection_type in allowed_types)
+                and isinstance(data.get("collection_index"), int)
+                and isinstance(data.get("slot_index"), int)
+                and 0 <= data["slot_index"] < 10
+            ):
+                key = str(data["collection_index"])
+                marks[key] = sorted(
+                    {*marks.get(key, []), data["slot_index"] + 1}
+                )
+            continue
         if not isinstance(records, list):
             continue
         event_type = data.get("collection_type")

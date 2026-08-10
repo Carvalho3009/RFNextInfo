@@ -1547,6 +1547,75 @@ class CaptureStore:
                 counts[kind] = counts.get(kind, 0) + 1
         return counts
 
+    def latest_collection_envelope(self, character_uid: str) -> dict[str, Any]:
+        """Último snapshot completo do personagem mais deltas posteriores."""
+        sessions = [
+            row[0]
+            for row in self.conn.execute(
+                """SELECT bindings.session_id
+                   FROM client_bindings AS bindings
+                   LEFT JOIN captures ON captures.session_id=bindings.session_id
+                   WHERE bindings.character_uid=?
+                   GROUP BY bindings.session_id
+                   ORDER BY COALESCE(MAX(captures.mtime_ns),0) DESC""",
+                (str(character_uid),),
+            )
+        ]
+        snapshots: dict[int, list[tuple[int, dict[str, Any]]]] = {}
+        deltas: dict[int, list[tuple[int, dict[str, Any]]]] = {1: [], 2: []}
+        for session_id in sessions:
+            pending: dict[int, tuple[str, list[tuple[int, dict[str, Any]]]]] = {}
+            rows = self.conn.execute(
+                """SELECT id,source,ts_ns,opcode,type,character_uid,data_json
+                   FROM events WHERE session_id=? AND character_uid=?
+                   AND type IN ('collection_snapshot_chunk','collection_add_response')
+                   ORDER BY id DESC""",
+                (session_id, str(character_uid)),
+            )
+            for event_id, source, ts_ns, opcode, kind, uid, raw in rows:
+                data = json.loads(raw)
+                collection_type = int(data.get("collection_type") or 0)
+                if collection_type not in (1, 2) or collection_type in snapshots:
+                    continue
+                event = {
+                    "ts_ns": ts_ns,
+                    "opcode": f"0x{opcode:04x}",
+                    "type": kind,
+                    "character_uid": uid,
+                    "data": data,
+                }
+                if kind == "collection_add_response":
+                    deltas[collection_type].append((event_id, event))
+                    continue
+                current = pending.get(collection_type)
+                if current is None:
+                    if data.get("is_end") is True:
+                        pending[collection_type] = (source, [(event_id, event)])
+                    continue
+                if source != current[0] or data.get("is_end") is True:
+                    snapshots[collection_type] = list(reversed(current[1]))
+                    pending.pop(collection_type)
+                else:
+                    current[1].append((event_id, event))
+            for collection_type, (_source, events) in pending.items():
+                snapshots.setdefault(collection_type, list(reversed(events)))
+            if len(snapshots) == 2:
+                break
+
+        selected: list[tuple[int, dict[str, Any]]] = []
+        counts: dict[int, int] = {}
+        for collection_type, events in snapshots.items():
+            baseline_id = events[-1][0]
+            current = events + [
+                item for item in deltas[collection_type] if item[0] > baseline_id
+            ]
+            selected.extend(current)
+            counts[collection_type] = len(current)
+        return {
+            "events": [event for _event_id, event in sorted(selected)],
+            "collection_type_counts": counts,
+        }
+
     def session_stats_after(self, session_id: str, after_id: int) -> dict[str, int | None]:
         recognized, unknown, unassigned, started, ended, last_id = self.conn.execute(
             """SELECT SUM(type!='unparsed'),SUM(type='unparsed'),

@@ -681,17 +681,26 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.site_profile.state = {"profile": "Profile", "token": "token"}
         window.snapshot = {
             "session_id": "session",
-            "characters": [{
-                "uid": "1", "client_key": "client:a",
-                "summary": {"market_events": 2},
-            }],
-            "collection_type_counts": {},
+            "characters": [
+                {
+                    "uid": "1", "client_key": "client:a",
+                    "summary": {"market_events": 2},
+                },
+                {
+                    "uid": "2", "client_key": "client:b",
+                    "summary": {"market_events": 0},
+                },
+            ],
+            "collection_type_counts": {1: 1, 2: 1},
+            "collection_type_counts_by_uid": {"1": {1: 1}, "2": {2: 1}},
         }
         window.capture_engine = SimpleNamespace(active=True)
         window._set_send_controls()
         self.assertTrue(window.send_buttons[("market", -1)].isEnabled())
-        self.assertFalse(window.send_buttons[("codex", 0)].isEnabled())
+        self.assertTrue(window.send_buttons[("codex", 0)].isEnabled())
+        self.assertFalse(window.send_buttons[("codex", 1)].isEnabled())
         self.assertFalse(window.send_buttons[("memory_chips", 0)].isEnabled())
+        self.assertTrue(window.send_buttons[("memory_chips", 1)].isEnabled())
         window.capture_engine = None
         window.close()
 

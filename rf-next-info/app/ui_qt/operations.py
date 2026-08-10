@@ -120,18 +120,22 @@ class SiteUploadEngine:
             else:
                 selected = self._selected_character(snapshot, client_index)
                 uid, character = str(selected["uid"]), str(selected["name"])
-                envelope = store.session_envelope(
-                    session_id,
-                    uid,
-                    bool(selected.get("include_unassigned")),
-                    bool(selected.get("only_unassigned")),
-                )
-                summary, _marks = _capture_summary(
-                    envelope,
-                    uid,
-                    character,
-                    ITEM_NAMES_EN if language == "en" else ITEM_NAMES,
-                )
+                if mode == "character":
+                    envelope = store.session_envelope(
+                        session_id,
+                        uid,
+                        bool(selected.get("include_unassigned")),
+                        bool(selected.get("only_unassigned")),
+                    )
+                    summary, _marks = _capture_summary(
+                        envelope,
+                        uid,
+                        character,
+                        ITEM_NAMES_EN if language == "en" else ITEM_NAMES,
+                    )
+                else:
+                    envelope = store.latest_collection_envelope(uid)
+                    summary = {}
                 site_summary = {
                     **summary,
                     "loot": _site_loot_rows(summary.get("loot")),

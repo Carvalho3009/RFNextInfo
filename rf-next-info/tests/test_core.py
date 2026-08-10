@@ -2528,6 +2528,86 @@ class CoreTest(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_latest_collection_snapshot_survives_a_new_capture_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old_source = root / "old.pcap"
+            current_source = root / "current.pcap"
+            old_source.write_bytes(b"old")
+            current_source.write_bytes(b"current")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                with store.conn:
+                    store.conn.executemany(
+                        """INSERT INTO client_bindings
+                           (session_id,client_key,character_uid,character_name,binding_source)
+                           VALUES(?,?,?,?,?)""",
+                        [
+                            ("old", "client:a", "101", "Alice", "manual"),
+                            ("current", "client:a", "101", "Alice", "manual"),
+                        ],
+                    )
+                store.add_events(
+                    old_source,
+                    [
+                        {
+                            "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                            "stream_offset": index,
+                            "bundle_seq": 0,
+                            "ts_ns": 100 + index,
+                            "opcode": 0x0419,
+                            "type": "collection_snapshot_chunk",
+                            "data": {
+                                "collection_type": kind,
+                                "is_end": is_end,
+                                "records": records,
+                            },
+                        }
+                        for index, kind, is_end, records in (
+                            (1, 1, False, [{"collection_index": 1001, "collection_type": 1, "completed_slots": [0]}]),
+                            (2, 1, True, []),
+                            (3, 2, True, [{"collection_index": 2001, "collection_type": 2, "completed_slots": [1]}]),
+                        )
+                    ],
+                    "old",
+                    client_ports=((50000,),),
+                )
+                store.add_events(
+                    current_source,
+                    [{
+                        "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "ts_ns": 200,
+                        "opcode": 0x0418,
+                        "type": "collection_add_response",
+                        "data": {
+                            "collection_type": 1,
+                            "collection_index": 1001,
+                            "slot_index": 1,
+                            "result_code": 0,
+                            "item_complete": True,
+                        },
+                    }],
+                    "current",
+                    client_ports=((50000,),),
+                )
+
+                envelope = store.latest_collection_envelope("101")
+
+                self.assertEqual(envelope["collection_type_counts"], {1: 3, 2: 1})
+                self.assertEqual(
+                    [event["type"] for event in envelope["events"]],
+                    [
+                        "collection_snapshot_chunk",
+                        "collection_snapshot_chunk",
+                        "collection_snapshot_chunk",
+                        "collection_add_response",
+                    ],
+                )
+            finally:
+                store.close()
+
     def test_invalid_ipv4_total_length_does_not_abort_following_packet(self):
         ethernet = b"\0" * 12 + b"\x08\x00"
 

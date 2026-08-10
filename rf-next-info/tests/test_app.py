@@ -909,6 +909,16 @@ class AppLogicTest(unittest.TestCase):
                         ],
                     },
                 },
+                {
+                    "type": "collection_add_response",
+                    "data": {
+                        "collection_type": 1,
+                        "collection_index": 1001,
+                        "slot_index": 1,
+                        "result_code": 0,
+                        "item_complete": True,
+                    },
+                },
             ]
         }
 
@@ -920,8 +930,8 @@ class AppLogicTest(unittest.TestCase):
             summary["loadout"]["equipment"],
             [{"item_index": 1000078, "slot": 1, "refinement": 7}],
         )
-        self.assertEqual(marks, {"1001": [1], "2001": [2]})
-        self.assertEqual(codex, {"1001": [1]})
+        self.assertEqual(marks, {"1001": [1, 2], "2001": [2]})
+        self.assertEqual(codex, {"1001": [1, 2]})
         self.assertEqual(memory, {"2001": [2]})
         self.assertEqual(types, [1, 2])
 

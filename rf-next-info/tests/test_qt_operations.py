@@ -495,6 +495,53 @@ class CaptureEngineTest(unittest.TestCase):
 
 
 class SiteUploadEngineTest(unittest.TestCase):
+    def test_codex_send_reuses_the_latest_complete_snapshot(self):
+        class Site:
+            connected = True
+            profile = "Profile"
+
+            def upload_live(self, mode, payload, key):
+                self.sent = (mode, payload, key)
+                return {"receipt": "ok"}
+
+        class License(_AllowedLicense):
+            installation_id = "install-1"
+            lease = "lease-1"
+
+        store = mock.Mock()
+        store.latest_collection_envelope.return_value = {
+            "events": [{
+                "type": "collection_snapshot_chunk",
+                "data": {
+                    "collection_type": 1,
+                    "records": [{
+                        "collection_index": 1001,
+                        "collection_type": 1,
+                        "completed_slots": [0],
+                    }],
+                },
+            }]
+        }
+        site = Site()
+        with mock.patch("app.ui_qt.operations.CaptureStore", return_value=store):
+            result = SiteUploadEngine(Path("capture.sqlite3"), site, License()).send_mode(
+                "codex",
+                0,
+                {
+                    "session_id": "current",
+                    "characters": [{
+                        "uid": "101",
+                        "name": "Alice",
+                        "client_key": "client:a",
+                    }],
+                },
+                "pt",
+            )
+
+        self.assertEqual(result["receipt"], "ok")
+        self.assertEqual(site.sent[1]["profiles"][0]["marks"], {"1001": [1]})
+        store.latest_collection_envelope.assert_called_once_with("101")
+
     def test_character_send_uses_saved_profile_and_canonical_payload(self):
         class Site:
             connected = True

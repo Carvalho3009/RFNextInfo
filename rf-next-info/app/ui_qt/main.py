@@ -2749,6 +2749,14 @@ class MainWindow(QtWidgets.QMainWindow):
             item for item in self.snapshot.get("characters") or [] if item.get("uid")
         ]
         collections = dict(self.snapshot.get("collection_type_counts") or {})
+        collections_by_uid = dict(
+            self.snapshot.get("collection_type_counts_by_uid") or {}
+        )
+        characters_by_client = {
+            item.get("client_key"): str(item.get("uid"))
+            for item in characters
+            if item.get("client_key") and item.get("uid")
+        }
         availability = {
             "character": bool(characters),
             "market": any(
@@ -2759,7 +2767,16 @@ class MainWindow(QtWidgets.QMainWindow):
             "memory_chips": bool(collections.get(2)),
         }
         for (mode, _client), button in self.send_buttons.items():
-            available = enabled and availability[mode]
+            mode_available = availability[mode]
+            if mode in {"codex", "memory_chips"}:
+                uid = characters_by_client.get(f"client:{chr(97 + _client)}")
+                if uid is None and len(characters) == 1:
+                    uid = str(characters[0]["uid"])
+                kind = 1 if mode == "codex" else 2
+                mode_available = bool(
+                    uid and dict(collections_by_uid.get(uid) or {}).get(kind)
+                )
+            available = enabled and mode_available
             button.setEnabled(available)
             button.setToolTip(
                 ""
