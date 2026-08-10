@@ -63,6 +63,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | F4 | Build portátil recompilado lendo versão/sequência do próprio candidato; executável empacotado passou no autoteste. NSIS não estava no PATH daquela sessão, portanto nenhum instalador novo foi emitido. | Supersedido pelo ensaio instalado |
 | 09 ago 2026 | Chaves | Owner decidiu pular por enquanto a cerimônia física de `update-2026-01`. O trabalho local pode continuar com chave descartável; chave definitiva, publicação e produção continuam bloqueadas. | Gate adiado, não dispensado |
 | 09 ago 2026 | F6 | NSIS 3.12 portátil localizado em `K:\MCP\_tools`. RC1 `1.0.0/1` e RC2 `1.0.1/2` foram construídas em worktrees separadas e instaladas sequencialmente em staging `DEV_SMOKE`: RC1 -> RC2 -> manifesto/compatibilidade/backup -> RC1. Hash final retornou exatamente à RC1 e o banco SQLite foi preservado. | Ensaio instalado local concluído |
+| 10 ago 2026 | F6 | Owner decidiu esgotar a validação local e deixar o teste externo para o futuro. Cliente passou 201 testes, emissor passou 15, UI Qt offscreen e executável instalado passaram no smoke, licença oficial/staging permaneceu saudável e a varredura de 22 materiais secretos encontrou zero ocorrências no código e artefatos. | Matriz local concluída |
 
 ## Evidências e comandos de validação
 
@@ -120,6 +121,14 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
   manifesto descartável e alvo exato foram aceitos, backup SQLite passou em
   integridade e o dado sentinela foi preservado. Registro/UAC, máquinas limpas
   e chave definitiva não fizeram parte desse ensaio.
+- Fechamento local em 10 ago 2026: cliente passou 201 testes em 101,622 s
+  (`1` skip ambiental da bandeja), emissor passou 15 testes, UI Qt 6.10.1
+  offscreen abriu como `RF QOL — 1.0.0`, executável instalado passou no
+  `--self-test`, os contêineres de licença 8787/8788 responderam `ok` e ficaram
+  saudáveis. A varredura binária comparou 22 materiais secretos reais e
+  descartáveis com cliente, emissor, portátil e instalação de ensaio: zero
+  ocorrências; o portátil também ficou sem PCAP, banco ou diretório de runtime.
+  Evidência: `local-readiness-result.json` no staging do ensaio instalado.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;

@@ -29,9 +29,9 @@ Karvalho, conforme decisão posterior do owner em 09 ago 2026.
 | M1 | SPEC e roadmap aprovados | Concluído | G0 |
 | M2 | Lease v2, chaves e autorização central | Concluído localmente; produção pendente | G1 |
 | M3 | Emissor/site v2 integrados | Concluído em staging isolado; produção pendente | G1 |
-| M4 | Update/rollback/ACL seguros | Concluído localmente; ensaio entre RCs reais pendente | G1 |
+| M4 | Update/rollback/ACL seguros | Concluído localmente; validação externa pendente | G1 |
 | M5 | Build rastreável e conteúdo assinado | Parcial: portátil/instalador/SBOM/procedência prontos, chave Ed25519 definitiva pendente | G2 |
-| M6 | RC validada em ambiente real | Parcial: instalador validado localmente; matriz limpa pendente | G3 |
+| M6 | RC validada em ambiente real | Matriz local concluída; ambiente limpo externo pendente | G3 |
 | M7 | Release RF QOL 1.0 | Pendente | G4 |
 
 ## Fase 0 — Baseline e proposta
