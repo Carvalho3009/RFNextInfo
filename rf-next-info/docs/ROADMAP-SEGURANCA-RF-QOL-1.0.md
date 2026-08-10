@@ -177,6 +177,15 @@ removido e permanece deliberadamente indisponível até existir um instalador
 anterior coberto por manifesto Ed25519 e compatível; por isso a fase não está
 concluída.
 
+Diagnóstico de 09 ago 2026: `rollback_compatible_from` ainda é validado apenas
+como lista, o manifesto gerado expira em sete dias e não existe rotina para
+popular o cache do instalador anterior. A proposta mínima ainda não aprovada é
+publicar, junto da nova release, um manifesto de rollback dedicado e assinado
+para o instalador anterior; o cliente exigirá a versão atual na lista de
+compatibilidade, manterá expiração/assinatura/tamanho/hash e só então guardará
+ambos no diretório admin-only. Nenhuma exceção de expiração ou assinatura será
+implementada sem novo gate do owner.
+
 Objetivo: impedir execução de artefato não confiável.
 
 Tarefas:

@@ -59,6 +59,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Chaves | Backup local AES-256-GCM criado em `D:` com chave de recuperação separada em `E:`; origem permanece em `K:`. ACL restrita, restauração exata aprovada, chave errada rejeitada e nenhum segredo encontrado nos arquivos rastreados dos dois repositórios. Cópia off-site segue recomendada. | Backup local validado |
 | 09 ago 2026 | Licença | Texto residual da interface corrigido de 72 para o limite offline real de 24 horas; a regra de autorização já aplicava 24 horas. | Concluído local |
 | 09 ago 2026 | Chaves | Kit `update-2026-01` v3 fechado sem chave real: duas cópias PEM cifradas, restauração, limpeza de escrita parcial, senha solicitada interativamente, wheelhouse offline e assinadores de manifesto/procedência. ZIP validado em ambiente novo apenas com seus próprios arquivos; v1/v2 ficaram supersedidos. | Preparado; cerimônia física pendente |
+| 09 ago 2026 | F4 | Auditoria do rollback confirmou três lacunas: compatibilidade assinada ainda não é aplicada, manifesto expira em sete dias e cache anterior não é populado. Botão permanece informativo; nenhuma verificação foi relaxada. Proposta de manifesto de rollback dedicado aguarda gate do owner. | Contrato pendente |
 
 ## Evidências e comandos de validação
 
@@ -148,7 +149,8 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 1. copiar o kit para ambiente desconectado, conectar duas mídias físicas e
    executar a cerimônia testemunhada de `update-2026-01`; cópia externa/off-site
    do backup de lease também segue recomendada;
-2. RC anterior coberta por manifesto Ed25519 para implementar/testar rollback seguro;
+2. aprovar o contrato do manifesto de rollback dedicado; depois implementar e
+   testar com RC anterior Ed25519 compatível;
 3. Windows 10/11 limpos, licença real e teste com até dois clientes;
 4. G4 do owner para qualquer publicação ou produção.
 
