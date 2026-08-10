@@ -74,6 +74,8 @@ sem publicação do instalador
 | 10 ago 2026 | Captura | Tráfego do BlueStacks em `HD-Player` usando a mesma porta remota `12020` contaminava a sessão dos dois clientes PC. A ingestão ao vivo passou a aceitar somente fluxos ligados às portas locais detectadas dos processos `ProjectRF.exe`; importações offline continuam inalteradas. | Concluído local |
 | 10 ago 2026 | Interface/Captura | A barra lateral foi dividida em PC e Emuladores. Os slots A/B ficaram reservados aos clientes PC e C-G aos cinco BlueStacks, com descoberta independente por processo e as mesmas páginas/módulos em cada categoria. A suíte completa passou com 214 testes e 1 skip ambiental; o computador confirmou descoberta separada de dois ProjectRF e um HD-Player. | Concluído local; cinco BlueStacks físicos não executados |
 | 10 ago 2026 | Licença/Conexões | A lease v2 passou a assinar o plano de conexões `2 PC + 1 emulador` ou `2 PC + 5 emuladores`. Emissor, painel, migração aditiva, introspecção, cliente, captura, monitor e interface aplicam o mesmo limite; leases antigas sem o claim são recusadas e licenças RFQ existentes migram para o primeiro plano. | Concluído local; não publicado |
+| 10 ago 2026 | Build | O instalador manual 1.0.0 foi reconstruído do commit `0bb7443`, com os planos de conexão, passou regressão, autoteste, procedência, SHA-256 e ensaio isolado de instalação/desinstalação. | Artefato gerado; não instalado nem publicado |
+| 10 ago 2026 | Licença/Produção | O emissor `7a1e199` foi promovido após backup e staging. As 20 licenças existentes migraram para 2 PC + 1 emulador; lease descartável 2+5 passou pela superfície pública e pelo cliente antes de ser revogada. | Produção concluída |
 
 ## Evidências e comandos de validação
 
@@ -192,6 +194,14 @@ sem publicação do instalador
   lease antiga, bloqueio do segundo emulador no plano menor antes de iniciar
   captura/monitor, recusa de excesso aberto depois sem parar a captura
   autorizada e slots C-G visíveis, com D-G desabilitados.
+- Build manual dos planos de conexão: `RF QOL Setup 1.0.0.exe`, 40.103.107
+  bytes, SHA-256
+  `8c3852566b81f8e6830d7221ed3f5cff137c5ca822263a6bb93c911d7b6bec85`.
+  A procedência registra commit `0bb74435f03fbacb7580bf3ec54c5bcf14c6d00f`,
+  `dirty=false`, `update_mode=manual`, `release=true` e o mesmo hash. O build
+  passou 217 testes em 143,209 s; o ensaio `DEV_SMOKE` instalou, executou o
+  autoteste e desinstalou sem deixar o executável. Ambos permanecem
+  deliberadamente `NotSigned` por decisão do owner.
 - Revisão Claude Fable solicitada pelo owner: job crítico `504` e tentativa
   direta na conversa `45` falharam antes da inferência porque a sessão OAuth
   do Claude expirou e não pôde ser renovada. Foram processados zero tokens;
