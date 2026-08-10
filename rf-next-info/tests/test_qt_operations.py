@@ -128,7 +128,19 @@ class _AllowedLicense:
 
     @staticmethod
     def require(_capability, _feature="base"):
-        return {"active": True}
+        return {
+            "active": True,
+            "connection_limits": {"pc": 2, "emulators": 5},
+        }
+
+
+class _TierOneLicense(_AllowedLicense):
+    @staticmethod
+    def require(_capability, _feature="base"):
+        return {
+            "active": True,
+            "connection_limits": {"pc": 2, "emulators": 1},
+        }
 
 
 class _DeniedLicense:
@@ -256,6 +268,82 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertEqual(engine.client_pids, [10, 30, 40])
             engine.stop_without_reading()
 
+    def test_tier_one_rejects_second_emulator_before_capture_starts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            engine = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                _TierOneLicense(),
+                capture_factory=_FakeCapture,
+                process_reader=lambda _ports: {},
+                emulator_reader=lambda _ports: {
+                    r"C:\BlueStacks\HD-Player.exe": (
+                        {30, 40}, {57001, 57002}, {12020}
+                    )
+                },
+            )
+
+            with self.assertRaisesRegex(PermissionError, "1 emuladores"):
+                engine.start()
+            self.assertFalse(list(root.glob("*.etl")))
+
+    def test_tier_one_rejects_second_emulator_before_monitor_starts(self):
+        monitor = MonitorEngine(
+            _TierOneLicense(),
+            live_factory=_MemoryLive,
+            process_reader=lambda _ports: {},
+            emulator_reader=lambda _ports: {
+                r"C:\BlueStacks\HD-Player.exe": (
+                    {30, 40}, {57001, 57002}, {12020}
+                )
+            },
+        )
+
+        with self.assertRaisesRegex(PermissionError, "1 emuladores"):
+            monitor.start(("monitor-pve",))
+        self.assertFalse(monitor.active)
+
+    def test_tier_one_ignores_later_excess_without_stopping_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            routes = [{
+                "pid": 30,
+                "local_ports": (57001,),
+                "remote_ports": (12020,),
+            }]
+            engine = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                _TierOneLicense(),
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {},
+                emulator_reader=lambda _ports: {
+                    r"C:\BlueStacks\HD-Player.exe": (
+                        {int(route["pid"]) for route in routes},
+                        {
+                            int(route["local_ports"][0])
+                            for route in routes
+                        },
+                        {12020},
+                    )
+                },
+                client_reader=lambda *_args: list(routes),
+            )
+            engine.start()
+            routes.append({
+                "pid": 40,
+                "local_ports": (57002,),
+                "remote_ports": (12020,),
+            })
+
+            with self.assertRaisesRegex(PermissionError, "1 emuladores"):
+                engine.preview_live()
+            self.assertTrue(engine.active)
+            self.assertNotIn(57002, engine.capture.added_ports)
+            engine.stop_without_reading()
+
     def test_capture_rejects_more_than_five_emulators(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -272,7 +360,7 @@ class CaptureEngineTest(unittest.TestCase):
                 },
             )
 
-            with self.assertRaisesRegex(RuntimeError, "mais de cinco emuladores"):
+            with self.assertRaisesRegex(PermissionError, "5 emuladores"):
                 engine.start()
 
     def test_restore_pending_capture_keeps_the_same_session(self):

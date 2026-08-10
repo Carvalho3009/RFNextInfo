@@ -99,21 +99,19 @@ class AppLogicTest(unittest.TestCase):
             text="Instalação automática desativada."
         )
 
-    def test_public_lease_v2_vector(self):
+    def test_previous_public_lease_without_connection_limits_is_rejected(self):
         fixture = json.loads(
             (Path(__file__).parent / "fixtures" / "lease-v2-valid.json").read_text(
                 encoding="utf-8"
             )
         )
-        self.assertEqual(
+        with self.assertRaises(ValueError):
             verify_lease(
                 fixture["lease"],
                 fixture["public_keys"],
                 installation_id=fixture["expected_claims"]["installation_id"],
                 now=datetime.fromisoformat(fixture["verification_time"]),
-            ),
-            fixture["expected_claims"],
-        )
+            )
 
     def test_legacy_send_hotkeys_are_removed(self):
         source = inspect.getsource(App)
@@ -2271,6 +2269,7 @@ class AppLogicTest(unittest.TestCase):
             "valid_until": (issued + timedelta(hours=24)).isoformat(),
             "entitlement_expires_at": (now + timedelta(days=30)).isoformat(),
             "features": ["base", "monitor-pvp"],
+            "connection_limits": {"pc": 2, "emulators": 1},
         }
         payload = json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
         lease = f"{b64(payload)}.{b64(private.sign(payload))}"
@@ -2317,6 +2316,21 @@ class AppLogicTest(unittest.TestCase):
                 invalid, separators=(",", ":"), sort_keys=True
             ).encode()
             with self.assertRaises(ValueError, msg=invalid_features):
+                verify_lease(
+                    f"{b64(invalid_payload)}.{b64(private.sign(invalid_payload))}",
+                    {"lease-test": public},
+                )
+        for invalid_limits in (
+            {"pc": 2, "emulators": 0},
+            {"pc": 1, "emulators": 1},
+            {"pc": 2, "emulators": 5, "extra": 1},
+            {"pc": True, "emulators": 1},
+        ):
+            invalid = {**claims, "connection_limits": invalid_limits}
+            invalid_payload = json.dumps(
+                invalid, separators=(",", ":"), sort_keys=True
+            ).encode()
+            with self.assertRaises(ValueError, msg=invalid_limits):
                 verify_lease(
                     f"{b64(invalid_payload)}.{b64(private.sign(invalid_payload))}",
                     {"lease-test": public},
@@ -2379,6 +2393,10 @@ class AppLogicTest(unittest.TestCase):
             self.assertEqual(remembered.local_status()["state"], "ACTIVE_OFFLINE")
             self.assertEqual(
                 remembered.local_status()["features"], ["base", "monitor-pvp"]
+            )
+            self.assertEqual(
+                remembered.local_status()["connection_limits"],
+                {"pc": 2, "emulators": 1},
             )
             remembered.require("captura")
             remembered.require("Monitor PvP", "monitor-pvp")

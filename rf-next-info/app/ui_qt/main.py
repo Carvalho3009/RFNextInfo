@@ -288,6 +288,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pending_capture_action: str | None = None
         self.license_active = False
         self.license_features: set[str] = set()
+        self.connection_limits = {"pc": 0, "emulators": 0}
         self.capture_recovery_attempted = False
         self.license_refresh_running = False
         self.last_license_refresh_at = 0.0
@@ -2852,11 +2853,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 mode_available = bool(
                     uid and dict(collections_by_uid.get(uid) or {}).get(kind)
                 )
-            available = enabled and mode_available
+            available = (
+                enabled
+                and mode_available
+                and (_client < 0 or self._client_allowed(_client))
+            )
             button.setEnabled(available)
             button.setToolTip(
                 ""
                 if available
+                else "Slot não incluído nesta licença."
+                if _client >= 0 and not self._client_allowed(_client)
                 else "Ainda não existem dados deste tipo disponíveis para envio."
             )
         selected_enabled = enabled and bool(self.selected_subsessions)
@@ -3316,6 +3323,11 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _send_mode(self, mode: str, client_index: int) -> None:
+        if client_index >= 0 and not self._client_allowed(client_index):
+            QtWidgets.QMessageBox.warning(
+                self, "Envio", "Este slot não está incluído na licença atual."
+            )
+            return
         if not self.site_profile.connected:
             QtWidgets.QMessageBox.warning(
                 self, "Envio", "Valide o token do Profile antes de enviar."
@@ -3882,11 +3894,22 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(0, self._load_combat_data)
 
     def _apply_license(self, status: dict[str, object]) -> None:
+        previous_active = self.license_active
+        previous_limits = dict(self.connection_limits)
         active = bool(status.get("active"))
         self.license_active = active
         self.license_features = {
             str(feature) for feature in (status.get("features") or [])
         }
+        limits = status.get("connection_limits")
+        self.connection_limits = (
+            {
+                "pc": int(limits.get("pc", 0)),
+                "emulators": int(limits.get("emulators", 0)),
+            }
+            if active and isinstance(limits, dict)
+            else {"pc": 0, "emulators": 0}
+        )
         message = str(status.get("message") or "Licença indisponível")
         self.top_license.setText(f"Licença — {message.lower()}")
         self.top_license.setProperty("role", "ok" if active else "muted")
@@ -3909,10 +3932,49 @@ class MainWindow(QtWidgets.QMainWindow):
         details.append(
             "Módulos: " + (", ".join(enabled_labels) if enabled_labels else "nenhum")
         )
+        details.append(
+            "Conexões: "
+            f"{self.connection_limits['pc']} clientes PC e "
+            f"{self.connection_limits['emulators']} emuladores"
+        )
         details.append("Comprovante local protegido; renovação online feita quando devida.")
         self.license_details.setText("\n".join(details))
         self._apply_module_access()
+        self._refresh_connection_access(
+            reset_tabs=(
+                previous_active != self.license_active
+                or previous_limits != self.connection_limits
+            )
+        )
         self._set_capture_controls()
+
+    def _client_allowed(self, index: int) -> bool:
+        if not self.license_active or not 0 <= index < CLIENT_SLOT_COUNT:
+            return False
+        if index < PC_SLOT_COUNT:
+            return index < self.connection_limits["pc"]
+        return index - PC_SLOT_COUNT < self.connection_limits["emulators"]
+
+    def _refresh_connection_access(self, *, reset_tabs: bool = False) -> None:
+        for index in range(CLIENT_SLOT_COUNT):
+            allowed = self._client_allowed(index)
+            self.client_buttons[index].setEnabled(allowed)
+            self.client_rename_buttons[index].setEnabled(allowed)
+            self.client_uid_buttons[index].setEnabled(allowed)
+            for controls in self.monitor_controls.values():
+                tabs = controls.get("tabs")
+                if tabs is not None:
+                    tabs.setTabEnabled(index, allowed if self.license_active else True)
+            for page in self.combat_page_layouts.values():
+                cards = page.get("cards") or []
+                if index < len(cards):
+                    cards[index].setEnabled(allowed)
+        if reset_tabs and self._client_allowed(self.active_client):
+            for controls in self.monitor_controls.values():
+                tabs = controls.get("tabs")
+                if tabs is not None:
+                    tabs.setCurrentIndex(self.active_client)
+        self._set_send_controls()
 
     def _apply_module_access(self) -> None:
         for index, mode in MONITOR_PAGES.items():
@@ -4070,6 +4132,9 @@ class MainWindow(QtWidgets.QMainWindow):
         controls = self.monitor_controls[mode]
         tabs = controls.get("tabs")
         if tabs is not None:
+            if enabled and not self._client_allowed(tabs.currentIndex()):
+                self._disable_monitor_mode(mode)
+                return
             self.monitor_client_enabled[mode][tabs.currentIndex()] = enabled
             self.monitor_enabled[mode] = any(self.monitor_client_enabled[mode])
         else:
@@ -4803,6 +4868,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._render_overview()
         self._render_combat()
         self._sync_combat_layout()
+        self._refresh_connection_access()
 
     @staticmethod
     def _format_bytes(value: int) -> str:
@@ -4814,6 +4880,8 @@ class MainWindow(QtWidgets.QMainWindow):
         return "0 B"
 
     def _select_client(self, index: int) -> None:
+        if not self._client_allowed(index):
+            return
         self.active_client = index
         self.log.debug("ui_client_selected index=%s", index)
         self._render_overview()

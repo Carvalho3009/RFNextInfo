@@ -23,6 +23,10 @@ MAX_NEXT_CHECK = timedelta(hours=6)
 CLOCK_SKEW = timedelta(minutes=5)
 FEATURE_ORDER = ("base", "monitor-pve", "monitor-pvp", "monitor-boss")
 FEATURE_SET = frozenset(FEATURE_ORDER)
+CONNECTION_TIERS = (
+    {"pc": 2, "emulators": 1},
+    {"pc": 2, "emulators": 5},
+)
 
 # Pública definitiva de lease; a privada correspondente permanece fora do
 # repositório e do cliente, sob custódia exclusiva do emissor.
@@ -72,6 +76,18 @@ def _features(value) -> list[str]:
     return normalized
 
 
+def _connection_limits(value) -> dict[str, int]:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"pc", "emulators"}
+        or type(value["pc"]) is not int
+        or type(value["emulators"]) is not int
+        or value not in CONNECTION_TIERS
+    ):
+        raise ValueError("Limites de conexão inválidos")
+    return dict(value)
+
+
 def verify_lease(
     lease: str,
     public_keys: dict[str, str] | str = LEASE_PUBLIC_KEYS,
@@ -102,6 +118,7 @@ def verify_lease(
             "valid_until",
             "entitlement_expires_at",
             "features",
+            "connection_limits",
         }
         if set(claims) != required:
             raise ValueError
@@ -126,6 +143,7 @@ def verify_lease(
         ):
             raise ValueError
         _features(claims["features"])
+        _connection_limits(claims["connection_limits"])
         for field in ("lease_id", "license_id", "installation_id"):
             if not isinstance(claims[field], str) or not 1 <= len(claims[field]) <= 200:
                 raise ValueError
@@ -365,6 +383,7 @@ class LicenseClient:
                 "valid_until": claims["valid_until"],
                 "next_check_at": claims["next_check_at"],
                 "features": claims["features"],
+                "connection_limits": claims["connection_limits"],
             }
         except (KeyError, TypeError, ValueError):
             state = self.license_state()
@@ -386,6 +405,7 @@ class LicenseClient:
                 "valid_until": None,
                 "next_check_at": None,
                 "features": [],
+                "connection_limits": {},
             }
 
     def license_state(self, *, now: datetime | None = None) -> str:

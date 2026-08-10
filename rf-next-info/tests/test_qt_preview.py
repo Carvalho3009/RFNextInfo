@@ -158,6 +158,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 "active": True,
                 "message": "Licença válida",
                 "features": ["base", "monitor-pve", "monitor-pvp", "monitor-boss"],
+                "connection_limits": {"pc": 2, "emulators": 5},
             })
             with mock.patch("app.ui_qt.main._process_memory_bytes", return_value=64 * 1024**2):
                 window._capture_tick()
@@ -393,6 +394,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             "active": True,
             "message": "Licença válida",
             "features": ["base", "monitor-pve", "monitor-pvp"],
+            "connection_limits": {"pc": 2, "emulators": 5},
         })
         with mock.patch.object(window, "_resume_active_monitors"):
             pve = window.monitor_controls["pve"]
@@ -709,6 +711,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
         create_application(["send-availability-test"])
         window = MainWindow(load_data=False)
         window.capture_timer.stop()
+        window._apply_license({
+            "active": True,
+            "message": "Licença válida",
+            "features": ["base"],
+            "connection_limits": {"pc": 2, "emulators": 1},
+        })
         window.site_profile.state = {"profile": "Profile", "token": "token"}
         window.snapshot = {
             "session_id": "session",
@@ -741,6 +749,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
         create_application(["send-live-test"])
         window = MainWindow(load_data=False)
         window.capture_timer.stop()
+        window._apply_license({
+            "active": True,
+            "message": "Licença válida",
+            "features": ["base"],
+            "connection_limits": {"pc": 2, "emulators": 1},
+        })
         calls = []
         window.site_profile.state = {"profile": "Profile", "token": "token"}
         window.capture_engine = SimpleNamespace(
@@ -1021,6 +1035,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             "active": True,
             "message": "Licença válida",
             "features": ["base", "monitor-pvp"],
+            "connection_limits": {"pc": 2, "emulators": 1},
         })
 
         self.assertFalse(window.nav_buttons[2].isHidden())
@@ -1030,6 +1045,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertTrue(window.nav_buttons[4].isHidden())
         self.assertFalse(window.monitor_controls["boss"]["overlay"].isEnabled())
         self.assertFalse(window.monitor_controls["boss"]["dps_overlay"].isEnabled())
+        window._select_category("emulator")
+        self.assertTrue(window.client_buttons[2].isEnabled())
+        self.assertTrue(all(not button.isEnabled() for button in window.client_buttons[3:]))
+        pvp_tabs = window.monitor_controls["pvp"]["tabs"]
+        self.assertTrue(pvp_tabs.isTabEnabled(2))
+        self.assertTrue(all(not pvp_tabs.isTabEnabled(index) for index in range(3, 7)))
         window.close()
 
     def test_f3_preferences_and_subsession_form_use_injected_files(self):

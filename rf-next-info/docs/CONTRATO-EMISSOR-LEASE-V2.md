@@ -64,8 +64,8 @@ nunca é convertida em autorização pelo site.
 
 O payload contém exatamente os campos normativos da SPEC: `v`, `iss`,
 `product`, `aud`, `key_id`, `lease_id`, `license_id`, `installation_id`,
-`issued_at`, `next_check_at`, `valid_until`, `entitlement_expires_at` e
-`features`. Datas
+`issued_at`, `next_check_at`, `valid_until`, `entitlement_expires_at`,
+`features` e `connection_limits`. Datas
 são ISO-8601 UTC com fuso. Deve valer:
 
 `issued_at <= next_check_at <= valid_until <= entitlement_expires_at`
@@ -78,6 +78,10 @@ e também:
 `features` é uma lista em ordem canônica. `base` é obrigatória e pode ser
 acompanhada por `monitor-pve`, `monitor-pvp` e `monitor-boss`. Valores
 desconhecidos, duplicados ou fora dessa ordem invalidam a lease.
+
+`connection_limits` contém exatamente `pc` e `emulators`. Os únicos valores
+aceitos são `{"pc":2,"emulators":1}` e `{"pc":2,"emulators":5}`.
+Esse direito é independente de `features` e da quantidade de instalações.
 
 ## Introspecção para o site
 

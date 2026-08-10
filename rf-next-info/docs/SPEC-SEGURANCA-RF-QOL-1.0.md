@@ -332,6 +332,13 @@ permanece implementado para eventual reativação do modo automático.
   mostra e opera somente os slots daquela origem.
 - O limite simultâneo é de dois clientes PC e cinco instâncias BlueStacks. Uma
   sexta instância não recebe slot nem pode contaminar os cinco slots aceitos.
+- O limite efetivo vem da lease assinada e aceita somente dois planos: dois
+  clientes PC com um emulador, ou dois clientes PC com cinco emuladores.
+  Módulos licenciados e instalações ativadas permanecem direitos separados.
+- Slots de emulador acima do plano permanecem visíveis, desabilitados e com a
+  explicação do limite. Excesso presente antes do início bloqueia captura e
+  monitores antes de qualquer efeito; excesso aberto depois não recebe porta
+  nem dados e gera aviso sem interromper os clientes já autorizados.
 - Npcap só pode entrar após licença OEM e gate específico.
 - É proibido injetar DLL, abrir/escrever memória do jogo, criar thread remota,
   instalar hook invasivo, desativar Defender ou usar ofuscação agressiva/UPX.

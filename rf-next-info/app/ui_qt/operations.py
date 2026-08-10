@@ -674,6 +674,27 @@ def _combined_route_groups(
     return (*pc, *emulators)
 
 
+def _enforce_connection_limits(
+    claims: dict[str, object], pc_clients: int, emulators: int
+) -> dict[str, int]:
+    limits = claims.get("connection_limits")
+    if (
+        not isinstance(limits, dict)
+        or type(limits.get("pc")) is not int
+        or type(limits.get("emulators")) is not int
+    ):
+        raise PermissionError("A licença não informa limites de conexão válidos")
+    pc_limit = limits["pc"]
+    emulator_limit = limits["emulators"]
+    if pc_clients > pc_limit or emulators > emulator_limit:
+        raise PermissionError(
+            "Sua licença permite até "
+            f"{pc_limit} clientes PC e {emulator_limit} emuladores. "
+            "Feche as conexões excedentes para continuar."
+        )
+    return {"pc": pc_limit, "emulators": emulator_limit}
+
+
 class MonitorEngine:
     """Stream Pktmon somente em memória, independente da captura histórica."""
 
@@ -719,6 +740,7 @@ class MonitorEngine:
 
     def start(self, features) -> dict[str, object]:
         features = self._authorize(features)
+        claims = self.license.require("limites de conexão", features[0])
         with self._lock:
             if self.active:
                 return self.snapshot(features)
@@ -732,10 +754,7 @@ class MonitorEngine:
             emulator_executable, (emulator_pids, emulator_local, emulator_remote) = max(
                 emulators.items(), key=lambda item: len(item[1][0])
             ) if emulators else ("", (set(), set(), set()))
-            if len(pids) > 2:
-                raise RuntimeError("Foram encontrados mais de dois clientes ProjectRF")
-            if len(emulator_pids) > 5:
-                raise RuntimeError("Foram encontrados mais de cinco emuladores")
+            _enforce_connection_limits(claims, len(pids), len(emulator_pids))
             routes = self.client_reader(executable, DEFAULT_PORTS) if executable else []
             emulator_routes = (
                 self.client_reader(emulator_executable, DEFAULT_PORTS)
@@ -805,6 +824,12 @@ class MonitorEngine:
         emulator_routes = (
             self.client_reader(self.emulator_executable, DEFAULT_PORTS)
             if self.emulator_executable else []
+        )
+        claims = self.license.require("limites de conexão")
+        _enforce_connection_limits(
+            claims,
+            len({int(route["pid"]) for route in routes}),
+            len({int(route["pid"]) for route in emulator_routes}),
         )
         _pids, groups = _merge_client_routes([], list(self.pc_client_ports), routes)
         _emulator_pids, emulator_groups = _merge_client_routes(
@@ -993,7 +1018,7 @@ class CaptureEngine:
         )
 
     def start(self) -> dict[str, object]:
-        self.license.require("captura")
+        claims = self.license.require("captura")
         with self._lock:
             if self.active:
                 raise RuntimeError("A captura já está ativa")
@@ -1008,10 +1033,7 @@ class CaptureEngine:
             emulator_executable, (emulator_pids, emulator_local, emulator_remote) = max(
                 emulators.items(), key=lambda item: len(item[1][0])
             ) if emulators else ("", (set(), set(), set()))
-            if len(pids) > 2:
-                raise RuntimeError("Foram encontrados mais de dois clientes ProjectRF")
-            if len(emulator_pids) > 5:
-                raise RuntimeError("Foram encontrados mais de cinco emuladores")
+            _enforce_connection_limits(claims, len(pids), len(emulator_pids))
             routes = self.client_reader(executable, DEFAULT_PORTS) if executable else []
             emulator_routes = (
                 self.client_reader(emulator_executable, DEFAULT_PORTS)
@@ -1125,6 +1147,12 @@ class CaptureEngine:
         emulator_routes = (
             self.client_reader(self.emulator_executable, DEFAULT_PORTS)
             if self.emulator_executable else []
+        )
+        claims = self.license.require("limites de conexão")
+        _enforce_connection_limits(
+            claims,
+            len({int(route["pid"]) for route in routes}),
+            len({int(route["pid"]) for route in emulator_routes}),
         )
         active_pids = {
             int(route["pid"]) for route in (*routes, *emulator_routes)

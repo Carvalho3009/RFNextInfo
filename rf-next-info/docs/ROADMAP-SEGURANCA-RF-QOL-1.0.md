@@ -274,6 +274,8 @@ Matriz mínima:
 - revogação online;
 - captura local com até dois clientes PC e cinco emuladores BlueStacks,
   mantendo slots e dados separados por categoria;
+- matriz dos planos assinados PC2+EMU1 e PC2+EMU5, com excesso bloqueado nos
+  motores e slots não licenciados desabilitados;
 - perda de licença durante captura;
 - bloqueio de leitura/processamento/exportação/envio;
 - preservação de brutos;
