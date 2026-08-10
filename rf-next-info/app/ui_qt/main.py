@@ -287,6 +287,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pending_export_cleanup = False
         self.pending_observation_session = ""
         self.pending_auto_market: tuple[str, str] | None = None
+        self.auto_market_retry_after = 0.0
         try:
             self.log_path = LOG_PATH
             self.log = configure_log(self.log_path, VERSION)
@@ -2757,9 +2758,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "codex": bool(collections.get(1)),
             "memory_chips": bool(collections.get(2)),
         }
-        capturing = bool(self.capture_engine and self.capture_engine.active)
         for (mode, _client), button in self.send_buttons.items():
-            available = enabled and (capturing or availability[mode])
+            available = enabled and availability[mode]
             button.setEnabled(available)
             button.setToolTip(
                 ""
@@ -3385,11 +3385,16 @@ class MainWindow(QtWidgets.QMainWindow):
         elif name == "auto_market":
             pending, self.pending_auto_market = self.pending_auto_market, None
             if error is not None:
+                self.auto_market_retry_after = time.monotonic() + 60
+                self.send_status_labels["market"].setText(
+                    f"Falha no envio automático: {error}"
+                )
                 self.log.error(
                     "auto_market_upload_failed error_type=%s",
                     type(error).__name__,
                 )
             elif pending:
+                self.auto_market_retry_after = 0.0
                 session, signature = pending
                 signatures = dict(
                     self.preferences.get("auto_market_signatures") or {}
@@ -3675,7 +3680,13 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         engine = self.capture_engine
         session = str((engine and engine.current_session) or "")
-        if not enabled or not session or not self.site_profile.connected or self.site_busy:
+        if (
+            not enabled
+            or not session
+            or not self.site_profile.connected
+            or self.site_busy
+            or time.monotonic() < self.auto_market_retry_after
+        ):
             return
         store = CaptureStore(self.database_path, readonly=True)
         try:
@@ -3686,6 +3697,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if not signature or sent.get(session) == signature:
             return
         self.pending_auto_market = (session, signature)
+        self.send_status_labels["market"].setText(
+            "Enviando Mercado automaticamente…"
+        )
         language = str(self.preferences.get("item_name_language") or "pt")
         self._run_site_operation(
             "auto_market",

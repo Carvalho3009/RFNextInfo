@@ -687,10 +687,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
             }],
             "collection_type_counts": {},
         }
+        window.capture_engine = SimpleNamespace(active=True)
         window._set_send_controls()
         self.assertTrue(window.send_buttons[("market", -1)].isEnabled())
         self.assertFalse(window.send_buttons[("codex", 0)].isEnabled())
         self.assertFalse(window.send_buttons[("memory_chips", 0)].isEnabled())
+        window.capture_engine = None
         window.close()
 
     def test_send_during_capture_reads_current_segment_before_upload(self):
@@ -728,6 +730,47 @@ class QtPreviewSmokeTest(unittest.TestCase):
             operation["callback"]()
 
         self.assertEqual(calls, ["read", "fresh"])
+        window.capture_engine = None
+        window.close()
+
+    def test_auto_market_shows_progress_and_waits_after_failure(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["auto-market-progress-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window.controls_initialized = True
+        window.setting_auto_market.setChecked(True)
+        window.capture_engine = SimpleNamespace(current_session="session")
+        window.site_profile = SimpleNamespace(connected=True)
+        window.preferences = {
+            "auto_market_signatures": {},
+            "item_name_language": "pt",
+        }
+        operations = []
+        window._run_site_operation = lambda name, callback: operations.append(name)
+        store = SimpleNamespace(
+            completed_market_signature=lambda _session: "signature",
+            close=lambda: None,
+        )
+
+        with mock.patch("app.ui_qt.main.CaptureStore", return_value=store):
+            window._maybe_auto_market_upload()
+            self.assertEqual(operations, ["auto_market"])
+            self.assertEqual(
+                window.send_status_labels["market"].text(),
+                "Enviando Mercado automaticamente…",
+            )
+            window._site_operation_finished(
+                "auto_market", None, ValueError("falha temporária")
+            )
+            self.assertIn(
+                "Falha no envio automático",
+                window.send_status_labels["market"].text(),
+            )
+            window._maybe_auto_market_upload()
+
+        self.assertEqual(operations, ["auto_market"])
         window.capture_engine = None
         window.close()
 

@@ -30,6 +30,14 @@
   restauração verificada e assinatura direta a partir do PEM protegido;
 - corrige o texto da ativação para informar o limite offline real de 24 horas;
 - adiciona vetor público, contrato do emissor, cerimônia de chaves e runbook de release.
+- corrige o envio ao site para validar a lease v2 no endpoint, produto e público
+  definitivos do RF QOL;
+- evita que a autenticação do Profile dispute a escrita do banco com importações
+  e alertas de Mercado;
+- mostra o estado do envio automático de Mercado e aguarda 60 segundos antes de
+  uma nova tentativa após falha;
+- mantém os envios de Codex e Memory Chips bloqueados até existir um pacote real
+  do respectivo tipo, mesmo durante uma captura ativa.
 
 ## 3.0.11 — beta
 
