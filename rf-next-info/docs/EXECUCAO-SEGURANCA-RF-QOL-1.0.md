@@ -64,6 +64,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 09 ago 2026 | Chaves | Owner decidiu pular por enquanto a cerimônia física de `update-2026-01`. O trabalho local pode continuar com chave descartável; chave definitiva, publicação e produção continuam bloqueadas. | Gate adiado, não dispensado |
 | 09 ago 2026 | F6 | NSIS 3.12 portátil localizado em `K:\MCP\_tools`. RC1 `1.0.0/1` e RC2 `1.0.1/2` foram construídas em worktrees separadas e instaladas sequencialmente em staging `DEV_SMOKE`: RC1 -> RC2 -> manifesto/compatibilidade/backup -> RC1. Hash final retornou exatamente à RC1 e o banco SQLite foi preservado. | Ensaio instalado local concluído |
 | 10 ago 2026 | F6 | Owner decidiu esgotar a validação local e deixar o teste externo para o futuro. Cliente passou 201 testes, emissor passou 15, UI Qt offscreen e executável instalado passaram no smoke, licença oficial/staging permaneceu saudável e a varredura de 22 materiais secretos encontrou zero ocorrências no código e artefatos. | Matriz local concluída |
+| 10 ago 2026 | F6 | Owner cancelou definitivamente a validação externa e aceitou a matriz local como escopo final. Windows limpos, observação externa de UAC/SmartScreen, dois clientes externos e revisor independente foram convertidos em riscos residuais aceitos. A decisão não autoriza publicação/produção nem substitui a chave definitiva de update. | G3 encerrado pelo owner |
 
 ## Evidências e comandos de validação
 
@@ -170,15 +171,15 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 - Os assets RF QOL gerados anteriormente foram removidos desta branch. A
   alteração é recuperável pelo Git e não afetou a beta em uso.
 
-## Pendências externas reais
+## Riscos residuais aceitos e gates restantes
 
 1. cerimônia testemunhada de `update-2026-01`, adiada pelo owner, continua
    obrigatória antes de release/produção; cópia externa/off-site do backup de
    lease também segue recomendada;
-2. Windows 10/11 limpos, licença real e teste com até dois clientes, incluindo
-   UAC e o fluxo de update/rollback acionado pela interface;
-3. confirmar o ensaio RC1 -> RC2 -> RC1 fora do ambiente do implementador;
-4. G4 do owner para qualquer publicação ou produção.
+2. não serão executados: Windows 10/11 limpos, observação externa de
+   UAC/SmartScreen, teste externo com dois clientes e revisão independente; o
+   owner aceitou expressamente esse risco residual em 10 ago 2026;
+3. G4 do owner continua obrigatório para qualquer publicação ou produção.
 
 ## Rollback
 

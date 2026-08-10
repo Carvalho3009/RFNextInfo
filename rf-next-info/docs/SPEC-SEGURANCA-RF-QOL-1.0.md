@@ -376,13 +376,21 @@ interpretada como licença válida no servidor.
 - Fluxo real ativação -> offline -> renovação -> revogação passa em staging.
 - Upload real é aceito com lease v2 e rejeitado com lease antiga.
 
+Exceção aprovada pelo owner em 10 ago 2026: não haverá validação externa.
+Windows 10/11 limpos, observação externa de UAC/SmartScreen, captura externa
+com dois clientes e revisor independente permanecem como recomendações não
+executadas, com risco residual aceito. A matriz local documentada passa a ser
+o escopo final de validação pré-release; esta exceção não autoriza publicação,
+produção nem substitui a chave definitiva de update.
+
 ## 13. Gates do owner
 
 - G0: aprovado em 09 ago 2026.
 - G1: aprovado para implementação isolada, staging e chaves de desenvolvimento.
 - G2: certificado Authenticode removido do escopo por decisão do owner; resta a
   cerimônia das chaves Ed25519 definitivas.
-- G3: aprovado para RC e testes locais que não afetem o programa em uso.
+- G3: encerrado pelo owner com a matriz local; validação externa cancelada em
+  10 ago 2026 e riscos residuais registrados.
 - G4: pendente; publicação/release e produção não fazem parte desta autorização.
 
 Nenhum gate autoriza automaticamente o seguinte.

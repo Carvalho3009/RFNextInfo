@@ -29,9 +29,9 @@ Karvalho, conforme decisão posterior do owner em 09 ago 2026.
 | M1 | SPEC e roadmap aprovados | Concluído | G0 |
 | M2 | Lease v2, chaves e autorização central | Concluído localmente; produção pendente | G1 |
 | M3 | Emissor/site v2 integrados | Concluído em staging isolado; produção pendente | G1 |
-| M4 | Update/rollback/ACL seguros | Concluído localmente; validação externa pendente | G1 |
+| M4 | Update/rollback/ACL seguros | Concluído localmente | G1 |
 | M5 | Build rastreável e conteúdo assinado | Parcial: portátil/instalador/SBOM/procedência prontos, chave Ed25519 definitiva pendente | G2 |
-| M6 | RC validada em ambiente real | Matriz local concluída; ambiente limpo externo pendente | G3 |
+| M6 | RC validada | Matriz local aceita como escopo final; validação externa cancelada | G3 encerrado |
 | M7 | Release RF QOL 1.0 | Pendente | G4 |
 
 ## Fase 0 — Baseline e proposta
@@ -250,9 +250,11 @@ Gate: G2 para uso das chaves Ed25519 definitivas.
 Estado real: pacote e instalador locais gerados com Python 3.13. Instalação,
 autoteste, desinstalação e o ciclo instalado RC1 -> RC2 -> RC1 passaram em
 destino isolado no Windows 11 atual; o rollback usou manifesto descartável,
-alvo exato e backup SQLite íntegro. Windows limpos 10/11, UAC, fluxo pela
-interface, licença/chaves de produção e teste com dois clientes seguem
-pendentes. Ativação, revogação e cutover passaram em staging.
+alvo exato e backup SQLite íntegro. Em 10 ago 2026, o owner aceitou essa matriz
+local como escopo final e cancelou a validação externa. Windows limpos 10/11,
+observação externa de UAC/SmartScreen, dois clientes externos e revisor
+independente não serão executados; ficam registrados como risco residual.
+Ativação, revogação e cutover passaram em staging.
 
 Objetivo: provar o sistema fora do ambiente do implementador.
 
@@ -284,7 +286,9 @@ Critérios de aceite:
 - hashes finais registrados;
 - rollback testado na instalação real.
 
-Gate: G3 antes do teste real; G4 antes de publicar.
+Decisão posterior do owner: os itens externos e o revisor independente foram
+dispensados em 10 ago 2026. G3 foi encerrado com as evidências locais; G4
+continua obrigatório antes de publicar.
 
 ## Fase 7 — Release e operação
 
@@ -313,7 +317,8 @@ Critérios de aceite:
 - G2 — Authenticode removido do escopo pelo owner; lease definitiva concluída
   e kit de update validado; chave definitiva de update permanece pendente da
   cerimônia física offline.
-- G3 — aprovado para RC e testes locais isolados.
+- G3 — encerrado com a matriz local; validação externa cancelada pelo owner e
+  riscos residuais aceitos em 10 ago 2026.
 - G4 — pendente; nenhuma publicação/release ou mudança de produção.
 
 ## Estado de custo e rollback
