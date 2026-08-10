@@ -182,6 +182,10 @@ desabilitadas e inacessíveis; a aba Boss DEVE ficar invisível. Atalhos,
 overlays e chamadas diretas ao motor DEVEM aplicar o mesmo gate, sem depender
 da visibilidade do botão.
 
+O Boss oferece overlays independentes de vida e DPS, cada um com posição
+própria. Envios permanecem ações explícitas por botão e NÃO possuem atalhos
+locais ou globais; atalhos de captura e monitores permanecem disponíveis.
+
 Alterações de módulos entram na próxima renovação online, prevista em até seis
 horas. Uma lease já emitida pode conservar os módulos anteriores somente até
 `valid_until`, limitado a 24 horas após `issued_at`.
@@ -200,7 +204,7 @@ O gate DEVE existir na camada compartilhada, não somente na interface:
 - exportação legada;
 - autoexportação;
 - upload rápido e envio de subsessão;
-- automações acionadas por atalhos.
+- ações de captura e monitores acionadas por atalhos.
 
 Chamadas diretas ao motor sem licença válida DEVEM falhar antes de criar ou
 alterar arquivos de saída. O servidor do site também DEVE introspectar a lease

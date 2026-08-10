@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import ctypes
-import ctypes.wintypes as wintypes
 import copy
 import csv
 import hashlib
 import json
 import os
-import queue
 import re
 import shutil
 import sys
@@ -66,15 +64,6 @@ VERSION = "1.0.0"
 RELEASE_SEQUENCE = 1
 DISCORD_URL = "https://discord.gg/D3hhdMgkj"
 ASSETS = ROOT / "assets"
-WM_HOTKEY = 0x0312
-WM_QUIT = 0x0012
-MOD_NOREPEAT = 0x4000
-GLOBAL_HOTKEY_BASE = 0x4B00
-
-
-def _function_key_vk(shortcut: str) -> int | None:
-    match = re.fullmatch(r"F([1-9]|1[0-2])", shortcut.upper())
-    return 0x6F + int(match.group(1)) if match else None
 
 CLASS_ICON_FILES = {
     "Punisher": "punisher.png",
@@ -842,13 +831,6 @@ class App(tk.Tk):
         self._paused = False
         self._paused_at: datetime | None = None
         self._paused_total_seconds = 0
-        self._bound_shortcuts: dict[str, str] = {}
-        self._global_hotkey_ids: dict[int, str] = {}
-        self._global_hotkey_poll: str | None = None
-        self._global_hotkey_events: queue.SimpleQueue[str] = queue.SimpleQueue()
-        self._global_hotkey_thread: threading.Thread | None = None
-        self._global_hotkey_thread_id = 0
-        self._global_hotkey_ready = threading.Event()
         self.active_character_uid: str | None = None
         self._active_client_index = 0
         self._game_choices: dict[str, str] = {}
@@ -1775,19 +1757,17 @@ class App(tk.Tk):
             row=1, column=0, columnspan=4, sticky="w", pady=(1, 8)
         )
         self.quick_mode_labels = {}
-        self.quick_shortcut_labels = {}
         self.quick_buttons = {}
-        for column, (mode, label, shortcut, description) in enumerate(
+        for column, (mode, label, description) in enumerate(
             (
                 (
                     "character",
                     "Personagem",
-                    "F1",
                     "Envie o personagem e os equipamentos detectados.",
                 ),
-                ("market", "Mercado", "F2", "Envie os eventos de mercado já lidos."),
-                ("codex", "Codex", "F3", "Envie os dados de Codex já lidos."),
-                ("memory_chips", "Memory Chips", "F4", "Envie os Memory Chips já lidos."),
+                ("market", "Mercado", "Envie os eventos de mercado já lidos."),
+                ("codex", "Codex", "Envie os dados de Codex já lidos."),
+                ("memory_chips", "Memory Chips", "Envie os Memory Chips já lidos."),
             )
         ):
             card = ttk.Frame(quick, style="Panel.TFrame", padding=7)
@@ -1802,10 +1782,6 @@ class App(tk.Tk):
             ttk.Label(
                 card_header, text=label, style="QuickTitle.TLabel"
             ).pack(side=LEFT)
-            shortcut_label = ttk.Label(
-                card_header, text=shortcut, style="Shortcut.TLabel"
-            )
-            shortcut_label.pack(side=RIGHT)
             state = ttk.Label(
                 card,
                 text="Pronto",
@@ -1844,7 +1820,6 @@ class App(tk.Tk):
             card.columnconfigure(0, weight=1)
             card.rowconfigure(1, minsize=64)
             self.quick_mode_labels[mode] = state
-            self.quick_shortcut_labels[mode] = shortcut_label
             quick.columnconfigure(column, weight=1, uniform="quick-send")
 
         queue = ttk.Frame(content, style="Panel.TFrame", padding=10)
@@ -2557,40 +2532,6 @@ class App(tk.Tk):
             lambda _event: self._item_language_changed(item_language.get()),
         )
         self.item_language_field = item_language
-        self.quick_shortcuts_title = ttk.Label(
-            preferences,
-            text="Atalhos dos envios rápidos",
-            style="PanelTitle.TLabel",
-        )
-        self.quick_shortcuts_title.pack(anchor="w", pady=(18, 6))
-        self.shortcut_vars = {}
-        for mode, label, default in (
-            ("character", "Personagem", "F1"),
-            ("market", "Mercado", "F2"),
-            ("codex", "Codex", "F3"),
-            ("memory_chips", "Memory Chips", "F4"),
-        ):
-            row = ttk.Frame(preferences, style="PanelBody.TFrame")
-            row.pack(fill=X, pady=2)
-            ttk.Label(row, text=label, style="PanelMuted.TLabel").pack(side=LEFT)
-            value = tk.StringVar(value=default)
-            field = ttk.Combobox(
-                row,
-                state="readonly",
-                style="Shortcut.TCombobox",
-                width=6,
-                values=tuple(f"F{number}" for number in range(1, 13)),
-                textvariable=value,
-            )
-            field.pack(side=RIGHT)
-            field.bind("<<ComboboxSelected>>", self._shortcuts_changed)
-            self.shortcut_vars[mode] = value
-        ttk.Button(
-            preferences,
-            text="Restaurar padrões",
-            style="Quiet.TButton",
-            command=self._restore_shortcuts,
-        ).pack(fill=X, pady=(10, 0))
 
         profile = ttk.Frame(
             columns, style="AccentPanel.TFrame", padding=10
@@ -2956,15 +2897,6 @@ class App(tk.Tk):
             saved_map,
             str(self.prefs.get("subsession_spot") or "").strip(),
         )
-        shortcuts = self.prefs.get("shortcuts") or {}
-        for mode, value in self.shortcut_vars.items():
-            candidate = str(shortcuts.get(mode, value.get())).upper()
-            value.set(
-                candidate
-                if re.fullmatch(r"F(?:[1-9]|1[0-2])", candidate)
-                else value.get()
-            )
-        self._bind_shortcuts()
         if self.site_profile.connected:
             self.profile.set(self.site_profile.profile)
             self.site_profile_status.configure(
@@ -3100,12 +3032,15 @@ class App(tk.Tk):
                     mode: self._quick_capture_duration(mode)
                     for mode in self.quick_capture_seconds
                 },
-                "shortcuts": {
-                    mode: value.get()
-                    for mode, value in self.shortcut_vars.items()
-                },
             }
         )
+        shortcuts = self.prefs.get("shortcuts")
+        if isinstance(shortcuts, dict):
+            self.prefs["shortcuts"] = {
+                mode: value
+                for mode, value in shortcuts.items()
+                if str(mode).startswith("monitor_")
+            }
         PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
         temporary = PREFERENCES_PATH.with_suffix(".tmp")
         temporary.write_text(
@@ -3233,9 +3168,6 @@ class App(tk.Tk):
         self.quick_duration_label.configure(
             text="Envia os dados já lidos pela captura contínua"
         )
-        self.quick_shortcuts_title.configure(
-            text="Atalhos dos envios rápidos"
-        )
         for mode, label in (
             ("character", "Personagem"),
             ("market", "Mercado"),
@@ -3252,151 +3184,6 @@ class App(tk.Tk):
         )
         self._refresh_quick_duration_ui()
         self._save_preferences()
-
-    def _shortcuts_changed(self, _event=None) -> None:
-        values = [value.get() for value in self.shortcut_vars.values()]
-        if len(values) != len(set(values)):
-            return messagebox.showwarning(
-                "Atalhos",
-                "Cada envio precisa de um atalho diferente.",
-            )
-        self._bind_shortcuts()
-        self._save_preferences()
-
-    def _restore_shortcuts(self) -> None:
-        for mode, shortcut in (
-            ("character", "F1"),
-            ("market", "F2"),
-            ("codex", "F3"),
-            ("memory_chips", "F4"),
-        ):
-            self.shortcut_vars[mode].set(shortcut)
-        self._bind_shortcuts()
-        self._save_preferences()
-
-    def _bind_shortcuts(self) -> None:
-        self._unregister_global_hotkeys()
-        for sequence in self._bound_shortcuts.values():
-            self.unbind(sequence)
-        self._bound_shortcuts = {}
-        for mode, value in self.shortcut_vars.items():
-            sequence = f"<{value.get()}>"
-            self.bind(
-                sequence,
-                lambda event, selected=mode: self._quick_shortcut(
-                    event, selected
-                ),
-            )
-            self._bound_shortcuts[mode] = sequence
-            if mode in self.quick_mode_labels:
-                label = self.quick_mode_labels[mode]
-                if "Enviando" not in label.cget("text"):
-                    label.configure(text="Pronto")
-                self.quick_shortcut_labels[mode].configure(text=value.get())
-        self._register_global_hotkeys()
-
-    def _register_global_hotkeys(self) -> None:
-        if os.name != "nt":
-            return
-        if self._global_hotkey_thread and self._global_hotkey_thread.is_alive():
-            self.log.warning("global_hotkey_previous_thread_still_active")
-            return
-        shortcuts = []
-        for offset, (mode, value) in enumerate(self.shortcut_vars.items(), 1):
-            virtual_key = _function_key_vk(value.get())
-            identifier = GLOBAL_HOTKEY_BASE + offset
-            if virtual_key:
-                shortcuts.append((identifier, mode, virtual_key, value.get()))
-        self._global_hotkey_events = queue.SimpleQueue()
-        self._global_hotkey_ready.clear()
-        self._global_hotkey_thread = threading.Thread(
-            target=self._global_hotkey_worker,
-            args=(shortcuts,),
-            daemon=True,
-            name="rfnext-global-hotkeys",
-        )
-        self._global_hotkey_thread.start()
-        self._global_hotkey_ready.wait(timeout=1)
-        if self._global_hotkey_ids:
-            self._global_hotkey_poll = self.after(50, self._poll_global_hotkeys)
-
-    def _global_hotkey_worker(self, shortcuts: list[tuple[int, str, int, str]]) -> None:
-        user32 = ctypes.windll.user32
-        message = wintypes.MSG()
-        user32.PeekMessageW(ctypes.byref(message), None, 0, 0, 0)
-        self._global_hotkey_thread_id = int(
-            ctypes.windll.kernel32.GetCurrentThreadId()
-        )
-        registered = {}
-        try:
-            for identifier, mode, virtual_key, shortcut in shortcuts:
-                if user32.RegisterHotKey(
-                    None, identifier, MOD_NOREPEAT, virtual_key
-                ):
-                    registered[identifier] = mode
-                else:
-                    self.log.warning(
-                        "global_hotkey_registration_failed mode=%s shortcut=%s",
-                        mode,
-                        shortcut,
-                    )
-            self._global_hotkey_ids = registered
-            self.log.info("global_hotkeys_registered count=%s", len(registered))
-            self._global_hotkey_ready.set()
-            while True:
-                result = user32.GetMessageW(ctypes.byref(message), None, 0, 0)
-                if result <= 0:
-                    break
-                if message.message == WM_HOTKEY:
-                    mode = registered.get(int(message.wParam))
-                    if mode:
-                        self._global_hotkey_events.put(mode)
-        finally:
-            for identifier in registered:
-                user32.UnregisterHotKey(None, identifier)
-            self._global_hotkey_ready.set()
-
-    def _poll_global_hotkeys(self) -> None:
-        self._global_hotkey_poll = None
-        while True:
-            try:
-                mode = self._global_hotkey_events.get_nowait()
-            except queue.Empty:
-                break
-            else:
-                self.send_mode_now(mode, notify=False)
-        if self._global_hotkey_thread and self._global_hotkey_thread.is_alive():
-            self._global_hotkey_poll = self.after(50, self._poll_global_hotkeys)
-
-    def _unregister_global_hotkeys(self) -> None:
-        callback = getattr(self, "_global_hotkey_poll", None)
-        if callback:
-            try:
-                self.after_cancel(callback)
-            except tk.TclError:
-                pass
-        self._global_hotkey_poll = None
-        thread = getattr(self, "_global_hotkey_thread", None)
-        if os.name == "nt" and thread and thread.is_alive():
-            ctypes.windll.user32.PostThreadMessageW(
-                self._global_hotkey_thread_id, WM_QUIT, 0, 0
-            )
-            thread.join(timeout=1)
-        self._global_hotkey_thread = thread if thread and thread.is_alive() else None
-        self._global_hotkey_thread_id = 0
-        self._global_hotkey_ids = {}
-
-    def destroy(self) -> None:
-        self._unregister_global_hotkeys()
-        super().destroy()
-
-    def _quick_shortcut(self, event, mode: str) -> None:
-        if isinstance(
-            event.widget,
-            (ttk.Entry, ttk.Combobox, ttk.Spinbox, tk.Listbox, tk.Text),
-        ):
-            return
-        self.send_mode_now(mode)
 
     def send_mode_now(
         self,

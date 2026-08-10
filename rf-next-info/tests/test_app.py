@@ -35,7 +35,6 @@ from app.main import (
     _collection_marks,
     _configured_capture_dir,
     _filter_subsessions,
-    _function_key_vk,
     _market_rows,
     _merge_client_routes,
     _safe_error_code,
@@ -116,23 +115,11 @@ class AppLogicTest(unittest.TestCase):
             fixture["expected_claims"],
         )
 
-    def test_function_key_virtual_codes_for_global_shortcuts(self):
-        self.assertEqual(_function_key_vk("F1"), 0x70)
-        self.assertEqual(_function_key_vk("f12"), 0x7B)
-        self.assertIsNone(_function_key_vk("F13"))
-        self.assertIn(
-            "self._register_global_hotkeys()",
-            inspect.getsource(App._bind_shortcuts),
-        )
-
-    def test_global_hotkey_queue_dispatches_on_ui_thread(self):
-        app = Mock()
-        app._global_hotkey_events = main_module.queue.SimpleQueue()
-        app._global_hotkey_events.put("market")
-        app._global_hotkey_thread.is_alive.return_value = True
-        App._poll_global_hotkeys(app)
-        app.send_mode_now.assert_called_once_with("market", notify=False)
-        app.after.assert_called_once_with(50, app._poll_global_hotkeys)
+    def test_legacy_send_hotkeys_are_removed(self):
+        source = inspect.getsource(App)
+        self.assertNotIn("_bind_shortcuts", source)
+        self.assertNotIn("_register_global_hotkeys", source)
+        self.assertNotIn("_quick_shortcut", source)
 
     def test_subsession_view_filters(self):
         items = [

@@ -264,6 +264,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.monitor_next_due = {"pve": 0.0, "pvp": 0.0, "boss": 0.0}
         self.monitor_controls: dict[str, dict[str, Any]] = {}
         self.boss_overlay: QtWidgets.QDialog | None = None
+        self.boss_dps_overlay: QtWidgets.QDialog | None = None
         self.pvp_overlay: QtWidgets.QDialog | None = None
         self.alert_last_fired: dict[str, float] = {}
         self.capture_busy = False
@@ -680,9 +681,11 @@ class MainWindow(QtWidgets.QMainWindow):
         controls.addWidget(_label("Atualizar a cada", "muted"))
         controls.addWidget(interval)
         overlay = None
+        dps_overlay = None
         if mode in {"pvp", "boss"}:
             shortcut = "Ctrl+Shift+F6" if mode == "pvp" else "Ctrl+Shift+F7"
-            overlay = QtWidgets.QPushButton(f"Abrir overlay  {shortcut}")
+            overlay_label = "Abrir overlay" if mode == "pvp" else "Overlay de vida"
+            overlay = QtWidgets.QPushButton(f"{overlay_label}  {shortcut}")
             overlay.setCheckable(True)
             if mode == "pvp":
                 overlay.setToolTip(
@@ -692,12 +695,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._toggle_pvp_overlay if mode == "pvp" else self._toggle_boss_overlay
             )
             controls.addWidget(overlay)
+            if mode == "boss":
+                dps_overlay = QtWidgets.QPushButton("Overlay de DPS")
+                dps_overlay.setCheckable(True)
+                dps_overlay.setToolTip(
+                    "Arraste o overlay com o botão esquerdo para mudar sua posição."
+                )
+                dps_overlay.toggled.connect(self._toggle_boss_dps_overlay)
+                controls.addWidget(dps_overlay)
         controls.addStretch(1)
         column.addLayout(controls)
         self.monitor_controls[mode] = {
             "enabled": enabled,
             "interval": interval,
             "overlay": overlay,
+            "dps_overlay": dps_overlay,
             "shortcut": monitor_shortcut,
             "tabs": client_tabs,
         }
@@ -1137,19 +1149,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.send_status_labels: dict[str, QtWidgets.QLabel] = {}
         self.send_buttons: dict[tuple[str, int], QtWidgets.QPushButton] = {}
         domains = (
-            ("character", "Personagem + equipamentos", "F1", False),
-            ("market", "Mercado", "F2", True),
-            ("codex", "Codex", "F3", False),
-            ("memory_chips", "Memory Chips", "F4", False),
+            ("character", "Personagem + equipamentos", False),
+            ("market", "Mercado", True),
+            ("codex", "Codex", False),
+            ("memory_chips", "Memory Chips", False),
         )
-        for index, (mode, title, shortcut, general) in enumerate(domains):
+        for index, (mode, title, general) in enumerate(domains):
             card = QtWidgets.QFrame(objectName="panel")
             card_layout = QtWidgets.QVBoxLayout(card)
             card_layout.setContentsMargins(16, 12, 16, 12)
             heading = QtWidgets.QHBoxLayout()
             heading.addWidget(_label(title, "subtitle"))
             heading.addStretch(1)
-            heading.addWidget(_label(shortcut, "shortcut"))
             card_layout.addLayout(heading)
             status = _label("Aguardando leitura", "info")
             self.send_status_labels[mode] = status
@@ -1457,12 +1468,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         shortcuts = QtWidgets.QFrame(objectName="panel")
         shortcuts_form = QtWidgets.QFormLayout(shortcuts)
-        shortcuts_form.addRow(_label("Atalhos", "subtitle"))
+        shortcuts_form.addRow(_label("Atalhos dos monitores", "subtitle"))
         self.setting_shortcuts: dict[str, QtWidgets.QComboBox] = {}
-        for mode, title, default in (("character", "Personagem", "F1"), ("market", "Mercado", "F2"), ("codex", "Codex", "F3"), ("memory_chips", "Memory Chips", "F4")):
-            combo = QtWidgets.QComboBox(); combo.addItems(tuple(f"F{number}" for number in range(1, 13))); combo.setCurrentText(default)
-            shortcuts_form.addRow(title, combo); self.setting_shortcuts[mode] = combo
-        shortcuts_form.addRow(_label("Monitores", "subtitle"))
         for mode, title in (
             ("monitor_pve", "Monitor PvE"),
             ("monitor_pvp", "Monitor PvP"),
@@ -1750,8 +1757,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self._start_capture()
         elif action == "stop":
             self._stop_capture()
-        elif action in {"character", "market", "codex", "memory_chips"}:
-            self._send_mode(action, -1 if action == "market" else self.active_client)
         elif action.startswith("monitor_"):
             mode = action.removeprefix("monitor_")
             controls = self.monitor_controls.get(mode)
@@ -3811,21 +3816,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 "" if allowed else "Módulo não incluído nesta licença."
             )
             controls = self.monitor_controls[mode]
-            for name in ("enabled", "interval", "overlay", "tabs"):
+            for name in ("enabled", "interval", "overlay", "dps_overlay", "tabs"):
                 control = controls.get(name)
                 if control is not None:
                     control.setEnabled(allowed)
             if not allowed:
                 self._disable_monitor_mode(mode)
-                overlay = controls.get("overlay")
-                if overlay is not None:
-                    overlay.blockSignals(True)
-                    overlay.setChecked(False)
-                    overlay.blockSignals(False)
+                for name in ("overlay", "dps_overlay"):
+                    overlay = controls.get(name)
+                    if overlay is not None:
+                        overlay.blockSignals(True)
+                        overlay.setChecked(False)
+                        overlay.blockSignals(False)
                 if mode == "pvp" and self.pvp_overlay:
                     self._toggle_pvp_overlay(False)
-                if mode == "boss" and self.boss_overlay:
-                    self._toggle_boss_overlay(False)
+                if mode == "boss":
+                    if self.boss_overlay:
+                        self._toggle_boss_overlay(False)
+                    if self.boss_dps_overlay:
+                        self._toggle_boss_dps_overlay(False)
         current = self.page_stack.currentIndex()
         if current in MONITOR_PAGES and not self.nav_buttons[current].isEnabled():
             self.page_stack.setCurrentIndex(0)
@@ -3988,7 +3997,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay_button.blockSignals(False)
             return
         overlay = _MovableOverlay(self)
-        overlay.setWindowTitle("RF QOL · Boss")
+        overlay.setWindowTitle("RF QOL · Boss · Vida")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
@@ -4008,14 +4017,59 @@ class MainWindow(QtWidgets.QMainWindow):
         self.boss_overlay_progress = QtWidgets.QProgressBar()
         self.boss_overlay_progress.setRange(0, 1000)
         self.boss_overlay_progress.setTextVisible(False)
-        self.boss_overlay_rate = _label("DPS — · Tempo restante —", "muted")
         layout.addWidget(self.boss_overlay_name)
         layout.addWidget(self.boss_overlay_hp)
         layout.addWidget(self.boss_overlay_progress)
-        layout.addWidget(self.boss_overlay_rate)
-        overlay.resize(430, 150)
+        overlay.resize(430, 125)
         self._restore_overlay_position(overlay, "boss_overlay_position")
         self.boss_overlay = overlay
+        overlay.show()
+        self._update_boss_overlay(
+            list(self.snapshot.get("combat_monitors") or [])
+        )
+
+    def _toggle_boss_dps_overlay(self, enabled: bool) -> None:
+        if not enabled:
+            if self.boss_dps_overlay:
+                self.boss_dps_overlay.close()
+                self.boss_dps_overlay = None
+            return
+        if not self._require_monitor_feature("boss"):
+            overlay_button = self.monitor_controls["boss"].get("dps_overlay")
+            if overlay_button is not None:
+                overlay_button.blockSignals(True)
+                overlay_button.setChecked(False)
+                overlay_button.blockSignals(False)
+            return
+        overlay = _MovableOverlay(self)
+        overlay.setWindowTitle("RF QOL · Boss · DPS")
+        overlay.setWindowFlags(
+            QtCore.Qt.WindowType.Tool
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+            | QtCore.Qt.WindowType.FramelessWindowHint
+        )
+        overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        overlay.setObjectName("monitorOverlay")
+        overlay.setStyleSheet("QDialog#monitorOverlay { background: transparent; }")
+        overlay.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+        overlay.setToolTip("Arraste com o botão esquerdo para mover.")
+        overlay.position_changed.connect(self._save_boss_dps_overlay_position)
+        layout = QtWidgets.QVBoxLayout(overlay)
+        layout.setContentsMargins(12, 10, 12, 10)
+        self.boss_dps_overlay_name = _label("Aguardando boss próximo", "subtitle")
+        self.boss_dps_overlay_rate = _label("DPS — · Tempo restante —", "data")
+        layout.addWidget(self.boss_dps_overlay_name)
+        layout.addWidget(self.boss_dps_overlay_rate)
+        overlay.resize(430, 95)
+        fallback = (
+            [self.boss_overlay.x() + 24, self.boss_overlay.y() + 24]
+            if self.boss_overlay else None
+        )
+        self._restore_overlay_position(
+            overlay, "boss_dps_overlay_position", fallback
+        )
+        self.boss_dps_overlay = overlay
         overlay.show()
         self._update_boss_overlay(
             list(self.snapshot.get("combat_monitors") or [])
@@ -4063,9 +4117,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _restore_overlay_position(
-        self, overlay: QtWidgets.QDialog, preference_key: str
+        self,
+        overlay: QtWidgets.QDialog,
+        preference_key: str,
+        fallback: list[int] | None = None,
     ) -> None:
-        position = self.preferences.get(preference_key)
+        position = self.preferences.get(preference_key, fallback)
         if isinstance(position, (list, tuple)) and len(position) == 2:
             try:
                 point = QtCore.QPoint(int(position[0]), int(position[1]))
@@ -4099,6 +4156,10 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(QtCore.QPoint)
     def _save_boss_overlay_position(self, position: QtCore.QPoint) -> None:
         self._save_overlay_position("boss_overlay_position", position)
+
+    @QtCore.Slot(QtCore.QPoint)
+    def _save_boss_dps_overlay_position(self, position: QtCore.QPoint) -> None:
+        self._save_overlay_position("boss_dps_overlay_position", position)
 
     def _set_capture_controls(self) -> None:
         engine = self.capture_engine
@@ -4854,7 +4915,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pvp_overlay_rows.addWidget(row)
 
     def _update_boss_overlay(self, monitors: list[dict[str, Any]]) -> None:
-        if not self.boss_overlay:
+        if not self.boss_overlay and not self.boss_dps_overlay:
             return
         boss = next(
             (
@@ -4865,34 +4926,42 @@ class MainWindow(QtWidgets.QMainWindow):
             None,
         )
         if not boss:
-            self.boss_overlay_name.setText("Aguardando boss próximo")
-            self.boss_overlay_hp.setText("HP —")
-            self.boss_overlay_progress.setValue(0)
-            self.boss_overlay_rate.setText("DPS — · Tempo restante —")
+            if self.boss_overlay:
+                self.boss_overlay_name.setText("Aguardando boss próximo")
+                self.boss_overlay_hp.setText("HP —")
+                self.boss_overlay_progress.setValue(0)
+            if self.boss_dps_overlay:
+                self.boss_dps_overlay_name.setText("Aguardando boss próximo")
+                self.boss_dps_overlay_rate.setText("DPS — · Tempo restante —")
             return
         current, maximum, percent = (
             boss.get("current_hp"),
             boss.get("max_hp"),
             boss.get("hp_percent"),
         )
-        self.boss_overlay_name.setText(str(boss.get("name") or "Boss confirmado"))
-        self.boss_overlay_hp.setText(
-            f"HP {self._format_count(current)} / {self._format_count(maximum)}"
-        )
-        self.boss_overlay_progress.setValue(
-            max(0, min(1000, round(float(percent) * 10)))
-            if isinstance(percent, (int, float))
-            else 0
-        )
+        boss_name = str(boss.get("name") or "Boss confirmado")
+        if self.boss_overlay:
+            self.boss_overlay_name.setText(boss_name)
+            self.boss_overlay_hp.setText(
+                f"HP {self._format_count(current)} / {self._format_count(maximum)}"
+            )
+            self.boss_overlay_progress.setValue(
+                max(0, min(1000, round(float(percent) * 10)))
+                if isinstance(percent, (int, float))
+                else 0
+            )
         eta = boss.get("eta_seconds")
         eta_text = (
             f"{int(eta) // 60:02d}:{int(eta) % 60:02d}"
             if isinstance(eta, (int, float))
             else "—"
         )
-        self.boss_overlay_rate.setText(
-            f"DPS {self._format_count(boss.get('dps_hp'))} · Tempo restante {eta_text}"
-        )
+        if self.boss_dps_overlay:
+            self.boss_dps_overlay_name.setText(boss_name)
+            self.boss_dps_overlay_rate.setText(
+                f"DPS {self._format_count(boss.get('dps_hp'))} "
+                f"· Tempo restante {eta_text}"
+            )
 
     def _render_bosses(self, widgets: dict[str, Any], bosses: list[dict[str, Any]]) -> None:
         layout = widgets["boss_layout"]

@@ -36,10 +36,6 @@ LOG = logging.getLogger("rfqol")
 LOG.addHandler(logging.NullHandler())
 
 DEFAULT_GLOBAL_SHORTCUTS = {
-    "character": "F1",
-    "market": "F2",
-    "codex": "F3",
-    "memory_chips": "F4",
     "monitor_pve": "Ctrl+F5",
     "monitor_pvp": "Ctrl+F6",
     "monitor_boss": "Ctrl+F7",
@@ -557,7 +553,11 @@ class GlobalHotkeys:
         if os.name != "nt" or (self.thread and self.thread.is_alive()):
             return
         self.shortcuts = dict(DEFAULT_GLOBAL_SHORTCUTS)
-        self.shortcuts.update(shortcuts or {})
+        self.shortcuts.update({
+            action: shortcut
+            for action, shortcut in (shortcuts or {}).items()
+            if action in DEFAULT_GLOBAL_SHORTCUTS
+        })
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
 
@@ -585,7 +585,11 @@ class GlobalHotkeys:
     @staticmethod
     def definitions(shortcuts: dict[str, str]) -> list[tuple[int, str, int, int]]:
         configured = dict(DEFAULT_GLOBAL_SHORTCUTS)
-        configured.update(shortcuts)
+        configured.update({
+            action: shortcut
+            for action, shortcut in shortcuts.items()
+            if action in DEFAULT_GLOBAL_SHORTCUTS
+        })
         definitions = [
             (0x525101, "start", 0x77, 0x0002 | 0x4000),
             (0x525102, "stop", 0x78, 0x0002 | 0x4000),

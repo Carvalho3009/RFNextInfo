@@ -66,6 +66,7 @@ Estado: em execução local isolada; sem publicação ou alteração de produç�
 | 10 ago 2026 | F6 | Owner decidiu esgotar a validação local e deixar o teste externo para o futuro. Cliente passou 201 testes, emissor passou 15, UI Qt offscreen e executável instalado passaram no smoke, licença oficial/staging permaneceu saudável e a varredura de 22 materiais secretos encontrou zero ocorrências no código e artefatos. | Matriz local concluída |
 | 10 ago 2026 | F6 | Owner cancelou definitivamente a validação externa e aceitou a matriz local como escopo final. Windows limpos, observação externa de UAC/SmartScreen, dois clientes externos e revisor independente foram convertidos em riscos residuais aceitos. A decisão não autoriza publicação/produção nem reativar o modo automático sem sua chave definitiva. | G3 encerrado pelo owner |
 | 10 ago 2026 | F4/F5 | Owner escolheu instalação manual para a 1.0. Cliente passou a bloquear consulta, download, execução e rollback automáticos; a interface abre o Discord oficial. O build manual gera instalador, procedência e `SHA256SUMS.txt` sem exigir chave de update. | Concluído local |
+| 10 ago 2026 | Interface | Owner separou o overlay Boss em vida e DPS, com posições independentes, e removeu os atalhos F1–F4 de envio. Botões de envio e atalhos de captura/monitores foram preservados. | Em implementação local |
 
 ## Evidências e comandos de validação
 

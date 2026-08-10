@@ -10,6 +10,9 @@
 - bloqueia captura, leitura, monitores, exportação e envio sem licença válida no motor compartilhado;
 - separa Base, Monitor PvE, Monitor PvP e Monitor Boss na lease assinada; sem
   permissão, PvE/PvP continuam visíveis e bloqueados enquanto Boss fica oculto;
+- separa o overlay Boss em dois controles móveis e independentes: vida e DPS;
+- remove os atalhos F1–F4 dos envios, preservando os botões e os atalhos de
+  captura e monitores;
 - separa as chaves de licença e atualização e remove a chave mutável do estado local;
 - implementa manifesto de update v2, anti-downgrade e reverificação de tamanho/hash;
 - substitui o rollback por cópia executável por instalador anterior, manifesto

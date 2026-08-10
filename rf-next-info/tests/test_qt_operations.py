@@ -303,7 +303,7 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertEqual(started["capture_client_ports"], [])
             self.assertEqual(started["capture_client_pids"], [])
 
-    def test_configured_send_hotkeys_are_global(self):
+    def test_send_hotkeys_are_ignored_and_monitor_hotkeys_remain_global(self):
         definitions = GlobalHotkeys.definitions({
             "character": "F5", "market": "F6",
             "codex": "F7", "memory_chips": "F10",
@@ -312,8 +312,10 @@ class CaptureEngineTest(unittest.TestCase):
             "monitor_boss": "Ctrl+F12",
         })
         actions = {action: (key, modifiers) for _, action, key, modifiers in definitions}
-        self.assertEqual(actions["character"], (0x74, 0x4000))
-        self.assertEqual(actions["memory_chips"], (0x79, 0x4000))
+        self.assertNotIn("character", actions)
+        self.assertNotIn("market", actions)
+        self.assertNotIn("codex", actions)
+        self.assertNotIn("memory_chips", actions)
         self.assertEqual(actions["start"], (0x77, 0x4002))
         self.assertEqual(actions["monitor_pve"], (0x79, 0x4001))
         self.assertEqual(actions["monitor_pvp"], (0x7A, 0x4004))

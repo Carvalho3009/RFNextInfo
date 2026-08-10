@@ -87,6 +87,27 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.exit_requested = True
         window.close()
 
+    def test_send_shortcuts_are_absent_from_ui_and_settings(self):
+        from PySide6 import QtWidgets
+
+        from app.ui_qt.main import MainWindow, create_application
+        from app.ui_qt.operations import DEFAULT_GLOBAL_SHORTCUTS
+
+        create_application(["send-shortcuts-removed-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        self.assertEqual(
+            set(DEFAULT_GLOBAL_SHORTCUTS),
+            {"monitor_pve", "monitor_pvp", "monitor_boss"},
+        )
+        self.assertEqual(set(window.setting_shortcuts), set(DEFAULT_GLOBAL_SHORTCUTS))
+        sends_page = window.page_stack.widget(1)
+        labels = {
+            label.text() for label in sends_page.findChildren(QtWidgets.QLabel)
+        }
+        self.assertTrue({"F1", "F2", "F3", "F4"}.isdisjoint(labels))
+        window.close()
+
     @unittest.skipUnless(os.name == "nt", "Contador de RAM disponível no Windows")
     def test_process_memory_reader_returns_current_working_set(self):
         from app.ui_qt.main import _process_memory_bytes
@@ -212,12 +233,19 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_pvp_overlay(False)
 
             window._toggle_boss_overlay(True)
+            window._toggle_boss_dps_overlay(True)
+            self.assertNotEqual(window.boss_overlay.pos(), window.boss_dps_overlay.pos())
             self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
             self.assertEqual(window.boss_overlay_hp.text(), "HP 750.000 / 1.000.000")
             self.assertEqual(window.boss_overlay_progress.value(), 750)
-            self.assertIn("25.000", window.boss_overlay_rate.text())
+            self.assertEqual(window.boss_dps_overlay_name.text(), "Mecha Corruptor")
+            self.assertIn("25.000", window.boss_dps_overlay_rate.text())
             self.assertEqual(
                 window.boss_overlay.cursor().shape(),
+                QtCore.Qt.CursorShape.SizeAllCursor,
+            )
+            self.assertEqual(
+                window.boss_dps_overlay.cursor().shape(),
                 QtCore.Qt.CursorShape.SizeAllCursor,
             )
             window.snapshot["combat_monitors"][0]["bosses"][0]["current_hp"] = 500_000
@@ -247,11 +275,38 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 load_preferences(root / "preferences.json")["boss_overlay_position"],
                 [boss_position.x(), boss_position.y()],
             )
+            boss_dps_position = boss_position + QtCore.QPoint(80, 80)
+            window.boss_dps_overlay.mousePressEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                position=lambda: QtCore.QPointF(10, 10),
+                accept=lambda: None,
+            ))
+            window.boss_dps_overlay.mouseMoveEvent(SimpleNamespace(
+                buttons=lambda: QtCore.Qt.MouseButton.LeftButton,
+                globalPosition=lambda: QtCore.QPointF(
+                    boss_dps_position + QtCore.QPoint(10, 10)
+                ),
+                accept=lambda: None,
+            ))
+            window.boss_dps_overlay.mouseReleaseEvent(SimpleNamespace(
+                button=lambda: QtCore.Qt.MouseButton.LeftButton,
+                accept=lambda: None,
+            ))
+            self.assertEqual(window.boss_dps_overlay.pos(), boss_dps_position)
+            self.assertEqual(
+                load_preferences(root / "preferences.json")["boss_dps_overlay_position"],
+                [boss_dps_position.x(), boss_dps_position.y()],
+            )
             window._toggle_boss_overlay(False)
+            window._toggle_boss_dps_overlay(False)
             window._toggle_boss_overlay(True)
+            window._toggle_boss_dps_overlay(True)
             self.assertEqual(window.boss_overlay.pos(), boss_position)
+            self.assertEqual(window.boss_dps_overlay.pos(), boss_dps_position)
             self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
+            self.assertEqual(window.boss_dps_overlay_name.text(), "Mecha Corruptor")
             window._toggle_boss_overlay(False)
+            window._toggle_boss_dps_overlay(False)
             window.close()
 
     def test_monitor_keybinds_and_auto_market_setting_are_persisted(self):
@@ -890,6 +945,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertFalse(window.nav_buttons[3].isHidden())
         self.assertTrue(window.nav_buttons[3].isEnabled())
         self.assertTrue(window.nav_buttons[4].isHidden())
+        self.assertFalse(window.monitor_controls["boss"]["overlay"].isEnabled())
+        self.assertFalse(window.monitor_controls["boss"]["dps_overlay"].isEnabled())
         window.close()
 
     def test_f3_preferences_and_subsession_form_use_injected_files(self):
