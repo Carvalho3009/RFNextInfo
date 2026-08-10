@@ -663,6 +663,16 @@
     #personalCraftResult table { min-width: 1000px; table-layout: auto; }
     #personalCraftResult th, #personalCraftResult td { white-space: normal; }
     .guide-screen { order: 7; border: 1px solid var(--gold); background: rgb(13 17 16 / 94%); }
+    .map-screen { order: 7; min-height: calc(100vh - 24px); overflow: hidden; border: 1px solid var(--gold-dark); background: #071013; }
+    .map-screen iframe { display: block; width: 100%; height: calc(100vh - 24px); min-height: 720px; border: 0; background: #071013; }
+    @media (min-width: 681px) {
+      body.map-active { overflow: hidden; }
+      body.map-active main { width: calc(100% - 16px); height: 100vh; padding: 8px 0; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 12px; }
+      body.map-active main > .app-header { margin-bottom: 8px; }
+      body.map-active main > .screen-tabs { top: 8px; max-height: calc(100vh - 16px); }
+      body.map-active .map-screen { grid-row: 2; height: 100%; min-height: 0; }
+      body.map-active .map-screen iframe { height: 100%; min-height: 0; }
+    }
     .guide-hero { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, .75fr); gap: 24px; padding: clamp(20px, 3vw, 38px); border-bottom: 1px solid var(--gold-dark); background: linear-gradient(115deg, rgb(212 166 77 / 10%), transparent 48%), var(--ink-soft); }
     .guide-kicker, .class-kicker { margin: 0 0 8px; color: var(--water); font: 800 .72rem/1 system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
     .guide-hero h2 { max-width: 780px; margin: 0; color: var(--bone); font-size: clamp(1.75rem, 4vw, 3.4rem); line-height: .96; letter-spacing: -.02em; }
@@ -1138,6 +1148,35 @@
       gap: 6px;
       margin-top: 8px;
     }
+
+    .admin-map-screen { order: 7; border: 1px solid var(--gold); background: rgb(13 17 16 / 94%); }
+    .admin-map-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: clamp(20px, 3vw, 34px); border-bottom: 1px solid var(--gold-dark); background: linear-gradient(115deg, rgb(212 166 77 / 10%), transparent 50%), var(--ink-soft); }
+    .admin-map-hero h2 { margin: 0; color: var(--bone); font-size: clamp(1.65rem, 3vw, 2.8rem); }
+    .admin-map-hero p { max-width: 760px; margin: 10px 0 0; color: var(--muted); font: .86rem/1.55 system-ui, sans-serif; }
+    .admin-map-body { padding: clamp(16px, 2.5vw, 28px); }
+    .admin-map-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto; gap: 12px; align-items: end; }
+    .admin-map-toolbar label { color: var(--muted); font: 700 .72rem/1.25 system-ui, sans-serif; }
+    .admin-map-toolbar input { min-height: 42px; margin-top: 6px; }
+    .admin-map-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; max-height: calc(100vh - 330px); min-height: 320px; margin-top: 16px; padding-right: 4px; overflow: auto; }
+    .admin-map-family { border: 1px solid var(--gold-dark); background: var(--ink); }
+    .admin-map-family > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 12px; cursor: pointer; color: var(--bone); font: 800 .78rem/1.25 system-ui, sans-serif; }
+    .admin-map-family > summary small { color: var(--muted); font-size: .68rem; }
+    .admin-map-variants { display: grid; gap: 7px; padding: 0 12px 12px 38px; }
+    .admin-map-variant { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; color: var(--bone); font: .72rem/1.35 system-ui, sans-serif; }
+    .admin-map-variant.unavailable { color: var(--muted); }
+    .admin-map-family input, .admin-map-variant input { width: 17px; height: 17px; accent-color: var(--gold); }
+    .admin-map-actions { display: flex; gap: 8px; }
+    .admin-map-actions button { width: auto; min-height: 42px; }
+    .admin-map-status { display: block; min-height: 1.4em; margin-top: 12px; color: var(--muted); font: .74rem/1.4 system-ui, sans-serif; }
+    .admin-profile-screen-body .admin-profiles { margin: 0; padding: 16px; }
+    .admin-profile-screen-body .admin-profile-form { grid-template-columns: minmax(220px, 1fr) auto; align-items: end; margin: 0; }
+    .admin-profile-screen-body .admin-profile-form button { width: auto; min-height: 42px; }
+    .admin-profile-access { display: grid; gap: 12px; margin-top: 18px; padding: 14px; border: 1px solid var(--gold-dark); background: var(--ink); }
+    .admin-profile-access > label { max-width: 480px; color: var(--muted); font: 700 .72rem/1.25 system-ui, sans-serif; }
+    .admin-profile-access select { margin-top: 6px; }
+    .admin-profile-access .filter-category-cards { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .admin-profile-screen-body .admin-profile-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 10px; }
+    .admin-profile-screen-body .admin-profile-row-actions button { width: auto; min-height: 34px; padding: 7px 10px; }
 
     .admin-profile-row,
     .archived-character-row {
@@ -1637,6 +1676,12 @@
       .personal-craft-grid, .personal-craft-summary { grid-template-columns: 1fr; }
       .personal-craft-form { grid-template-columns: 1fr; }
       .personal-craft-form .wide { grid-column: auto; }
+      .admin-map-hero { align-items: flex-start; flex-direction: column; }
+      .admin-map-toolbar, .admin-map-list { grid-template-columns: 1fr; }
+      .admin-map-list { max-height: none; min-height: 0; }
+      .admin-map-actions { display: grid; grid-template-columns: 1fr 1fr; }
+      .admin-map-actions button { width: 100%; }
+      .admin-profile-screen-body .admin-profile-form { grid-template-columns: 1fr; }
       .equipment-comparison-table { min-width: 640px; table-layout: auto; }
       .equipment-comparison-table th:nth-child(1), .equipment-comparison-table td:nth-child(1),
       .equipment-comparison-table th:nth-child(3), .equipment-comparison-table td:nth-child(3) { display: table-cell; }
@@ -1698,8 +1743,14 @@
       </details>
       <details class="nav-group" name="main-menu">
         <summary>Extras</summary>
+        <button id="mapScreenTab" type="button" role="tab" aria-selected="false" aria-controls="mapScreen">Mapa Interativo</button>
         <button id="gameDataScreenTab" type="button" role="tab" aria-selected="false" aria-controls="gameDataScreen">Banco de Dados</button>
         <button id="guideScreenTab" type="button" role="tab" aria-selected="false" aria-controls="guideScreen">Guia de Classes</button>
+      </details>
+      <details id="adminNavGroup" class="nav-group" name="main-menu" hidden>
+        <summary>Administração</summary>
+        <button id="adminProfilesScreenTab" type="button" role="tab" aria-selected="false" aria-controls="adminProfilesScreen">Profiles</button>
+        <button id="adminMapScreenTab" type="button" role="tab" aria-selected="false" aria-controls="adminMapScreen">Controle do mapa</button>
       </details>
       <button id="salvageScreenTab" type="button" role="tab" aria-selected="false" aria-controls="salvageScreen" hidden>Salvage</button>
       <button id="generalImport" class="general-import" type="button">Importar CSV / JSON</button>
@@ -1707,15 +1758,6 @@
       <small id="generalImportStatus" class="general-import-status" aria-live="polite">Arquivos gerados pelos programas RF NEXT.</small>
       <span id="currentUser" class="current-user">Profile não identificado</span>
       <a id="switchAccount" class="account-switch" href="/account/switch">Trocar conta</a>
-      <details id="adminProfiles" class="admin-profiles" hidden>
-        <summary>Controle de profiles</summary>
-        <form id="adminProfileForm" class="admin-profile-form">
-          <label>Profile ativo<select id="adminProfileSelect"></select></label>
-          <button type="submit">Abrir profile</button>
-          <small id="adminProfileStatus" class="admin-profile-status" aria-live="polite"></small>
-        </form>
-        <div id="adminProfileList" class="admin-profile-list"></div>
-      </details>
     </nav>
     <div id="characterTabs" class="tabs-row character-tabs" role="tablist" aria-label="Personagens"></div>
     <details class="farm-tools" data-screen="mine" hidden>
@@ -2400,6 +2442,48 @@
         </div>
       </div>
     </section>
+    <section id="adminProfilesScreen" class="admin-map-screen" hidden>
+      <header class="admin-map-hero">
+        <div><p class="guide-kicker">Área exclusiva do administrador</p><h2>Controle de profiles</h2><p>Abra, arquive ou apague profiles e escolha quais abas cada um poderá acessar.</p></div>
+        <span class="game-data-version">Acesso por profile</span>
+      </header>
+      <div class="admin-map-body admin-profile-screen-body">
+        <div id="adminProfiles" class="admin-profiles" hidden>
+          <form id="adminProfileForm" class="admin-profile-form">
+            <label>Profile ativo<select id="adminProfileSelect"></select></label>
+            <button type="submit">Abrir profile</button>
+          </form>
+          <section class="admin-profile-access">
+            <label>Configurar acesso de<select id="adminAccessProfile"></select></label>
+            <div class="admin-map-actions"><button id="saveAdminProfileAccess" type="button">Salvar acessos</button><button id="enableAllProfileTabs" class="secondary" type="button">Marcar todas</button></div>
+            <fieldset class="filter-check-group"><legend>Abas permitidas</legend><div id="adminProfileAccessOptions" class="filter-category-cards"></div></fieldset>
+          </section>
+          <small id="adminProfileStatus" class="admin-profile-status" aria-live="polite"></small>
+          <div id="adminProfileList" class="admin-profile-list"></div>
+        </div>
+      </div>
+    </section>
+    <section id="adminMapScreen" class="admin-map-screen" hidden>
+      <header class="admin-map-hero">
+        <div><p class="guide-kicker">Área exclusiva do administrador</p><h2>Controle do mapa</h2><p>Escolha quais locais e andares ficam disponíveis no Mapa Interativo para todos os profiles.</p></div>
+        <span class="game-data-version">Visibilidade global</span>
+      </header>
+      <div class="admin-map-body">
+        <div class="admin-map-toolbar">
+          <label>Buscar local ou andar<input id="adminMapSearch" type="search" placeholder="Ex.: Nemesis ou 4º Andar" aria-label="Buscar mapa"></label>
+          <div class="admin-map-actions">
+            <button id="saveAdminMaps" type="button">Salvar alterações</button>
+            <button id="enableAllAdminMaps" class="secondary" type="button">Ativar todos</button>
+          </div>
+        </div>
+        <small id="adminMapStatus" class="admin-map-status" aria-live="polite"></small>
+        <div id="adminMapList" class="admin-map-list"></div>
+      </div>
+    </section>
+    <section id="mapScreen" class="map-screen" hidden>
+      <iframe id="mapFrame" data-src="/map-interativo/visibility-v2/" title="Mapa Interativo RF NEXT" loading="lazy"></iframe>
+    </section>
+
     <section id="gameDataScreen" class="game-data-screen" hidden>
       <header class="game-data-hero">
         <div><p class="guide-kicker">Dados extraídos e cruzados</p><h2>Banco de dados do RF NEXT</h2><p>Consulte itens, NPCs, habilidades, mapas, missões e coleções da versão analisada. Abra um registro para ver seus vínculos com spawns, loot e requisitos de coleção.</p></div>
@@ -2881,7 +2965,7 @@
     }
     let history = [], characters = [], archivedCharacters = [], customLocations = [], mobDatabase = [], codex = {}, codexShopping = {}, codexShoppingBought = {}, manualShopping = {}, codexSnapshots = {}, characterShares = {}, captureReceipts = {}, lastMarketReceipt = {}, historyColumnLayout = {}, availableProfiles = [], sharedCharacters = [], adminProfileRecords = [], farmItems = [], editingId = null, editingMobId = null, editingLocation = '', activeCharacter = '', activeSharedCharacter = '', historyCharacter = '', historyScope = 'personal', currentScreen = 'history', adminActor = '';
     let remoteReady = false, shareHistory = false, remoteSaveTimer, remoteSaveQueue = Promise.resolve(), generalHistory = [], generalLoaded = false, gameDataLoaded = false, marketLoaded = false, marketListings = [], marketTaxonomy = {}, marketSnapshotCount = 0, marketTotalRegistered = 0, marketUpdatedAt = '', marketServerSummaries = {}, marketFavorites = [], marketAlerts = [], arcaneNodeCurrentUnitPrice = null, arcaneNodeCurrentPrime = '', salvageLoaded = false, salvageOffset = 0, salvageMaterialOptions = [], salvageWatchedMaterials = [], selectedSalvageMaterial = null, craftLoaded = false, craftTaxonomy = {}, personalCraftRecipes = [], personalCraftMaterialResults = [], personalCraftRecipeResults = [], lastPersonalCraftAnalysis = null, memoryChipLoaded = false, memoryChipData = null, memoryChipVisible = 30, codexLoaded = false, codexCollections = [], codexVisible = 100, codexView = 'detail', codexMarketCapturedAt = null, codexAutoPlan = null, characterLoadoutCatalog = {}, lastOcrResult, pastedOcrImage;
-    let discordAlertEditingId = '', discordAlertFiltersLoaded = false, currentUserIsAdmin = false, discordAlertEvents = [];
+    let discordAlertEditingId = '', discordAlertFiltersLoaded = false, currentUserIsAdmin = false, discordAlertEvents = [], adminMapFamilies = [], adminDisabledMapIds = new Set();
     let contentLanguage = localStorage.getItem('rf-next-game-language') === 'en' ? 'en' : 'pt';
     const localizedName = (item, ptKey = 'name', enKey = 'nameEn') =>
       String(contentLanguage === 'en' && item?.[enKey] ? item[enKey] : item?.[ptKey] || '');
@@ -2889,7 +2973,19 @@
     const primeName = (item, name = localizedName(item)) => isPrimeItem(item) && !/^prime\b/i.test(name) ? `Prime ${name}` : name;
     const appendPrimeBadge = (target, item) => { if (isPrimeItem(item)) target.append(marketNode('span', 'prime-badge', 'Prime')); };
     const EQUIPMENT_SIDES = ['A', 'B', 'C', 'D'];
-    const RESTORABLE_SCREENS = new Set(['history', 'character', 'market', 'market-local', 'market-global', 'discord-alerts', 'salvage', 'materials', 'arcane-node', 'craft', 'tri-plate', 'personal-craft', 'memory-chips', 'codex', 'shopping', 'equipment', 'game-data', 'guide']);
+    const RESTORABLE_SCREENS = new Set(['history', 'character', 'market', 'market-local', 'market-global', 'discord-alerts', 'salvage', 'materials', 'arcane-node', 'craft', 'tri-plate', 'personal-craft', 'memory-chips', 'codex', 'shopping', 'equipment', 'map', 'game-data', 'guide']);
+    const PROFILE_TAB_OPTIONS = [
+      ['Pessoal', 'history', 'Farm', 'historyScreenTab'], ['Pessoal', 'character', 'Personagem', 'characterScreenTab'],
+      ['Pessoal', 'discord-alerts', 'Alerta Discord', 'discordAlertsScreenTab'], ['Pessoal', 'memory-chips', 'Memory Chips', 'memoryChipScreenTab'],
+      ['Pessoal', 'equipment', 'Comparador', 'equipmentScreenTab'], ['Mercado', 'market', 'Geral', 'marketScreenTab'],
+      ['Mercado', 'market-local', 'Local', 'marketLocalScreenTab'], ['Mercado', 'market-global', 'Global', 'marketGlobalScreenTab'],
+      ['Mercado', 'materials', 'Calculadora de Materiais', 'materialCalculatorScreenTab'], ['Mercado', 'arcane-node', 'Arcane Node', 'arcaneNodeScreenTab'],
+      ['Evolução', 'craft', 'Craft', 'craftScreenTab'], ['Evolução', 'tri-plate', 'Tri-Plate', 'triPlateScreenTab'],
+      ['Evolução', 'personal-craft', 'Craft Pessoal', 'personalCraftScreenTab'], ['Evolução', 'codex', 'Codex', 'codexScreenTab'],
+      ['Evolução', 'shopping', 'Lista de compra', 'shoppingScreenTab'], ['Extras', 'map', 'Mapa Interativo', 'mapScreenTab'],
+      ['Extras', 'game-data', 'Banco de Dados', 'gameDataScreenTab'], ['Extras', 'guide', 'Guia de Classes', 'guideScreenTab'],
+    ];
+    let allowedProfileTabs = new Set(PROFILE_TAB_OPTIONS.map(([, key]) => key));
     const EQUIPMENT_FILTER_TYPES = {
       'weapon-armor': [['1', 'Arma'], ['2', 'Neck'], ['3', 'Chest'], ['4', 'Lower'], ['5', 'Arms'], ['6', 'Leg']],
       accessory: [['7', 'Ear'], ['8', 'Necklace'], ['9', 'Bangle'], ['10', 'Ring']],
@@ -2955,8 +3051,18 @@
       remoteSaveTimer = setTimeout(() => saveRemoteState().catch(error => { $('shareStatus').textContent = error.message; }), 120);
     }
 
+    function applyProfileTabAccess(tabs, admin = false) {
+      allowedProfileTabs = new Set(admin ? PROFILE_TAB_OPTIONS.map(([, key]) => key) : tabs);
+      PROFILE_TAB_OPTIONS.forEach(([, key, , buttonId]) => { $(buttonId).hidden = !allowedProfileTabs.has(key); });
+      document.querySelectorAll('.screen-tabs > .nav-group:not(#adminNavGroup)').forEach(group => {
+        group.hidden = ![...group.querySelectorAll(':scope > button')].some(button => !button.hidden);
+      });
+      if (!admin && !allowedProfileTabs.has(currentScreen)) selectScreen(PROFILE_TAB_OPTIONS.find(([, key]) => allowedProfileTabs.has(key))?.[1] || 'history');
+    }
+
     async function loadAdminProfiles(state) {
       $('adminProfiles').hidden = state.admin !== true;
+      $('adminNavGroup').hidden = state.admin !== true;
       if (state.admin !== true) return;
       adminActor = state.actor;
       const response = await fetch('api/admin/profiles', { credentials: 'same-origin' });
@@ -2968,16 +3074,119 @@
       const activeProfiles = adminProfileRecords.filter(profile => !profile.archived);
       $('adminProfileSelect').replaceChildren(...activeProfiles.map(profile => new Option(profile.id, profile.id)));
       $('adminProfileSelect').value = data.active;
+      const configurable = activeProfiles.filter(profile => profile.id !== data.actor);
+      $('adminAccessProfile').replaceChildren(...configurable.map(profile => new Option(profile.id, profile.id)));
+      $('saveAdminProfileAccess').disabled = configurable.length === 0;
+      $('enableAllProfileTabs').disabled = configurable.length === 0;
+      renderAdminProfileAccess();
       $('adminProfileStatus').textContent = data.active === data.actor
         ? 'Administrando o próprio profile.'
         : `Administrando ${data.active} como ${data.actor}.`;
       renderAdminProfileList();
+      await loadAdminMapSettings();
+    }
+
+    async function loadAdminMapSettings() {
+      try {
+        const [manifestResponse, settingsResponse] = await Promise.all([
+          fetch('/map-interativo/data/maps.json', { cache: 'no-store' }),
+          fetch('/api/map-settings', { credentials: 'same-origin', cache: 'no-store' }),
+        ]);
+        const [manifest, settings] = await Promise.all([manifestResponse.json(), settingsResponse.json()]);
+        if (!manifestResponse.ok || !settingsResponse.ok) throw new Error(settings.error || 'Não foi possível carregar os mapas.');
+        adminMapFamilies = manifest.families || [];
+        adminDisabledMapIds = new Set(settings.disabledMapIds || []);
+        renderAdminMapSettings();
+      } catch (error) {
+        $('adminMapStatus').textContent = error.message;
+      }
+    }
+
+    function renderAdminMapSettings() {
+      const query = normalizeLocation($('adminMapSearch').value);
+      const openFamilies = new Set([...$('adminMapList').querySelectorAll('details[open]')].map(item => item.dataset.family));
+      const rows = adminMapFamilies.flatMap(family => {
+        const familyName = localizedName(family, 'label', 'labelENUS');
+        const variants = family.variants || [];
+        const matchesFamily = normalizeLocation(`${family.label} ${family.labelENUS}`).includes(query);
+        const visibleVariants = matchesFamily || !query ? variants : variants.filter(variant =>
+          normalizeLocation(`${variant.name} ${variant.nameENUS} ${variant.label} ${variant.labelENUS}`).includes(query)
+        );
+        if (!visibleVariants.length) return [];
+        const available = variants.filter(variant => variant.available);
+        const active = available.filter(variant => !adminDisabledMapIds.has(variant.id));
+        const details = document.createElement('details');
+        details.className = 'admin-map-family'; details.dataset.family = family.id;
+        details.open = openFamilies.has(family.id) || Boolean(query);
+        const summary = document.createElement('summary'), familyToggle = document.createElement('input');
+        familyToggle.type = 'checkbox'; familyToggle.checked = available.length > 0 && active.length === available.length;
+        familyToggle.indeterminate = active.length > 0 && active.length < available.length; familyToggle.disabled = !available.length;
+        familyToggle.setAttribute('aria-label', `Ativar ${familyName}`);
+        familyToggle.addEventListener('click', event => event.stopPropagation());
+        familyToggle.addEventListener('change', () => {
+          available.forEach(variant => familyToggle.checked ? adminDisabledMapIds.delete(variant.id) : adminDisabledMapIds.add(variant.id));
+          renderAdminMapSettings();
+          $('adminMapStatus').textContent = 'Alterações ainda não salvas.';
+        });
+        summary.append(familyToggle, marketNode('span', '', familyName), marketNode('small', '', `${active.length}/${available.length}`));
+        const variantList = marketNode('div', 'admin-map-variants');
+        visibleVariants.forEach(variant => {
+          const label = document.createElement('label'), toggle = document.createElement('input');
+          label.className = `admin-map-variant${variant.available ? '' : ' unavailable'}`;
+          toggle.type = 'checkbox'; toggle.checked = variant.available && !adminDisabledMapIds.has(variant.id); toggle.disabled = !variant.available;
+          toggle.addEventListener('change', () => {
+            toggle.checked ? adminDisabledMapIds.delete(variant.id) : adminDisabledMapIds.add(variant.id);
+            renderAdminMapSettings();
+            $('adminMapStatus').textContent = 'Alterações ainda não salvas.';
+          });
+          label.append(toggle, marketNode('span', '', `${localizedName(variant, 'name', 'nameENUS')}${variant.available ? '' : ' · indisponível'}`));
+          variantList.append(label);
+        });
+        details.append(summary, variantList);
+        return [details];
+      });
+      $('adminMapList').replaceChildren(...rows);
+      const availableCount = adminMapFamilies.flatMap(family => family.variants || []).filter(variant => variant.available).length;
+      const activeCount = availableCount - adminDisabledMapIds.size;
+      $('saveAdminMaps').disabled = activeCount < 1;
+      if (!$('adminMapStatus').textContent || $('adminMapStatus').textContent.includes('mapas ativos')) {
+        $('adminMapStatus').textContent = `${activeCount} de ${availableCount} mapas ativos.`;
+      }
+    }
+
+    async function saveAdminMapSettings() {
+      const button = $('saveAdminMaps'); button.disabled = true;
+      $('adminMapStatus').textContent = 'Salvando mapas…';
+      try {
+        const response = await fetch('/api/admin/map-settings', {
+          method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ disabledMapIds: [...adminDisabledMapIds].sort((a, b) => a - b) }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Não foi possível salvar os mapas.');
+        adminDisabledMapIds = new Set(data.disabledMapIds || []);
+        renderAdminMapSettings();
+        $('adminMapStatus').textContent = 'Configuração salva para todos os profiles.';
+        if ($('mapFrame').src) loadInteractiveMap(true);
+      } catch (error) {
+        $('adminMapStatus').textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function loadInteractiveMap(refresh = false) {
+      const frame = $('mapFrame');
+      if (frame.src && !refresh) return;
+      const source = new URL(frame.dataset.src, window.location.href);
+      source.searchParams.set('mapSettings', Date.now());
+      frame.src = source.href;
     }
 
     function renderAdminProfileList() {
       $('adminProfileList').replaceChildren(...adminProfileRecords.map(profile => {
         const row = marketNode('div', `admin-profile-row${profile.archived ? ' archived' : ''}`);
-        row.append(marketNode('span', '', `${profile.id}${profile.id === adminActor ? ' · administrador' : profile.archived ? ' · arquivado' : ''}`));
+        row.append(marketNode('span', '', `${profile.id}${profile.id === adminActor ? ' · administrador' : profile.archived ? ' · arquivado' : ` · ${(profile.tabs || []).length}/${PROFILE_TAB_OPTIONS.length} abas`}`));
         if (profile.id === adminActor) return row;
         const actions = marketNode('div', 'admin-profile-row-actions');
         const archive = marketNode('button', 'secondary', profile.archived ? 'Restaurar' : 'Arquivar');
@@ -2990,6 +3199,35 @@
         row.append(actions);
         return row;
       }));
+    }
+
+    function renderAdminProfileAccess() {
+      const profile = adminProfileRecords.find(item => item.id === $('adminAccessProfile').value);
+      const selected = new Set(profile?.tabs || []);
+      const groups = [...new Set(PROFILE_TAB_OPTIONS.map(([group]) => group))];
+      $('adminProfileAccessOptions').replaceChildren(...groups.map(group => {
+        const fieldset = document.createElement('fieldset'); fieldset.className = 'filter-check-group filter-category-card';
+        const legend = document.createElement('legend'); legend.textContent = group;
+        const list = marketNode('div', 'filter-check-list');
+        PROFILE_TAB_OPTIONS.filter(([category]) => category === group).forEach(([, key, label]) => {
+          const option = document.createElement('label'), input = document.createElement('input');
+          input.type = 'checkbox'; input.value = key; input.checked = selected.has(key); option.append(input, document.createTextNode(label)); list.append(option);
+        });
+        fieldset.append(legend, list); return fieldset;
+      }));
+    }
+
+    async function saveAdminProfileAccess() {
+      const profile = $('adminAccessProfile').value;
+      const tabs = checkedValues('adminProfileAccessOptions');
+      if (!profile || !tabs.length) return $('adminProfileStatus').textContent = 'Selecione um profile e ao menos uma aba.';
+      $('adminProfileStatus').textContent = 'Salvando acessos…';
+      try {
+        const response = await fetch('api/admin/profile/access', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile, tabs }) });
+        const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Não foi possível salvar os acessos.');
+        const record = adminProfileRecords.find(item => item.id === profile); if (record) record.tabs = data.tabs;
+        renderAdminProfileList(); $('adminProfileStatus').textContent = `Acessos de ${profile} salvos.`;
+      } catch (error) { $('adminProfileStatus').textContent = error.message; }
     }
 
     async function manageAdminProfile(profile, action) {
@@ -3052,6 +3290,7 @@
         $('shareHistory').disabled = false;
         remoteReady = true;
         currentUserIsAdmin = data.admin === true;
+        applyProfileTabAccess(Array.isArray(data.allowedTabs) ? data.allowedTabs : PROFILE_TAB_OPTIONS.map(([, key]) => key), currentUserIsAdmin);
         loadDiscordStatus();
         history = Array.isArray(data.history) ? data.history : [];
         characters = Array.isArray(data.characters) ? data.characters : [];
@@ -3425,6 +3664,9 @@
     }
 
     async function loadCharacterSharing() {
+      if (!currentUserIsAdmin && !allowedProfileTabs.has('character')) {
+        availableProfiles = []; sharedCharacters = []; renderSharedCharacters(); return;
+      }
       try {
         const [profilesResponse, sharedResponse] = await Promise.all([
           fetch('api/profiles', { credentials: 'same-origin' }),
@@ -3583,6 +3825,7 @@
     }
 
     async function loadCharacterLoadoutCatalog() {
+      if (!currentUserIsAdmin && !allowedProfileTabs.has('character')) return;
       const nextCatalog = { ...characterLoadoutCatalog };
       try {
         const response = await fetch('api/character-loadout', { credentials: 'same-origin' });
@@ -7402,7 +7645,11 @@
     }
 
     function selectScreen(screen) {
+      if (!currentUserIsAdmin && ((RESTORABLE_SCREENS.has(screen) && !allowedProfileTabs.has(screen)) || screen.startsWith('admin-'))) {
+        screen = PROFILE_TAB_OPTIONS.find(([, key]) => allowedProfileTabs.has(key))?.[1] || 'history';
+      }
       currentScreen = screen;
+      document.body.classList.toggle('map-active', screen === 'map');
       const marketScreenSelected = ['market', 'market-local', 'market-global'].includes(screen);
       if (RESTORABLE_SCREENS.has(screen)) localStorage.setItem('rf-next-current-screen', screen);
       if (screen !== 'character' && activeSharedCharacter && activeCharacterProfiles()[0]) selectCharacter(activeCharacterProfiles()[0].name);
@@ -7426,9 +7673,12 @@
       $('codexScreen').hidden = screen !== 'codex';
       $('shoppingScreen').hidden = screen !== 'shopping';
       $('equipmentScreen').hidden = screen !== 'equipment';
+      $('adminProfilesScreen').hidden = screen !== 'admin-profiles';
+      $('adminMapScreen').hidden = screen !== 'admin-map';
+      $('mapScreen').hidden = screen !== 'map';
       $('gameDataScreen').hidden = screen !== 'game-data';
       $('guideScreen').hidden = screen !== 'guide';
-      [['myScreenTab', 'mine'], ['historyScreenTab', 'history'], ['characterScreenTab', 'character'], ['spotDatabaseScreenTab', 'spots'], ['mobDatabaseScreenTab', 'database'], ['marketScreenTab', 'market'], ['marketLocalScreenTab', 'market-local'], ['marketGlobalScreenTab', 'market-global'], ['discordAlertsScreenTab', 'discord-alerts'], ['salvageScreenTab', 'salvage'], ['materialCalculatorScreenTab', 'materials'], ['arcaneNodeScreenTab', 'arcane-node'], ['craftScreenTab', 'craft'], ['triPlateScreenTab', 'tri-plate'], ['personalCraftScreenTab', 'personal-craft'], ['memoryChipScreenTab', 'memory-chips'], ['codexScreenTab', 'codex'], ['shoppingScreenTab', 'shopping'], ['equipmentScreenTab', 'equipment'], ['gameDataScreenTab', 'game-data'], ['guideScreenTab', 'guide']].forEach(([id, value]) => {
+      [['myScreenTab', 'mine'], ['historyScreenTab', 'history'], ['characterScreenTab', 'character'], ['spotDatabaseScreenTab', 'spots'], ['mobDatabaseScreenTab', 'database'], ['marketScreenTab', 'market'], ['marketLocalScreenTab', 'market-local'], ['marketGlobalScreenTab', 'market-global'], ['discordAlertsScreenTab', 'discord-alerts'], ['salvageScreenTab', 'salvage'], ['materialCalculatorScreenTab', 'materials'], ['arcaneNodeScreenTab', 'arcane-node'], ['craftScreenTab', 'craft'], ['triPlateScreenTab', 'tri-plate'], ['personalCraftScreenTab', 'personal-craft'], ['memoryChipScreenTab', 'memory-chips'], ['codexScreenTab', 'codex'], ['shoppingScreenTab', 'shopping'], ['equipmentScreenTab', 'equipment'], ['adminProfilesScreenTab', 'admin-profiles'], ['adminMapScreenTab', 'admin-map'], ['mapScreenTab', 'map'], ['gameDataScreenTab', 'game-data'], ['guideScreenTab', 'guide']].forEach(([id, value]) => {
         const active = screen === value;
         $(id).classList.toggle('active', active);
         $(id).setAttribute('aria-selected', String(active));
@@ -7448,6 +7698,7 @@
       if (screen === 'memory-chips') loadMemoryChips();
       if (screen === 'codex') loadCodex();
       if (screen === 'shopping') loadCodex().then(renderShoppingList);
+      if (screen === 'map') loadInteractiveMap();
       if (screen === 'game-data') loadGameData();
       renderCharacterTabs();
     }
@@ -7798,6 +8049,7 @@
     }
     async function loadDiscordStatus() {
       const status = $('discordStatus');
+      if (!currentUserIsAdmin && !allowedProfileTabs.has('discord-alerts')) { status.textContent = ''; return; }
       try {
         const response = await fetch('api/discord/status', { credentials: 'same-origin', cache: 'no-store' });
         const data = await response.json();
@@ -7845,6 +8097,15 @@
       scheduleRemoteSave();
     });
     $('adminProfileForm').addEventListener('submit', switchAdminProfile);
+    $('adminAccessProfile').addEventListener('change', renderAdminProfileAccess);
+    $('saveAdminProfileAccess').addEventListener('click', saveAdminProfileAccess);
+    $('enableAllProfileTabs').addEventListener('click', () => $('adminProfileAccessOptions').querySelectorAll('input').forEach(input => { input.checked = true; }));
+    $('adminMapSearch').addEventListener('input', renderAdminMapSettings);
+    $('saveAdminMaps').addEventListener('click', saveAdminMapSettings);
+    $('enableAllAdminMaps').addEventListener('click', () => {
+      adminDisabledMapIds.clear(); renderAdminMapSettings();
+      $('adminMapStatus').textContent = 'Todos os mapas serão ativados ao salvar.';
+    });
     $('generateProfileToken').addEventListener('click', () => updateProfileToken('generate'));
     $('revokeProfileToken').addEventListener('click', () => updateProfileToken('revoke'));
     $('generateDiscordLink').addEventListener('click', generateDiscordLink);
@@ -7868,6 +8129,9 @@
     $('codexScreenTab').addEventListener('click', () => selectScreen('codex'));
     $('shoppingScreenTab').addEventListener('click', () => selectScreen('shopping'));
     $('equipmentScreenTab').addEventListener('click', () => selectScreen('equipment'));
+    $('adminProfilesScreenTab').addEventListener('click', () => selectScreen('admin-profiles'));
+    $('adminMapScreenTab').addEventListener('click', () => selectScreen('admin-map'));
+    $('mapScreenTab').addEventListener('click', () => selectScreen('map'));
     $('shoppingCharacter').addEventListener('change', () => {
       const character = $('shoppingCharacter').value;
       if (character) selectCharacter(character);
@@ -7939,6 +8203,7 @@
       if (memoryChipLoaded) renderMemoryChips();
       if (codexLoaded) { setupCodexFilters(); renderCodex(); }
       if (gameDataLoaded) searchGameData();
+      if (adminMapFamilies.length) renderAdminMapSettings();
       EQUIPMENT_SIDES.forEach(renderEquipmentSelected);
       renderEquipmentComparison();
       renderCharacterLoadout();
@@ -8129,8 +8394,11 @@
     console.assert(memoryChipEffectDisplay({ statEnum: 'STAT_EXPDROPINCRATE', rawValue: 1000 }) === '+10%', 'Falha ao calcular efeito agregado de Memory Chip');
     console.assert(memoryChipBonusStatus(1, 3).includes('faltam 2') && memoryChipBonusStatus(3, 3).includes('ativo'), 'Falha ao identificar bônus individual pendente/ativo');
     console.assert($('characterScreenTab') && $('characterScreen') && $('historyTabs').hidden && $('codexCharacter').closest('label').hidden, 'Falha na separação contextual das abas de personagem');
-    console.assert(document.querySelectorAll('.nav-group').length === 4 && $('profileTokenValue').closest('#characterScreen'), 'Falha nas categorias do menu/controle de token');
+    console.assert(document.querySelectorAll('.nav-group').length === 5 && $('profileTokenValue').closest('#characterScreen'), 'Falha nas categorias do menu/controle de token');
     console.assert($('switchAccount').getAttribute('href') === '/account/switch' && $('adminProfiles'), 'Falha nos controles de conta e profiles');
+    console.assert($('adminNavGroup') && $('adminProfilesScreenTab') && $('adminProfiles').closest('#adminProfilesScreen') && $('adminMapScreenTab') && $('adminMapScreen') && !$('adminProfiles').contains($('adminMapSearch')), 'Falha nas abas administrativas');
+    console.assert(PROFILE_TAB_OPTIONS.length === 18 && $('adminAccessProfile') && $('adminProfileAccessOptions'), 'Falha no controle de acesso por profile');
+    console.assert(typeof loadInteractiveMap === 'function', 'Falha na atualização forçada do mapa');
     console.assert($('generateDiscordLink') && $('discordLinkValue') && $('discordStatus') && $('discordAlertForm') && $('discordAlertsScreenTab'), 'Falha nos controles de Discord');
     console.assert(marketAlertRefinementMatches({ refinementMode: 'selected', refinements: [7, 8, 9] }, 8), 'Falha na regra de múltiplos refinos');
     console.assert($('archiveCharacterProfile') && $('deleteCharacterProfile') && $('archivedCharacterList') && $('adminProfileList'), 'Falha nos controles de arquivamento e exclusão');

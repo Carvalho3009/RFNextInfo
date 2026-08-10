@@ -36,6 +36,9 @@ COLLECTION_BONUS_CSV_PATH = Path(os.getenv("RFNEXT_COLLECTION_BONUSES", ROOT / "
 MEMORY_CHIP_JSON_PATH = Path(os.getenv("RFNEXT_MEMORY_CHIPS", ROOT / "memory-chips.json"))
 CHARACTER_LOADOUT_JSON_PATH = Path(os.getenv("RFNEXT_CHARACTER_LOADOUT", ROOT / "character-loadout.json"))
 GAME_NAMES_EN_PATH = Path(os.getenv("RFNEXT_GAME_NAMES_EN", ROOT / "game-names-en.json"))
+MAP_MANIFEST_PATH = Path(os.getenv("RFNEXT_MAP_MANIFEST", ROOT / "map-interativo" / "data" / "maps.json"))
+if not MAP_MANIFEST_PATH.is_file():
+    MAP_MANIFEST_PATH = ROOT.parent / "map-interativo" / "dist" / "data" / "maps.json"
 MARKET_CSV_PATH = Path(os.getenv("RFNEXT_MARKET_CSV", "/data/market.csv"))
 MARKET_IMAGE_ROOT = Path(os.getenv("RFNEXT_MARKET_IMAGE_ROOT", "/data/market-images"))
 GAME_ICON_ROOT = Path(os.getenv("RFNEXT_GAME_ICON_ROOT", ROOT / "game-icons"))
@@ -105,6 +108,34 @@ ALERT_SOURCE_FIELDS = {
     "personal-craft": frozenset({"fullPurchaseCost", "neededCost", "ownedMarketValue", "chestSavings", "productMarketValue", "craftFeesCredits", "savings", "savingsPct"}),
 }
 ALERT_OPERATORS = frozenset({"lt", "lte", "eq", "gte", "gt"})
+PROFILE_TABS = (
+    "history", "character", "discord-alerts", "memory-chips", "equipment",
+    "market", "market-local", "market-global", "materials", "arcane-node",
+    "craft", "tri-plate", "personal-craft", "codex", "shopping", "map",
+    "game-data", "guide",
+)
+PROFILE_TAB_SET = frozenset(PROFILE_TABS)
+API_TAB_ACCESS = {
+    "/api/market/filters": ("market", "market-local", "market-global", "discord-alerts"),
+    "/api/market": ("market", "market-local", "market-global"),
+    "/api/salvage": ("materials", "arcane-node"),
+    "/api/craft/tri-plates": ("tri-plate",),
+    "/api/craft/personal": ("personal-craft",),
+    "/api/craft": ("craft", "personal-craft"),
+    "/api/game-data": ("game-data",),
+    "/api/equipment": ("equipment",),
+    "/api/character-loadout": ("character",),
+    "/api/memory-chips": ("memory-chips",),
+    "/api/codex": ("codex", "shopping"),
+    "/api/alerts": ("discord-alerts",),
+    "/api/discord/status": ("discord-alerts",),
+    "/api/discord/link-token": ("discord-alerts",),
+    "/api/map-settings": ("map",),
+    "/api/profiles": ("character",),
+    "/api/characters/shared": ("character",),
+    "/api/history/general": ("history",),
+    "/api/ocr": ("history",),
+}
 
 
 @lru_cache(maxsize=1)
@@ -2756,11 +2787,20 @@ def database():
         );
         CREATE INDEX IF NOT EXISTS profile_tokens_profile
             ON profile_tokens (profile, revoked_at);
+        CREATE TABLE IF NOT EXISTS profile_tab_access (
+            profile TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            tabs TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS profile_imports (
             profile TEXT NOT NULL,
             idempotency_key TEXT NOT NULL,
             imported_at TEXT NOT NULL,
             PRIMARY KEY (profile, idempotency_key)
+        );
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS market_snapshots (
             id INTEGER PRIMARY KEY,
@@ -2854,6 +2894,45 @@ def database():
         raise
     finally:
         connection.close()
+
+
+@lru_cache(maxsize=1)
+def interactive_map_ids():
+    manifest = json.loads(MAP_MANIFEST_PATH.read_text(encoding="utf-8"))
+    return frozenset(
+        int(variant["id"])
+        for family in manifest.get("families", [])
+        for variant in family.get("variants", [])
+        if variant.get("available") is True
+    )
+
+
+def map_settings():
+    valid = interactive_map_ids()
+    with database() as db:
+        row = db.execute("SELECT value FROM app_settings WHERE key='disabled_map_ids'").fetchone()
+    try:
+        stored = json.loads(row["value"]) if row else []
+    except json.JSONDecodeError:
+        stored = []
+    return {"disabledMapIds": sorted({value for value in stored if type(value) is int and value in valid})}
+
+
+def save_map_settings(disabled_map_ids):
+    valid = interactive_map_ids()
+    if not isinstance(disabled_map_ids, list) or any(type(value) is not int for value in disabled_map_ids):
+        raise ValueError("Configuração de mapas inválida.")
+    disabled = set(disabled_map_ids)
+    if not disabled <= valid or not valid - disabled:
+        raise ValueError("Mantenha pelo menos um mapa interativo ativo.")
+    value = json.dumps(sorted(disabled), separators=(",", ":"))
+    with database() as db:
+        db.execute(
+            "INSERT INTO app_settings(key,value,updated_at) VALUES('disabled_map_ids',?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+            (value, datetime.now(timezone.utc).isoformat()),
+        )
+    return map_settings()
 
 
 def clean_locations(values):
@@ -4128,6 +4207,47 @@ def ack_discord_outbox(outbox_id, status, error=""):
     return {"ok": True, "id": int(outbox_id), "status": status}
 
 
+def profile_tab_access(profile, db=None):
+    def read(connection):
+        row = connection.execute("SELECT tabs FROM profile_tab_access WHERE profile=?", (profile,)).fetchone()
+        if not row:
+            return list(PROFILE_TABS)
+        try:
+            tabs = json.loads(row["tabs"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return list(PROFILE_TABS)
+        if not isinstance(tabs, list):
+            return list(PROFILE_TABS)
+        clean = [tab for tab in PROFILE_TABS if tab in tabs]
+        return clean or list(PROFILE_TABS)
+
+    if db is not None:
+        return read(db)
+    with database() as connection:
+        return read(connection)
+
+
+def save_profile_tab_access(actor, profile, tabs):
+    actor, profile = normalize_user(actor or ""), normalize_user(profile or "")
+    if not actor or not profile or not isinstance(tabs, list):
+        raise ValueError("Acesso do profile inválido.")
+    requested = set(map(str, tabs))
+    if not requested or not requested <= PROFILE_TAB_SET:
+        raise ValueError("Selecione ao menos uma aba válida.")
+    if profile == actor:
+        raise PermissionError("O profile administrativo atual mantém acesso total.")
+    clean = [tab for tab in PROFILE_TABS if tab in requested]
+    with database() as db:
+        if not db.execute("SELECT 1 FROM users WHERE id=?", (profile,)).fetchone():
+            raise LookupError("Profile não encontrado.")
+        db.execute(
+            "INSERT INTO profile_tab_access(profile,tabs) VALUES(?,?) "
+            "ON CONFLICT(profile) DO UPDATE SET tabs=excluded.tabs",
+            (profile, json.dumps(clean, separators=(",", ":"))),
+        )
+    return {"ok": True, "profile": profile, "tabs": clean}
+
+
 def manage_profile(actor, profile, action):
     actor = normalize_user(actor or "")
     profile = normalize_user(profile or "")
@@ -4172,6 +4292,7 @@ def manage_profile(actor, profile, action):
                     continue
             db.execute("DELETE FROM profile_tokens WHERE profile=?", (profile,))
             db.execute("DELETE FROM profile_imports WHERE profile=?", (profile,))
+            db.execute("DELETE FROM profile_tab_access WHERE profile=?", (profile,))
             db.execute("DELETE FROM users WHERE id=?", (profile,))
     return {"ok": True, "profile": profile, "action": action}
 
@@ -4571,6 +4692,14 @@ def import_farm_session(profile, payload, idempotency_key):
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        path = urlparse(self.path).path.rstrip("/")
+        if path in {"", "/index.html", "/map-interativo", "/map-interativo/visibility-v2"}:
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        super().end_headers()
+
     def actor_identity(self):
         username = normalize_user(self.headers.get("X-Karvalho-User", ""))
         if username:
@@ -4628,6 +4757,20 @@ class Handler(SimpleHTTPRequestHandler):
         if not user:
             self.send_json(401, {"error": "Entre pelo Cloudflare Access para usar o aplicativo."})
         return user
+
+    def require_path_access(self, path):
+        if is_admin_user(self.actor_identity()):
+            return True
+        tabs = next((allowed for prefix, allowed in sorted(
+            API_TAB_ACCESS.items(), key=lambda item: len(item[0]), reverse=True
+        ) if path == prefix or path.startswith(prefix + "/")), None)
+        if not tabs:
+            return True
+        profile = self.identity()
+        if profile and set(profile_tab_access(profile)).intersection(tabs):
+            return True
+        self.send_json(403, {"error": "Este profile não possui acesso a esta aba."})
+        return False
 
     def bearer_profile(self):
         authorization = self.headers.get("Authorization", "")
@@ -4698,6 +4841,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         request_url = urlparse(self.path)
         path = request_url.path.rstrip("/")
+        if not self.require_path_access(path):
+            return
         if path == "/account/switch":
             self.send_response(302)
             self.send_header("Location", ACCOUNT_SWITCH_URL)
@@ -4969,6 +5114,14 @@ class Handler(SimpleHTTPRequestHandler):
                 opted = db.execute("SELECT COUNT(*) FROM discord_links WHERE dm_opt_in=1").fetchone()[0]
             return self.send_json(200, {"totals": totals, "linkedProfiles": linked, "dmOptIns": opted, "profiles": profiles, "recent": recent})
 
+        if path == "/api/map-settings":
+            if not self.require_identity():
+                return
+            try:
+                return self.send_json(200, map_settings())
+            except (OSError, ValueError, json.JSONDecodeError):
+                return self.send_json(503, {"error": "Configuração de mapas indisponível."})
+
         if path == "/api/state":
             user = self.require_identity()
             if not user:
@@ -4983,11 +5136,13 @@ class Handler(SimpleHTTPRequestHandler):
                     "SELECT profile, imported_at FROM market_snapshots WHERE profile IS NOT NULL "
                     "ORDER BY datetime(imported_at) DESC, id DESC LIMIT 1"
                 ).fetchone()
+                allowed_tabs = list(PROFILE_TABS) if is_admin_user(actor) else profile_tab_access(user, db)
             state = clean_state(json.loads(row[1] or "{}"))
             return self.send_json(200, {
                 "user": user.split("@", 1)[0],
                 "actor": actor.split("@", 1)[0],
                 "admin": is_admin_user(actor),
+                "allowedTabs": allowed_tabs,
                 "share": bool(row[0]),
                 "marketReceipt": {
                     "profile": market_receipt["profile"],
@@ -5002,7 +5157,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             with database() as db:
                 profiles = [
-                    {"id": row["id"], "archived": bool(row["archived_at"])}
+                    {"id": row["id"], "archived": bool(row["archived_at"]),
+                     "tabs": profile_tab_access(row["id"], db)}
                     for row in db.execute("SELECT id,archived_at FROM users ORDER BY id")
                     if row["id"] != LOCAL_USER
                 ]
@@ -5058,6 +5214,12 @@ class Handler(SimpleHTTPRequestHandler):
 
         if path.startswith("/api/"):
             return self.send_json(404, {"error": "Rota não encontrada."})
+        if path == "/map-interativo/visibility-v2" or path.startswith("/map-interativo/visibility-v2/"):
+            self.path = request_url.path.replace("/map-interativo/visibility-v2", "/map-interativo", 1)
+            return super().do_GET()
+        if path == "/map-interativo" or path.startswith("/map-interativo/"):
+            self.path = request_url.path
+            return super().do_GET()
         self.path = path if path in {
             "/karvalho-logo.png",
             "/karvalho-primary-gold.png",
@@ -5069,7 +5231,19 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_PUT(self):
-        if urlparse(self.path).path.rstrip("/") != "/api/state":
+        path = urlparse(self.path).path.rstrip("/")
+        if path == "/api/admin/map-settings":
+            if not self.require_admin():
+                return
+            try:
+                payload = self.read_json()
+                result = save_map_settings(payload.get("disabledMapIds"))
+            except (ValueError, json.JSONDecodeError) as error:
+                return self.send_json(400, {"error": str(error)})
+            except (OSError, sqlite3.Error):
+                return self.send_json(503, {"error": "Não foi possível salvar a configuração de mapas."})
+            return self.send_json(200, {"ok": True, **result})
+        if path != "/api/state":
             return self.send_json(404, {"error": "Rota não encontrada."})
         user = self.require_identity()
         if not user:
@@ -5097,6 +5271,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path.rstrip("/")
+        if not self.require_path_access(path):
+            return
         if path == "/api/alerts/preview":
             profile = self.require_identity()
             if not profile:
@@ -5274,6 +5450,21 @@ class Handler(SimpleHTTPRequestHandler):
                 {"ok": True, "profile": profile},
                 {"Set-Cookie": self.profile_cookie(selected)},
             )
+
+        if path == "/api/admin/profile/access":
+            actor = self.require_admin()
+            if not actor:
+                return
+            try:
+                payload = self.read_json()
+                result = save_profile_tab_access(actor, payload.get("profile"), payload.get("tabs"))
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                return self.send_json(400, {"error": str(error)})
+            except PermissionError as error:
+                return self.send_json(403, {"error": str(error)})
+            except LookupError as error:
+                return self.send_json(404, {"error": str(error)})
+            return self.send_json(200, result)
 
         if path == "/api/admin/profile/manage":
             actor = self.require_admin()
@@ -6135,6 +6326,14 @@ if __name__ == "__main__":
                 }
                 db.execute("UPDATE users SET state=? WHERE id='carvalho'", (json.dumps(owner_state),))
             jogador_token = create_profile_token("jogador")
+            assert profile_tab_access("jogador") == list(PROFILE_TABS)
+            assert save_profile_tab_access("carvalho", "jogador", ["history", "codex"])["tabs"] == ["history", "codex"]
+            assert profile_tab_access("jogador") == ["history", "codex"]
+            try:
+                save_profile_tab_access("carvalho", "jogador", [])
+                raise AssertionError("Profile ficou sem abas")
+            except ValueError:
+                pass
             assert manage_profile("carvalho", "jogador", "archive")["action"] == "archive"
             assert profile_for_token(jogador_token) is None
             assert manage_profile("carvalho", "jogador", "restore")["action"] == "restore"
@@ -6143,6 +6342,14 @@ if __name__ == "__main__":
                 assert not db.execute("SELECT 1 FROM users WHERE id='jogador'").fetchone()
                 cleaned_owner_state = json.loads(db.execute("SELECT state FROM users WHERE id='carvalho'").fetchone()[0])
             assert not cleaned_owner_state.get("characterShares")
+            available_maps = interactive_map_ids()
+            first_map = min(available_maps)
+            assert save_map_settings([first_map]) == {"disabledMapIds": [first_map]}
+            try:
+                save_map_settings(list(available_maps))
+                raise AssertionError("Todos os mapas foram desativados")
+            except ValueError:
+                pass
         DB_PATH = original_db_path
         if GAME_DB_PATH.is_file():
             assert game_summary()["counts"]["item"] > 8_000
