@@ -1,0 +1,80 @@
+# RF QOL — clientes, overlays e sincronização de identidades
+
+Data: 11 ago 2026  
+Estado: implementado e validado localmente; não publicado
+
+## Escopo
+
+- renomear Cliente A, Cliente B e Emuladores por duplo clique no próprio botão;
+- propagar o nome para seletores, abas de monitor, botões de envio e overlays;
+- limpar o alvo PvP após 3 segundos sem nova confirmação;
+- reduzir os overlays para 340 px de largura e mantê-los como janelas independentes
+  quando a janela principal for minimizada;
+- vincular os overlays à conexão que originou a leitura;
+- priorizar o cliente ativo no overlay de Boss;
+- separar os jogadores do Boss em colunas por guilda;
+- sincronizar UID, personagem e guilda entre programas por meio do site;
+- tornar explícito quando nenhuma Farm encerrada foi selecionada para envio.
+
+## Contrato visual de nomes
+
+O nome manual substitui o rótulo genérico do slot. Quando o personagem também
+é conhecido, o formato é `Nome manual - Personagem`, por exemplo
+`Carvalho - Personagem`. O nome manual é apenas visual e não altera UID nem o
+roteamento da captura.
+
+## Retenção PvP
+
+Jogadores próximos e o último alvo PvP deixam de ser exibidos após 3 segundos
+sem confirmação do stream. A regra é aplicada no resumo de combate e novamente
+no overlay, evitando que uma atualização antiga volte a mostrar o nome.
+
+## Banco compartilhado de identidades
+
+O programa mantém `character_observations` no banco local de conhecimento. O
+site consolida os campos sanitizados nas tabelas:
+
+- `observed_characters`: estado mais recente por `character_uid`;
+- `observed_character_sources`: primeira e última observação por Profile, sem
+  expor a origem na resposta;
+- `observed_mobs`: catálogo observado já previsto pelo cliente.
+
+`POST /api/import/observations` exige token de Profile, lease v2 válida e chave
+de idempotência. A resposta devolve até 5.000 identidades consolidadas. O
+programa mescla apenas campos decodificados e usa guilda conhecida para
+recalcular a divisão de DPS do Boss.
+
+Limite de privacidade: o contrato não aceita nem devolve payload bruto, token,
+senha ou opcode `0x0101`.
+
+## Farm
+
+O log da instalação testada mostrou `subsessions=0` e nenhuma tentativa de
+envio. Portanto, naquela sessão não havia uma Farm encerrada para o site
+importar. O caminho de importação foi mantido e validado de ponta a ponta:
+
+1. criar/iniciar uma subsessão de Farm no programa;
+2. encerrá-la;
+3. selecioná-la na lista;
+4. usar **Enviar selecionadas**;
+5. conferir o registro no Histórico/Farm do mesmo Profile no site.
+
+Quando nada estiver selecionado, o programa agora informa
+`Nenhuma Farm encerrada foi selecionada para envio.`
+
+## Validação local
+
+- compilação do programa e do servidor;
+- suíte `unittest` do programa: 222 testes aprovados e 1 teste de área de
+  notificação ignorado por indisponibilidade no ambiente offscreen;
+- testes Qt reais para rename, overlays e Boss por guilda;
+- autoteste integral do servidor com importação e leitura duplicada de
+  observações;
+- `git diff --check` nos dois worktrees.
+
+## Separação dos ambientes
+
+- programa: `K:\MCP\_worktrees\rf-qol-security-implementation\rf-next-info`;
+- site: `K:\MCP\_worktrees\rf-next-qol-site-sync\rf-next\app`.
+
+Nenhum arquivo da instalação atual ou da produção foi substituído nesta etapa.

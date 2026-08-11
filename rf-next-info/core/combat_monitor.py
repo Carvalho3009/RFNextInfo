@@ -15,7 +15,8 @@ def summarize_combat(
     now_ns: int | None = None,
     dps_window_seconds: int = 10,
     stale_seconds: int = 15,
-    nearby_stale_seconds: int = 5,
+    nearby_stale_seconds: int = 3,
+    pvp_stale_seconds: int = 3,
 ) -> dict[str, Any]:
     ordered = sorted(events, key=lambda event: (event.get("ts_ns") or 0))
     players: dict[int, dict[str, Any]] = {}
@@ -261,7 +262,7 @@ def summarize_combat(
             damage,
             reference_ns,
             dps_window_seconds,
-            stale_seconds,
+            pvp_stale_seconds,
         ),
     }
 
@@ -454,7 +455,7 @@ def _pvp_snapshot(
     stale_seconds: int,
 ) -> dict[str, Any] | None:
     target = _target_snapshot(entity, now_ns, stale_seconds)
-    if not target or not last_pvp:
+    if not target or target["stale"] or not last_pvp:
         return None
     cutoff = now_ns - window_seconds * 1_000_000_000
     total = sum(

@@ -11,6 +11,41 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_client_double_click_renames_all_visible_references(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["client-rename-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            window.snapshot = {
+                "profiles": [{"client_key": "client:a", "name": "Personagem"}],
+                "characters": [],
+            }
+            with mock.patch(
+                "app.ui_qt.main.QtWidgets.QInputDialog.getText",
+                return_value=("Carvalho", True),
+            ):
+                window.client_buttons[0].double_clicked.emit()
+            self.assertFalse(hasattr(window, "client_rename_buttons"))
+            self.assertEqual(window.client_buttons[0].text(), "Carvalho - Personagem")
+            self.assertEqual(
+                window.monitor_controls["pvp"]["tabs"].tabText(0), "Carvalho"
+            )
+            self.assertIn(
+                "Carvalho", window.monitor_controls["pvp"]["enabled"].text()
+            )
+            self.assertEqual(window.subsession_client.itemText(0), "Carvalho")
+            self.assertEqual(
+                window.send_buttons[("character", 0)].text(), "Enviar Carvalho"
+            )
+            window.close()
+
     def test_signed_rollback_reverifies_backs_up_and_closes_qt_app(self):
         from PySide6 import QtWidgets
         from app.ui_qt.main import MainWindow
@@ -195,8 +230,13 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_pvp_overlay(True)
             self.assertEqual(
                 window.pvp_overlay_summary.text(),
-                "Jogadores próximos: 1 · Hostis confirmados: 0",
+                "Leitura: Cliente A · Jogadores: 1 · Hostis: 0",
             )
+            self.assertLessEqual(window.pvp_overlay.width(), 340)
+            self.assertIsNone(window.pvp_overlay.parent())
+            window.pvp_overlay.hide()
+            window._keep_overlays_visible()
+            self.assertTrue(window.pvp_overlay.isVisible())
             self.assertEqual(window.pvp_overlay_rows.count(), 1)
             pvp_labels = window.pvp_overlay_rows.itemAt(0).widget().findChildren(
                 window.pvp_overlay_summary.__class__
@@ -212,7 +252,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._render_combat()
             self.assertEqual(
                 window.pvp_overlay_summary.text(),
-                "Jogadores próximos: 2 · Hostis confirmados: 1",
+                "Leitura: Cliente A · Jogadores: 2 · Hostis: 1",
             )
             self.assertTrue(
                 window.pvp_overlay.testAttribute(
@@ -258,10 +298,14 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_boss_overlay(True)
             window._toggle_boss_dps_overlay(True)
             self.assertNotEqual(window.boss_overlay.pos(), window.boss_dps_overlay.pos())
-            self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
+            self.assertEqual(
+                window.boss_overlay_name.text(), "Mecha Corruptor · Cliente A"
+            )
             self.assertEqual(window.boss_overlay_hp.text(), "HP 750.000 / 1.000.000")
             self.assertEqual(window.boss_overlay_progress.value(), 750)
-            self.assertEqual(window.boss_dps_overlay_name.text(), "Mecha Corruptor")
+            self.assertEqual(
+                window.boss_dps_overlay_name.text(), "Mecha Corruptor · Cliente A"
+            )
             self.assertIn("25.000", window.boss_dps_overlay_rate.text())
             self.assertEqual(
                 window.boss_overlay.cursor().shape(),
@@ -326,8 +370,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_boss_dps_overlay(True)
             self.assertEqual(window.boss_overlay.pos(), boss_position)
             self.assertEqual(window.boss_dps_overlay.pos(), boss_dps_position)
-            self.assertEqual(window.boss_overlay_name.text(), "Mecha Corruptor")
-            self.assertEqual(window.boss_dps_overlay_name.text(), "Mecha Corruptor")
+            self.assertEqual(
+                window.boss_overlay_name.text(), "Mecha Corruptor · Cliente A"
+            )
+            self.assertEqual(
+                window.boss_dps_overlay_name.text(), "Mecha Corruptor · Cliente A"
+            )
             window._toggle_boss_overlay(False)
             window._toggle_boss_dps_overlay(False)
             window.close()
@@ -509,9 +557,9 @@ class QtPreviewSmokeTest(unittest.TestCase):
         ]
         self.assertTrue(any("Xenogeyser" in text for text in labels))
         self.assertTrue(any("Executor" in text for text in labels))
-        self.assertTrue(any("DPS por jogador" in text for text in labels))
-        self.assertTrue(any("Jogador 6 · Karvalho" in text for text in labels))
-        self.assertTrue(any("DPS por guilda" in text for text in labels))
+        self.assertTrue(any("Dano por guilda" in text for text in labels))
+        self.assertTrue(any(text == "Karvalho" for text in labels))
+        self.assertTrue(any("Jogador 6" in text for text in labels))
         cards = window.combat_page_layouts["boss"]["cards"]
         self.assertFalse(cards[0].isHidden())
         self.assertTrue(cards[1].isHidden())

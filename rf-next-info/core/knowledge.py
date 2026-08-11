@@ -215,3 +215,97 @@ class KnowledgeStore:
                 ((value, PROTOCOL_VERSION) for value in mob_ids),
             )
         self.conn.commit()
+
+    def merge_remote_characters(self, characters: Iterable[dict[str, Any]]) -> int:
+        """Mescla somente identidades sanitizadas devolvidas pelo site."""
+        merged = 0
+        for item in characters:
+            if not isinstance(item, dict):
+                continue
+            uid = _integer(item.get("character_uid"))
+            first_seen = _text(item.get("first_seen_at"), 40)
+            last_seen = _text(item.get("last_seen_at"), 40)
+            if uid is None or uid <= 0 or not first_seen or not last_seen:
+                continue
+            values = (
+                str(uid),
+                _text(item.get("name"), 80),
+                _integer(item.get("level")),
+                _integer(item.get("biosuit_item_index")),
+                _integer(item.get("rover_item_index")),
+                _text(item.get("guild_id"), 40) or None,
+                _text(item.get("guild_name"), 80),
+                _text(item.get("protocol_version"), 20) or PROTOCOL_VERSION,
+                first_seen,
+                last_seen,
+            )
+            self.conn.execute(
+                """INSERT INTO character_observations
+                   (character_uid,name,level,biosuit_item_index,rover_item_index,
+                    guild_id,guild_name,protocol_version,first_seen_at,last_seen_at,
+                    upload_state)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,'sent')
+                   ON CONFLICT(character_uid) DO UPDATE SET
+                     name=CASE WHEN excluded.last_seen_at>=last_seen_at AND excluded.name!='' THEN excluded.name ELSE name END,
+                     level=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.level,level) ELSE level END,
+                     biosuit_item_index=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.biosuit_item_index,biosuit_item_index) ELSE biosuit_item_index END,
+                     rover_item_index=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.rover_item_index,rover_item_index) ELSE rover_item_index END,
+                     guild_id=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.guild_id,guild_id) ELSE guild_id END,
+                     guild_name=CASE WHEN excluded.last_seen_at>=last_seen_at AND excluded.guild_name!='' THEN excluded.guild_name ELSE guild_name END,
+                     protocol_version=CASE WHEN excluded.last_seen_at>=last_seen_at THEN excluded.protocol_version ELSE protocol_version END,
+                     first_seen_at=MIN(first_seen_at,excluded.first_seen_at),
+                     last_seen_at=MAX(last_seen_at,excluded.last_seen_at),
+                     upload_state=CASE WHEN excluded.last_seen_at>=last_seen_at THEN 'sent' ELSE upload_state END""",
+                values,
+            )
+            merged += 1
+        self.conn.commit()
+        return merged
+
+    def enrich_combat_monitors(self, monitors: Iterable[dict[str, Any]]) -> int:
+        known = {
+            str(row["character_uid"]): dict(row)
+            for row in self.conn.execute(
+                """SELECT character_uid,name,level,biosuit_item_index,rover_item_index,
+                          guild_id,guild_name FROM character_observations"""
+            )
+        }
+        enriched = 0
+        for monitor in monitors:
+            candidates = [monitor.get("local"), *(monitor.get("nearby_players") or [])]
+            for boss in monitor.get("bosses") or []:
+                candidates.extend(boss.get("top_damage_players") or [])
+            for item in candidates:
+                if not isinstance(item, dict):
+                    continue
+                identity = known.get(str(item.get("character_uid") or ""))
+                if not identity:
+                    continue
+                changed = False
+                for field in (
+                    "name", "level", "biosuit_item_index", "rover_item_index",
+                    "guild_id", "guild_name",
+                ):
+                    if item.get(field) in (None, "") and identity.get(field) not in (None, ""):
+                        item[field] = identity[field]
+                        changed = True
+                enriched += int(changed)
+            for boss in monitor.get("bosses") or []:
+                totals: dict[str, dict[str, Any]] = {}
+                for player in boss.get("top_damage_players") or []:
+                    guild = str(
+                        player.get("guild_name") or player.get("guild_id") or ""
+                    ).strip()
+                    if not guild:
+                        continue
+                    total = totals.setdefault(
+                        guild, {"name": guild, "damage": 0, "dps_hp": 0.0}
+                    )
+                    total["damage"] += int(player.get("damage") or 0)
+                    total["dps_hp"] += float(player.get("dps_hp") or 0)
+                if totals:
+                    boss["top_damage_guilds"] = sorted(
+                        totals.values(),
+                        key=lambda item: (-float(item["dps_hp"]), item["name"]),
+                    )
+        return enriched

@@ -113,6 +113,40 @@ class CoreTest(unittest.TestCase):
             self.assertEqual(payload["mobs"][0]["location"], "Android Junkyard")
             self.assertNotIn("segredo", json.dumps(payload, ensure_ascii=False))
 
+    def test_knowledge_store_merges_newer_character_identity_from_site(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                merged = store.merge_remote_characters([{
+                    "character_uid": "123",
+                    "name": "Carvalho",
+                    "level": 70,
+                    "guild_id": "55",
+                    "guild_name": "Karvalho",
+                    "protocol_version": "1.28.5",
+                    "first_seen_at": "2026-08-10T10:00:00+00:00",
+                    "last_seen_at": "2026-08-11T10:00:00+00:00",
+                }])
+                monitors = [{"bosses": [{"top_damage_players": [{
+                    "character_uid": "123", "name": "Carvalho",
+                    "damage": 900, "dps_hp": 90.0,
+                }]}]}]
+                enriched = store.enrich_combat_monitors(monitors)
+                row = store.conn.execute(
+                    "SELECT * FROM character_observations WHERE character_uid='123'"
+                ).fetchone()
+            finally:
+                store.close()
+            self.assertEqual(merged, 1)
+            self.assertEqual(row["name"], "Carvalho")
+            self.assertEqual(row["guild_name"], "Karvalho")
+            self.assertEqual(row["upload_state"], "sent")
+            self.assertEqual(enriched, 1)
+            self.assertEqual(
+                monitors[0]["bosses"][0]["top_damage_guilds"],
+                [{"name": "Karvalho", "damage": 900, "dps_hp": 90.0}],
+            )
+
     def test_completed_market_signature_changes_only_on_completed_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = CaptureStore(Path(temporary) / "capture.sqlite3")
@@ -398,6 +432,34 @@ class CoreTest(unittest.TestCase):
             summarize_combat(events, "111", boss_catalog=catalog, now_ns=4_000_000_000)["bosses"],
             [],
         )
+
+    def test_pvp_target_is_cleared_after_three_seconds_without_confirmation(self):
+        events = [
+            {
+                "ts_ns": 500_000_000,
+                "type": "appear_player_list",
+                "data": {"units": [
+                    {"uid": 10, "character_uid": 111, "name": "Local"},
+                    {"uid": 20, "character_uid": 222, "name": "Rival"},
+                ]},
+            },
+            {
+                "ts_ns": 1_000_000_000,
+                "type": "use_skill_result",
+                "data": {
+                    "ret": 0,
+                    "caster_uid": 10,
+                    "main_target_uid": 20,
+                    "effect_results": [
+                        {"uid": 20, "hp_damage": 10, "final_hp": 90}
+                    ],
+                },
+            },
+        ]
+        recent = summarize_combat(events, "111", now_ns=3_900_000_000)
+        expired = summarize_combat(events, "111", now_ns=4_100_000_000)
+        self.assertEqual(recent["pvp"]["name"], "Rival")
+        self.assertIsNone(expired["pvp"])
 
     def test_live_stream_never_evicts_active_boss_under_parallel_event_load(self):
         stream = LiveEventStream(max_events=3, boss_indexes={375100})

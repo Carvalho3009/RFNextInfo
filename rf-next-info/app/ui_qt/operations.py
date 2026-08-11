@@ -324,8 +324,6 @@ class SiteUploadEngine:
             )
             knowledge.observe_events(envelope.get("events") or [])
             payload = knowledge.pending_payload()
-            if not payload["characters"] and not payload["mobs"]:
-                return {"skipped": True, "reason": "no_pending_observations"}
             payload["metadata"] = {
                 **self._metadata("observations"),
                 "session_id": session_id,
@@ -342,6 +340,9 @@ class SiteUploadEngine:
             ).encode()).hexdigest()
             response = self.site_profile.upload_observations(payload, key)
             knowledge.mark_uploaded(payload)
+            response["synced_characters"] = knowledge.merge_remote_characters(
+                response.get("characters") or []
+            )
             return response
         finally:
             knowledge.close()

@@ -205,6 +205,7 @@ class _MovableOverlay(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._drag_offset: QtCore.QPoint | None = None
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_QuitOnClose, False)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
@@ -233,6 +234,17 @@ class _MovableOverlay(QtWidgets.QDialog):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+
+class _ClientButton(QtWidgets.QPushButton):
+    double_clicked = QtCore.Signal()
+
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.double_clicked.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -303,6 +315,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.live_combat_ports: tuple[tuple[int, ...], ...] = ()
         self.pending_export_cleanup = False
         self.pending_observation_session = ""
+        self.observation_sync_next_due = 0.0
         self.pending_auto_market: tuple[str, str] | None = None
         self.auto_market_retry_after = 0.0
         try:
@@ -379,6 +392,13 @@ class MainWindow(QtWidgets.QMainWindow):
         super().changeEvent(event)
         if event.type() == QtCore.QEvent.Type.WindowStateChange:
             QtCore.QTimer.singleShot(0, self._sync_responsive_layouts)
+            if self.isMinimized():
+                QtCore.QTimer.singleShot(0, self._keep_overlays_visible)
+
+    def _keep_overlays_visible(self) -> None:
+        for overlay in (self.boss_overlay, self.boss_dps_overlay, self.pvp_overlay):
+            if overlay is not None:
+                overlay.show()
 
     def _sync_responsive_layouts(self) -> None:
         self._sync_overview_layout()
@@ -632,29 +652,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.client_group.setExclusive(True)
         self.client_buttons: list[QtWidgets.QPushButton] = []
         self.client_uid_buttons: list[QtWidgets.QToolButton] = []
-        self.client_rename_buttons: list[QtWidgets.QToolButton] = []
         for index in range(CLIENT_SLOT_COUNT):
-            name = (
-                f"{_client_label(index)} · Definir nome"
-                if index < PC_SLOT_COUNT
-                else _client_label(index)
-            )
-            button = QtWidgets.QPushButton(name)
+            button = _ClientButton(_client_label(index))
             button.setProperty("client", True)
             button.setCheckable(True)
             button.setChecked(index == 0)
+            button.setToolTip("Clique duas vezes para definir o nome deste cliente.")
             button.clicked.connect(lambda checked=False, client=index: self._select_client(client))
+            button.double_clicked.connect(
+                lambda client=index: self._rename_client(client)
+            )
             self.client_group.addButton(button, index)
             self.client_buttons.append(button)
             row.addWidget(button)
-            rename = QtWidgets.QToolButton()
-            rename.setText("✎")
-            rename.setFixedWidth(30)
-            rename.setToolTip(f"Definir nome manual do {_client_label(index)}")
-            rename.clicked.connect(
-                lambda checked=False, client=index: self._rename_client(client)
-            )
-            row.addWidget(rename)
             uid = QtWidgets.QToolButton()
             uid.setText("UID: Auto")
             uid.setFixedWidth(72)
@@ -668,9 +678,7 @@ class MainWindow(QtWidgets.QMainWindow):
             row.addWidget(uid)
             visible = index < PC_SLOT_COUNT
             button.setVisible(visible)
-            rename.setVisible(visible)
             uid.setVisible(visible)
-            self.client_rename_buttons.append(rename)
         row.addStretch(1)
         return bar
 
@@ -1811,6 +1819,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self._tray.hide()
             if hasattr(self._tray, "setContextMenu"):
                 self._tray.setContextMenu(None)
+        for overlay in (self.boss_overlay, self.boss_dps_overlay, self.pvp_overlay):
+            if overlay is not None:
+                overlay.close()
         self.log.info("app_closed")
         super().closeEvent(event)
 
@@ -1868,6 +1879,48 @@ class MainWindow(QtWidgets.QMainWindow):
             {f"character{index + 1}": name.strip()}, self.preferences_path
         )
         self._render_overview()
+
+    def _client_alias(self, index: int) -> str:
+        return str(self.preferences.get(f"character{index + 1}") or "").strip()
+
+    def _captured_client_name(self, index: int) -> str:
+        profiles = list(self.snapshot.get("profiles") or [])
+        key = _client_key(index)
+        profile = next(
+            (item for item in profiles if item.get("client_key") == key), None
+        )
+        if profile is None and not any(item.get("client_key") for item in profiles):
+            profile = profiles[index] if index < len(profiles) else None
+        return str((profile or {}).get("name") or "").strip()
+
+    def _client_name(self, index: int) -> str:
+        return self._client_alias(index) or _client_label(index)
+
+    def _client_title(self, index: int, captured: str = "") -> str:
+        name = self._client_name(index)
+        captured = str(captured or self._captured_client_name(index)).strip()
+        if captured and captured.casefold() != name.casefold():
+            return f"{name} - {captured}"
+        return name
+
+    def _refresh_client_labels(self) -> None:
+        for index, button in enumerate(self.client_buttons):
+            button.setText(self._client_title(index))
+        for mode, controls in self.monitor_controls.items():
+            tabs = controls.get("tabs")
+            if tabs is not None:
+                for index in range(CLIENT_SLOT_COUNT):
+                    tabs.setTabText(index, self._client_name(index))
+                self._update_monitor_button(mode)
+        if hasattr(self, "subsession_client"):
+            for index in range(CLIENT_SLOT_COUNT):
+                self.subsession_client.setItemText(index, self._client_name(index))
+        if hasattr(self, "subsession_filter"):
+            for index in range(CLIENT_SLOT_COUNT):
+                self.subsession_filter.setItemText(index + 1, self._client_name(index))
+        for (_mode, index), button in self.send_buttons.items():
+            if index >= 0:
+                button.setText(f"Enviar {self._client_name(index)}")
 
     def _disconnect_site_profile(self) -> None:
         self.site_profile.disconnect()
@@ -2642,7 +2695,7 @@ class MainWindow(QtWidgets.QMainWindow):
         items = list(self.snapshot.get("subsessions") or [])
         view = self.subsession_filter.currentText()
         labels = {
-            _client_label(index): _client_key(index)
+            self._client_name(index): _client_key(index)
             for index in range(CLIENT_SLOT_COUNT)
         }
         if view in labels:
@@ -2711,7 +2764,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "name": str(item.get("name") or "—")
                 + (f"\n{location}" if location else ""),
                 "character": character,
-                "client": _client_label(
+                "client": self._client_name(
                     max(0, min(
                         CLIENT_SLOT_COUNT - 1,
                         ord(str(item.get("client_key") or "client:a")[-1]) - 97,
@@ -3337,7 +3390,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.send_status_labels[mode].setText(
             "Lendo e enviando Mercado geral…"
             if mode == "market"
-            else f"Lendo e enviando {_client_label(target)}…"
+            else f"Lendo e enviando {self._client_name(target)}…"
         )
         language = str(self.preferences.get("item_name_language") or "pt")
 
@@ -3373,6 +3426,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._subsession_selection_changed()
         identifiers = sorted(self.selected_subsessions)
         if not identifiers:
+            self.send_selected_status.setText(
+                "Nenhuma Farm encerrada foi selecionada para envio."
+            )
             return
         self.send_selected_status.setText("Enviando subsessões selecionadas…")
         self.subsession_upload_button.setText("Enviando…")
@@ -3747,6 +3803,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 knowledge = KnowledgeStore(self.knowledge_path)
                 try:
+                    knowledge.enrich_combat_monitors(
+                        payload.get("combat_monitors") or []
+                    )
                     for monitor in payload.get("combat_monitors") or []:
                         knowledge.observe_combat(
                             [monitor],
@@ -3827,6 +3886,11 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self._render_combat()
             self._evaluate_alerts(self.snapshot["combat_monitors"])
+            now = time.monotonic()
+            if self.site_profile.connected and now >= self.observation_sync_next_due:
+                self.observation_sync_next_due = now + 300
+                self.pending_observation_session = str(payload.get("session_id") or "")
+                QtCore.QTimer.singleShot(0, self._flush_observation_upload)
         self._finish_combat_load()
 
     def _evaluate_alerts(self, monitors: list[dict[str, Any]]) -> None:
@@ -3959,7 +4023,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for index in range(CLIENT_SLOT_COUNT):
             allowed = self._client_allowed(index)
             self.client_buttons[index].setEnabled(allowed)
-            self.client_rename_buttons[index].setEnabled(allowed)
             self.client_uid_buttons[index].setEnabled(allowed)
             for controls in self.monitor_controls.values():
                 tabs = controls.get("tabs")
@@ -4083,7 +4146,7 @@ class MainWindow(QtWidgets.QMainWindow):
         enabled = controls["enabled"].isChecked()
         action = "Desligar monitor" if enabled else "Ligar monitor"
         tabs = controls.get("tabs")
-        client = f" {_client_label(tabs.currentIndex())}" if tabs else ""
+        client = f" {self._client_name(tabs.currentIndex())}" if tabs else ""
         controls["enabled"].setText(
             f"{action}{client}  {controls['shortcut']}"
         )
@@ -4169,7 +4232,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay_button.setChecked(False)
                 overlay_button.blockSignals(False)
             return
-        overlay = _MovableOverlay(self)
+        overlay = _MovableOverlay()
         overlay.setWindowTitle("RF QOL · Boss · Vida")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
@@ -4193,7 +4256,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.boss_overlay_name)
         layout.addWidget(self.boss_overlay_hp)
         layout.addWidget(self.boss_overlay_progress)
-        overlay.resize(430, 125)
+        overlay.resize(340, 125)
         self._restore_overlay_position(overlay, "boss_overlay_position")
         self.boss_overlay = overlay
         overlay.show()
@@ -4214,7 +4277,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay_button.setChecked(False)
                 overlay_button.blockSignals(False)
             return
-        overlay = _MovableOverlay(self)
+        overlay = _MovableOverlay()
         overlay.setWindowTitle("RF QOL · Boss · DPS")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
@@ -4234,7 +4297,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.boss_dps_overlay_rate = _label("DPS — · Tempo restante —", "data")
         layout.addWidget(self.boss_dps_overlay_name)
         layout.addWidget(self.boss_dps_overlay_rate)
-        overlay.resize(430, 95)
+        overlay.resize(340, 95)
         fallback = (
             [self.boss_overlay.x() + 24, self.boss_overlay.y() + 24]
             if self.boss_overlay else None
@@ -4261,7 +4324,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay_button.setChecked(False)
                 overlay_button.blockSignals(False)
             return
-        overlay = _MovableOverlay(self)
+        overlay = _MovableOverlay()
         overlay.setWindowTitle("RF QOL · PvP próximo")
         overlay.setWindowFlags(
             QtCore.Qt.WindowType.Tool
@@ -4281,7 +4344,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pvp_overlay_rows = QtWidgets.QVBoxLayout()
         layout.addWidget(self.pvp_overlay_summary)
         layout.addLayout(self.pvp_overlay_rows)
-        overlay.resize(410, 180)
+        overlay.resize(340, 180)
         self._restore_overlay_position(overlay, "pvp_overlay_position")
         self.pvp_overlay = overlay
         overlay.show()
@@ -4848,7 +4911,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for index in range(CLIENT_SLOT_COUNT):
             visible = index in slots
             self.client_buttons[index].setVisible(visible)
-            self.client_rename_buttons[index].setVisible(visible)
             self.client_uid_buttons[index].setVisible(visible)
         self.client_buttons[first].setChecked(True)
         for (mode, index), button in self.send_buttons.items():
@@ -4900,7 +4962,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     monitor = monitors[index]
                 character = str((monitor or {}).get("character_name") or "").strip()
                 widgets["heading"].setText(
-                    f"{_client_label(index)} · {character or 'aguardando personagem'}"
+                    self._client_title(index, character or "aguardando personagem")
                 )
                 if (
                     mode in self.monitor_client_enabled
@@ -4909,7 +4971,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._render_nearby(widgets, [], mode, {})
                     widgets["target"].setText("Último alvo confirmado: —")
                     widgets["status"].setText(
-                        f"Monitor desligado para o {_client_label(index)}."
+                        f"Monitor desligado para {self._client_name(index)}."
                     )
                     widgets["progress"].setValue(0)
                     for name in ("current_hp", "max_hp", "hp_percent", "dps_hp"):
@@ -5083,9 +5145,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 item.widget().deleteLater()
         players: dict[str, dict[str, Any]] = {}
         hostile_ids: set[str] = set()
-        for monitor in monitors:
+        sources: dict[str, set[str]] = {}
+        monitor_names: list[str] = []
+        for fallback_index, monitor in enumerate(monitors):
+            client_name = self._monitor_client_title(monitor, fallback_index)
+            monitor_names.append(client_name)
             target = dict(monitor.get("pvp") or {})
-            if target and not target.get("stale"):
+            if (
+                target
+                and not target.get("stale")
+                and float(target.get("age_seconds") or 0) <= 3
+            ):
                 identity = str(
                     target.get("character_uid")
                     or target.get("uid")
@@ -5095,6 +5165,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if identity:
                     players[identity] = target
                     hostile_ids.add(identity)
+                    sources.setdefault(identity, set()).add(client_name)
             local_realm = (monitor.get("local") or {}).get("realm")
             for player in list(monitor.get("nearby_players") or []):
                 identity = str(
@@ -5105,6 +5176,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 if identity:
                     players.setdefault(identity, player)
+                    sources.setdefault(identity, set()).add(client_name)
                     if (
                         local_realm is not None
                         and player.get("realm") is not None
@@ -5112,10 +5184,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     ):
                         hostile_ids.add(identity)
         player_rows = list(players.items())
+        origin = ", ".join(dict.fromkeys(monitor_names)) or "cliente não identificado"
         self.pvp_overlay_summary.setText(
-            f"Jogadores próximos: {len(player_rows)} · Hostis confirmados: {len(hostile_ids)}"
+            f"Leitura: {origin} · Jogadores: {len(player_rows)} · Hostis: {len(hostile_ids)}"
             if player_rows
-            else "Nenhum jogador próximo confirmado"
+            else f"Leitura: {origin} · Nenhum jogador próximo confirmado"
         )
         for identity, player in player_rows[:8]:
             row = QtWidgets.QFrame(objectName="secondaryMetricGroup")
@@ -5124,7 +5197,9 @@ class MainWindow(QtWidgets.QMainWindow):
             name = str(player.get("name") or "Jogador confirmado")
             level = f" · Nv. {player['level']}" if player.get("level") else ""
             status = " · Hostil" if identity in hostile_ids else " · Próximo"
-            layout.addWidget(_label(f"{name}{level}{status}", "subtitle"), 1)
+            source = ", ".join(sorted(sources.get(identity) or ()))
+            suffix = f" · {source}" if source else ""
+            layout.addWidget(_label(f"{name}{level}{status}{suffix}", "subtitle"), 1)
             percent = player.get("hp_percent")
             layout.addWidget(
                 _label(
@@ -5139,14 +5214,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_boss_overlay(self, monitors: list[dict[str, Any]]) -> None:
         if not self.boss_overlay and not self.boss_dps_overlay:
             return
-        boss = next(
-            (
-                item
-                for monitor in monitors
-                for item in list(monitor.get("bosses") or [])
-            ),
-            None,
+        candidates = [
+            (monitor, item, fallback_index)
+            for fallback_index, monitor in enumerate(monitors)
+            for item in list(monitor.get("bosses") or [])
+        ]
+        candidates.sort(
+            key=lambda entry: (
+                self._monitor_client_index(entry[0], entry[2]) != self.active_client,
+                -int(entry[1].get("last_seen_ns") or 0),
+            )
         )
+        monitor, boss, fallback_index = candidates[0] if candidates else ({}, None, 0)
         if not boss:
             if self.boss_overlay:
                 self.boss_overlay_name.setText("Aguardando boss próximo")
@@ -5162,8 +5241,11 @@ class MainWindow(QtWidgets.QMainWindow):
             boss.get("hp_percent"),
         )
         boss_name = str(boss.get("name") or "Boss confirmado")
+        boss_title = (
+            f"{boss_name} · {self._monitor_client_title(monitor, fallback_index)}"
+        )
         if self.boss_overlay:
-            self.boss_overlay_name.setText(boss_name)
+            self.boss_overlay_name.setText(boss_title)
             self.boss_overlay_hp.setText(
                 f"HP {self._format_count(current)} / {self._format_count(maximum)}"
             )
@@ -5179,11 +5261,26 @@ class MainWindow(QtWidgets.QMainWindow):
             else "—"
         )
         if self.boss_dps_overlay:
-            self.boss_dps_overlay_name.setText(boss_name)
+            self.boss_dps_overlay_name.setText(boss_title)
             self.boss_dps_overlay_rate.setText(
                 f"DPS {self._format_count(boss.get('dps_hp'))} "
                 f"· Tempo restante {eta_text}"
             )
+
+    @staticmethod
+    def _monitor_client_index(monitor: dict[str, Any], fallback: int = 0) -> int:
+        key = str(monitor.get("client_key") or "")
+        if len(key) == 8 and key.startswith("client:"):
+            index = ord(key[-1].lower()) - ord("a")
+            if 0 <= index < CLIENT_SLOT_COUNT:
+                return index
+        return max(0, min(CLIENT_SLOT_COUNT - 1, fallback))
+
+    def _monitor_client_title(
+        self, monitor: dict[str, Any], fallback: int = 0
+    ) -> str:
+        index = self._monitor_client_index(monitor, fallback)
+        return self._client_title(index, str(monitor.get("character_name") or ""))
 
     def _render_bosses(self, widgets: dict[str, Any], bosses: list[dict[str, Any]]) -> None:
         layout = widgets["boss_layout"]
@@ -5237,21 +5334,60 @@ class MainWindow(QtWidgets.QMainWindow):
                     "muted",
                 )
             )
-            for title, key in (
-                ("DPS por jogador · 10 s", "top_damage_players"),
-                ("DPS por guilda · 10 s", "top_damage_guilds"),
-                ("DPS por grupo · 10 s", "top_damage_groups"),
-            ):
-                ranking = list(boss.get(key) or [])
-                if ranking:
-                    column.addWidget(_label(title, "subtitle"))
-                    for position, item in enumerate(ranking[:10], 1):
+            players_by_guild: dict[str, list[dict[str, Any]]] = {}
+            for item in list(boss.get("top_damage_players") or [])[:10]:
+                guild = str(item.get("guild_name") or "").strip() or "Sem guilda"
+                players_by_guild.setdefault(guild, []).append(item)
+            if players_by_guild:
+                guild_totals = {
+                    str(item.get("name") or "").strip(): item
+                    for item in list(boss.get("top_damage_guilds") or [])
+                }
+                for guild, players in players_by_guild.items():
+                    guild_totals.setdefault(
+                        guild,
+                        {
+                            "dps_hp": sum(
+                                float(item.get("dps_hp") or 0) for item in players
+                            ),
+                            "damage": sum(
+                                int(item.get("damage") or 0) for item in players
+                            ),
+                        },
+                    )
+                column.addWidget(_label("Dano por guilda · 10 s", "subtitle"))
+                guild_columns = QtWidgets.QHBoxLayout()
+                guild_columns.setSpacing(10)
+                ordered_guilds = sorted(
+                    players_by_guild,
+                    key=lambda name: -float(
+                        (guild_totals.get(name) or {}).get("dps_hp") or 0
+                    ),
+                )
+                for guild in ordered_guilds:
+                    guild_card = QtWidgets.QFrame(objectName="secondaryMetricGroup")
+                    guild_card.setMinimumWidth(200)
+                    guild_column = QtWidgets.QVBoxLayout(guild_card)
+                    guild_column.setContentsMargins(10, 8, 10, 8)
+                    guild_column.setSpacing(5)
+                    guild_column.addWidget(_label(guild, "subtitle"))
+                    total = guild_totals.get(guild) or {}
+                    guild_column.addWidget(
+                        _label(
+                            f"{self._format_count(total.get('dps_hp'))}/s "
+                            f"· dano {self._format_count(total.get('damage'))}",
+                            "data",
+                        )
+                    )
+                    for position, item in enumerate(players_by_guild[guild], 1):
                         ranking_row = QtWidgets.QHBoxLayout()
-                        name = str(item.get("name") or "Não identificado")
-                        guild = str(item.get("guild_name") or "").strip()
-                        if guild:
-                            name += f" · {guild}"
-                        ranking_row.addWidget(_label(f"{position}. {name}", "muted"), 1)
+                        ranking_row.addWidget(
+                            _label(
+                                f"{position}. {item.get('name') or 'Não identificado'}",
+                                "muted",
+                            ),
+                            1,
+                        )
                         ranking_row.addWidget(
                             _label(
                                 f"{self._format_count(item.get('dps_hp'))}/s "
@@ -5259,7 +5395,30 @@ class MainWindow(QtWidgets.QMainWindow):
                                 "data",
                             )
                         )
-                        column.addLayout(ranking_row)
+                        guild_column.addLayout(ranking_row)
+                    guild_column.addStretch(1)
+                    guild_columns.addWidget(guild_card, 1)
+                column.addLayout(guild_columns)
+            groups = list(boss.get("top_damage_groups") or [])
+            if groups:
+                column.addWidget(_label("DPS por grupo · 10 s", "subtitle"))
+                for position, item in enumerate(groups[:10], 1):
+                    ranking_row = QtWidgets.QHBoxLayout()
+                    ranking_row.addWidget(
+                        _label(
+                            f"{position}. {item.get('name') or 'Não identificado'}",
+                            "muted",
+                        ),
+                        1,
+                    )
+                    ranking_row.addWidget(
+                        _label(
+                            f"{self._format_count(item.get('dps_hp'))}/s "
+                            f"· dano {self._format_count(item.get('damage'))}",
+                            "data",
+                        )
+                    )
+                    column.addLayout(ranking_row)
             progress = QtWidgets.QProgressBar()
             progress.setRange(0, 1000)
             progress.setValue(max(0, min(1000, round(float(percent) * 10))) if isinstance(percent, (int, float)) else 0)
@@ -5276,25 +5435,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _render_overview(self) -> None:
         snapshot = self.snapshot
-        profiles = list(snapshot.get("profiles") or [])
-        characters = list(snapshot.get("characters") or [])
-        for index, button in enumerate(self.client_buttons):
-            key = _client_key(index)
-            profile = next((item for item in profiles if item.get("client_key") == key), None)
-            if profile is None and not any(item.get("client_key") for item in profiles):
-                profile = profiles[index] if index < len(profiles) else None
-            manual = str(self.preferences.get(f"character{index + 1}") or "").strip()
-            captured = str(profile.get("name") or "").strip() if profile else ""
-            names = [value for value in (manual, captured) if value]
-            names = list(dict.fromkeys(value.casefold() for value in names))
-            display = " · ".join(
-                next(value for value in (manual, captured) if value.casefold() == folded)
-                for folded in names
-            )
-            suffix = display or ("Definir nome" if index < PC_SLOT_COUNT else "")
-            button.setText(
-                _client_label(index) + (f" · {suffix}" if suffix else "")
-            )
+        self._refresh_client_labels()
         self._refresh_client_uid_buttons()
 
         key = _client_key(self.active_client)
@@ -5390,7 +5531,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else captured or manual or "Aguardando personagem"
         )
         self.secondary_character_name.setText(
-            f"{_client_label(index)} · {name}"
+            self._client_title(index, name)
         )
         details = [
             f"Nível {summary['level']}" if summary.get("level") is not None else "Nível —",
