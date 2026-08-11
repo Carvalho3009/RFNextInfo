@@ -5147,8 +5147,8 @@ class MainWindow(QtWidgets.QMainWindow):
         hostile_ids: set[str] = set()
         sources: dict[str, set[str]] = {}
         monitor_names: list[str] = []
-        for fallback_index, monitor in enumerate(monitors):
-            client_name = self._monitor_client_title(monitor, fallback_index)
+        for monitor in monitors:
+            client_name = self._monitor_client_title(monitor)
             monitor_names.append(client_name)
             target = dict(monitor.get("pvp") or {})
             if (
@@ -5242,7 +5242,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         boss_name = str(boss.get("name") or "Boss confirmado")
         boss_title = (
-            f"{boss_name} · {self._monitor_client_title(monitor, fallback_index)}"
+            f"{boss_name} · {self._monitor_client_title(monitor)}"
         )
         if self.boss_overlay:
             self.boss_overlay_name.setText(boss_title)
@@ -5276,11 +5276,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 return index
         return max(0, min(CLIENT_SLOT_COUNT - 1, fallback))
 
-    def _monitor_client_title(
-        self, monitor: dict[str, Any], fallback: int = 0
-    ) -> str:
-        index = self._monitor_client_index(monitor, fallback)
-        return self._client_title(index, str(monitor.get("character_name") or ""))
+    @staticmethod
+    def _monitor_client_title(monitor: dict[str, Any]) -> str:
+        return str(monitor.get("character_name") or "").strip() or "Personagem não vinculado"
 
     def _render_bosses(self, widgets: dict[str, Any], bosses: list[dict[str, Any]]) -> None:
         layout = widgets["boss_layout"]

@@ -208,6 +208,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
             self.assertIn("sem ler", window.stop_without_reading_button.text())
             window.snapshot = {"combat_monitors": [{
+                "character_name": "Personagem A",
                 "local": {},
                 "nearby_players": [{
                     "uid": 20,
@@ -230,7 +231,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_pvp_overlay(True)
             self.assertEqual(
                 window.pvp_overlay_summary.text(),
-                "Leitura: Cliente A · Jogadores: 1 · Hostis: 0",
+                "Leitura: Personagem A · Jogadores: 1 · Hostis: 0",
             )
             self.assertLessEqual(window.pvp_overlay.width(), 340)
             self.assertIsNone(window.pvp_overlay.parent())
@@ -252,7 +253,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._render_combat()
             self.assertEqual(
                 window.pvp_overlay_summary.text(),
-                "Leitura: Cliente A · Jogadores: 2 · Hostis: 1",
+                "Leitura: Personagem A · Jogadores: 2 · Hostis: 1",
             )
             self.assertTrue(
                 window.pvp_overlay.testAttribute(
@@ -299,12 +300,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._toggle_boss_dps_overlay(True)
             self.assertNotEqual(window.boss_overlay.pos(), window.boss_dps_overlay.pos())
             self.assertEqual(
-                window.boss_overlay_name.text(), "Mecha Corruptor · Cliente A"
+                window.boss_overlay_name.text(), "Mecha Corruptor · Personagem A"
             )
             self.assertEqual(window.boss_overlay_hp.text(), "HP 750.000 / 1.000.000")
             self.assertEqual(window.boss_overlay_progress.value(), 750)
             self.assertEqual(
-                window.boss_dps_overlay_name.text(), "Mecha Corruptor · Cliente A"
+                window.boss_dps_overlay_name.text(), "Mecha Corruptor · Personagem A"
             )
             self.assertIn("25.000", window.boss_dps_overlay_rate.text())
             self.assertEqual(
@@ -371,10 +372,10 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertEqual(window.boss_overlay.pos(), boss_position)
             self.assertEqual(window.boss_dps_overlay.pos(), boss_dps_position)
             self.assertEqual(
-                window.boss_overlay_name.text(), "Mecha Corruptor · Cliente A"
+                window.boss_overlay_name.text(), "Mecha Corruptor · Personagem A"
             )
             self.assertEqual(
-                window.boss_dps_overlay_name.text(), "Mecha Corruptor · Cliente A"
+                window.boss_dps_overlay_name.text(), "Mecha Corruptor · Personagem A"
             )
             window._toggle_boss_overlay(False)
             window._toggle_boss_dps_overlay(False)

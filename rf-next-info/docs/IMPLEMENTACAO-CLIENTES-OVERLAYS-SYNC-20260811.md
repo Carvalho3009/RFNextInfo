@@ -6,11 +6,11 @@ Estado: implementado e validado localmente; não publicado
 ## Escopo
 
 - renomear Cliente A, Cliente B e Emuladores por duplo clique no próprio botão;
-- propagar o nome para seletores, abas de monitor, botões de envio e overlays;
+- propagar o nome definido para seletores, abas de monitor e botões de envio;
 - limpar o alvo PvP após 3 segundos sem nova confirmação;
 - reduzir os overlays para 340 px de largura e mantê-los como janelas independentes
   quando a janela principal for minimizada;
-- vincular os overlays à conexão que originou a leitura;
+- identificar os overlays pelo personagem confirmado vinculado à leitura;
 - priorizar o cliente ativo no overlay de Boss;
 - separar os jogadores do Boss em colunas por guilda;
 - sincronizar UID, personagem e guilda entre programas por meio do site;
@@ -19,9 +19,10 @@ Estado: implementado e validado localmente; não publicado
 ## Contrato visual de nomes
 
 O nome manual substitui o rótulo genérico do slot. Quando o personagem também
-é conhecido, o formato é `Nome manual - Personagem`, por exemplo
-`Carvalho - Personagem`. O nome manual é apenas visual e não altera UID nem o
-roteamento da captura.
+é conhecido, o formato é `NomeDefinido - Personagem`; `Carvalho` era somente
+um exemplo de nome definido. O nome manual é apenas visual e não altera UID
+nem o roteamento da captura. Nos overlays, a origem é exclusivamente o
+personagem confirmado vinculado ao UID/rota, sem o nome manual do slot.
 
 ## Retenção PvP
 
