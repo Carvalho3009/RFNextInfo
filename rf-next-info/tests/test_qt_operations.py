@@ -523,6 +523,57 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertEqual(engine.client_ports, ((50000, 50001),))
             self.assertIn(50001, engine.capture.added_ports)
 
+    def test_opening_emulator_does_not_discard_temporarily_idle_pc_routes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            emulator_active = False
+
+            def emulator_reader(_ports):
+                return (
+                    {
+                        r"C:\BlueStacks\HD-Player.exe": (
+                            {30}, {57000}, {12020}
+                        )
+                    }
+                    if emulator_active
+                    else {}
+                )
+
+            def routes(executable, _ports):
+                if "HD-Player" in executable:
+                    return [{
+                        "pid": 30,
+                        "local_ports": (57000,),
+                        "remote_ports": (12020,),
+                    }]
+                return [] if emulator_active else [{
+                    "pid": 10,
+                    "local_ports": (50000,),
+                    "remote_ports": (12020,),
+                }]
+
+            engine = CaptureEngine(
+                Path(directory),
+                Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({10}, {50000}, {12020})
+                },
+                emulator_reader=emulator_reader,
+                client_reader=routes,
+            )
+            engine.start()
+            emulator_active = True
+
+            engine.preview_live()
+
+            self.assertTrue(engine.route_identity_trusted)
+            self.assertEqual(
+                engine.client_ports, ((50000,), (), (57000,))
+            )
+            self.assertEqual(engine.client_pids, [10, 30])
+
     def test_does_not_replace_an_existing_pktmon_capture(self):
         with tempfile.TemporaryDirectory() as directory:
             engine = CaptureEngine(

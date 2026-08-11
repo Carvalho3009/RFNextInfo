@@ -1154,13 +1154,23 @@ class CaptureEngine:
             len({int(route["pid"]) for route in routes}),
             len({int(route["pid"]) for route in emulator_routes}),
         )
-        active_pids = {
-            int(route["pid"]) for route in (*routes, *emulator_routes)
+        active_pc_pids = {int(route["pid"]) for route in routes}
+        active_emulator_pids = {
+            int(route["pid"]) for route in emulator_routes
         }
+        pc_replaced = bool(
+            self.pc_client_pids
+            and active_pc_pids
+            and active_pc_pids.isdisjoint(self.pc_client_pids)
+        )
+        emulator_replaced = bool(
+            self.emulator_client_pids
+            and active_emulator_pids
+            and active_emulator_pids.isdisjoint(self.emulator_client_pids)
+        )
         if (
             self.route_identity_trusted
-            and self.client_pids
-            and not active_pids.intersection(self.client_pids)
+            and (pc_replaced or emulator_replaced)
         ):
             self.route_identity_trusted = False
             self.pc_client_pids = []

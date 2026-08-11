@@ -78,6 +78,7 @@ sem publicação do instalador
 | 10 ago 2026 | Instalador/Termos | Os Termos de Uso 1.0 fornecidos pelo owner foram incorporados integralmente ao NSIS. A instalação normal exige marcar “Li e aceito os Termos de Uso” antes de escolher a pasta. | Concluído no instalador; não publicado |
 | 10 ago 2026 | Publicação | O owner autorizou uma branch pública exclusiva para download. A branch órfã `download/rf-qol-1.0.0` publicou somente instalador, checksum, termos, procedência, SBOM, lock e README; nenhum código ou dado operacional foi incluído. | Concluído no GitHub público |
 | 10 ago 2026 | Licença/Produção | O emissor `7a1e199` foi promovido após backup e staging. As 20 licenças existentes migraram para 2 PC + 1 emulador; lease descartável 2+5 passou pela superfície pública e pelo cliente antes de ser revogada. | Produção concluída |
+| 10 ago 2026 | Captura/Rotas | A abertura do BlueStacks durante uma captura não invalida mais os clientes PC quando suas conexões ficam momentaneamente ausentes. A troca real de PID da mesma família continua bloqueando a herança automática de identidade. | Concluído local; instalação atual não substituída |
 
 ## Evidências e comandos de validação
 
@@ -211,6 +212,10 @@ sem publicação do instalador
   `SHA256SUMS.txt` e a procedência correspondem; `dirty=false`, modo manual,
   `NotSigned`. O ensaio isolado instalou, executou o autoteste e desinstalou
   sem deixar o executável.
+- Correção de rotas ao abrir BlueStacks: regressão específica confirmou que
+  os slots, portas e PIDs PC permanecem vinculados durante uma ausência TCP
+  transitória e que o emulador entra em `client:c`. A suíte fechada CPython
+  3.13/Qt passou com 219 testes em 180,356 s.
 - Publicação pública: commit órfão
   `de50fb4b93f17168c525245c565e2b3404337a84` na branch
   `download/rf-qol-1.0.0` de `Carvalho3009/RFNextInfo`. O instalador foi
