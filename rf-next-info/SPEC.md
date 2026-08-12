@@ -70,11 +70,12 @@ Roadmap:
 - Personagem, level, EXP, Mercado, Codex, farm e kills estimadas por recompensa.
 - Um Profile com até dois personagens simultâneos, separados por UID confirmado.
 - PID, porta e ordem do processo nunca são identidade definitiva de personagem;
-  sem UID confirmado, o cliente recebe apenas um nome manual temporário.
+  sem UID confirmado, o slot mantém o rótulo genérico e a detecção automática.
 - A beta mantém um histórico local dos UIDs confirmados por `0x0106` e permite
-  escolher `Automático` ou um personagem conhecido separadamente para os
-  Clientes A e B. O mesmo UID não pode ocupar os dois clientes e uma identidade
-  canônica posterior substitui e corrige o vínculo manual divergente.
+  escolher por duplo clique `Automático` ou um personagem conhecido
+  separadamente para cada cliente. O mesmo UID não pode ocupar dois clientes e
+  uma identidade canônica posterior substitui e corrige o vínculo manual
+  divergente.
 - O histórico do UID também preserva a última classe
   confirmada pelo Biosuit e o último Rover confirmado do próprio personagem.
   Ao selecionar um UID antigo, esses dados aparecem como estado histórico até

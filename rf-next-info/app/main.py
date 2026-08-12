@@ -252,6 +252,29 @@ def _item_names(filename: str = "item_names.json") -> dict[str, str]:
 
 ITEM_NAMES = _item_names()
 ITEM_NAMES_EN = _item_names("item_names_en.json")
+ITEM_NAMES_PT_RESOLVED = {**ITEM_NAMES_EN, **ITEM_NAMES}
+ITEM_NAMES_EN_RESOLVED = {**ITEM_NAMES, **ITEM_NAMES_EN}
+
+
+def game_data_language(language: object) -> str:
+    """Normaliza a preferência usada somente pelos nomes dos dados do jogo."""
+    return "en" if language == "en" else "pt"
+
+
+def item_names_for_language(language: object) -> dict[str, str]:
+    """Retorna o catálogo escolhido com fallback para o outro idioma."""
+    return (
+        ITEM_NAMES_EN_RESOLVED
+        if game_data_language(language) == "en"
+        else ITEM_NAMES_PT_RESOLVED
+    )
+
+
+def game_catalog_name(entry: dict[str, Any], language: object) -> str:
+    """Resolve um nome localizado sem ocultar dados ausentes em um catálogo."""
+    primary = "name_en" if game_data_language(language) == "en" else "name"
+    fallback = "name" if primary == "name_en" else "name_en"
+    return str(entry.get(primary) or entry.get(fallback) or "")
 
 
 def _item_grades() -> dict[str, int]:
@@ -264,11 +287,53 @@ def _item_grades() -> dict[str, int]:
 
 
 ITEM_GRADES = _item_grades()
+INVENTORY_CATEGORIES = (
+    ("equipment", "Equipamentos"),
+    ("consumables", "Consumíveis"),
+    ("materials", "Materiais"),
+    ("talics", "Talicas"),
+    ("rover_parts", "Partes de Rover"),
+    ("other", "Outros"),
+)
+
+
+def _item_categories() -> dict[str, str]:
+    try:
+        data = json.loads(
+            (ROOT / "core" / "item_categories.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        return {
+            str(item_index): str(category)
+            for item_index, category in data["categories"].items()
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+ITEM_CATEGORIES = _item_categories()
+
+
+def inventory_category(item_index: object, kind: object = "") -> str:
+    """Classifica um item pelo catálogo oficial, com fallback conservador."""
+    category = ITEM_CATEGORIES.get(str(item_index))
+    if category:
+        return category
+    return "equipment" if kind == "equipment" else "other"
+
+
 LOOT_RARITIES = {
     1: ("common", "Comum"),
     2: ("uncommon", "Incomum"),
     3: ("rare", "Raro"),
     4: ("epic", "Épico"),
+}
+LOOT_RARITY_LABELS_EN = {
+    1: "Common",
+    2: "Uncommon",
+    3: "Rare",
+    4: "Epic",
 }
 
 
@@ -381,10 +446,15 @@ def _capture_summary(
     character_name: str = "",
     item_names: dict[str, str] | None = None,
     *,
+    game_language: str = "pt",
     _state: dict[str, Any] | None = None,
     _return_state: bool = False,
 ) -> tuple:
-    item_names = ITEM_NAMES if item_names is None else item_names
+    item_names = (
+        item_names_for_language(game_language)
+        if item_names is None
+        else item_names
+    )
     empty_summary = {
         "character": "",
         "character_class": "",
@@ -472,7 +542,9 @@ def _capture_summary(
                 summary["biosuit_item_index"] = biosuit_item_index
                 biosuit = BIOSUITS.get(str(biosuit_item_index))
                 if biosuit:
-                    summary["biosuit_name"] = str(biosuit.get("name") or "")
+                    summary["biosuit_name"] = game_catalog_name(
+                        biosuit, game_language
+                    )
                     summary["biosuit_type"] = biosuit.get("biosuit_type")
                     summary["biosuit_grade"] = biosuit.get("grade")
                     summary["character_class"] = str(
@@ -510,7 +582,9 @@ def _capture_summary(
             rover = ROVERS.get(str(rover_item_index))
             if rover:
                 summary["rover_item_index"] = rover_item_index
-                summary["rover_name"] = str(rover.get("name") or "")
+                summary["rover_name"] = game_catalog_name(
+                    rover, game_language
+                )
                 summary["rover_grade"] = rover.get("grade")
         active_equipment = fields.get("active_equipment")
         equipment_uid_matches = bool(
@@ -612,7 +686,11 @@ def _capture_summary(
                         "count": count,
                         "gain_total": item.get("gain_total"),
                         "grade": grade,
-                        "rarity": rarity[1] if rarity else None,
+                        "rarity": (
+                            LOOT_RARITY_LABELS_EN.get(grade)
+                            if game_data_language(game_language) == "en"
+                            else rarity[1] if rarity else None
+                        ),
                     }
                 loot_limit = state.get("loot_limit")
                 if loot_limit is None or len(summary["loot"]) < loot_limit:
@@ -2534,7 +2612,7 @@ class App(tk.Tk):
         names.pack(fill=X, pady=(4, 0))
         ttk.Label(
             names,
-            text="Idioma dos nomes",
+            text="Idioma dos dados do jogo",
             style="PanelMuted.TLabel",
         ).pack(side=LEFT)
         item_language = ttk.Combobox(
@@ -3142,14 +3220,11 @@ class App(tk.Tk):
             character_uid,
             character_name,
             item_names=self._selected_item_names(),
+            game_language=self.item_name_language.get(),
         )
 
     def _selected_item_names(self) -> dict[str, str]:
-        return (
-            ITEM_NAMES_EN
-            if self.item_name_language.get() == "en"
-            else ITEM_NAMES
-        )
+        return item_names_for_language(self.item_name_language.get())
 
     def _selected_farm_catalog(
         self,
@@ -5958,7 +6033,8 @@ class App(tk.Tk):
             stats=cache["stats"],
             detected=profiles,
         )
-        item_names = ITEM_NAMES_EN if language == "en" else ITEM_NAMES
+        language = game_data_language(language)
+        item_names = item_names_for_language(language)
         summaries = cache["summaries"]
 
         def update_summary_entry(
@@ -5981,6 +6057,7 @@ class App(tk.Tk):
                         character_uid,
                         character_name,
                         item_names,
+                        game_language=language,
                         _state=entry["state"],
                         _return_state=True,
                     )

@@ -11,7 +11,102 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
-    def test_client_double_click_renames_all_visible_references(self):
+    def test_game_catalogs_follow_portuguese_and_english_setting(self):
+        from app.main import FARM_LABELS_PT_EN
+        from app.ui_qt.data import load_boss_catalog, load_farm_catalog
+
+        portuguese = load_farm_catalog("pt")
+        english = load_farm_catalog("en")
+        (map_pt, spot_pt), (map_en, spot_en) = next(
+            iter(FARM_LABELS_PT_EN.items())
+        )
+        self.assertIn(spot_pt, portuguese[map_pt])
+        self.assertIn(spot_en, english[map_en])
+        self.assertEqual(
+            load_boss_catalog("pt")[845]["name"],
+            "Guardião Tyrant Origin",
+        )
+        self.assertEqual(
+            load_boss_catalog("en")[845]["name"],
+            "Origin the Tyrant Keeper",
+        )
+
+    def test_changing_game_data_language_keeps_farm_and_reloads_snapshot(self):
+        from PySide6 import QtWidgets
+
+        from app.main import FARM_LABELS_PT_EN
+        from app.ui_qt.data import load_preferences
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["game-data-language-setting-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preferences_path = root / "preferences.json"
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=preferences_path,
+            )
+            window.capture_timer.stop()
+            window.setting_capture_directory.setText(str(root / "captures"))
+            window.preferences = {"item_name_language": "pt"}
+            window._refresh_farm_catalog()
+            (map_pt, spot_pt), (map_en, spot_en) = next(
+                (
+                    pair
+                    for pair in FARM_LABELS_PT_EN.items()
+                    if pair[0][0] in window.farm_catalog
+                    and pair[0][1] in window.farm_catalog[pair[0][0]]
+                )
+            )
+            window.subsession_map.setCurrentText(map_pt)
+            window.subsession_spot.setCurrentText(spot_pt)
+            window.setting_language.setCurrentIndex(
+                window.setting_language.findData("en")
+            )
+            window.capture_engine = SimpleNamespace(current_session="session")
+
+            with (
+                mock.patch.object(QtWidgets.QMessageBox, "information"),
+                mock.patch.object(window, "_load_readonly_data") as reload_data,
+            ):
+                window._save_settings()
+
+            saved = load_preferences(preferences_path)
+            self.assertEqual(saved["item_name_language"], "en")
+            self.assertEqual(saved["subsession_map"], map_en)
+            self.assertEqual(saved["subsession_spot"], spot_en)
+            self.assertEqual(window.subsession_map.currentText(), map_en)
+            self.assertEqual(window.subsession_spot.currentText(), spot_en)
+            reload_data.assert_called_once_with()
+            window.capture_engine = None
+            window.close()
+
+    def test_inventory_names_fall_back_to_english_when_pt_translation_is_missing(self):
+        from app.ui_qt.data import _inventory_item_name
+
+        expected = {
+            270004: "Greater Metal Plate",
+            270005: "Greater Abrasive",
+            270006: "Greater Fiber Bundle",
+            270007: "Greater Filament",
+            270008: "Superior Metal Plate",
+            270009: "Superior Abrasive",
+            270010: "Superior Fiber Bundle",
+            270011: "Superior Filament",
+        }
+        for offset in (0, 5000):
+            self.assertEqual(
+                {
+                    item_index + offset: _inventory_item_name(
+                        item_index + offset, "pt"
+                    )
+                    for item_index in expected
+                },
+                {item_index + offset: name for item_index, name in expected.items()},
+            )
+
+    def test_client_double_click_selects_uid_without_rename_controls(self):
         from app.ui_qt.main import MainWindow, create_application
 
         create_application(["client-rename-test"])
@@ -26,24 +121,24 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.snapshot = {
                 "profiles": [{"client_key": "client:a", "name": "Personagem"}],
                 "characters": [],
+                "character_history": [{
+                    "uid": "101",
+                    "name": "Alice",
+                    "last_seen_at": "2026-08-08T12:00:00Z",
+                }],
             }
             with mock.patch(
-                "app.ui_qt.main.QtWidgets.QInputDialog.getText",
-                return_value=("Carvalho", True),
+                "app.ui_qt.main.QtWidgets.QInputDialog.getItem",
+                return_value=("Alice · UID 101 · 2026-08-08 12:00", True),
             ):
                 window.client_buttons[0].double_clicked.emit()
-            self.assertFalse(hasattr(window, "client_rename_buttons"))
-            self.assertEqual(window.client_buttons[0].text(), "Carvalho - Personagem")
+            self.assertFalse(hasattr(window, "client_uid_buttons"))
             self.assertEqual(
-                window.monitor_controls["pvp"]["tabs"].tabText(0), "Carvalho"
+                window.preferences["client_uid_selections"],
+                {"client:a": "101"},
             )
-            self.assertIn(
-                "Carvalho", window.monitor_controls["pvp"]["enabled"].text()
-            )
-            self.assertEqual(window.subsession_client.itemText(0), "Carvalho")
-            self.assertEqual(
-                window.send_buttons[("character", 0)].text(), "Enviar Carvalho"
-            )
+            self.assertEqual(window.client_buttons[0].text(), "Cliente A")
+            self.assertIn("Alice · UID 101", window.client_buttons[0].toolTip())
             window.close()
 
     def test_signed_rollback_reverifies_backs_up_and_closes_qt_app(self):
@@ -144,6 +239,60 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.exit_requested = True
         window.close()
 
+    def test_inventory_page_follows_selected_client_and_shows_quantity(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["inventory-page-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            window.snapshot = {
+                "profiles": [{
+                    "uid": "101",
+                    "name": "Alice",
+                    "client_key": "client:a",
+                }],
+                "inventories": {"101": [{
+                    "item_index": 270062,
+                    "name": "Material de teste",
+                    "quantity": 25,
+                    "kind": "stackable",
+                    "category": "materials",
+                    "slot": 7,
+                    "refinement": 0,
+                    "rarity": 2,
+                }]},
+            }
+            self.assertEqual(
+                [
+                    window.inventory_category_tabs.tabText(index)
+                    for index in range(window.inventory_category_tabs.count())
+                ],
+                [
+                    "Equipamentos",
+                    "Consumíveis",
+                    "Materiais",
+                    "Talicas",
+                    "Partes de Rover",
+                    "Outros",
+                ],
+            )
+            window.inventory_category_tabs.setCurrentIndex(2)
+            window._render_inventory()
+            self.assertEqual(window.inventory_table.rowCount(), 1)
+            self.assertEqual(window.inventory_table.item(0, 0).text(), "Material de teste")
+            self.assertEqual(window.inventory_table.item(0, 1).text(), "25")
+            self.assertIn("Alice", window.inventory_status.text())
+            self.assertIn("Materiais", window.inventory_status.text())
+            window.inventory_category_tabs.setCurrentIndex(0)
+            self.assertEqual(window.inventory_table.rowCount(), 0)
+            window.close()
+
     def test_send_shortcuts_are_absent_from_ui_and_settings(self):
         from PySide6 import QtWidgets
 
@@ -164,6 +313,48 @@ class QtPreviewSmokeTest(unittest.TestCase):
         }
         self.assertTrue({"F1", "F2", "F3", "F4"}.isdisjoint(labels))
         window.close()
+
+    def test_pvp_database_edits_empty_guild_and_manual_status(self):
+        from app.ui_qt.main import MainWindow, create_application
+        from core.knowledge import KnowledgeStore
+
+        create_application(["pvp-database-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            knowledge = KnowledgeStore(window.knowledge_path)
+            try:
+                knowledge.observe_events([{
+                    "type": "appear_player_list",
+                    "data": {"units": [{
+                        "uid": 1,
+                        "character_uid": 123,
+                        "name": "Rival",
+                    }]},
+                }])
+            finally:
+                knowledge.close()
+            window._render_pvp_database()
+            self.assertEqual(window.pvp_database_table.rowCount(), 1)
+            guild = window.pvp_database_table.cellWidget(0, 2)
+            status = window.pvp_database_table.cellWidget(0, 3)
+            guild.setText("Guilda manual")
+            status.setCurrentIndex(status.findData("enemy"))
+            knowledge = KnowledgeStore(window.knowledge_path)
+            try:
+                row = knowledge.characters()[0]
+            finally:
+                knowledge.close()
+            self.assertEqual(row["guild_name"], "Guilda manual")
+            self.assertEqual(row["guild_source"], "manual")
+            self.assertEqual(row["pvp_status"], "enemy")
+            self.assertTrue(guild.isReadOnly())
+            window.close()
 
     @unittest.skipUnless(os.name == "nt", "Contador de RAM disponível no Windows")
     def test_process_memory_reader_returns_current_working_set(self):
@@ -208,6 +399,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
             self.assertIn("sem ler", window.stop_without_reading_button.text())
             window.snapshot = {"combat_monitors": [{
+                "client_key": "client:a",
                 "character_name": "Personagem A",
                 "local": {},
                 "nearby_players": [{
@@ -228,73 +420,109 @@ class QtPreviewSmokeTest(unittest.TestCase):
                     "eta_seconds": 30,
                 }],
             }]}
-            window._toggle_pvp_overlay(True)
+            for kind in ("target", "hostile", "non_hostile"):
+                window._toggle_pvp_overlay(True, kind)
+            target_overlay = window.pvp_overlays["target"]
+            hostile_overlay = window.pvp_overlays["hostile"]
+            non_hostile_overlay = window.pvp_overlays["non_hostile"]
             self.assertEqual(
-                window.pvp_overlay_summary.text(),
-                "Leitura: Personagem A · Jogadores: 1 · Hostis: 0",
+                target_overlay.summary.text(),
+                "Alvo atual · Personagem A · Nenhum",
             )
-            self.assertLessEqual(window.pvp_overlay.width(), 340)
-            self.assertIsNone(window.pvp_overlay.parent())
-            window.pvp_overlay.hide()
+            self.assertEqual(target_overlay.width(), 300)
+            self.assertIsNone(target_overlay.parent())
+            target_overlay.hide()
             window._keep_overlays_visible()
-            self.assertTrue(window.pvp_overlay.isVisible())
-            self.assertEqual(window.pvp_overlay_rows.count(), 1)
-            pvp_labels = window.pvp_overlay_rows.itemAt(0).widget().findChildren(
-                window.pvp_overlay_summary.__class__
-            )
-            self.assertTrue(any("Rigarden" in label.text() for label in pvp_labels))
-            self.assertTrue(any("Próximo" in label.text() for label in pvp_labels))
+            self.assertTrue(target_overlay.isVisible())
+            self.assertEqual(target_overlay.rows.count(), 0)
+            self.assertEqual(hostile_overlay.rows.count(), 0)
+            self.assertEqual(non_hostile_overlay.rows.count(), 1)
             window.snapshot["combat_monitors"][0]["pvp"] = {
                 "uid": 21,
                 "name": "Rival confirmado",
                 "hp_percent": 50.0,
+                "age_seconds": 1.0,
                 "stale": False,
             }
             window._render_combat()
             self.assertEqual(
-                window.pvp_overlay_summary.text(),
-                "Leitura: Personagem A · Jogadores: 2 · Hostis: 1",
+                target_overlay.summary.text(),
+                "Alvo atual · Personagem A",
             )
+            self.assertEqual(target_overlay.rows.count(), 1)
+            pvp_labels = target_overlay.rows.itemAt(0).widget().findChildren(
+                target_overlay.summary.__class__
+            )
+            self.assertTrue(any("Rival confirmado" in label.text() for label in pvp_labels))
+            self.assertFalse(any("Rigarden" in label.text() for label in pvp_labels))
+            window.snapshot["combat_monitors"].append({
+                "client_key": "client:b",
+                "character_name": "Personagem B",
+                "pvp": {
+                    "uid": 22,
+                    "name": "Alvo do cliente B",
+                    "hp_percent": 75.0,
+                    "age_seconds": 1.0,
+                    "stale": False,
+                },
+                "nearby_players": [{"uid": 23, "name": "Não deve aparecer"}],
+                "bosses": [],
+            })
+            window.monitor_controls["pvp"]["tabs"].setCurrentIndex(1)
+            self.assertEqual(target_overlay.summary.text(), "Alvo atual · Personagem B")
+            pvp_labels = target_overlay.rows.itemAt(0).widget().findChildren(
+                target_overlay.summary.__class__
+            )
+            self.assertTrue(any("Alvo do cliente B" in label.text() for label in pvp_labels))
+            self.assertFalse(any("Rival confirmado" in label.text() for label in pvp_labels))
+            window.snapshot["combat_monitors"][1]["pvp"]["age_seconds"] = 3.1
+            window._render_combat()
+            self.assertEqual(
+                target_overlay.summary.text(),
+                "Alvo atual · Personagem B · Nenhum",
+            )
+            self.assertEqual(target_overlay.rows.count(), 0)
             self.assertTrue(
-                window.pvp_overlay.testAttribute(
+                target_overlay.testAttribute(
                     QtCore.Qt.WidgetAttribute.WA_TranslucentBackground
                 )
             )
             self.assertTrue(
-                window.pvp_overlay.windowFlags()
+                target_overlay.windowFlags()
                 & QtCore.Qt.WindowType.FramelessWindowHint
             )
             self.assertEqual(
-                window.pvp_overlay.cursor().shape(),
+                target_overlay.cursor().shape(),
                 QtCore.Qt.CursorShape.SizeAllCursor,
             )
             position = (
                 QtGui.QGuiApplication.primaryScreen().availableGeometry().topLeft()
                 + QtCore.QPoint(40, 40)
             )
-            window.pvp_overlay.mousePressEvent(SimpleNamespace(
+            target_overlay.mousePressEvent(SimpleNamespace(
                 button=lambda: QtCore.Qt.MouseButton.LeftButton,
                 position=lambda: QtCore.QPointF(10, 10),
                 accept=lambda: None,
             ))
-            window.pvp_overlay.mouseMoveEvent(SimpleNamespace(
+            target_overlay.mouseMoveEvent(SimpleNamespace(
                 buttons=lambda: QtCore.Qt.MouseButton.LeftButton,
                 globalPosition=lambda: QtCore.QPointF(position + QtCore.QPoint(10, 10)),
                 accept=lambda: None,
             ))
-            window.pvp_overlay.mouseReleaseEvent(SimpleNamespace(
+            target_overlay.mouseReleaseEvent(SimpleNamespace(
                 button=lambda: QtCore.Qt.MouseButton.LeftButton,
                 accept=lambda: None,
             ))
-            self.assertEqual(window.pvp_overlay.pos(), position)
+            self.assertEqual(target_overlay.pos(), position)
             self.assertEqual(
-                load_preferences(root / "preferences.json")["pvp_overlay_position"],
+                load_preferences(root / "preferences.json")["pvp_overlay_target_position"],
                 [position.x(), position.y()],
             )
-            window._toggle_pvp_overlay(False)
-            window._toggle_pvp_overlay(True)
-            self.assertEqual(window.pvp_overlay.pos(), position)
-            window._toggle_pvp_overlay(False)
+            window._toggle_pvp_overlay(False, "target")
+            window._toggle_pvp_overlay(True, "target")
+            self.assertEqual(window.pvp_overlays["target"].pos(), position)
+            for kind in ("target", "hostile", "non_hostile"):
+                window._toggle_pvp_overlay(False, kind)
 
             window._toggle_boss_overlay(True)
             window._toggle_boss_dps_overlay(True)
@@ -1059,11 +1287,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
         self.assertEqual(result["title"], "RF QOL — 1.0.0")
-        self.assertEqual(result["page_count"], 9)
+        self.assertEqual(result["page_count"], 11)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
             "Visão geral", "Envios", "Monitor PvE", "Monitor PvP",
-            "Alertas", "Subsessões", "Configurações", "Tutorial",
+            "Banco PvP", "Alertas", "Subsessões", "Configurações", "Tutorial",
+            "Inventário",
         ])
         self.assertFalse(result["navigation_enabled"]["Monitor PvE"])
         self.assertFalse(result["navigation_enabled"]["Monitor PvP"])
@@ -1091,7 +1320,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertFalse(window.nav_buttons[2].isEnabled())
         self.assertFalse(window.nav_buttons[3].isHidden())
         self.assertTrue(window.nav_buttons[3].isEnabled())
-        self.assertTrue(window.nav_buttons[4].isHidden())
+        self.assertTrue(window.nav_buttons[5].isHidden())
         self.assertFalse(window.monitor_controls["boss"]["overlay"].isEnabled())
         self.assertFalse(window.monitor_controls["boss"]["dps_overlay"].isEnabled())
         window._select_category("emulator")
@@ -1505,7 +1734,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 load_preferences(preferences_path)["client_uid_selections"],
                 {"client:a": "101"},
             )
-            self.assertEqual(window.client_uid_buttons[0].text(), "UID: Alice")
+            self.assertIn("Alice · UID 101", window.client_buttons[0].toolTip())
             window.snapshot["client_bindings"] = [{
                 "client_key": "client:a", "uid": "101",
                 "name": "Alice", "source": "manual",

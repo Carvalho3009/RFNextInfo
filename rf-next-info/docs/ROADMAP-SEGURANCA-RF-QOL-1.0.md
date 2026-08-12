@@ -3,7 +3,7 @@
 Baseline: RF NEXT QOL 3.0.11 beta  
 Branch de planejamento: `plan/rf-qol-security-1.0`  
 Estado geral: implementação local isolada autorizada em 09 ago 2026;
-publicação não autorizada
+link público de download autorizado em 12 ago 2026, sem promoção a release
 
 Identidade atual: produto/executáveis RF QOL com logo e identidade visual
 Karvalho, conforme decisão posterior do owner em 09 ago 2026.
@@ -32,7 +32,10 @@ Karvalho, conforme decisão posterior do owner em 09 ago 2026.
 | M4 | Update/rollback/ACL seguros | Concluído localmente | G1 |
 | M5 | Build rastreável para instalação manual | Concluído localmente; update automático adiado | G2 encerrado |
 | M6 | RC validada | Matriz local aceita como escopo final; validação externa cancelada | G3 encerrado |
-| M7 | Release RF QOL 1.0 | Pendente | G4 |
+| M6A | Inventário passivo no cliente | Implementado e validado localmente; persistência no site pendente | — |
+| M6B | Idioma PT/EN para dados do jogo | Implementado e validado localmente | — |
+| M6C | UID por duplo clique, sem renomear cliente | Implementado e validado localmente | — |
+| M7 | Release RF QOL 1.0 | Pendente; branch de download não promove a versão | G4 pendente |
 
 ## Fase 0 — Baseline e proposta
 
@@ -260,6 +263,22 @@ local como escopo final e cancelou a validação externa. Windows limpos 10/11,
 observação externa de UAC/SmartScreen, dois clientes externos e revisor
 independente não serão executados; ficam registrados como risco residual.
 Ativação, revogação e cutover passaram em staging.
+
+Em 11 ago 2026, o overlay PvP foi corrigido localmente para exibir somente o
+alvo atual do personagem selecionado, com largura fixa compacta e expiração em
+três segundos. A regressão com dois clientes e a suíte relacionada passaram em
+105 testes. O instalador anterior ainda não contém essa correção.
+
+Em 11 ago 2026, foi autorizada a evolução local para três overlays PvP e para
+uma aba Banco PvP. O status manual passa a separar Inimigos de
+Aliados/Neutros, enquanto o alvo atual continua dependendo somente da leitura
+confirmada. A sincronização reaproveita o banco sanitizado de identidades.
+
+Também em 11 ago 2026, o Inventário passou a usar o catálogo inglês como
+fallback quando ainda não houver tradução portuguesa. Os 16 códigos das
+famílias Greater/Superior informadas pelo owner possuem nome e ícone locais e
+passaram no teste de regressão. O instalador anterior também não contém esse
+ajuste.
 
 Objetivo: provar o sistema fora do ambiente do implementador.
 

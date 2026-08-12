@@ -11,6 +11,7 @@ data_files = [
     (str(assets / "SairaSemiCondensed-Bold.ttf"), "assets"),
     (str(assets / "class-icons"), "assets/class-icons"),
     (str(assets / "rover-icons"), "assets/rover-icons"),
+    (str(assets / "item-icons.zip"), "assets"),
     (str(root / "core" / "biosuits.json"), "core"),
     (str(root / "core" / "rovers.json"), "core"),
     (str(root / "core" / "catalogo.csv"), "core"),
@@ -22,6 +23,7 @@ data_files = [
     (str(root / "core" / "item_names.json"), "core"),
     (str(root / "core" / "item_names_en.json"), "core"),
     (str(root / "core" / "item_grades.json"), "core"),
+    (str(root / "core" / "item_categories.json"), "core"),
     (str(job1 / "job1_pending_layouts.json"), "core"),
     (str(job1 / "job1_all_opcodes.csv"), "core"),
 ]

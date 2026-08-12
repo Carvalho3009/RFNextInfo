@@ -18,6 +18,7 @@ oodle-auto/
 *.so
 *.exe
 *.zip
+!rf-next-info/assets/item-icons.zip
 *.bundle
 *_dataset.json
 Thumbs.db

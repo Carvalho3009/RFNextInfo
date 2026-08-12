@@ -1626,6 +1626,74 @@ class CaptureStore:
             "collection_type_counts": counts,
         }
 
+    def inventory_items(
+        self, session_id: str, character_uid: str
+    ) -> list[dict[str, Any]]:
+        """Reconstrói o inventário atual a partir de snapshots e deltas."""
+        rows = self.conn.execute(
+            """SELECT ts_ns,type,data_json FROM events
+               WHERE session_id=? AND character_uid=?
+                 AND type IN (
+                     'inventory_snapshot','inventory_delta','player_profile_info'
+                 )
+               ORDER BY id""",
+            (session_id, character_uid),
+        ).fetchall()
+        state: dict[tuple[str, str], dict[str, Any]] = {}
+        observed_at: int | None = None
+
+        def item_key(kind: str, item: dict[str, Any]) -> tuple[str, str]:
+            return kind, f"slot:{int(item.get('inventory_slot') or 0)}"
+
+        for ts_ns, event_type, raw in rows:
+            data = json.loads(raw)
+            if event_type == "player_profile_info":
+                data = {
+                    "container": "inventory",
+                    "item_kind": "equipment",
+                    "items": (data.get("fields") or {}).get("items") or [],
+                }
+                event_type = "inventory_snapshot"
+            if data.get("container") != "inventory":
+                continue
+            kind = str(data.get("item_kind") or "")
+            if kind not in {"stackable", "equipment"}:
+                continue
+            if event_type == "inventory_snapshot":
+                state = {
+                    key: item for key, item in state.items() if key[0] != kind
+                }
+                items = data.get("items") or []
+            else:
+                items = [data.get("item")]
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                key = item_key(kind, item)
+                count = int(item.get("count") or 0)
+                item_index = int(item.get("item_index") or 0)
+                if count <= 0 or item_index <= 0:
+                    state.pop(key, None)
+                    continue
+                state[key] = {
+                    **item,
+                    "item_kind": kind,
+                    "observed_at_ns": ts_ns,
+                }
+            if isinstance(ts_ns, int):
+                observed_at = ts_ns
+        result = sorted(
+            state.values(),
+            key=lambda item: (
+                str(item.get("item_kind")),
+                int(item.get("inventory_slot") or 0),
+                int(item.get("item_index") or 0),
+            ),
+        )
+        for item in result:
+            item["inventory_observed_at_ns"] = observed_at
+        return result
+
     def session_stats_after(self, session_id: str, after_id: int) -> dict[str, int | None]:
         recognized, unknown, unassigned, started, ended, last_id = self.conn.execute(
             """SELECT SUM(type!='unparsed'),SUM(type='unparsed'),

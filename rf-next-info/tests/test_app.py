@@ -855,6 +855,86 @@ class AppLogicTest(unittest.TestCase):
             self.assertEqual(summary["character_class"], class_name)
             self.assertEqual(summary["biosuit_grade"], 5)
 
+    def test_game_data_language_uses_primary_catalog_and_fallback(self):
+        portuguese = main_module.item_names_for_language("pt")
+        english = main_module.item_names_for_language("en")
+        self.assertEqual(portuguese["1000150"], "Machado Pallacia do Executor")
+        self.assertEqual(english["1000150"], "Executor's Pallacia Axe")
+        self.assertEqual(portuguese["270004"], "Greater Metal Plate")
+        self.assertEqual(main_module.game_data_language("invalid"), "pt")
+
+    def test_inventory_categories_follow_official_game_metadata(self):
+        self.assertEqual(len(main_module.ITEM_CATEGORIES), 8231)
+        self.assertEqual(
+            set(main_module.ITEM_CATEGORIES.values()),
+            {
+                "equipment",
+                "consumables",
+                "materials",
+                "talics",
+                "rover_parts",
+                "other",
+            },
+        )
+        expected = {
+            1000078: "equipment",
+            901: "consumables",
+            270004: "materials",
+            161000: "talics",
+            310000: "rover_parts",
+            279500: "rover_parts",
+            1: "other",
+        }
+        self.assertEqual(
+            {
+                item_index: main_module.inventory_category(item_index)
+                for item_index in expected
+            },
+            expected,
+        )
+        self.assertEqual(
+            main_module.inventory_category(999999999, "equipment"),
+            "equipment",
+        )
+        self.assertEqual(main_module.inventory_category(999999999), "other")
+
+    def test_summary_localizes_biosuit_and_rover_game_names(self):
+        biosuit, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "world_info_prefix",
+                    "data": {"fields": {"biosuit_item_index": 2075041}},
+                }]
+            },
+            game_language="en",
+        )
+        rover_pt, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "change_rover_response",
+                    "data": {"fields": {
+                        "result": 0,
+                        "rover_item_index": 4300017,
+                    }},
+                }]
+            },
+        )
+        rover_en, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "change_rover_response",
+                    "data": {"fields": {
+                        "result": 0,
+                        "rover_item_index": 4300017,
+                    }},
+                }]
+            },
+            game_language="en",
+        )
+        self.assertEqual(biosuit["biosuit_name"], "Caelum Revenant")
+        self.assertEqual(rover_pt["rover_name"], "Aldevaran")
+        self.assertEqual(rover_en["rover_name"], "Aldebaran")
+
     def test_summary_exports_correlated_equipment_and_collection_types(self):
         envelope = {
             "events": [

@@ -16,13 +16,13 @@ from typing import Callable
 
 from app.main import (
     DEFAULT_PORTS,
-    ITEM_NAMES,
-    ITEM_NAMES_EN,
     VERSION,
     _capture_summary,
     _collection_marks,
     _market_rows,
     _merge_client_routes,
+    game_data_language,
+    item_names_for_language,
 )
 from core.capture import PktmonCapture
 from core.connections import (
@@ -110,12 +110,14 @@ class SiteUploadEngine:
             raise ValueError("Ainda não existe uma sessão para enviar")
         store = CaptureStore(self.database_path, readonly=True)
         try:
+            language = game_data_language(language)
+            item_names = item_names_for_language(language)
             metadata = self._metadata(mode)
             uid = ""
             if mode == "market":
                 rows = _market_rows(
                     store.session_envelope(session_id, None, include_unassigned=True),
-                    ITEM_NAMES_EN if language == "en" else ITEM_NAMES,
+                    item_names,
                 )
                 if not rows:
                     raise ValueError("Ainda não existem eventos de Mercado para enviar")
@@ -135,7 +137,8 @@ class SiteUploadEngine:
                         envelope,
                         uid,
                         character,
-                        ITEM_NAMES_EN if language == "en" else ITEM_NAMES,
+                        item_names,
+                        game_language=language,
                     )
                 else:
                     envelope = store.latest_collection_envelope(uid)
@@ -144,6 +147,28 @@ class SiteUploadEngine:
                     **summary,
                     "loot": _site_loot_rows(summary.get("loot")),
                 }
+                if mode == "character":
+                    site_summary["inventory_schema_version"] = 1
+                    site_summary["inventory"] = [
+                        {
+                            key: item.get(key)
+                            for key in (
+                                "item_index",
+                                "name",
+                                "quantity",
+                                "kind",
+                                "slot",
+                                "refinement",
+                                "locked",
+                                "expires_at",
+                            )
+                        }
+                        for item in dict(snapshot.get("inventories") or {}).get(
+                            uid, []
+                        )
+                        if int(item.get("item_index") or 0) > 0
+                        and int(item.get("quantity") or 0) > 0
+                    ]
                 metadata.update(character_name=character, marks_mode="merge")
                 profile = {
                     "profile": self.site_profile.profile,
@@ -249,7 +274,8 @@ class SiteUploadEngine:
                     ),
                     uid,
                     name,
-                    ITEM_NAMES_EN if language == "en" else ITEM_NAMES,
+                    item_names_for_language(language),
+                    game_language=game_data_language(language),
                 )
                 site_summary = {
                     **summary,
@@ -406,6 +432,7 @@ class ExportEngine:
         subsession: dict,
         character_uid: str | None,
         item_names: dict[str, str],
+        language: str,
     ) -> dict:
         ended_ns = int(subsession.get("ended_ns") or time.time_ns())
         started_ns = int(subsession["started_ns"])
@@ -413,7 +440,10 @@ class ExportEngine:
             session_id, character_uid, started_ns, ended_ns
         )
         summary, _ = _capture_summary(
-            envelope, character_uid, item_names=item_names
+            envelope,
+            character_uid,
+            item_names=item_names,
+            game_language=language,
         )
         seconds = max(1, int((ended_ns - started_ns) / 1_000_000_000))
         hours = seconds / 3600
@@ -449,7 +479,8 @@ class ExportEngine:
             raise ValueError("Nenhuma sessão capturada está disponível")
         target = Path(target)
         target.mkdir(parents=True, exist_ok=True)
-        item_names = ITEM_NAMES_EN if language == "en" else ITEM_NAMES
+        language = game_data_language(language)
+        item_names = item_names_for_language(language)
         match = re.search(r"-(\d{8}-\d{6})-(\d+)$", session_id)
         stamp = match.group(1) if match else datetime.now().strftime("%Y%m%d-%H%M%S")
         counter = int(match.group(2)) if match else 0
@@ -473,12 +504,21 @@ class ExportEngine:
                     bool(character["only_unassigned"]),
                 )
                 summary, marks = _capture_summary(
-                    envelope, str(uid or ""), name, item_names=item_names
+                    envelope,
+                    str(uid or ""),
+                    name,
+                    item_names=item_names,
+                    game_language=language,
                 )
                 _all_marks, collection_types = _collection_marks(envelope)
                 reports = [
                     self._subsession_report(
-                        store, session_id, subsession, uid, item_names
+                        store,
+                        session_id,
+                        subsession,
+                        uid,
+                        item_names,
+                        language,
                     )
                     for subsession in store.subsessions(session_id)
                     if subsession.get("character_uid") in (None, uid)

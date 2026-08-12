@@ -11,6 +11,12 @@ PvE, PvP e Boss possuem relógios independentes. Alterar a frequência muda
 somente a atualização da interface, não reinicia o Pktmon nem cria outra
 captura.
 
+O overlay PvP usa exclusivamente o cliente selecionado na aba do Monitor PvP.
+Ele mostra somente o alvo atual confirmado por `0x0609`, `0x0601` ou pelo alvo
+principal do resultado de combate e limpa a linha após três segundos sem nova
+confirmação. Jogadores próximos e os demais clientes permanecem apenas nas
+telas completas dos monitores.
+
 ## Evidência usada
 
 - `0x0305`: jogadores visíveis, UID de combate, `character_uid`, nome,

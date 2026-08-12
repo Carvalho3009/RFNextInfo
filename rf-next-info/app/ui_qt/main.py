@@ -8,6 +8,7 @@ import math
 import subprocess
 import threading
 import time
+import zipfile
 from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
 from app.ui_qt.data import (
     CLASS_ICON_FILES,
     DB_PATH,
+    INVENTORY_CATEGORIES,
     PREFERENCES_PATH,
     RARITY_COLORS,
     ReadOnlySnapshotReader,
@@ -31,6 +33,8 @@ from app.main import (
     BIOSUITS,
     CAPTURE_DIR,
     DEFAULT_PORTS,
+    FARM_LABELS_EN_PT,
+    FARM_LABELS_PT_EN,
     LOG_PATH,
     MACHINE_STATE_DIR,
     ROVERS,
@@ -38,6 +42,8 @@ from app.main import (
     STATE_DIR,
     VERSION,
     _recycle,
+    game_catalog_name,
+    game_data_language,
 )
 from app.paths import (
     KNOWLEDGE_DB_PATH,
@@ -77,16 +83,18 @@ PAGES = (
     ("Envios", "Envios dos dados já lidos pela captura contínua."),
     ("Monitor PvE", "Vida do último monstro atacado confirmado."),
     ("Monitor PvP", "Vida e DPS HP do último jogador em combate confirmado."),
+    ("Banco PvP", "UIDs observados, guildas conhecidas e classificação manual."),
     ("Boss", "Bosses próximos, vida, DPS estimado e tempo restante."),
     ("Alertas", "Avisos visuais e sonoros configuráveis."),
     ("Subsessões", "Histórico e criação de subsessões."),
     ("Configurações", "Preferências do programa e do Profile."),
     ("Tutorial", "Primeiros passos e atalhos."),
+    ("Inventário", "Itens e quantidades recebidos do personagem selecionado."),
 )
 PC_SLOT_COUNT = 2
 EMULATOR_SLOT_COUNT = 5
 CLIENT_SLOT_COUNT = PC_SLOT_COUNT + EMULATOR_SLOT_COUNT
-MONITOR_PAGES = {2: "pve", 3: "pvp", 4: "boss"}
+MONITOR_PAGES = {2: "pve", 3: "pvp", 5: "boss"}
 MONITOR_FEATURES = {
     "pve": "monitor-pve",
     "pvp": "monitor-pvp",
@@ -102,6 +110,7 @@ MONITOR_SHORTCUT_OPTIONS = tuple(
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
 MOB_ICONS = ASSETS / "mob-icons"
+ITEM_ICON_ARCHIVE = ASSETS / "item-icons.zip"
 INSTANCE_SERVER_NAME = "RFQOL.App"
 DISCORD_URL = "https://discord.gg/D3hhdMgkj"
 
@@ -293,7 +302,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.monitor_controls: dict[str, dict[str, Any]] = {}
         self.boss_overlay: QtWidgets.QDialog | None = None
         self.boss_dps_overlay: QtWidgets.QDialog | None = None
-        self.pvp_overlay: QtWidgets.QDialog | None = None
+        self.pvp_overlays: dict[str, QtWidgets.QDialog] = {}
         self.alert_last_fired: dict[str, float] = {}
         self.capture_busy = False
         self.site_busy = False
@@ -318,6 +327,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.observation_sync_next_due = 0.0
         self.pending_auto_market: tuple[str, str] | None = None
         self.auto_market_retry_after = 0.0
+        self.inventory_icon_cache: dict[int, QtGui.QIcon] = {}
+        self.item_icon_zip: zipfile.ZipFile | None = None
         try:
             self.log_path = LOG_PATH
             self.log = configure_log(self.log_path, VERSION)
@@ -396,7 +407,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtCore.QTimer.singleShot(0, self._keep_overlays_visible)
 
     def _keep_overlays_visible(self) -> None:
-        for overlay in (self.boss_overlay, self.boss_dps_overlay, self.pvp_overlay):
+        for overlay in (
+            self.boss_overlay,
+            self.boss_dps_overlay,
+            *self.pvp_overlays.values(),
+        ):
             if overlay is not None:
                 overlay.show()
 
@@ -575,6 +590,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 page = self._build_combat_page("pve")
             elif title == "Monitor PvP":
                 page = self._build_combat_page("pvp")
+            elif title == "Banco PvP":
+                page = self._build_pvp_database_page()
             elif title == "Boss":
                 page = self._build_combat_page("boss")
             elif title == "Alertas":
@@ -585,6 +602,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 page = self._build_settings_page()
             elif title == "Tutorial":
                 page = self._build_tutorial_page()
+            elif title == "Inventário":
+                page = self._build_inventory_page()
             else:
                 page = self._build_page(title, description)
             self.page_stack.addWidget(page)
@@ -651,34 +670,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.client_group = QtWidgets.QButtonGroup(bar)
         self.client_group.setExclusive(True)
         self.client_buttons: list[QtWidgets.QPushButton] = []
-        self.client_uid_buttons: list[QtWidgets.QToolButton] = []
         for index in range(CLIENT_SLOT_COUNT):
             button = _ClientButton(_client_label(index))
             button.setProperty("client", True)
             button.setCheckable(True)
             button.setChecked(index == 0)
-            button.setToolTip("Clique duas vezes para definir o nome deste cliente.")
+            button.setToolTip("Clique duas vezes para definir o UID deste cliente.")
             button.clicked.connect(lambda checked=False, client=index: self._select_client(client))
             button.double_clicked.connect(
-                lambda client=index: self._rename_client(client)
+                lambda client=index: self._choose_client_uid(client)
             )
             self.client_group.addButton(button, index)
             self.client_buttons.append(button)
             row.addWidget(button)
-            uid = QtWidgets.QToolButton()
-            uid.setText("UID: Auto")
-            uid.setFixedWidth(72)
-            uid.setToolTip(
-                f"Escolher um personagem confirmado para o {_client_label(index)}"
-            )
-            uid.clicked.connect(
-                lambda checked=False, client=index: self._choose_client_uid(client)
-            )
-            self.client_uid_buttons.append(uid)
-            row.addWidget(uid)
             visible = index < PC_SLOT_COUNT
             button.setVisible(visible)
-            uid.setVisible(visible)
         row.addStretch(1)
         return bar
 
@@ -738,10 +744,12 @@ class MainWindow(QtWidgets.QMainWindow):
         controls.addWidget(_label("Atualizar a cada", "muted"))
         controls.addWidget(interval)
         overlay = None
+        hostile_overlay = None
+        non_hostile_overlay = None
         dps_overlay = None
         if mode in {"pvp", "boss"}:
             shortcut = "Ctrl+Shift+F6" if mode == "pvp" else "Ctrl+Shift+F7"
-            overlay_label = "Abrir overlay" if mode == "pvp" else "Overlay de vida"
+            overlay_label = "Overlay alvo atual" if mode == "pvp" else "Overlay de vida"
             overlay = QtWidgets.QPushButton(f"{overlay_label}  {shortcut}")
             overlay.setCheckable(True)
             if mode == "pvp":
@@ -749,9 +757,23 @@ class MainWindow(QtWidgets.QMainWindow):
                     "Arraste o overlay com o botão esquerdo para mudar sua posição."
                 )
             overlay.toggled.connect(
-                self._toggle_pvp_overlay if mode == "pvp" else self._toggle_boss_overlay
+                (lambda checked: self._toggle_pvp_overlay(checked, "target"))
+                if mode == "pvp" else self._toggle_boss_overlay
             )
             controls.addWidget(overlay)
+            if mode == "pvp":
+                hostile_overlay = QtWidgets.QPushButton("Overlay hostis")
+                hostile_overlay.setCheckable(True)
+                hostile_overlay.toggled.connect(
+                    lambda checked: self._toggle_pvp_overlay(checked, "hostile")
+                )
+                non_hostile_overlay = QtWidgets.QPushButton("Overlay não hostis")
+                non_hostile_overlay.setCheckable(True)
+                non_hostile_overlay.toggled.connect(
+                    lambda checked: self._toggle_pvp_overlay(checked, "non_hostile")
+                )
+                controls.addWidget(hostile_overlay)
+                controls.addWidget(non_hostile_overlay)
             if mode == "boss":
                 dps_overlay = QtWidgets.QPushButton("Overlay de DPS")
                 dps_overlay.setCheckable(True)
@@ -766,6 +788,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "enabled": enabled,
             "interval": interval,
             "overlay": overlay,
+            "hostile_overlay": hostile_overlay,
+            "non_hostile_overlay": non_hostile_overlay,
             "dps_overlay": dps_overlay,
             "shortcut": monitor_shortcut,
             "tabs": client_tabs,
@@ -1495,6 +1519,177 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll.setWidget(content)
         return scroll
 
+    def _build_inventory_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageInventario")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        heading = QtWidgets.QHBoxLayout()
+        heading.addWidget(_label("Inventário", "title"))
+        heading.addStretch(1)
+        self.inventory_search = QtWidgets.QLineEdit()
+        self.inventory_search.setPlaceholderText("Filtrar por nome ou código")
+        self.inventory_search.setClearButtonEnabled(True)
+        self.inventory_search.setMaximumWidth(340)
+        self.inventory_search.textChanged.connect(self._render_inventory)
+        heading.addWidget(self.inventory_search)
+        column.addLayout(heading)
+        self.inventory_category_tabs = QtWidgets.QTabBar()
+        self.inventory_category_tabs.setExpanding(False)
+        for key, label in INVENTORY_CATEGORIES:
+            index = self.inventory_category_tabs.addTab(label)
+            self.inventory_category_tabs.setTabData(index, key)
+        self.inventory_category_tabs.currentChanged.connect(
+            self._render_inventory
+        )
+        column.addWidget(self.inventory_category_tabs)
+        self.inventory_status = _label(
+            "Aguardando um snapshot de inventário.", "muted"
+        )
+        column.addWidget(self.inventory_status)
+        self.inventory_table = QtWidgets.QTableWidget(0, 4)
+        self.inventory_table.setHorizontalHeaderLabels(
+            ("Item", "Quantidade", "Tipo", "Slot")
+        )
+        self.inventory_table.setIconSize(QtCore.QSize(46, 46))
+        self.inventory_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.inventory_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.inventory_table.verticalHeader().setVisible(False)
+        header = self.inventory_table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for index in range(1, 4):
+            header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        column.addWidget(self.inventory_table, 1)
+        column.addWidget(
+            _label(
+                "Atualizado passivamente pelos snapshots e deltas recebidos do servidor do jogo.",
+                "muted",
+            )
+        )
+        return page
+
+    def _build_pvp_database_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageBancoPvP")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        heading = QtWidgets.QHBoxLayout()
+        heading.addWidget(_label("Banco PvP", "title"))
+        heading.addStretch(1)
+        refresh = QtWidgets.QPushButton("Atualizar")
+        refresh.clicked.connect(self._render_pvp_database)
+        heading.addWidget(refresh)
+        column.addLayout(heading)
+        note = _label(
+            "A guilda pode ser preenchida manualmente somente quando ainda não foi observada. "
+            "O status é sempre uma escolha manual.",
+            "muted",
+        )
+        note.setWordWrap(True)
+        column.addWidget(note)
+        self.pvp_database_table = QtWidgets.QTableWidget(0, 4)
+        self.pvp_database_table.setHorizontalHeaderLabels(
+            ("UID", "Personagem", "Guilda", "Status")
+        )
+        self.pvp_database_table.verticalHeader().setVisible(False)
+        self.pvp_database_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        header = self.pvp_database_table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        column.addWidget(self.pvp_database_table, 1)
+        self.pvp_database_status = _label("Nenhum UID observado.", "muted")
+        column.addWidget(self.pvp_database_status)
+        return page
+
+    def _render_pvp_database(self) -> None:
+        if not hasattr(self, "pvp_database_table"):
+            return
+        knowledge = KnowledgeStore(self.knowledge_path)
+        try:
+            rows = knowledge.characters()
+        finally:
+            knowledge.close()
+        self.pvp_database_table.setRowCount(len(rows))
+        labels = {"ally": "Aliado", "enemy": "Inimigo", "neutral": "Neutro"}
+        for row_index, row in enumerate(rows):
+            uid = str(row["character_uid"])
+            uid_cell = QtWidgets.QTableWidgetItem(uid)
+            uid_cell.setFlags(uid_cell.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+            name_cell = QtWidgets.QTableWidgetItem(str(row.get("name") or "—"))
+            name_cell.setFlags(name_cell.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+            guild = QtWidgets.QLineEdit(str(row.get("guild_name") or ""))
+            guild.setPlaceholderText("Guilda não identificada")
+            guild.setReadOnly(bool(row.get("guild_name")))
+            guild.editingFinished.connect(
+                lambda current_uid=uid, editor=guild: self._save_pvp_identity(
+                    current_uid, editor, None
+                )
+            )
+            status = QtWidgets.QComboBox()
+            for value in ("ally", "enemy", "neutral"):
+                status.addItem(labels[value], value)
+            selected = status.findData(str(row.get("pvp_status") or "neutral"))
+            status.setCurrentIndex(max(0, selected))
+            status.currentIndexChanged.connect(
+                lambda _index, current_uid=uid, editor=guild, combo=status:
+                    self._save_pvp_identity(current_uid, editor, combo)
+            )
+            self.pvp_database_table.setItem(row_index, 0, uid_cell)
+            self.pvp_database_table.setItem(row_index, 1, name_cell)
+            self.pvp_database_table.setCellWidget(row_index, 2, guild)
+            self.pvp_database_table.setCellWidget(row_index, 3, status)
+        pending = sum(row.get("upload_state") == "pending" for row in rows)
+        self.pvp_database_status.setText(
+            f"{len(rows)} UID(s) · {pending} aguardando sincronização"
+            if rows else "Nenhum UID observado."
+        )
+
+    def _save_pvp_identity(
+        self,
+        uid: str,
+        guild: QtWidgets.QLineEdit,
+        status: QtWidgets.QComboBox | None,
+    ) -> None:
+        knowledge = KnowledgeStore(self.knowledge_path)
+        try:
+            current = next(
+                (item for item in knowledge.characters() if item["character_uid"] == uid),
+                None,
+            )
+            if current is None:
+                return
+            saved = knowledge.update_pvp_identity(
+                uid,
+                guild_name=guild.text(),
+                status=(
+                    status.currentData()
+                    if status is not None
+                    else current.get("pvp_status") or "neutral"
+                ),
+            )
+        except ValueError as error:
+            self.pvp_database_status.setText(str(error))
+            return
+        finally:
+            knowledge.close()
+        guild.setText(str(saved.get("guild_name") or ""))
+        guild.setReadOnly(bool(saved.get("guild_name")))
+        self.pvp_database_status.setText("Alteração salva; sincronização pendente.")
+        session = str(self.snapshot.get("session_id") or "")
+        if session and self.site_profile.connected:
+            self.pending_observation_session = session
+            QtCore.QTimer.singleShot(0, self._flush_observation_upload)
+
     def _build_settings_page(self) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget(objectName="pageConfigurações")
         column = QtWidgets.QVBoxLayout(page)
@@ -1521,7 +1716,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_decode_interval = QtWidgets.QSpinBox(); self.setting_decode_interval.setRange(15, 300); self.setting_decode_interval.setSingleStep(5); self.setting_decode_interval.setSuffix(" s")
         capture_form.addRow("Intervalo de leitura", self.setting_decode_interval)
         self.setting_language = QtWidgets.QComboBox(); self.setting_language.addItem("Português", "pt"); self.setting_language.addItem("English", "en")
-        capture_form.addRow("Idioma dos nomes", self.setting_language)
+        capture_form.addRow("Idioma dos dados do jogo", self.setting_language)
         grid.addWidget(capture, 1, 0)
 
         profile = QtWidgets.QFrame(objectName="panel")
@@ -1703,6 +1898,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def _save_settings(self) -> None:
         capture_directory = Path(self.setting_capture_directory.text().strip())
         shortcuts = {mode: combo.currentText() for mode, combo in self.setting_shortcuts.items()}
+        old_language = game_data_language(
+            self.preferences.get("item_name_language")
+        )
+        new_language = game_data_language(self.setting_language.currentData())
+        selected_farm = (
+            self.subsession_map.currentText(),
+            self.subsession_spot.currentText(),
+        )
+        if old_language == "pt" and new_language == "en":
+            selected_farm = FARM_LABELS_PT_EN.get(selected_farm, selected_farm)
+        elif old_language == "en" and new_language == "pt":
+            selected_farm = FARM_LABELS_EN_PT.get(selected_farm, selected_farm)
         if not capture_directory.is_absolute():
             QtWidgets.QMessageBox.warning(self, "Configurações", "Escolha uma pasta absoluta para as capturas.")
             return
@@ -1712,7 +1919,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preferences = save_preferences({
             "capture_directory": str(capture_directory),
             "decode_interval_seconds": self.setting_decode_interval.value(),
-            "item_name_language": self.setting_language.currentData(),
+            "item_name_language": new_language,
+            "subsession_map": selected_farm[0],
+            "subsession_spot": selected_farm[1],
             "profile": self.setting_profile.text().strip(),
             "shortcuts": shortcuts,
             "minimize_to_tray": self.setting_minimize.isChecked(),
@@ -1742,6 +1951,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ensure_capture_engine()
         self._refresh_farm_catalog()
         self._render_overview()
+        if old_language != new_language:
+            self._load_readonly_data()
         self._apply_monitor_shortcut_labels(shortcuts)
         self._sync_global_hotkeys(shortcuts)
         self.setting_storage.setText(f"Capturas: {capture_directory}\nPreferências salvas para a interface estável e para o preview.")
@@ -1819,9 +2030,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self._tray.hide()
             if hasattr(self._tray, "setContextMenu"):
                 self._tray.setContextMenu(None)
-        for overlay in (self.boss_overlay, self.boss_dps_overlay, self.pvp_overlay):
+        for overlay in (
+            self.boss_overlay,
+            self.boss_dps_overlay,
+            *self.pvp_overlays.values(),
+        ):
             if overlay is not None:
                 overlay.close()
+        if self.item_icon_zip is not None:
+            self.item_icon_zip.close()
+            self.item_icon_zip = None
         self.log.info("app_closed")
         super().closeEvent(event)
 
@@ -1865,24 +2083,6 @@ class MainWindow(QtWidgets.QMainWindow):
             controls["shortcut"] = shortcut
             self._update_monitor_button(mode)
 
-    def _rename_client(self, index: int) -> None:
-        current = str(self.preferences.get(f"character{index + 1}") or "")
-        name, accepted = QtWidgets.QInputDialog.getText(
-            self,
-            _client_label(index),
-            "Nome manual (somente para visualização):",
-            text=current,
-        )
-        if not accepted:
-            return
-        self.preferences = save_preferences(
-            {f"character{index + 1}": name.strip()}, self.preferences_path
-        )
-        self._render_overview()
-
-    def _client_alias(self, index: int) -> str:
-        return str(self.preferences.get(f"character{index + 1}") or "").strip()
-
     def _captured_client_name(self, index: int) -> str:
         profiles = list(self.snapshot.get("profiles") or [])
         key = _client_key(index)
@@ -1894,7 +2094,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return str((profile or {}).get("name") or "").strip()
 
     def _client_name(self, index: int) -> str:
-        return self._client_alias(index) or _client_label(index)
+        return _client_label(index)
 
     def _client_title(self, index: int, captured: str = "") -> str:
         name = self._client_name(index)
@@ -2201,7 +2401,10 @@ class MainWindow(QtWidgets.QMainWindow):
             biosuit = BIOSUITS.get(str(biosuit_index), {})
             summary.update(
                 biosuit_item_index=biosuit_index,
-                biosuit_name=str(biosuit.get("name") or ""),
+                biosuit_name=game_catalog_name(
+                    biosuit,
+                    self.preferences.get("item_name_language"),
+                ),
                 biosuit_type=biosuit.get("biosuit_type"),
                 biosuit_grade=biosuit.get("grade"),
                 character_class=str(biosuit.get("class_name") or ""),
@@ -2212,7 +2415,10 @@ class MainWindow(QtWidgets.QMainWindow):
             rover = ROVERS.get(str(rover_index), {})
             summary.update(
                 rover_item_index=rover_index,
-                rover_name=str(rover.get("name") or ""),
+                rover_name=game_catalog_name(
+                    rover,
+                    self.preferences.get("item_name_language"),
+                ),
                 rover_grade=rover.get("grade"),
             )
             used = True
@@ -2226,21 +2432,22 @@ class MainWindow(QtWidgets.QMainWindow):
             if key in {_client_key(index) for index in range(CLIENT_SLOT_COUNT)} and uid
         }
 
-    def _refresh_client_uid_buttons(self) -> None:
+    def _refresh_client_uid_tooltips(self) -> None:
         history = {
             str(item.get("uid")): str(item.get("name") or "")
             for item in self.snapshot.get("character_history") or []
             if item.get("uid")
         }
         selections = self._uid_selections()
-        for index, button in enumerate(self.client_uid_buttons):
+        for index, button in enumerate(self.client_buttons):
             uid = selections.get(_client_key(index))
-            button.setText(
-                f"UID: {history.get(uid) or uid}" if uid else "UID: Auto"
-            )
             button.setToolTip(
-                f"Vínculo do {_client_label(index)}: "
-                + (f"{history.get(uid) or 'personagem conhecido'} · UID {uid}" if uid else "detecção automática")
+                "Clique duas vezes para definir o UID. Vínculo atual: "
+                + (
+                    f"{history.get(uid) or 'personagem conhecido'} · UID {uid}"
+                    if uid
+                    else "detecção automática"
+                )
             )
 
     def _choose_client_uid(self, index: int) -> None:
@@ -2307,7 +2514,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preferences = save_preferences(
             {"client_uid_selections": selections}, self.preferences_path
         )
-        self._refresh_client_uid_buttons()
+        self._refresh_client_uid_tooltips()
         if session_id:
             self._load_readonly_data()
 
@@ -2868,6 +3075,107 @@ class MainWindow(QtWidgets.QMainWindow):
             if collections.get(2) else "Nenhum registro identificado"
         )
         self._set_send_controls()
+
+    def _inventory_icon(self, item_index: int) -> QtGui.QIcon:
+        cached = self.inventory_icon_cache.get(item_index)
+        if cached is not None:
+            return cached
+        icon = QtGui.QIcon()
+        try:
+            if self.item_icon_zip is None and ITEM_ICON_ARCHIVE.is_file():
+                self.item_icon_zip = zipfile.ZipFile(ITEM_ICON_ARCHIVE)
+            if self.item_icon_zip is not None:
+                pixmap = QtGui.QPixmap()
+                pixmap.loadFromData(
+                    self.item_icon_zip.read(f"{item_index}.webp"), "WEBP"
+                )
+                if not pixmap.isNull():
+                    icon = QtGui.QIcon(pixmap)
+        except (KeyError, OSError, zipfile.BadZipFile):
+            pass
+        if icon.isNull():
+            icon = self.style().standardIcon(
+                QtWidgets.QStyle.StandardPixmap.SP_FileIcon
+            )
+        self.inventory_icon_cache[item_index] = icon
+        return icon
+
+    def _render_inventory(self, _filter: str = "") -> None:
+        if not hasattr(self, "inventory_table"):
+            return
+        uid = self._client_uid_for(self.active_client)
+        items = list(
+            dict(self.snapshot.get("inventories") or {}).get(str(uid or ""), [])
+        )
+        category = self.inventory_category_tabs.tabData(
+            self.inventory_category_tabs.currentIndex()
+        )
+        items = [
+            item
+            for item in items
+            if str(
+                item.get("category")
+                or (
+                    "equipment"
+                    if item.get("kind") == "equipment"
+                    else "other"
+                )
+            ) == category
+        ]
+        query = self.inventory_search.text().strip().casefold()
+        if query:
+            items = [
+                item
+                for item in items
+                if query in str(item.get("name") or "").casefold()
+                or query in str(item.get("item_index") or "")
+            ]
+        items.sort(
+            key=lambda item: (
+                str(item.get("name") or "").casefold(),
+                int(item.get("slot") or 0),
+            )
+        )
+        self.inventory_table.setRowCount(len(items))
+        for row, item in enumerate(items):
+            item_index = int(item.get("item_index") or 0)
+            refinement = int(item.get("refinement") or 0)
+            name = str(item.get("name") or f"Item {item_index}")
+            label = f"{name}  +{refinement}" if refinement else name
+            name_cell = QtWidgets.QTableWidgetItem(
+                self._inventory_icon(item_index), label
+            )
+            name_cell.setToolTip(f"Item {item_index}")
+            rarity = int(item.get("rarity") or 0)
+            color = RARITY_COLORS.get(rarity)
+            if color:
+                name_cell.setForeground(QtGui.QColor(color))
+            quantity = QtWidgets.QTableWidgetItem(
+                self._format_count(item.get("quantity"))
+            )
+            quantity.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            kind = QtWidgets.QTableWidgetItem(
+                "Equipamento"
+                if item.get("kind") == "equipment"
+                else "Empilhável"
+            )
+            slot = QtWidgets.QTableWidgetItem(str(int(item.get("slot") or 0)))
+            slot.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            for column, cell in enumerate((name_cell, quantity, kind, slot)):
+                self.inventory_table.setItem(row, column, cell)
+            self.inventory_table.setRowHeight(row, 54)
+        total = sum(int(item.get("quantity") or 0) for item in items)
+        character = self._captured_client_name(self.active_client)
+        category_label = self.inventory_category_tabs.tabText(
+            self.inventory_category_tabs.currentIndex()
+        )
+        self.inventory_status.setText(
+            f"{character or self._client_name(self.active_client)} · "
+            f"{category_label} · "
+            f"{len(items)} item(ns) · quantidade total {self._format_count(total)}"
+            if uid
+            else "Aguardando o personagem deste cliente ser identificado."
+        )
 
     def _set_send_controls(self) -> None:
         enabled = bool(
@@ -3536,6 +3844,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     data.get("mobs", 0),
                     bool(data.get("skipped")),
                 )
+            self._render_pvp_database()
         elif name == "alerts:save":
             if error is not None:
                 self.log.error(
@@ -3641,7 +3950,7 @@ class MainWindow(QtWidgets.QMainWindow):
         steps = (
             "Ative esta instalação em Configurações, na área Licença. A ativação será lembrada nas próximas aberturas.",
             "Abra o RF NEXT. O programa detecta automaticamente até dois clientes e separa as conexões de cada um.",
-            "Use PC ou Emuladores no menu lateral e escolha o cliente desejado. Se necessário, renomeie apenas a identificação visual.",
+            "Use PC ou Emuladores no menu lateral e escolha o cliente desejado. Dê duplo clique no cliente para definir manualmente o UID.",
             "Em Envios, Personagem, Mercado, Codex e Memory Chips enviam dados já lidos; eles não iniciam outra captura.",
             "Em Configurações, informe o Profile e o token do site. Subsessões encerradas podem ser selecionadas e enviadas sem duplicidade.",
             "Cada parada encerra uma sessão independente. Confira o tamanho antes de exportar e mova os segmentos à Lixeira somente após validar a exportação.",
@@ -3736,6 +4045,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._render_combat()
         self._render_subsessions()
         self._render_sends()
+        self._render_inventory()
+        self._render_pvp_database()
         engine = self._ensure_capture_engine()
         if engine.current_session:
             self.top_capture.setText(
@@ -3885,6 +4196,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 payload.get("combat_monitors") or []
             )
             self._render_combat()
+            self._render_pvp_database()
             self._evaluate_alerts(self.snapshot["combat_monitors"])
             now = time.monotonic()
             if self.site_profile.connected and now >= self.observation_sync_next_due:
@@ -4023,7 +4335,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for index in range(CLIENT_SLOT_COUNT):
             allowed = self._client_allowed(index)
             self.client_buttons[index].setEnabled(allowed)
-            self.client_uid_buttons[index].setEnabled(allowed)
             for controls in self.monitor_controls.values():
                 tabs = controls.get("tabs")
                 if tabs is not None:
@@ -4049,20 +4360,27 @@ class MainWindow(QtWidgets.QMainWindow):
                 "" if allowed else "Módulo não incluído nesta licença."
             )
             controls = self.monitor_controls[mode]
-            for name in ("enabled", "interval", "overlay", "dps_overlay", "tabs"):
+            for name in (
+                "enabled", "interval", "overlay", "hostile_overlay",
+                "non_hostile_overlay", "dps_overlay", "tabs",
+            ):
                 control = controls.get(name)
                 if control is not None:
                     control.setEnabled(allowed)
             if not allowed:
                 self._disable_monitor_mode(mode)
-                for name in ("overlay", "dps_overlay"):
+                for name in (
+                    "overlay", "hostile_overlay", "non_hostile_overlay",
+                    "dps_overlay",
+                ):
                     overlay = controls.get(name)
                     if overlay is not None:
                         overlay.blockSignals(True)
                         overlay.setChecked(False)
                         overlay.blockSignals(False)
-                if mode == "pvp" and self.pvp_overlay:
-                    self._toggle_pvp_overlay(False)
+                if mode == "pvp" and self.pvp_overlays:
+                    for kind in tuple(self.pvp_overlays):
+                        self._toggle_pvp_overlay(False, kind)
                 if mode == "boss":
                     if self.boss_overlay:
                         self._toggle_boss_overlay(False)
@@ -4311,11 +4629,13 @@ class MainWindow(QtWidgets.QMainWindow):
             list(self.snapshot.get("combat_monitors") or [])
         )
 
-    def _toggle_pvp_overlay(self, enabled: bool) -> None:
+    def _toggle_pvp_overlay(self, enabled: bool, kind: str = "target") -> None:
+        if kind not in {"target", "hostile", "non_hostile"}:
+            return
         if not enabled:
-            if self.pvp_overlay:
-                self.pvp_overlay.close()
-                self.pvp_overlay = None
+            overlay = self.pvp_overlays.pop(kind, None)
+            if overlay:
+                overlay.close()
             return
         if not self._require_monitor_feature("pvp"):
             overlay_button = self.monitor_controls["pvp"].get("overlay")
@@ -4324,12 +4644,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 overlay_button.setChecked(False)
                 overlay_button.blockSignals(False)
             return
+        title, preference, fallback_offset = {
+            "target": ("Alvo atual", "pvp_overlay_target_position", None),
+            "hostile": ("Próximos hostis", "pvp_overlay_hostile_position", [24, 120]),
+            "non_hostile": (
+                "Próximos não hostis",
+                "pvp_overlay_non_hostile_position",
+                [24, 240],
+            ),
+        }[kind]
         overlay = _MovableOverlay()
-        overlay.setWindowTitle("RF QOL · PvP próximo")
+        overlay.setWindowTitle(f"RF QOL · {title}")
         overlay.setWindowFlags(
-            QtCore.Qt.WindowType.Tool
-            | QtCore.Qt.WindowType.WindowStaysOnTopHint
-            | QtCore.Qt.WindowType.FramelessWindowHint
+                QtCore.Qt.WindowType.Tool
+                | QtCore.Qt.WindowType.WindowStaysOnTopHint
+                | QtCore.Qt.WindowType.FramelessWindowHint
         )
         overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
         overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -4337,16 +4666,31 @@ class MainWindow(QtWidgets.QMainWindow):
         overlay.setStyleSheet("QDialog#monitorOverlay { background: transparent; }")
         overlay.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
         overlay.setToolTip("Arraste com o botão esquerdo para mover.")
-        overlay.position_changed.connect(self._save_pvp_overlay_position)
+        overlay.position_changed.connect(
+            lambda position, setting=preference:
+                self._save_overlay_position(setting, position)
+        )
         layout = QtWidgets.QVBoxLayout(overlay)
-        layout.setContentsMargins(12, 10, 12, 10)
-        self.pvp_overlay_summary = _label("Nenhum jogador hostil confirmado", "subtitle")
-        self.pvp_overlay_rows = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.pvp_overlay_summary)
-        layout.addLayout(self.pvp_overlay_rows)
-        overlay.resize(340, 180)
-        self._restore_overlay_position(overlay, "pvp_overlay_position")
-        self.pvp_overlay = overlay
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(4)
+        summary = _label(title, "subtitle")
+        rows = QtWidgets.QVBoxLayout()
+        rows.setSpacing(4)
+        layout.addWidget(summary)
+        layout.addLayout(rows)
+        overlay.summary = summary
+        overlay.rows = rows
+        overlay.setFixedWidth(300)
+        overlay.resize(300, 72)
+        fallback = None
+        if fallback_offset and self.pvp_overlays.get("target"):
+            target = self.pvp_overlays["target"]
+            fallback = [
+                target.x() + fallback_offset[0],
+                target.y() + fallback_offset[1],
+            ]
+        self._restore_overlay_position(overlay, preference, fallback)
+        self.pvp_overlays[kind] = overlay
         overlay.show()
         self._update_pvp_overlay(
             list(self.snapshot.get("combat_monitors") or [])
@@ -4384,10 +4728,6 @@ class MainWindow(QtWidgets.QMainWindow):
             {preference_key: [position.x(), position.y()]},
             self.preferences_path,
         )
-
-    @QtCore.Slot(QtCore.QPoint)
-    def _save_pvp_overlay_position(self, position: QtCore.QPoint) -> None:
-        self._save_overlay_position("pvp_overlay_position", position)
 
     @QtCore.Slot(QtCore.QPoint)
     def _save_boss_overlay_position(self, position: QtCore.QPoint) -> None:
@@ -4911,7 +5251,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for index in range(CLIENT_SLOT_COUNT):
             visible = index in slots
             self.client_buttons[index].setVisible(visible)
-            self.client_uid_buttons[index].setVisible(visible)
         self.client_buttons[first].setChecked(True)
         for (mode, index), button in self.send_buttons.items():
             if index >= 0:
@@ -4929,6 +5268,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     card.setVisible(index in slots)
         self._render_overview()
         self._render_combat()
+        self._render_inventory()
         self._sync_combat_layout()
         self._refresh_connection_access()
 
@@ -4947,6 +5287,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.active_client = index
         self.log.debug("ui_client_selected index=%s", index)
         self._render_overview()
+        self._render_inventory()
 
     def _render_combat(self) -> None:
         monitors = list(self.snapshot.get("combat_monitors") or [])
@@ -5137,79 +5478,82 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _update_pvp_overlay(self, monitors: list[dict[str, Any]]) -> None:
-        if not self.pvp_overlay:
+        if not self.pvp_overlays:
             return
-        while self.pvp_overlay_rows.count():
-            item = self.pvp_overlay_rows.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        players: dict[str, dict[str, Any]] = {}
-        hostile_ids: set[str] = set()
-        sources: dict[str, set[str]] = {}
-        monitor_names: list[str] = []
-        for monitor in monitors:
-            client_name = self._monitor_client_title(monitor)
-            monitor_names.append(client_name)
-            target = dict(monitor.get("pvp") or {})
-            if (
-                target
-                and not target.get("stale")
-                and float(target.get("age_seconds") or 0) <= 3
-            ):
-                identity = str(
-                    target.get("character_uid")
-                    or target.get("uid")
-                    or target.get("name")
-                    or ""
-                )
-                if identity:
-                    players[identity] = target
-                    hostile_ids.add(identity)
-                    sources.setdefault(identity, set()).add(client_name)
-            local_realm = (monitor.get("local") or {}).get("realm")
-            for player in list(monitor.get("nearby_players") or []):
-                identity = str(
-                    player.get("character_uid")
-                    or player.get("uid")
-                    or player.get("name")
-                    or ""
-                )
-                if identity:
-                    players.setdefault(identity, player)
-                    sources.setdefault(identity, set()).add(client_name)
-                    if (
-                        local_realm is not None
-                        and player.get("realm") is not None
-                        and player.get("realm") != local_realm
-                    ):
-                        hostile_ids.add(identity)
-        player_rows = list(players.items())
-        origin = ", ".join(dict.fromkeys(monitor_names)) or "cliente não identificado"
-        self.pvp_overlay_summary.setText(
-            f"Leitura: {origin} · Jogadores: {len(player_rows)} · Hostis: {len(hostile_ids)}"
-            if player_rows
-            else f"Leitura: {origin} · Nenhum jogador próximo confirmado"
+        tabs = self.monitor_controls.get("pvp", {}).get("tabs")
+        selected_index = tabs.currentIndex() if tabs is not None else self.active_client
+        monitor = next(
+            (
+                item
+                for fallback, item in enumerate(monitors)
+                if self._monitor_client_index(item, fallback) == selected_index
+            ),
+            {},
         )
-        for identity, player in player_rows[:8]:
-            row = QtWidgets.QFrame(objectName="secondaryMetricGroup")
-            layout = QtWidgets.QHBoxLayout(row)
-            layout.setContentsMargins(8, 5, 8, 5)
-            name = str(player.get("name") or "Jogador confirmado")
-            level = f" · Nv. {player['level']}" if player.get("level") else ""
-            status = " · Hostil" if identity in hostile_ids else " · Próximo"
-            source = ", ".join(sorted(sources.get(identity) or ()))
-            suffix = f" · {source}" if source else ""
-            layout.addWidget(_label(f"{name}{level}{status}{suffix}", "subtitle"), 1)
-            percent = player.get("hp_percent")
-            layout.addWidget(
-                _label(
-                    f"{float(percent):.1f}%".replace(".", ",")
-                    if isinstance(percent, (int, float))
-                    else "HP —",
-                    "data",
-                )
+        origin = (
+            self._monitor_client_title(monitor)
+            if monitor
+            else self._client_name(selected_index)
+        )
+        target = dict(monitor.get("pvp") or {})
+        target_valid = not (
+            not target
+            or target.get("stale")
+            or float(target.get("age_seconds") or 0) > 3
+        )
+        target_uid = str(target.get("character_uid") or "") if target_valid else ""
+        nearby = [
+            item
+            for item in list(monitor.get("nearby_players") or [])
+            if str(item.get("character_uid") or "") != target_uid
+            and not item.get("stale")
+            and float(item.get("age_seconds") or 0) <= 3
+        ]
+        groups = {
+            "target": [target] if target_valid else [],
+            "hostile": [
+                item for item in nearby if item.get("pvp_status") == "enemy"
+            ],
+            "non_hostile": [
+                item for item in nearby if item.get("pvp_status") != "enemy"
+            ],
+        }
+        titles = {
+            "target": "Alvo atual",
+            "hostile": "Próximos hostis",
+            "non_hostile": "Próximos não hostis",
+        }
+        status_labels = {"ally": "Aliado", "neutral": "Neutro"}
+        for key, overlay in self.pvp_overlays.items():
+            summary = overlay.summary
+            rows = overlay.rows
+            while rows.count():
+                item = rows.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            values = groups[key]
+            summary.setText(
+                f"{titles[key]} · {origin}"
+                + ("" if values else " · Nenhum")
             )
-            self.pvp_overlay_rows.addWidget(row)
+            for player in values[:10]:
+                row = QtWidgets.QFrame(objectName="secondaryMetricGroup")
+                layout = QtWidgets.QHBoxLayout(row)
+                layout.setContentsMargins(8, 4, 8, 4)
+                name = str(player.get("name") or "Jogador confirmado")
+                suffix = (
+                    f" · {status_labels.get(str(player.get('pvp_status')), 'Neutro')}"
+                    if key == "non_hostile" else ""
+                )
+                layout.addWidget(_label(f"{name}{suffix}", "subtitle"), 1)
+                percent = player.get("hp_percent")
+                layout.addWidget(_label(
+                    f"{float(percent):.1f}%".replace(".", ",")
+                    if isinstance(percent, (int, float)) else "HP —",
+                    "data",
+                ))
+                rows.addWidget(row)
+            overlay.adjustSize()
 
     def _update_boss_overlay(self, monitors: list[dict[str, Any]]) -> None:
         if not self.boss_overlay and not self.boss_dps_overlay:
@@ -5434,19 +5778,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _render_overview(self) -> None:
         snapshot = self.snapshot
         self._refresh_client_labels()
-        self._refresh_client_uid_buttons()
+        self._refresh_client_uid_tooltips()
 
         key = _client_key(self.active_client)
         character, summary, historical_identity = self._overview_character(
             self.active_client
         )
         captured_name = str(character.get("name") or "").strip() if character else ""
-        manual_name = str(self.preferences.get(f"character{self.active_client + 1}") or "").strip()
-        name = (
-            manual_name
-            if manual_name and (not captured_name or captured_name.startswith("Personagem-"))
-            else captured_name or manual_name or "Aguardando personagem"
-        )
+        name = captured_name or "Aguardando personagem"
         stats = dict(snapshot.get("stats") or {})
         started, ended = stats.get("started_ns"), stats.get("ended_ns")
         if (
@@ -5522,12 +5861,7 @@ class MainWindow(QtWidgets.QMainWindow):
         key = _client_key(index)
         character, summary, historical_identity = self._overview_character(index)
         captured = str(character.get("name") or "").strip() if character else ""
-        manual = str(self.preferences.get(f"character{index + 1}") or "").strip()
-        name = (
-            manual
-            if manual and (not captured or captured.startswith("Personagem-"))
-            else captured or manual or "Aguardando personagem"
-        )
+        name = captured or "Aguardando personagem"
         self.secondary_character_name.setText(
             self._client_title(index, name)
         )

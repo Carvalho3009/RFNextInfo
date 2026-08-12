@@ -5,8 +5,8 @@ Estado: implementado e validado localmente; não publicado
 
 ## Escopo
 
-- renomear Cliente A, Cliente B e Emuladores por duplo clique no próprio botão;
-- propagar o nome definido para seletores, abas de monitor e botões de envio;
+- definir manualmente o UID por duplo clique em Cliente A, Cliente B ou Emulador;
+- remover o botão separado de UID e a função de renomear clientes;
 - limpar o alvo PvP após 3 segundos sem nova confirmação;
 - reduzir os overlays para 340 px de largura e mantê-los como janelas independentes
   quando a janela principal for minimizada;
@@ -16,19 +16,25 @@ Estado: implementado e validado localmente; não publicado
 - sincronizar UID, personagem e guilda entre programas por meio do site;
 - tornar explícito quando nenhuma Farm encerrada foi selecionada para envio.
 
-## Contrato visual de nomes
+## Contrato visual de nomes e UID
 
-O nome manual substitui o rótulo genérico do slot. Quando o personagem também
-é conhecido, o formato é `NomeDefinido - Personagem`; `Carvalho` era somente
-um exemplo de nome definido. O nome manual é apenas visual e não altera UID
-nem o roteamento da captura. Nos overlays, a origem é exclusivamente o
-personagem confirmado vinculado ao UID/rota, sem o nome manual do slot.
+Os slots mantêm os nomes fixos `Cliente A`, `Cliente B` e `Emulador 1–5`.
+Quando o personagem é conhecido, o programa acrescenta seu nome capturado ao
+rótulo. O duplo clique abre a seleção entre detecção automática e UIDs já
+confirmados; o vínculo não permite usar o mesmo UID simultaneamente em dois
+clientes. Nos overlays, a origem continua sendo exclusivamente o personagem
+confirmado vinculado ao UID/rota.
 
 ## Retenção PvP
 
 Jogadores próximos e o último alvo PvP deixam de ser exibidos após 3 segundos
 sem confirmação do stream. A regra é aplicada no resumo de combate e novamente
 no overlay, evitando que uma atualização antiga volte a mostrar o nome.
+
+Evolução local posterior: o overlay único foi dividido em Alvo atual,
+Próximos hostis e Próximos não hostis. O status manual do Banco PvP define
+somente a separação das listas próximas; não altera qual alvo foi confirmado
+pela captura.
 
 ## Banco compartilhado de identidades
 
@@ -66,9 +72,8 @@ Quando nada estiver selecionado, o programa agora informa
 ## Validação local
 
 - compilação do programa e do servidor;
-- suíte `unittest` do programa: 222 testes aprovados e 1 teste de área de
-  notificação ignorado por indisponibilidade no ambiente offscreen;
-- testes Qt reais para rename, overlays e Boss por guilda;
+- suíte `unittest` do programa: 229 testes aprovados;
+- testes Qt reais para UID por duplo clique, overlays e Boss por guilda;
 - autoteste integral do servidor com importação e leitura duplicada de
   observações;
 - `git diff --check` nos dois worktrees.

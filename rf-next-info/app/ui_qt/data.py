@@ -12,10 +12,15 @@ from app.main import (
     App as StableApp,
     CLASS_ICON_FILES,
     DB_PATH,
+    INVENTORY_CATEGORIES,
+    ITEM_GRADES,
     MACHINE_STATE_DIR,
     PREFERENCES_PATH,
     RARITY_COLORS,
     STATE_DIR,
+    game_data_language,
+    inventory_category,
+    item_names_for_language,
 )
 from core.combat_monitor import summarize_combat
 from core.store import CaptureStore
@@ -29,6 +34,13 @@ def _event_matches_ports(
         for value in re.findall(r":(\d+)(?:\s|$)", str(event.get("flow") or ""))
     }
     return bool(endpoints.intersection(ports))
+
+
+def _inventory_item_name(item_index: int, language: str) -> str:
+    key = str(item_index)
+    return str(
+        item_names_for_language(language).get(key) or f"Item {item_index}"
+    )
 
 
 class ReadOnlySnapshotReader:
@@ -57,7 +69,7 @@ class ReadOnlySnapshotReader:
             snapshot = self._load_info_snapshot(
                 database,
                 self.current_session,
-                "en" if language == "en" else "pt",
+                game_data_language(language),
             )
             snapshot["capture_windows"] = (
                 database.capture_windows(self.current_session)
@@ -80,6 +92,40 @@ class ReadOnlySnapshotReader:
                 kind: sum(int(counts.get(kind) or 0) for counts in collection_counts_by_uid.values())
                 for kind in (1, 2)
             }
+            snapshot["inventories"] = {}
+            if self.current_session:
+                for profile in snapshot.get("profiles", []):
+                    uid = str(profile.get("uid") or "")
+                    if not uid:
+                        continue
+                    snapshot["inventories"][uid] = [
+                        {
+                            "item_index": int(item.get("item_index") or 0),
+                            "name": _inventory_item_name(
+                                int(item.get("item_index") or 0), language
+                            ),
+                            "quantity": int(item.get("count") or 0),
+                            "kind": str(item.get("item_kind") or ""),
+                            "category": inventory_category(
+                                int(item.get("item_index") or 0),
+                                str(item.get("item_kind") or ""),
+                            ),
+                            "slot": int(item.get("inventory_slot") or 0),
+                            "refinement": int(item.get("enchant_level") or 0),
+                            "locked": bool(item.get("lock")),
+                            "expires_at": int(item.get("expire_time") or 0),
+                            "rarity": int(
+                                ITEM_GRADES.get(
+                                    str(item.get("item_index") or 0), 0
+                                )
+                                or 0
+                            ),
+                            "observed_at_ns": item.get("observed_at_ns"),
+                        }
+                        for item in database.inventory_items(
+                            self.current_session, uid
+                        )
+                    ]
             snapshot["combat_monitors"] = []
             if self.current_session:
                 names = load_npc_names(language)
@@ -207,6 +253,7 @@ class ReadOnlySnapshotReader:
             "capture_windows": [],
             "collection_type_counts": {},
             "collection_type_counts_by_uid": {},
+            "inventories": {},
             "combat_monitors": [],
             "character_history": [],
             "client_bindings": [],

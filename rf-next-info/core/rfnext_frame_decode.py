@@ -29,6 +29,7 @@ USE_SKILL_PREFIX = struct.Struct("<HBIIIBffffffIfffqIIH")
 SKILL_EFFECT_RESULT = struct.Struct("<IffffffBqqqIIBI")
 NORMAL_SKILL_PREFIX = struct.Struct("<HBIfffIIIBqH")
 NORMAL_SKILL_EFFECT_RESULT = struct.Struct("<IfffBqqqBI")
+STACKABLE_INVENTORY_ITEM = struct.Struct("<H6sIQBQ")
 USE_SKILL_REQUEST = struct.Struct("<III")
 SELECT_TARGET_REQUEST = struct.Struct("<I")
 ACTION_CODES = {
@@ -917,6 +918,99 @@ def _parse_compact_profile_item(payload: bytes, cursor: int) -> tuple[dict[str, 
         "is_broken": bool(suffix[0]),
         "expire_time": suffix[1],
     }, cursor
+
+
+def _parse_stackable_inventory_item(
+    payload: bytes, cursor: int
+) -> tuple[dict[str, Any], int]:
+    values, cursor = _read_struct(
+        payload,
+        cursor,
+        STACKABLE_INVENTORY_ITEM.format,
+        "stackable inventory item",
+    )
+    slot_raw, item_uid_raw, item_index, count, locked_raw, expire_time = values
+    return {
+        "inventory_slot": slot_raw,
+        "item_uid": int.from_bytes(item_uid_raw, "little"),
+        "item_uid_hex": item_uid_raw.hex(),
+        "item_index": item_index,
+        "count": count,
+        "lock": bool(locked_raw),
+        "expire_time": expire_time,
+    }, cursor
+
+
+def parse_inventory_payload(decoded: bytes) -> dict[str, Any] | None:
+    """Decodifica snapshots e deltas confirmados do inventário e armazém."""
+    opcode = int.from_bytes(decoded[4:6], "little")
+    payload = decoded[HEADER_SIZE:]
+    snapshots = {
+        0x0401: ("inventory", "stackable"),
+        0x0403: ("inventory", "equipment"),
+        0x1F05: ("warehouse", "equipment"),
+        0x1F06: ("warehouse", "stackable"),
+    }
+    deltas = {
+        0x0402: ("inventory", "stackable"),
+        0x0404: ("inventory", "equipment"),
+        0x1F07: ("warehouse", "equipment"),
+        0x1F08: ("warehouse", "stackable"),
+    }
+    if opcode in snapshots:
+        if len(payload) < 3:
+            return None
+        container, item_kind = snapshots[opcode]
+        header_raw, item_count = struct.unpack_from("<BH", payload)
+        cursor = 3
+        items = []
+        parser = (
+            _parse_stackable_inventory_item
+            if item_kind == "stackable"
+            else _parse_compact_profile_item
+        )
+        try:
+            for _ in range(item_count):
+                item, cursor = parser(payload, cursor)
+                items.append(item)
+        except (DecodeError, struct.error):
+            return None
+        if cursor != len(payload):
+            return None
+        return {
+            "type": "inventory_snapshot",
+            "confidence": "alto-layout-exato-captura-marcada-20260811",
+            "container": container,
+            "item_kind": item_kind,
+            "header_raw": header_raw,
+            "item_count": item_count,
+            "items": items,
+        }
+    if opcode in deltas:
+        if len(payload) < 2:
+            return None
+        container, item_kind = deltas[opcode]
+        update_group_raw = struct.unpack_from("<H", payload)[0]
+        parser = (
+            _parse_stackable_inventory_item
+            if item_kind == "stackable"
+            else _parse_compact_profile_item
+        )
+        try:
+            item, cursor = parser(payload, 2)
+        except (DecodeError, struct.error):
+            return None
+        if cursor != len(payload):
+            return None
+        return {
+            "type": "inventory_delta",
+            "confidence": "alto-layout-exato-captura-marcada-20260811",
+            "container": container,
+            "item_kind": item_kind,
+            "update_group_raw": update_group_raw,
+            "item": item,
+        }
+    return None
 
 
 def _parse_player_profile_payload(payload: bytes) -> dict[str, Any] | None:

@@ -27,11 +27,72 @@ from core.combat_monitor import summarize_combat
 from core.ingest import _decode_stream_resync, _pcapng_to_pcap, _safe_parse
 from core.live_stream import LiveEventDecoder, LiveEventStream
 from core.knowledge import KnowledgeStore
-from core.rfnext_frame_decode import parse_observation_payload, pcap_tcp_streams
+from core.rfnext_frame_decode import (
+    parse_inventory_payload,
+    parse_observation_payload,
+    pcap_tcp_streams,
+)
 from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_inventory_decoder_and_store_apply_snapshot_and_delta(self):
+        def frame(opcode: int, payload: bytes) -> bytes:
+            value = bytearray(6 + len(payload))
+            value[4:6] = opcode.to_bytes(2, "little")
+            value[6:] = payload
+            return bytes(value)
+
+        item = struct.pack(
+            "<H6sIQBQ", 7, bytes.fromhex("010203040506"), 270062, 12, 0, 0
+        )
+        snapshot = parse_inventory_payload(frame(0x0401, struct.pack("<BH", 1, 1) + item))
+        delta = parse_inventory_payload(
+            frame(
+                0x0402,
+                struct.pack("<H", 0x011B)
+                + struct.pack(
+                    "<H6sIQBQ",
+                    7,
+                    bytes.fromhex("010203040506"),
+                    270062,
+                    25,
+                    0,
+                    0,
+                ),
+            )
+        )
+        self.assertEqual(snapshot["items"][0]["count"], 12)
+        self.assertEqual(delta["item"]["count"], 25)
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = CaptureStore(Path(directory) / "capture.sqlite3")
+            try:
+                for offset, data in enumerate((snapshot, delta), 1):
+                    store.conn.execute(
+                        """INSERT INTO events(
+                           session_id,source,flow,stream_offset,bundle_seq,ts_ns,
+                           opcode,type,character_uid,data_json
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            "session",
+                            "memory",
+                            "flow",
+                            offset,
+                            0,
+                            offset,
+                            0x0400 + offset,
+                            data["type"],
+                            "101",
+                            json.dumps(data),
+                        ),
+                    )
+                current = store.inventory_items("session", "101")
+            finally:
+                store.close()
+        self.assertEqual(len(current), 1)
+        self.assertEqual(current[0]["count"], 25)
+
     def test_safe_parse_keeps_only_sanitized_character_list_from_login(self):
         class Decoder:
             class DecodeError(Exception):
@@ -146,6 +207,68 @@ class CoreTest(unittest.TestCase):
                 monitors[0]["bosses"][0]["top_damage_guilds"],
                 [{"name": "Karvalho", "damage": 900, "dps_hp": 90.0}],
             )
+
+    def test_pvp_bank_persists_manual_status_and_protects_observed_guild(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                store.observe_events([{
+                    "type": "appear_player_list",
+                    "data": {"units": [
+                        {"character_uid": 123, "name": "Sem Guilda", "uid": 1},
+                        {
+                            "character_uid": 456,
+                            "name": "Com Guilda",
+                            "guild_name": "Observada",
+                            "uid": 2,
+                        },
+                    ]},
+                }])
+                manual = store.update_pvp_identity(
+                    123, guild_name="Manual", status="enemy"
+                )
+                observed = store.update_pvp_identity(
+                    456, guild_name="Não substituir", status="ally"
+                )
+                payload = store.pending_payload()
+                monitors = [{
+                    "pvp": {"character_uid": "123", "name": "Sem Guilda"},
+                    "nearby_players": [
+                        {"character_uid": "123", "name": "Sem Guilda"},
+                        {"character_uid": "456", "name": "Com Guilda"},
+                    ],
+                    "bosses": [],
+                }]
+                store.enrich_combat_monitors(monitors)
+            finally:
+                store.close()
+            self.assertEqual(
+                (manual["guild_name"], manual["guild_source"], manual["pvp_status"]),
+                ("Manual", "manual", "enemy"),
+            )
+            self.assertEqual(observed["guild_name"], "Observada")
+            self.assertEqual(observed["pvp_status"], "ally")
+            self.assertEqual(payload["schema_version"], 2)
+            self.assertEqual(monitors[0]["pvp"]["pvp_status"], "enemy")
+            self.assertEqual(
+                [item["pvp_status"] for item in monitors[0]["nearby_players"]],
+                ["enemy", "ally"],
+            )
+
+    def test_pvp_bank_rejects_invalid_manual_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                store.observe_events([{
+                    "type": "appear_player_list",
+                    "data": {"units": [{
+                        "character_uid": 123, "name": "Pessoa", "uid": 1,
+                    }]},
+                }])
+                with self.assertRaisesRegex(ValueError, "status PvP"):
+                    store.update_pvp_identity(123, guild_name="", status="qualquer")
+            finally:
+                store.close()
 
     def test_completed_market_signature_changes_only_on_completed_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:

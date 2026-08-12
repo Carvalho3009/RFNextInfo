@@ -1,6 +1,7 @@
 # Runbook de release — RF QOL 1.0
 
-Estado: preparado; não autorizado para publicação (G4 pendente)
+Estado: preparado; G4 de release pendente. Em 12/08/2026, o owner autorizou
+somente atualizar a branch pública de download, sem criar GitHub Release.
 
 ## Pré-condições
 

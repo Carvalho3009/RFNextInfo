@@ -1,6 +1,37 @@
 # Changelog
 
-## 1.0.0 — em desenvolvimento isolado
+## Em desenvolvimento — Banco e overlays PvP
+
+- Separa o PvP em overlays móveis de alvo atual, próximos hostis e próximos
+  não hostis, sempre limitados ao cliente selecionado.
+- Adiciona Banco PvP com UID, personagem, guilda e status manual
+  Aliado/Inimigo/Neutro, usando a sincronização sanitizada já existente.
+
+## Em desenvolvimento — Inventário
+
+- Decoder canônico de snapshots/deltas de inventário integrado à captura.
+- Nova aba Inventário por cliente PC/emulador, com ícones, filtro e quantidades.
+- Subabas Equipamentos, Consumíveis, Materiais, Talicas, Partes de Rover e
+  Outros, classificadas pelos metadados oficiais do jogo 1.28.5.
+- Payload sanitizado `capture.inventory` preparado no envio de Personagem.
+- Nomes sem tradução portuguesa usam o catálogo inglês antes do identificador
+  genérico, incluindo os materiais Greater e Superior.
+
+## Em desenvolvimento — Idioma dos dados do jogo
+
+- A opção de idioma agora se aplica de forma única somente aos dados do jogo:
+  itens, inventário, equipamento, Mercado, mapas, spots, mobs, bosses,
+  Biosuits e Rovers. A interface do RF QOL permanece em português.
+- Exibição, exportação e envio usam o mesmo catálogo selecionado, com fallback
+  para o outro idioma quando a tradução ainda não existe.
+
+## Em desenvolvimento — Seleção de UID
+
+- Remove o botão separado de UID e a função de renomear clientes.
+- O duplo clique em Cliente A/B ou Emulador abre a seleção manual de UID; os
+  rótulos dos slots permanecem fixos e exibem o personagem capturado.
+
+## 1.0.0 — candidato para instalação manual
 
 - renomeia produto, executável e instalador para RF QOL e mantém a identidade visual Karvalho;
 - adiciona o link oficial do Discord;
@@ -11,6 +42,8 @@
 - separa Base, Monitor PvE, Monitor PvP e Monitor Boss na lease assinada; sem
   permissão, PvE/PvP continuam visíveis e bloqueados enquanto Boss fica oculto;
 - separa o overlay Boss em dois controles móveis e independentes: vida e DPS;
+- compacta o overlay PvP e limita sua leitura ao alvo atual do personagem
+  vinculado à aba selecionada, sem agregar jogadores ou outros clientes;
 - remove os atalhos F1–F4 dos envios, preservando os botões e os atalhos de
   captura e monitores;
 - separa as chaves de licença e atualização e remove a chave mutável do estado local;
@@ -23,7 +56,8 @@
 - registra a decisão de distribuir executável e instalador sem Authenticode;
 - define instalação manual para a 1.0: não consulta feed, não baixa executável,
   abre o Discord oficial para avisos e gera `SHA256SUMS.txt` no build de release;
-- mantém publicação bloqueada até G4.
+- permite distribuir o instalador pela branch pública de download sem promover
+  o candidato a GitHub Release; o G4 de release permanece separado.
 - fixa a pública definitiva de lease `lease-2026-01`; a privada continua fora
   do repositório e a chave offline de update fica adiada enquanto o modo for manual.
 - prepara a cerimônia offline de update com duas cópias privadas cifradas,

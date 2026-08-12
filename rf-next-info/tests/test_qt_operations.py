@@ -806,6 +806,17 @@ class SiteUploadEngineTest(unittest.TestCase):
                         "include_unassigned": False,
                         "only_unassigned": False,
                     }],
+                    "inventories": {"101": [{
+                        "item_index": 270062,
+                        "name": "Material",
+                        "quantity": 25,
+                        "kind": "stackable",
+                        "slot": 7,
+                        "refinement": 0,
+                        "locked": False,
+                        "expires_at": 0,
+                        "item_uid_hex": "não-enviar",
+                    }]},
                 },
                 "pt",
             )
@@ -816,6 +827,17 @@ class SiteUploadEngineTest(unittest.TestCase):
                 {"item_index": 1000078, "slot": 1, "refinement": 7}
             ])
             self.assertEqual(payload["metadata"]["installation_id"], "install-1")
+            self.assertEqual(payload["capture"]["inventory"], [{
+                "item_index": 270062,
+                "name": "Material",
+                "quantity": 25,
+                "kind": "stackable",
+                "slot": 7,
+                "refinement": 0,
+                "locked": False,
+                "expires_at": 0,
+            }])
+            self.assertNotIn("item_uid_hex", json.dumps(payload))
             self.assertEqual(len(key), 64)
 
     def test_subsession_send_recovers_character_from_saved_session(self):

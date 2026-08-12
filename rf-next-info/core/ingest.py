@@ -155,6 +155,9 @@ def _safe_parse(
             or decoder.parse_collection_payload(decoded)
             or decoder.parse_observation_payload(decoded)
             or decoder.parse_marked_gameplay_payload(decoded, port)
+            or getattr(decoder, "parse_inventory_payload", lambda _value: None)(
+                decoded
+            )
             or decoder.parse_job1_payload(decoded)
         )
         if parsed is None and port == 12000:
