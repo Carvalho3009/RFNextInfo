@@ -1,0 +1,20 @@
+{
+  "product": "rf-qol",
+  "version": "1.0.1",
+  "update_mode": "manual",
+  "commit": "ac22d39a4236776135041677e2fa0d5471cf9df3",
+  "dirty": true,
+  "python": "Python 3.13.5",
+  "executable_sha256": "935A6B6D035B9B18583A4E4C783AA678C878DEB8B970EF8435E476F66ADFF79E",
+  "installer_sha256": "D40AC86F6B2ADA7D9E00007E339AAAC5DF4EE451BFF014DE3817EC6BF3431754",
+  "lock_sha256": "64CAEDF8E5D35789A75A981F2B623C9240B1CB560C6E7D524BE918309FC367A7",
+  "sbom_sha256": "4084190B2E32857BE3C16BEACE5BF2F6AB2ECAD930D2C824E95E38BB23BE0632",
+  "manifest_sha256": null,
+  "rollback_manifest_sha256": null,
+  "sha256sums_sha256": null,
+  "pyinstaller": "6.18.0",
+  "nsis": "v3.12",
+  "nsis_sha256": "25D1AA7081DB1A9DE9690B59983F9652B7409A189C3444328CC1841EFF693E8D",
+  "authenticode": false,
+  "release": false
+}
