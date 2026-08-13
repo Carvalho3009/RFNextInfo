@@ -207,3 +207,19 @@ de download em 12 ago 2026
   página protegida permaneceu `302` para o Authentik;
 - a versão instalada repetiu o envio automaticamente às 19:00:39 e confirmou
   `observation_upload_completed characters=1551`, eliminando o erro real.
+
+## Instalador 1.0.4 — 13 ago 2026
+
+- versão do programa `1.0.4`, sequência interna `5`;
+- consolida a correção definitiva do envio do Banco PvP, as alterações de
+  inventário/envios e a limpeza/reidentificação do Monitor PvP;
+- fonte registrada no commit limpo
+  `10ce3906a12720d59dc8d19d235fb5ed1c877390`;
+- 245 testes aprovados em 272,671 s, além do autoteste empacotado e do ensaio
+  isolado de instalação, autoteste pós-instalação e desinstalação;
+- instalador `NotSigned`, com 48.359.711 bytes e SHA-256
+  `3D6E17FE07BB4308F25D787CC3EAB9AAB6E57B4AD3BEC595F67142ECA1459371`;
+- publicado sem GitHub Release na branch órfã `download/rf-qol-1.0.4`, commit
+  `a289387dfefe89f3a0bb6687e9a6c4a08a4b16eb`;
+- o instalador público foi baixado novamente e confirmou o mesmo tamanho,
+  versão `1.0.4`, estado `NotSigned` e SHA-256.
