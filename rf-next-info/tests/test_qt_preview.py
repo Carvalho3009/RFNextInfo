@@ -910,6 +910,101 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertFalse(reopened.monitor_controls["boss"]["focus"].isChecked())
             reopened.close()
 
+    def test_pvp_accepts_half_second_interval_with_fast_internal_tick(self):
+        from PySide6 import QtWidgets
+
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["pvp-half-second-interval-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        interval = window.monitor_controls["pvp"]["interval"]
+
+        self.assertIsInstance(interval, QtWidgets.QDoubleSpinBox)
+        self.assertEqual(interval.minimum(), 0.5)
+        self.assertEqual(interval.singleStep(), 0.5)
+        self.assertEqual(interval.value(), 1.0)
+        self.assertEqual(window.capture_timer.interval(), 250)
+
+        interval.setValue(0.5)
+        self.assertEqual(interval.value(), 0.5)
+        window.close()
+
+    def test_capture_tick_waits_for_current_combat_processing(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["pvp-no-overlap-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        now = time.monotonic()
+        window.capture_engine = SimpleNamespace(
+            active=True,
+            paused=False,
+            current_session="session",
+            heartbeat=lambda: None,
+            preview_live=lambda: {"available": True},
+            read_live=lambda: {"available": True},
+        )
+        window.last_heartbeat_at = now
+        window.last_storage_scan_at = now
+        window.next_read_at = now + 30
+        window.monitor_enabled["pvp"] = True
+        window.monitor_next_due["pvp"] = 0.0
+        window.combat_load_running = True
+        window._rotate_auto_subsessions = mock.Mock()
+        window._run_capture_operation = mock.Mock()
+
+        window._capture_tick()
+
+        window._run_capture_operation.assert_not_called()
+        window.capture_engine = None
+        window.close()
+
+    def test_pvp_target_refreshes_faster_than_nearby_players(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["pvp-nearby-throttle-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window.monitor_client_enabled["pvp"][0] = True
+        window.monitor_enabled["pvp"] = True
+        window.snapshot = {"combat_monitors": [{
+            "client_key": "client:a",
+            "character_name": "Leitor",
+            "pvp": {
+                "name": "Alvo A", "current_hp": 90, "max_hp": 100,
+                "hp_percent": 90.0, "age_seconds": 0.1, "stale": False,
+            },
+            "nearby_players": [{
+                "character_uid": "2", "name": "Próximo A",
+                "hp_percent": 100.0, "age_seconds": 0.1, "stale": False,
+            }],
+        }]}
+        widgets = window.combat_widgets["pvp"][0]
+        window.pvp_nearby_next_due = 0.0
+
+        with (
+            mock.patch.object(window, "_render_nearby", wraps=window._render_nearby) as render,
+            mock.patch("app.ui_qt.main.time.monotonic", return_value=100.0),
+        ):
+            window._render_combat()
+            first_count = sum(
+                call.args[0] is widgets and call.args[2] == "pvp"
+                for call in render.call_args_list
+            )
+            window.snapshot["combat_monitors"][0]["pvp"]["name"] = "Alvo B"
+            with mock.patch("app.ui_qt.main.time.monotonic", return_value=100.5):
+                window._render_combat()
+            second_count = sum(
+                call.args[0] is widgets and call.args[2] == "pvp"
+                for call in render.call_args_list
+            )
+
+        self.assertEqual(first_count, 1)
+        self.assertEqual(second_count, 1)
+        self.assertIn("Alvo B", widgets["target"].text())
+        window.close()
+
     def test_monitor_page_requests_checkpoint_preview_without_rotation(self):
         from app.ui_qt.main import MainWindow, create_application
 

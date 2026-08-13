@@ -307,3 +307,17 @@ dados reais permanecem intactos.
   PvP focado; valor serve como evidência local, não como garantia em outro PC.
 - Custo adicional: zero. Rollback: reverter o commit local desta etapa.
 - Instalador, publicação e servidor de licença não foram alterados.
+
+## Intervalo PvP abaixo de um segundo — 13 ago 2026
+
+- O Monitor PvP aceita de 0,5 a 60 segundos, em passos de 0,5 segundo, com
+  padrão de 1 segundo; PvE e Boss preservam seus limites anteriores.
+- O temporizador interno verifica os vencimentos a cada 250 ms e não inicia
+  outra leitura rápida enquanto o resultado de combate anterior estiver em
+  processamento.
+- O alvo atual acompanha o intervalo configurado. Listas e overlays de
+  jogadores próximos são reconstruídos no máximo uma vez por segundo para
+  preservar a fluidez da interface.
+- Validação local: 256 testes aprovados em 357,242 s, além dos quatro testes
+  diretamente afetados, `compileall`, `pip check` e `git diff --check`.
+- A etapa não altera decoder, licença, servidor, instalador ou publicação.

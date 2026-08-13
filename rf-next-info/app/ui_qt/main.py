@@ -102,6 +102,7 @@ MONITOR_FEATURES = {
     "boss": "monitor-boss",
 }
 FOCUS_READ_INTERVAL_SECONDS = 300
+PVP_NEARBY_REFRESH_SECONDS = 1.0
 MONITOR_SHORTCUT_OPTIONS = tuple(
     f"{modifier}+F{number}"
     for modifier in ("Ctrl", "Alt", "Shift")
@@ -301,6 +302,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "pvp": [False] * CLIENT_SLOT_COUNT,
         }
         self.monitor_next_due = {"pve": 0.0, "pvp": 0.0, "boss": 0.0}
+        self.pvp_nearby_next_due = 0.0
         self.monitor_controls: dict[str, dict[str, Any]] = {}
         self.boss_overlay: QtWidgets.QDialog | None = None
         self.boss_dps_overlay: QtWidgets.QDialog | None = None
@@ -388,7 +390,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.global_hotkeys.start()
         self.capture_timer = QtCore.QTimer(self)
         self.capture_timer.timeout.connect(self._capture_tick)
-        self.capture_timer.start(1000)
+        self.capture_timer.start(250)
         if load_data:
             QtCore.QTimer.singleShot(0, self._load_readonly_data)
 
@@ -735,9 +737,16 @@ class MainWindow(QtWidgets.QMainWindow):
         enabled.toggled.connect(
             lambda checked, selected=mode: self._toggle_monitor(selected, checked)
         )
-        interval = QtWidgets.QSpinBox()
-        interval.setRange(1, 60)
-        interval.setValue(2 if mode in {"pvp", "boss"} else 3)
+        interval = (
+            QtWidgets.QDoubleSpinBox()
+            if mode == "pvp"
+            else QtWidgets.QSpinBox()
+        )
+        interval.setRange(0.5 if mode == "pvp" else 1, 60)
+        if mode == "pvp":
+            interval.setDecimals(1)
+            interval.setSingleStep(0.5)
+        interval.setValue(1 if mode == "pvp" else 2 if mode == "boss" else 3)
         interval.setSuffix(" s")
         interval.valueChanged.connect(
             lambda _value, selected=mode: self._monitor_interval_changed(selected)
@@ -2143,10 +2152,17 @@ class MainWindow(QtWidgets.QMainWindow):
         monitor_intervals = dict(preferences.get("monitor_intervals") or {})
         monitor_focus = dict(preferences.get("monitor_focus") or {})
         for mode, controls in self.monitor_controls.items():
-            default = 2 if mode in {"pvp", "boss"} else 3
-            controls["interval"].setValue(
-                self._bounded(monitor_intervals.get(mode), 1, 60, default)
-            )
+            if mode == "pvp":
+                try:
+                    interval = float(monitor_intervals.get(mode, 1.0))
+                except (TypeError, ValueError):
+                    interval = 1.0
+                controls["interval"].setValue(max(0.5, min(60.0, interval)))
+            else:
+                default = 2 if mode == "boss" else 3
+                controls["interval"].setValue(
+                    self._bounded(monitor_intervals.get(mode), 1, 60, default)
+                )
             if controls.get("focus") is not None:
                 controls["focus"].setChecked(bool(monitor_focus.get(mode, False)))
         alerts = dict(preferences.get("alerts") or {})
@@ -4888,6 +4904,8 @@ class MainWindow(QtWidgets.QMainWindow):
             card.setVisible(card_index == index)
         self._update_monitor_button(mode)
         self._sync_combat_layout()
+        if mode == "pvp":
+            self.pvp_nearby_next_due = 0.0
         self._render_combat()
 
     def _disable_monitor_mode(self, mode: str) -> None:
@@ -4931,6 +4949,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.monitor_enabled[mode] = enabled
         self._update_monitor_button(mode)
         self.monitor_next_due[mode] = 0.0
+        if mode == "pvp":
+            self.pvp_nearby_next_due = 0.0
         capture = self.capture_engine
         if capture and capture.active:
             self.next_read_at = time.monotonic() + self._general_read_interval_seconds()
@@ -5613,6 +5633,7 @@ class MainWindow(QtWidgets.QMainWindow):
             elif (
                 monitor_active
                 and not self.capture_busy
+                and not self.combat_load_running
                 and now >= next_due
             ):
                 self.top_last_read.setText("Última leitura rápida: atualizando…")
@@ -5626,7 +5647,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.top_next_read.setText(
                 f"Próx. monitor: {max(0, math.ceil(next_due - now))} s"
             )
-            if not self.capture_busy and now >= next_due:
+            if (
+                not self.capture_busy
+                and not self.combat_load_running
+                and now >= next_due
+            ):
                 features = tuple(
                     MONITOR_FEATURES[mode]
                     for mode, enabled in self.monitor_enabled.items()
@@ -5705,6 +5730,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _render_combat(self) -> None:
         monitors = list(self.snapshot.get("combat_monitors") or [])
         routed = any(item.get("client_key") for item in monitors)
+        now = time.monotonic()
+        refresh_pvp_nearby = now >= self.pvp_nearby_next_due
+        if refresh_pvp_nearby:
+            self.pvp_nearby_next_due = now + PVP_NEARBY_REFRESH_SECONDS
         for mode, groups in self.combat_widgets.items():
             for index, widgets in enumerate(groups):
                 key = _client_key(index)
@@ -5745,12 +5774,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     )
                     continue
                 nearby_key = "nearby_monsters" if mode == "pve" else "nearby_players"
-                self._render_nearby(
-                    widgets,
-                    list((monitor or {}).get(nearby_key) or []),
-                    mode,
-                    dict((monitor or {}).get("player_counts") or {}),
-                )
+                if mode != "pvp" or refresh_pvp_nearby:
+                    self._render_nearby(
+                        widgets,
+                        list((monitor or {}).get(nearby_key) or []),
+                        mode,
+                        dict((monitor or {}).get("player_counts") or {}),
+                    )
                 target = dict((monitor or {}).get(mode) or {})
                 if not target:
                     widgets["target"].setText("Último alvo confirmado: —")
@@ -5794,7 +5824,7 @@ class MainWindow(QtWidgets.QMainWindow):
             boss_page["empty"].setVisible(not has_boss)
         self._sync_combat_layout()
         self._update_boss_overlay(monitors)
-        self._update_pvp_overlay(monitors)
+        self._update_pvp_overlay(monitors, refresh_pvp_nearby)
 
     def _render_nearby(
         self,
@@ -5890,7 +5920,11 @@ class MainWindow(QtWidgets.QMainWindow):
             None,
         )
 
-    def _update_pvp_overlay(self, monitors: list[dict[str, Any]]) -> None:
+    def _update_pvp_overlay(
+        self,
+        monitors: list[dict[str, Any]],
+        update_nearby: bool = True,
+    ) -> None:
         if not self.pvp_overlays:
             return
         tabs = self.monitor_controls.get("pvp", {}).get("tabs")
@@ -5946,6 +5980,8 @@ class MainWindow(QtWidgets.QMainWindow):
         }
         status_labels = {"ally": "Aliado", "neutral": "Neutro"}
         for key, overlay in self.pvp_overlays.items():
+            if key != "target" and monitor_enabled and not update_nearby:
+                continue
             if overlay._drag_offset is not None:
                 continue
             summary = overlay.summary

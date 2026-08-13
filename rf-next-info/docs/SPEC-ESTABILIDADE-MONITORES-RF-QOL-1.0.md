@@ -16,12 +16,20 @@ Estado: aprovado para implementação local pelo owner
 - Adicionar `Modo foco` independente em PvP e Boss. Quando o modo correspondente
   estiver marcado e o monitor ligado, a leitura geral passa para 300 segundos;
   todos os monitores ligados mantêm seus próprios intervalos rápidos.
+- Permitir que o Monitor PvP opere de 0,5 a 60 segundos, em passos de 0,5
+  segundo, com padrão de 1 segundo.
+- Verificar o vencimento dos monitores a cada 250 ms, sem sobrepor uma nova
+  leitura rápida ao processamento de combate ainda em andamento.
+- Atualizar o alvo PvP no intervalo configurado e limitar jogadores próximos,
+  tanto na aba quanto nos overlays, a uma reconstrução por segundo.
 
 ## Limites
 
 - A captura passiva continua completa e nenhum pacote é descartado pelo modo
   foco.
 - O modo foco vem desligado e é persistido por monitor.
+- O limite de um segundo se aplica somente às listas de jogadores próximos;
+  o alvo atual pode ser atualizado a cada 0,5 segundo.
 - Não altera licença, servidor, decoder, instalador ou publicação.
 
 ## Aceite local

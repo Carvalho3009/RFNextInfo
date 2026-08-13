@@ -2,6 +2,12 @@
 
 ## Próxima correção
 
+- Permite configurar o Monitor PvP entre 0,5 e 60 segundos, com padrão de
+  1 segundo e passo de 0,5 segundo.
+- Verifica os vencimentos dos monitores a cada 250 ms, sem iniciar nova leitura
+  rápida enquanto o resultado anterior ainda estiver sendo processado.
+- Mantém o alvo atual no intervalo escolhido e limita a reconstrução das listas
+  e overlays de jogadores próximos a uma vez por segundo.
 - Adiciona modos de foco independentes em Boss e PvP: os monitores ligados
   continuam rápidos e as leituras gerais passam a cada cinco minutos.
 - Calcula apenas os monitores ativos no stream em memória e roteia os eventos
