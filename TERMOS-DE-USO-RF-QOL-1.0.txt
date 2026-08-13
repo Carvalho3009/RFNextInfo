@@ -1,0 +1,178 @@
+TERMOS DE USO E CONTRATO DE LICENÇA DE SOFTWARE
+
+Programa: RF QOL
+Desenvolvedor e titular: Karvalho
+Versão dos Termos: 1.0
+Última atualização: 10/08/2026
+Contato: carvalho@tuta.com
+
+1. Aceitação
+
+1.1. Estes Termos de Uso regulam a instalação, o acesso e a utilização do programa RF QOL, denominado neste documento “Programa”.
+
+1.2. Ao selecionar a opção “Li e aceito os Termos de Uso”, instalar, ativar ou utilizar o Programa, o usuário declara que leu, compreendeu e concordou com estes Termos.
+
+1.3. Caso não concorde com alguma das condições, o usuário não deverá instalar, ativar ou utilizar o Programa.
+
+2. Concessão da licença
+
+2.1. O Programa não é vendido ao usuário. O Desenvolvedor concede somente uma licença temporária, limitada, revogável, não exclusiva, pessoal e intransferível para sua utilização, conforme o plano, prazo, dispositivo, conta e demais condições informadas no momento da contratação ou ativação.
+
+2.2. A licença permanecerá válida somente durante o prazo contratado ou autorizado pelo Desenvolvedor, podendo exigir renovação, pagamento, validação periódica ou manutenção de uma conta ativa.
+
+2.3. O término, vencimento, cancelamento ou revogação da licença encerra imediatamente a autorização de uso do Programa.
+
+2.4. A posse do instalador, o download dos arquivos, a criação de uma conta, o acesso ao site ou o acesso técnico ao Programa não concedem, por si só, direito de utilização. O uso somente é autorizado enquanto existir uma licença válida e ativa vinculada ao usuário.
+
+3. Restrições de uso
+
+3.1. Sem autorização prévia e expressa do Desenvolvedor, o usuário não poderá:
+
+a) compartilhar, emprestar, alugar, sublicenciar, vender ou transferir a licença, conta, chave de ativação ou credenciais de acesso;
+
+b) permitir que terceiros utilizem uma licença individual;
+
+c) copiar, distribuir, publicar ou disponibilizar o Programa ou parte dele;
+
+d) contornar, desativar, adulterar ou tentar burlar mecanismos de autenticação, licenciamento, segurança ou limitação de acesso;
+
+e) modificar, adaptar, descompilar, desmontar ou realizar engenharia reversa do Programa, ressalvadas as situações expressamente permitidas pela legislação aplicável;
+
+f) utilizar o Programa para atividades ilícitas, abusivas ou contrárias a estes Termos; ou
+
+g) tentar obter acesso não autorizado ao Programa, ao site, aos servidores, ao banco de dados ou às contas de outros usuários.
+
+3.2. Qualquer tentativa de utilização, acesso, distribuição ou compartilhamento não autorizado poderá ocasionar a suspensão ou revogação da licença, sem prejuízo das medidas técnicas e legais cabíveis.
+
+3.3. Quando exigido pela legislação aplicável, o usuário será informado sobre a irregularidade e poderá solicitar esclarecimentos ou contestar a medida pelo e-mail de contato.
+
+4. Propriedade intelectual
+
+4.1. O Programa, seus códigos-fonte e executável, estrutura, arquitetura, interfaces, elementos visuais, documentação, banco de dados, marcas, nomes, imagens e demais componentes são de propriedade de Karvalho ou de seus respectivos licenciadores.
+
+4.2. A licença não transfere ao usuário qualquer direito de propriedade intelectual sobre o Programa. São concedidos somente os direitos de utilização expressamente previstos nestes Termos.
+
+4.3. Permanecem reservados ao Desenvolvedor todos os direitos que não tenham sido expressamente concedidos ao usuário.
+
+5. Funcionamento e ausência de promessa de resultados
+
+5.1. O Programa é disponibilizado de acordo com suas funcionalidades e especificações técnicas informadas pelo Desenvolvedor.
+
+5.2. A contratação ou utilização do Programa não representa promessa ou garantia de obtenção de benefícios, vantagens ou resultados financeiros, comerciais, profissionais, competitivos ou de qualquer outra natureza.
+
+5.3. Os resultados obtidos podem variar conforme fatores externos, condições técnicas, forma de utilização, disponibilidade de serviços de terceiros e características próprias do usuário.
+
+5.4. O Programa poderá apresentar indisponibilidades temporárias decorrentes de manutenção, atualização, falhas de comunicação, serviços de terceiros, caso fortuito ou força maior.
+
+5.5. Nenhuma disposição destes Termos exclui garantias, responsabilidades ou direitos que não possam ser legalmente afastados.
+
+6. Atualizações e alterações
+
+6.1. O Desenvolvedor poderá disponibilizar correções, atualizações, melhorias ou novas versões do Programa.
+
+6.2. Determinadas atualizações poderão ser necessárias para preservar a segurança, compatibilidade, integridade ou continuidade do funcionamento do Programa.
+
+6.3. Funcionalidades poderão ser modificadas ou descontinuadas mediante comunicação adequada ao usuário quando a alteração afetar substancialmente o serviço contratado, respeitados os direitos previstos em lei.
+
+7. Informações enviadas pelo Programa
+
+7.1. O Programa poderá enviar ao site e aos sistemas do Desenvolvedor informações relacionadas ao jogo, incluindo:
+
+a) nome do personagem;
+
+b) informações sobre equipamentos;
+
+c) informações sobre coleções;
+
+d) informações sobre atividades, progresso e farm; e
+
+e) outros dados semelhantes relacionados aos personagens e às funcionalidades oferecidas pelo Programa.
+
+7.2. Essas informações poderão ser armazenadas em banco de dados e utilizadas para:
+
+a) alimentar e atualizar as funcionalidades e conteúdos do site;
+
+b) apresentar ao próprio usuário informações relacionadas aos seus personagens;
+
+c) produzir estatísticas gerais sobre o jogo;
+
+d) identificar erros, inconsistências e oportunidades de melhoria; e
+
+e) desenvolver, avaliar e aprimorar o Programa e suas funcionalidades.
+
+7.3. Informações individualizadas sobre personagens somente serão compartilhadas ou tornadas visíveis a outros usuários quando o próprio usuário habilitar expressamente essa opção no site.
+
+7.4. A autorização para compartilhamento poderá ser ativada ou desativada pelo usuário nas configurações disponíveis no site. A desativação impedirá novos compartilhamentos, sem necessariamente excluir informações anteriormente divulgadas, exportadas ou registradas por terceiros fora do controle do Desenvolvedor.
+
+7.5. Independentemente da opção de compartilhamento, informações relacionadas aos personagens poderão ser utilizadas de forma anônima e agregada para produzir estatísticas, analisar o funcionamento e aprimorar o Programa, desde que os resultados não permitam sua associação a determinado usuário ou personagem.
+
+7.6. O Programa não solicita, coleta, transmite ou armazena senhas, logins, tokens de acesso ou outras credenciais de contas do usuário.
+
+7.7. O Programa não acessa nem coleta arquivos pessoais, histórico de navegação, contas cadastradas, senhas, tokens, credenciais, registros do sistema operacional ou outras informações armazenadas no computador que não sejam estritamente necessárias às funcionalidades descritas nestes Termos.
+
+7.8. O Programa não utiliza as informações coletadas para acessar contas do usuário, realizar autenticação em seu nome ou obter controle sobre outros programas, jogos ou serviços.
+
+7.9. O usuário não deverá inserir senhas, tokens, logins ou outras credenciais nos campos, mensagens ou informações destinadas ao Programa ou ao site.
+
+7.10. Caso as categorias de informações coletadas ou suas finalidades sejam alteradas, estes Termos serão atualizados e, quando necessário, um novo aceite será solicitado antes do início da nova forma de utilização.
+
+8. Segurança e credenciais
+
+8.1. O usuário é responsável por manter em segurança suas credenciais, chaves e informações de ativação, não devendo compartilhá-las com terceiros.
+
+8.2. O usuário deverá comunicar imediatamente ao Desenvolvedor qualquer suspeita de acesso indevido, comprometimento da conta ou utilização não autorizada da licença.
+
+8.3. O Desenvolvedor adotará medidas técnicas e administrativas razoáveis e compatíveis com os riscos para proteger seus sistemas contra acessos não autorizados e incidentes acidentais ou ilícitos.
+
+9. Suspensão e encerramento
+
+9.1. A licença poderá ser suspensa ou revogada em caso de:
+
+a) vencimento do prazo de validade;
+
+b) inadimplência, quando aplicável;
+
+c) compartilhamento ou transferência não autorizada;
+
+d) tentativa de burlar mecanismos de licença ou segurança;
+
+e) fraude, abuso ou utilização ilícita;
+
+f) violação material destes Termos; ou
+
+g) necessidade de cumprimento de obrigação legal ou determinação de autoridade competente.
+
+9.2. Encerrada a licença, o usuário deverá interromper o uso e, quando solicitado, desinstalar ou excluir as cópias do Programa que estejam sob seu controle.
+
+9.3. A suspensão ou revogação não prejudica direitos que sejam obrigatoriamente assegurados pela legislação aplicável.
+
+10. Limitação de responsabilidade
+
+10.1. Na máxima extensão permitida pela legislação, o Desenvolvedor não será responsável por resultados esperados que não tenham sido expressamente contratados, nem por danos decorrentes de uso inadequado, compartilhamento de credenciais, alterações não autorizadas ou descumprimento destes Termos pelo usuário.
+
+10.2. O usuário é responsável por verificar se o Programa atende às suas necessidades e por manter cópias de segurança das informações importantes sob seu controle.
+
+10.3. Esta cláusula não limita responsabilidades que não possam ser excluídas por lei.
+
+11. Alterações destes Termos
+
+11.1. Estes Termos poderão ser atualizados para refletir alterações no Programa, na legislação ou nas práticas de segurança.
+
+11.2. Alterações relevantes serão informadas por meio do Programa, do site, do e-mail cadastrado ou de outro canal apropriado.
+
+11.3. Quando necessário, será solicitado um novo aceite antes da continuidade do uso.
+
+12. Legislação e foro
+
+12.1. Estes Termos serão interpretados de acordo com a legislação da República Federativa do Brasil.
+
+12.2. Eventuais controvérsias serão submetidas ao foro legalmente competente. Em relações de consumo, fica preservado o direito do consumidor de recorrer ao foro de seu domicílio.
+
+13. Contato
+
+Dúvidas, solicitações de suporte ou questões relacionadas a estes Termos poderão ser encaminhadas para:
+
+Desenvolvedor: Karvalho
+E-mail: carvalho@tuta.com
+
+Ao selecionar “Li e aceito os Termos de Uso”, o usuário confirma que leu, compreendeu e concordou com este documento.
