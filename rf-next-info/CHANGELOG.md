@@ -2,6 +2,12 @@
 
 ## Próxima correção
 
+- Adiciona modos de foco independentes em Boss e PvP: os monitores ligados
+  continuam rápidos e as leituras gerais passam a cada cinco minutos.
+- Calcula apenas os monitores ativos no stream em memória e roteia os eventos
+  uma única vez por cliente.
+- Corrige o DPS por guilda usando a janela completa, expira bosses antigos,
+  recusa rotas ambíguas e impede a sobreposição de workers do decoder.
 - Corrige a lista de próximos do Monitor PvP separando sua presença da limpeza
   de três segundos do alvo atual.
 - Impede que eventos vencidos e fora de ordem se acumulem no monitor e remove

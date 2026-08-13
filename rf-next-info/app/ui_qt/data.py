@@ -5,7 +5,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from app.license import LicenseClient
 from app.main import (
@@ -149,7 +149,9 @@ class ReadOnlySnapshotReader:
         finally:
             database.close()
 
-    def load_combat(self, language: str = "pt") -> dict[str, Any]:
+    def load_combat(
+        self, language: str = "pt", modes: Iterable[str] | None = None
+    ) -> dict[str, Any]:
         """Lê somente os monitores sem reconstruir toda a sessão."""
         self.license.require("leitura dos monitores")
         if not self.database_path.exists():
@@ -159,14 +161,18 @@ class ReadOnlySnapshotReader:
             session_id = database.latest_session()
             monitors = []
             if session_id:
-                names = load_npc_names(language)
-                bosses = load_boss_catalog(language)
+                active_modes = (
+                    {"pve", "pvp", "boss"} if modes is None else set(modes)
+                )
+                names = load_npc_names(language) if "pve" in active_modes else {}
+                bosses = load_boss_catalog(language) if "boss" in active_modes else {}
                 for profile in database.session_profiles(session_id):
                     monitor = summarize_combat(
                         database.combat_events(session_id, profile["uid"]),
                         profile["uid"],
                         names,
                         boss_catalog=bosses,
+                        modes=active_modes,
                     )
                     monitor.update(
                         {
@@ -185,6 +191,7 @@ class ReadOnlySnapshotReader:
         events: list[dict[str, Any]],
         client_ports: tuple[tuple[int, ...], ...],
         language: str = "pt",
+        modes: Iterable[str] | None = None,
     ) -> dict[str, Any]:
         """Resume eventos efêmeros do Pktmon sem gravá-los no banco."""
         self.license.require("leitura do monitor em tempo real")
@@ -198,16 +205,20 @@ class ReadOnlySnapshotReader:
                     profiles = database.session_profiles(session_id)
             finally:
                 database.close()
-        names = load_npc_names(language)
-        bosses = load_boss_catalog(language)
+        active_modes = {"pve", "pvp", "boss"} if modes is None else set(modes)
+        names = load_npc_names(language) if "pve" in active_modes else {}
+        bosses = load_boss_catalog(language) if "boss" in active_modes else {}
         identities: dict[str, dict[str, Any]] = {
             str(profile.get("client_key") or ""): profile
             for profile in profiles
             if profile.get("uid")
         }
-        for index, ports in enumerate(client_ports[:7]):
+        routed_events = [
+            [event for event in events if _event_matches_ports(event, ports)]
+            for ports in client_ports[:7]
+        ]
+        for index, routed in enumerate(routed_events):
             key = f"client:{chr(97 + index)}"
-            routed = [event for event in events if _event_matches_ports(event, ports)]
             for event in reversed(routed):
                 if event.get("type") != "world_info_prefix":
                     continue
@@ -220,17 +231,17 @@ class ReadOnlySnapshotReader:
                     }
                     break
         monitors = []
-        for index, ports in enumerate(client_ports[:7]):
+        for index, routed in enumerate(routed_events):
             key = f"client:{chr(97 + index)}"
             profile = identities.get(key)
             if not profile:
                 continue
-            routed = [event for event in events if _event_matches_ports(event, ports)]
             monitor = summarize_combat(
                 routed,
                 str(profile["uid"]),
                 names,
                 boss_catalog=bosses,
+                modes=modes,
             )
             monitor.update(
                 character_uid=str(profile["uid"]),

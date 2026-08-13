@@ -870,6 +870,46 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertTrue(window.monitor_enabled["pvp"])
         window.close()
 
+    def test_boss_and_pvp_focus_are_independent_and_persisted(self):
+        from app.ui_qt.data import load_preferences
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["monitor-focus-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preferences = root / "preferences.json"
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=preferences,
+            )
+            window.capture_timer.stop()
+            window.setting_decode_interval.setValue(30)
+
+            window.monitor_controls["pvp"]["focus"].setChecked(True)
+            window.monitor_enabled["pvp"] = True
+            self.assertEqual(window._general_read_interval_seconds(), 300)
+            self.assertFalse(window.monitor_controls["boss"]["focus"].isChecked())
+
+            window.monitor_enabled["pvp"] = False
+            self.assertEqual(window._general_read_interval_seconds(), 30)
+            self.assertEqual(
+                load_preferences(preferences)["monitor_focus"],
+                {"pvp": True, "boss": False},
+            )
+            window.close()
+
+            reopened = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=preferences,
+            )
+            reopened.capture_timer.stop()
+            reopened._load_settings_fields()
+            self.assertTrue(reopened.monitor_controls["pvp"]["focus"].isChecked())
+            self.assertFalse(reopened.monitor_controls["boss"]["focus"].isChecked())
+            reopened.close()
+
     def test_monitor_page_requests_checkpoint_preview_without_rotation(self):
         from app.ui_qt.main import MainWindow, create_application
 

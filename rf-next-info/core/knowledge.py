@@ -469,6 +469,11 @@ class KnowledgeStore:
                    FROM character_observations"""
             )
         }
+        guild_names = {
+            str(row.get("guild_id") or ""): str(row.get("guild_name") or "")
+            for row in known.values()
+            if row.get("guild_id") and row.get("guild_name")
+        }
         enriched = 0
         for monitor in monitors:
             candidates = [
@@ -506,21 +511,30 @@ class KnowledgeStore:
                     changed = True
                 enriched += int(changed)
             for boss in monitor.get("bosses") or []:
-                totals: dict[str, dict[str, Any]] = {}
-                for player in boss.get("top_damage_players") or []:
-                    guild = str(
-                        player.get("guild_name") or player.get("guild_id") or ""
-                    ).strip()
-                    if not guild:
-                        continue
-                    total = totals.setdefault(
-                        guild, {"name": guild, "damage": 0, "dps_hp": 0.0}
-                    )
-                    total["damage"] += int(player.get("damage") or 0)
-                    total["dps_hp"] += float(player.get("dps_hp") or 0)
-                if totals:
-                    boss["top_damage_guilds"] = sorted(
-                        totals.values(),
-                        key=lambda item: (-float(item["dps_hp"]), item["name"]),
-                    )
+                guilds = boss.get("top_damage_guilds")
+                if guilds is None:
+                    totals: dict[str, dict[str, Any]] = {}
+                    for player in boss.get("top_damage_players") or []:
+                        guild = str(
+                            player.get("guild_name")
+                            or player.get("guild_id")
+                            or ""
+                        ).strip()
+                        if not guild:
+                            continue
+                        total = totals.setdefault(
+                            guild,
+                            {"name": guild, "damage": 0, "dps_hp": 0.0},
+                        )
+                        total["damage"] += int(player.get("damage") or 0)
+                        total["dps_hp"] += float(player.get("dps_hp") or 0)
+                    if totals:
+                        guilds = boss["top_damage_guilds"] = sorted(
+                            totals.values(),
+                            key=lambda item: (-float(item["dps_hp"]), item["name"]),
+                        )
+                for guild in guilds or []:
+                    guild_id = str(guild.get("guild_id") or "").strip()
+                    if guild_id and guild_names.get(guild_id):
+                        guild["name"] = guild_names[guild_id]
         return enriched

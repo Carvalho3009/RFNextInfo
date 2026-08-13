@@ -156,6 +156,28 @@ class _DeniedLicense:
 
 
 class ReadOnlySnapshotReaderTest(unittest.TestCase):
+    def test_live_reader_routes_each_client_only_once_and_limits_modes(self):
+        events = [{
+            "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+            "ts_ns": 1,
+            "type": "world_info_prefix",
+            "data": {"fields": {
+                "character_uid": 202, "character_name": "Novo",
+            }},
+        }]
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "app.ui_qt.data._event_matches_ports", wraps=lambda event, ports: True
+        ) as matches, mock.patch(
+            "app.ui_qt.data.summarize_combat", return_value={}
+        ) as summarize:
+            result = ReadOnlySnapshotReader(
+                Path(directory) / "missing.sqlite3", _AllowedLicense()
+            ).load_live_combat(events, ((50000,),), modes=("pvp",))
+
+        self.assertEqual(matches.call_count, len(events))
+        self.assertEqual(summarize.call_args.kwargs["modes"], ("pvp",))
+        self.assertEqual(result["combat_monitors"][0]["character_name"], "Novo")
+
     def test_live_identity_replaces_old_session_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -227,6 +249,33 @@ class CaptureEngineTest(unittest.TestCase):
                 capture.start()
             with self.assertRaises(PermissionError):
                 monitor.start(("monitor-pve",))
+            self.assertFalse(list(root.glob("*.etl")))
+
+    def test_multiple_same_family_clients_require_distinct_routes(self):
+        processes = lambda _ports: {
+            "ProjectRF.exe": ({10, 20}, {50000, 50001}, {12020})
+        }
+        monitor = MonitorEngine(
+            _AllowedLicense(),
+            live_factory=_MemoryLive,
+            process_reader=processes,
+            client_reader=lambda *_args: [],
+        )
+        with self.assertRaisesRegex(RuntimeError, "separar.*clientes PC"):
+            monitor.start(("monitor-pvp",))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                _AllowedLicense(),
+                capture_factory=_FakeCapture,
+                process_reader=processes,
+                client_reader=lambda *_args: [],
+            )
+            with self.assertRaisesRegex(RuntimeError, "separar.*clientes PC"):
+                capture.start()
             self.assertFalse(list(root.glob("*.etl")))
 
     def test_stop_without_reading_preserves_raw_files_and_session(self):

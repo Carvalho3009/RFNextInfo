@@ -231,6 +231,7 @@ class LiveEventStream:
         self._lock = threading.Lock()
         self._decoder = LiveEventDecoder()
         self._thread: threading.Thread | None = None
+        self._worker_stop = threading.Event()
         self.decode_errors = 0
         self.processed_packets = 0
         self.decoded_events = 0
@@ -240,8 +241,14 @@ class LiveEventStream:
         self.last_processed_ns = 0
 
     def start(self) -> None:
-        if self._thread and self._thread.is_alive():
-            return
+        if self._thread:
+            if self._thread.is_alive():
+                if self._worker_stop.is_set():
+                    raise RuntimeError("O stream anterior ainda está encerrando")
+                return
+            self._thread = None
+            self._items = queue.SimpleQueue()
+        self._worker_stop.clear()
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
 
@@ -268,6 +275,7 @@ class LiveEventStream:
         reference_ns = max(int(self.last_received_ns), time.time_ns())
         player_cutoff = reference_ns - LIVE_PLAYER_ANCHOR_SECONDS * 1_000_000_000
         combat_cutoff = reference_ns - LIVE_COMBAT_EVENT_SECONDS * 1_000_000_000
+        boss_cutoff = reference_ns - self._boss_event_ns
         local_character_uids = {
             str(fields["character_uid"])
             for event in self._identities.values()
@@ -285,6 +293,20 @@ class LiveEventStream:
             ),
             maxlen=max_events,
         )
+        self._boss_events = deque(
+            event
+            for event in self._boss_events
+            if int(event.get("ts_ns") or 0) >= boss_cutoff
+        )
+        active_boss_uids = {
+            uid for event in self._boss_events for uid in self._related_uids(event)
+        }
+        for key, event in tuple(self._boss_anchors.items()):
+            if (
+                int(event.get("ts_ns") or 0) < boss_cutoff
+                and key[2] not in active_boss_uids
+            ):
+                self._boss_anchors.pop(key, None)
         active_player_uids: set[int] = set()
         for event in (*self._events, *self._boss_events):
             if int(event.get("ts_ns") or 0) < player_cutoff:
@@ -353,15 +375,19 @@ class LiveEventStream:
         self.last_processed_ns = 0
 
     def stop(self) -> None:
-        thread, self._thread = self._thread, None
+        thread = self._thread
         if thread and thread.is_alive():
+            self._worker_stop.set()
             self._items.put(None)
             thread.join(timeout=3)
+        if not thread or not thread.is_alive():
+            self._thread = None
+            self._items = queue.SimpleQueue()
 
     def _worker(self) -> None:
         while True:
             item = self._items.get()
-            if item is None:
+            if item is None or self._worker_stop.is_set():
                 return
             try:
                 events = self._decoder.feed(*item)
@@ -426,12 +452,12 @@ class LiveEventStream:
                     self._boss_events.append(event)
                     timestamp = int(event.get("ts_ns") or 0)
                     cutoff = timestamp - self._boss_event_ns
-                    while (
-                        cutoff > 0
-                        and self._boss_events
-                        and int(self._boss_events[0].get("ts_ns") or 0) < cutoff
-                    ):
-                        self._boss_events.popleft()
+                    if cutoff > 0:
+                        self._boss_events = deque(
+                            item
+                            for item in self._boss_events
+                            if int(item.get("ts_ns") or 0) >= cutoff
+                        )
                     continue
                 if kind not in COMBAT_EVENT_TYPES:
                     self.ignored_events += 1
@@ -449,6 +475,10 @@ class LiveEventStream:
         boss_uids = {key[2] for key in self._boss_anchors}
         if not boss_uids:
             return False
+        return bool(self._related_uids(event).intersection(boss_uids))
+
+    @staticmethod
+    def _related_uids(event: dict[str, Any]) -> set[int]:
         data = event.get("data") or {}
         related = {
             int(value)
@@ -466,4 +496,4 @@ class LiveEventStream:
             for result in data.get("effect_results") or []
             if isinstance((value := result.get("uid")), (int, float))
         )
-        return bool(related.intersection(boss_uids))
+        return related

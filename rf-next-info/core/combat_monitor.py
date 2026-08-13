@@ -20,7 +20,9 @@ def summarize_combat(
     stale_seconds: int = 15,
     nearby_stale_seconds: int = NEARBY_PLAYER_STALE_SECONDS,
     pvp_stale_seconds: int = 3,
+    modes: Iterable[str] | None = None,
 ) -> dict[str, Any]:
+    active_modes = {"pve", "pvp", "boss"} if modes is None else set(modes)
     ordered = sorted(events, key=lambda event: (event.get("ts_ns") or 0))
     players: dict[int, dict[str, Any]] = {}
     monsters: dict[int, dict[str, Any]] = {}
@@ -155,7 +157,7 @@ def summarize_combat(
 
     reference_ns = int(now_ns if now_ns is not None else time.time_ns())
     bosses = []
-    for entity in monsters.values():
+    for entity in monsters.values() if "boss" in active_modes else ():
         npc_index = _integer(entity.get("npc_index"))
         metadata = boss_catalog.get(npc_index) if npc_index is not None else None
         if not metadata or entity.get("dead") or entity.get("current_hp") == 0:
@@ -166,7 +168,7 @@ def summarize_combat(
             stale_seconds,
             fallback_name=str(metadata.get("name") or "") or None,
         )
-        if boss:
+        if boss and not boss["stale"]:
             _add_boss_rates(
                 boss,
                 hp_history.get(int(entity["uid"]), []),
@@ -200,7 +202,7 @@ def summarize_combat(
             bosses.append(boss)
     bosses.sort(key=lambda item: (-int(item.get("last_seen_ns") or 0), str(item.get("name") or "")))
     nearby_players_by_identity: dict[str, dict[str, Any]] = {}
-    for uid, entity in players.items():
+    for uid, entity in players.items() if "pvp" in active_modes else ():
         character = str(entity.get("character_uid") or "").strip()
         name = str(entity.get("name") or "").strip()
         if uid == local_uid or not character or not name:
@@ -216,7 +218,7 @@ def summarize_combat(
     nearby_players = list(nearby_players_by_identity.values())
     nearby_players.sort(key=lambda item: str(item.get("name") or "").casefold())
     nearby_monsters_by_type: dict[int, dict[str, Any]] = {}
-    for entity in monsters.values():
+    for entity in monsters.values() if "pve" in active_modes else ():
         npc_index = _integer(entity.get("npc_index"))
         catalog_name = str(npc_names.get(npc_index) or "").strip()
         if npc_index is None or not catalog_name:
@@ -275,7 +277,7 @@ def summarize_combat(
             npc_names,
             reference_ns,
             stale_seconds,
-        ),
+        ) if "pve" in active_modes else None,
         "pvp": _pvp_snapshot(
             players.get(last_pvp[1]) if last_pvp else None,
             last_pvp,
@@ -283,7 +285,7 @@ def summarize_combat(
             reference_ns,
             dps_window_seconds,
             pvp_stale_seconds,
-        ),
+        ) if "pvp" in active_modes else None,
     }
 
 
@@ -415,20 +417,32 @@ def _top_damage_groups(
     now_ns: int,
     window_seconds: int,
 ) -> list[dict[str, Any]]:
-    grouped_events: dict[str, list[tuple[int, int]]] = {}
+    grouped_events: dict[str, dict[str, Any]] = {}
     for uid, events in damage.items():
         player = players.get(uid) or {}
         if group_type == "guild":
-            name = str(player.get("guild_name") or player.get("guild_id") or "").strip()
+            guild_id = str(player.get("guild_id") or "").strip()
+            name = str(player.get("guild_name") or guild_id).strip()
+            key = guild_id or name
         else:
             name = str(player.get("group_id") or "").strip()
+            guild_id = ""
+            key = name
         if name:
-            grouped_events.setdefault(name, []).extend(events)
+            group = grouped_events.setdefault(
+                key, {"name": name, "guild_id": guild_id, "events": []}
+            )
+            if group["name"] == key and name != key:
+                group["name"] = name
+            group["events"].extend(events)
     rows = []
-    for name, events in grouped_events.items():
-        recent, dps = _damage_rate(events, now_ns, window_seconds)
+    for group in grouped_events.values():
+        recent, dps = _damage_rate(group["events"], now_ns, window_seconds)
         if recent:
-            rows.append({"name": name, "damage": recent, "dps_hp": dps})
+            row = {"name": group["name"], "damage": recent, "dps_hp": dps}
+            if group_type == "guild" and group["guild_id"]:
+                row["guild_id"] = group["guild_id"]
+            rows.append(row)
     return sorted(rows, key=lambda row: (-float(row["dps_hp"]), row["name"]))[:10]
 
 

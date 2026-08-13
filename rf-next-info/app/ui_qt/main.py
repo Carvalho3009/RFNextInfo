@@ -101,6 +101,7 @@ MONITOR_FEATURES = {
     "pvp": "monitor-pvp",
     "boss": "monitor-boss",
 }
+FOCUS_READ_INTERVAL_SECONDS = 300
 MONITOR_SHORTCUT_OPTIONS = tuple(
     f"{modifier}+F{number}"
     for modifier in ("Ctrl", "Alt", "Shift")
@@ -744,6 +745,17 @@ class MainWindow(QtWidgets.QMainWindow):
         controls.addWidget(enabled)
         controls.addWidget(_label("Atualizar a cada", "muted"))
         controls.addWidget(interval)
+        focus = None
+        if mode in {"pvp", "boss"}:
+            focus = QtWidgets.QCheckBox("Modo foco")
+            focus.setToolTip(
+                "Mantém os monitores ligados no intervalo rápido e adia as "
+                "demais leituras para 5 minutos."
+            )
+            focus.toggled.connect(
+                lambda _checked, selected=mode: self._monitor_focus_changed(selected)
+            )
+            controls.addWidget(focus)
         overlay = None
         hostile_overlay = None
         non_hostile_overlay = None
@@ -788,6 +800,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.monitor_controls[mode] = {
             "enabled": enabled,
             "interval": interval,
+            "focus": focus,
             "overlay": overlay,
             "hostile_overlay": hostile_overlay,
             "non_hostile_overlay": non_hostile_overlay,
@@ -2128,11 +2141,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_delete_export.setChecked(bool(preferences.get("delete_after_export", False)))
         self.setting_detailed_log.setChecked(bool(preferences.get("detailed_logging", False)))
         monitor_intervals = dict(preferences.get("monitor_intervals") or {})
+        monitor_focus = dict(preferences.get("monitor_focus") or {})
         for mode, controls in self.monitor_controls.items():
             default = 2 if mode in {"pvp", "boss"} else 3
             controls["interval"].setValue(
                 self._bounded(monitor_intervals.get(mode), 1, 60, default)
             )
+            if controls.get("focus") is not None:
+                controls["focus"].setChecked(bool(monitor_focus.get(mode, False)))
         alerts = dict(preferences.get("alerts") or {})
         self.alert_character_enabled.setChecked(bool(alerts.get("characters_enabled")))
         self.alert_character_names.setText(str(alerts.get("characters") or ""))
@@ -2192,6 +2208,11 @@ class MainWindow(QtWidgets.QMainWindow):
             "monitor_intervals": {
                 mode: controls["interval"].value()
                 for mode, controls in self.monitor_controls.items()
+            },
+            "monitor_focus": {
+                mode: bool(controls.get("focus") and controls["focus"].isChecked())
+                for mode, controls in self.monitor_controls.items()
+                if mode in {"pvp", "boss"}
             },
             "alerts": self._alert_preferences(),
         }, self.preferences_path)
@@ -4412,6 +4433,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.combat_load_pending = True
             return
         self.combat_load_running = True
+        active_modes = tuple(
+            mode for mode, enabled in self.monitor_enabled.items() if enabled
+        )
         active_locations: dict[str, str] = {}
         for subsession in list(self.snapshot.get("subsessions") or []):
             if subsession.get("ended_ns") is not None:
@@ -4439,9 +4463,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         list(self.live_combat_events),
                         self.live_combat_ports,
                         language,
+                        active_modes,
                     )
                     if self.live_combat_events
-                    else reader.load_combat(language)
+                    else reader.load_combat(language, active_modes)
                 )
                 knowledge = KnowledgeStore(self.knowledge_path)
                 try:
@@ -4714,7 +4739,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             controls = self.monitor_controls[mode]
             for name in (
-                "enabled", "interval", "overlay", "hostile_overlay",
+                "enabled", "interval", "focus", "overlay", "hostile_overlay",
                 "non_hostile_overlay", "dps_overlay", "tabs",
             ):
                 control = controls.get(name)
@@ -4812,6 +4837,37 @@ class MainWindow(QtWidgets.QMainWindow):
     def _monitor_interval_changed(self, mode: str) -> None:
         self.monitor_next_due[mode] = 0.0
 
+    def _general_read_interval_seconds(self) -> int:
+        configured = (
+            self.setting_decode_interval.value()
+            if hasattr(self, "setting_decode_interval")
+            else self._bounded(
+                self.preferences.get("decode_interval_seconds"), 15, 300, 30
+            )
+        )
+        focused = any(
+            self.monitor_enabled[mode]
+            and self.monitor_controls[mode].get("focus") is not None
+            and self.monitor_controls[mode]["focus"].isChecked()
+            for mode in ("pvp", "boss")
+        )
+        return max(configured, FOCUS_READ_INTERVAL_SECONDS) if focused else configured
+
+    def _monitor_focus_changed(self, mode: str) -> None:
+        focus = {
+            name: bool(
+                controls.get("focus") and controls["focus"].isChecked()
+            )
+            for name, controls in self.monitor_controls.items()
+            if name in {"pvp", "boss"}
+        }
+        self.preferences = save_preferences(
+            {"monitor_focus": focus}, self.preferences_path
+        )
+        capture = self.capture_engine
+        if capture and capture.active:
+            self.next_read_at = time.monotonic() + self._general_read_interval_seconds()
+
     def _update_monitor_button(self, mode: str) -> None:
         controls = self.monitor_controls[mode]
         enabled = controls["enabled"].isChecked()
@@ -4875,6 +4931,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.monitor_enabled[mode] = enabled
         self._update_monitor_button(mode)
         self.monitor_next_due[mode] = 0.0
+        capture = self.capture_engine
+        if capture and capture.active:
+            self.next_read_at = time.monotonic() + self._general_read_interval_seconds()
         self._render_combat()
         if not any(self.monitor_enabled.values()):
             if self.monitor_engine and self.monitor_engine.active:
@@ -5300,7 +5359,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             )
                 else:
                     self.next_read_at = (
-                        time.monotonic() + self.setting_decode_interval.value()
+                        time.monotonic() + self._general_read_interval_seconds()
                     )
                 self.top_last_read.setText(
                     f"Última leitura: falhou ({type(error).__name__}); captura continua"
@@ -5416,7 +5475,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     "capture_prefix": data.get("capture_prefix"),
                     "capture_ports": data.get("capture_ports"),
                 }, self.preferences_path)
-            self.next_read_at = time.monotonic() + self.setting_decode_interval.value()
+            self.next_read_at = time.monotonic() + self._general_read_interval_seconds()
             self._load_readonly_data()
             QtCore.QTimer.singleShot(0, self._maybe_auto_market_upload)
         elif name == "preview":

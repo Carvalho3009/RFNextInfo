@@ -290,3 +290,20 @@ sem publicação do instalador
 O rollback desta etapa é parar/remover o contêiner de staging e descartar as
 duas worktrees de implementação. O contêiner oficial v1, a Beta publicada e os
 dados reais permanecem intactos.
+
+## Estabilidade dos monitores — 13 ago 2026
+
+- Owner aprovou as correções da auditoria e os modos de foco independentes de
+  Boss/PvP.
+- Implementados: DPS canônico por guilda, expiração de Boss, rotas fail-closed
+  para múltiplos clientes da mesma família, encerramento seguro do worker,
+  roteamento único por cliente e processamento somente dos monitores ativos.
+- `Modo foco` mantém intervalos rápidos dos monitores ligados e amplia a leitura
+  geral para 300 segundos, sem descartar a captura passiva.
+- Validação: 253 testes aprovados, 1 teste ambiental ignorado, `compileall`,
+  `pip check` e `git diff --check` aprovados. Após um ajuste final no caminho
+  histórico, quatro testes diretamente afetados também passaram.
+- Medição sintética de 20 mil eventos/7 clientes: mediana de 124,8 ms no modo
+  PvP focado; valor serve como evidência local, não como garantia em outro PC.
+- Custo adicional: zero. Rollback: reverter o commit local desta etapa.
+- Instalador, publicação e servidor de licença não foram alterados.

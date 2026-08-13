@@ -738,7 +738,10 @@ class CoreTest(unittest.TestCase):
         )
         self.assertEqual(
             result["bosses"][0]["top_damage_guilds"],
-            [{"name": "Karvalho", "damage": 1000, "dps_hp": 1000.0}],
+            [{
+                "name": "Karvalho", "guild_id": "55",
+                "damage": 1000, "dps_hp": 1000.0,
+            }],
         )
         self.assertEqual(
             result["bosses"][0]["top_damage_groups"],
@@ -749,6 +752,82 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(
             summarize_combat(events, "111", boss_catalog=catalog, now_ns=4_000_000_000)["bosses"],
             [],
+        )
+        self.assertEqual(
+            summarize_combat(
+                events[:-1], "111", boss_catalog=catalog, now_ns=20_000_000_000
+            )["bosses"],
+            [],
+        )
+
+    def test_guild_dps_survives_knowledge_enrichment_without_summing_player_rates(self):
+        now_ns = 10_000_000_000
+        units = [{"uid": 10, "character_uid": 111, "name": "Local"}]
+        events = [{
+            "ts_ns": 100_000_000,
+            "type": "appear_monster_list",
+            "data": {"units": [{
+                "uid": 30, "npc_index": 375100,
+                "max_hp": 10_000, "current_hp": 10_000,
+            }]},
+        }]
+        for index, seconds_ago in enumerate((9, 8, 7, 6, 5, 2), 1):
+            units.append({
+                "uid": 100 + index,
+                "character_uid": 1_000 + index,
+                "name": f"A{index}",
+                "guild_id": 1,
+                "guild_name": "Guild A",
+            })
+            events.append({
+                "ts_ns": now_ns - seconds_ago * 1_000_000_000,
+                "type": "use_skill_result",
+                "data": {
+                    "ret": 0,
+                    "caster_uid": 100 + index,
+                    "effect_results": [{
+                        "uid": 30, "hp_damage": 300,
+                        "final_hp": 10_000 - index * 300,
+                    }],
+                },
+            })
+        units.append({
+            "uid": 200, "character_uid": 2_000, "name": "B1",
+            "guild_id": 2, "guild_name": "Guild B",
+        })
+        events.insert(0, {
+            "ts_ns": 50_000_000,
+            "type": "appear_player_list",
+            "data": {"units": units},
+        })
+        events.append({
+            "ts_ns": now_ns - 1_000_000_000,
+            "type": "use_skill_result",
+            "data": {
+                "ret": 0,
+                "caster_uid": 200,
+                "effect_results": [{
+                    "uid": 30, "hp_damage": 300, "final_hp": 7_900,
+                }],
+            },
+        })
+        monitor = summarize_combat(
+            events,
+            "111",
+            boss_catalog={375100: {"name": "Boss"}},
+            now_ns=now_ns,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            store = KnowledgeStore(Path(directory) / "knowledge.sqlite3")
+            try:
+                store.enrich_combat_monitors([monitor])
+            finally:
+                store.close()
+
+        guilds = monitor["bosses"][0]["top_damage_guilds"]
+        self.assertEqual(
+            [(row["name"], row["damage"], row["dps_hp"]) for row in guilds],
+            [("Guild B", 300, 300.0), ("Guild A", 1800, 200.0)],
         )
 
     def test_pvp_target_is_cleared_after_three_seconds_without_confirmation(self):
@@ -856,6 +935,53 @@ class CoreTest(unittest.TestCase):
             [event["data"]["target_uid"] for event in events],
             [20],
         )
+
+    def test_live_stream_prunes_expired_boss_anchor_and_events(self):
+        stream = LiveEventStream(boss_indexes={375100}, boss_event_seconds=1)
+        now_ns = time.time_ns()
+        flow = "127.0.0.1:12020 -> 127.0.0.1:50000"
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": now_ns - 3_000_000_000,
+            "type": "appear_monster_list",
+            "data": {"units": [{"uid": 30, "npc_index": 375100}]},
+        }, {
+            "flow": flow,
+            "ts_ns": now_ns - 2_000_000_000,
+            "type": "use_skill_result",
+            "data": {
+                "ret": 0, "caster_uid": 10,
+                "effect_results": [{"uid": 30, "hp_damage": 1}],
+            },
+        }])
+        stream.last_received_ns = now_ns
+
+        stream.snapshot()
+
+        self.assertEqual(stream.metrics()["boss_anchors"], 0)
+        self.assertEqual(stream.metrics()["boss_events"], 0)
+
+    def test_live_stream_stop_finishes_old_worker_before_restart(self):
+        class SlowDecoder:
+            def feed(self, *_args):
+                time.sleep(0.1)
+                return []
+
+        stream = LiveEventStream()
+        stream._decoder = SlowDecoder()
+        stream.start()
+        old_worker = stream._thread
+        for index in range(50):
+            stream.feed(index, b"packet")
+        time.sleep(0.02)
+
+        stream.stop()
+
+        self.assertIsNotNone(old_worker)
+        self.assertFalse(old_worker.is_alive())
+        stream.start()
+        self.assertIsNot(stream._thread, old_worker)
+        stream.stop()
 
     def test_live_stream_never_evicts_active_boss_under_parallel_event_load(self):
         stream = LiveEventStream(max_events=3, boss_indexes={375100})

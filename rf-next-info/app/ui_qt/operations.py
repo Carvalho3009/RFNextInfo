@@ -772,6 +772,22 @@ def _combined_route_groups(
     return (*pc, *emulators)
 
 
+def _require_distinct_client_routes(
+    routes: Iterable[dict[str, object]], pids: Iterable[int], label: str
+) -> None:
+    active = {int(pid) for pid in pids}
+    routed = {
+        int(route["pid"])
+        for route in routes
+        if route.get("pid") is not None and route.get("local_ports")
+    }
+    if len(active) > 1 and not active.issubset(routed):
+        raise RuntimeError(
+            f"Não foi possível separar as conexões dos clientes {label}. "
+            "Feche os clientes extras ou tente novamente."
+        )
+
+
 def _enforce_connection_limits(
     claims: dict[str, object], pc_clients: int, emulators: int
 ) -> dict[str, int]:
@@ -857,6 +873,10 @@ class MonitorEngine:
             emulator_routes = (
                 self.client_reader(emulator_executable, DEFAULT_PORTS)
                 if emulator_executable else []
+            )
+            _require_distinct_client_routes(routes, pids, "PC")
+            _require_distinct_client_routes(
+                emulator_routes, emulator_pids, "emuladores"
             )
             _pids, groups = _merge_client_routes([], [], routes)
             _emulator_pids, emulator_groups = _merge_client_routes(
@@ -1136,6 +1156,10 @@ class CaptureEngine:
             emulator_routes = (
                 self.client_reader(emulator_executable, DEFAULT_PORTS)
                 if emulator_executable else []
+            )
+            _require_distinct_client_routes(routes, pids, "PC")
+            _require_distinct_client_routes(
+                emulator_routes, emulator_pids, "emuladores"
             )
             self.executable = executable
             self.emulator_executable = emulator_executable
