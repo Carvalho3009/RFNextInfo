@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima correção
+## 1.0.5 — instalação manual
 
 - Permite configurar o Monitor PvP entre 0,5 e 60 segundos, com padrão de
   1 segundo e passo de 0,5 segundo.

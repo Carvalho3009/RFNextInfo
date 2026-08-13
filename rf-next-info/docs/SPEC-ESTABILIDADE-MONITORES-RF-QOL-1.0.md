@@ -37,3 +37,11 @@ Estado: aprovado para implementação local pelo owner
 - regressões específicas para cálculo, expiração, rotas, worker e preferências;
 - suíte automatizada integral sem regressão;
 - revisão do diff e árvore de trabalho documentada.
+
+## Empacotamento aprovado
+
+- versão `1.0.5`, sequência interna `6`;
+- instalador completo NSIS, manual e sem assinatura digital;
+- publicação somente na branch órfã `download/rf-qol-1.0.5`, sem GitHub
+  Release;
+- validação obrigatória do instalador local e do arquivo baixado novamente.
