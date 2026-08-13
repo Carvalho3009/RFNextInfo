@@ -1,5 +1,15 @@
 # Changelog
 
+## Próxima correção
+
+- Corrige a lista de próximos do Monitor PvP separando sua presença da limpeza
+  de três segundos do alvo atual.
+- Impede que eventos vencidos e fora de ordem se acumulem no monitor e remove
+  a reconstrução integral do Banco PvP a cada atualização de combate.
+- Mantém os overlays sem reconstrução durante o arraste.
+- Inclui UID persistente e guilda observada no ranking de Boss para completar
+  nomes pelo banco local/final e recalcular a soma por guilda.
+
 ## 1.0.4 — instalação manual
 
 - Consolida as correções de Banco PvP, inventário e envios preparadas após a

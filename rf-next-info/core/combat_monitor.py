@@ -6,6 +6,9 @@ import time
 from typing import Any, Iterable
 
 
+NEARBY_PLAYER_STALE_SECONDS = 15
+
+
 def summarize_combat(
     events: Iterable[dict[str, Any]],
     character_uid: str,
@@ -15,7 +18,7 @@ def summarize_combat(
     now_ns: int | None = None,
     dps_window_seconds: int = 10,
     stale_seconds: int = 15,
-    nearby_stale_seconds: int = 3,
+    nearby_stale_seconds: int = NEARBY_PLAYER_STALE_SECONDS,
     pvp_stale_seconds: int = 3,
 ) -> dict[str, Any]:
     ordered = sorted(events, key=lambda event: (event.get("ts_ns") or 0))
@@ -393,8 +396,10 @@ def _top_damage_players(
         player = players.get(uid) or {}
         rows.append({
             "uid": uid,
-            "name": str(player.get("name") or f"UID {uid}"),
-            "guild_name": str(player.get("guild_name") or player.get("guild_id") or ""),
+            "character_uid": player.get("character_uid"),
+            "name": str(player.get("name") or ""),
+            "guild_id": player.get("guild_id"),
+            "guild_name": str(player.get("guild_name") or ""),
             "damage": recent,
             "dps_hp": dps,
         })

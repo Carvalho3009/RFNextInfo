@@ -16,11 +16,12 @@ from typing import Any
 
 from core.ingest import DEFAULT_PORTS, SENSITIVE_OPCODE, _safe_parse
 from core import rfnext_frame_decode as decoder
+from core.combat_monitor import NEARBY_PLAYER_STALE_SECONDS
 
 
 MAX_FRAME_BYTES = 1024 * 1024
 MAX_FLOW_BUFFER_BYTES = 4 * 1024 * 1024
-LIVE_PLAYER_ANCHOR_SECONDS = 3
+LIVE_PLAYER_ANCHOR_SECONDS = NEARBY_PLAYER_STALE_SECONDS
 LIVE_COMBAT_EVENT_SECONDS = 20
 COMBAT_EVENT_TYPES = frozenset({
     "restore_hp_fp",
@@ -275,8 +276,17 @@ class LiveEventStream:
                 and fields.get("character_uid") is not None
             )
         }
+        max_events = self._events.maxlen
+        self._events = deque(
+            (
+                event
+                for event in self._events
+                if int(event.get("ts_ns") or 0) >= combat_cutoff
+            ),
+            maxlen=max_events,
+        )
         active_player_uids: set[int] = set()
-        for event in self._events:
+        for event in (*self._events, *self._boss_events):
             if int(event.get("ts_ns") or 0) < player_cutoff:
                 continue
             data = event.get("data") or {}
@@ -299,12 +309,6 @@ class LiveEventStream:
                 and key[2] not in active_player_uids
             ):
                 self._anchors.pop(key, None)
-        while (
-            self._events
-            and int(self._events[0].get("ts_ns") or 0) < combat_cutoff
-        ):
-            self._events.popleft()
-
     def metrics(self) -> dict[str, int | float | bool]:
         try:
             queued = self._items.qsize()

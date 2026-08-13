@@ -329,7 +329,7 @@ class CoreTest(unittest.TestCase):
                     "last_seen_at": "2026-08-11T10:00:00+00:00",
                 }])
                 monitors = [{"bosses": [{"top_damage_players": [{
-                    "character_uid": "123", "name": "Carvalho",
+                    "character_uid": "123", "name": "",
                     "damage": 900, "dps_hp": 90.0,
                 }]}]}]
                 enriched = store.enrich_combat_monitors(monitors)
@@ -343,6 +343,10 @@ class CoreTest(unittest.TestCase):
             self.assertEqual(row["guild_name"], "Karvalho")
             self.assertEqual(row["upload_state"], "sent")
             self.assertEqual(enriched, 1)
+            self.assertEqual(
+                monitors[0]["bosses"][0]["top_damage_players"][0]["name"],
+                "Carvalho",
+            )
             self.assertEqual(
                 monitors[0]["bosses"][0]["top_damage_guilds"],
                 [{"name": "Karvalho", "damage": 900, "dps_hp": 90.0}],
@@ -678,7 +682,7 @@ class CoreTest(unittest.TestCase):
             [(item["character_uid"], item["name"]) for item in result["nearby_players"]],
             [(222, "Rival atual"), (333, "Vizinho")],
         )
-        expired = summarize_combat(events, "111", now_ns=8_000_000_000)
+        expired = summarize_combat(events, "111", now_ns=18_000_000_000)
         self.assertEqual(expired["nearby_players"], [])
 
     def test_combat_monitor_lists_only_catalogued_live_bosses(self):
@@ -699,6 +703,7 @@ class CoreTest(unittest.TestCase):
                 "character_uid": 222,
                 "uid": 77,
                 "name": "Aliado",
+                "guild_id": 55,
                 "guild_name": "Karvalho",
                 "group_id": 9,
                 "max_hp": 100,
@@ -722,6 +727,14 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(
             result["bosses"][0]["top_damage_players"][0]["guild_name"],
             "Karvalho",
+        )
+        self.assertEqual(
+            result["bosses"][0]["top_damage_players"][0]["character_uid"],
+            222,
+        )
+        self.assertEqual(
+            result["bosses"][0]["top_damage_players"][0]["guild_id"],
+            55,
         )
         self.assertEqual(
             result["bosses"][0]["top_damage_guilds"],
@@ -772,12 +785,12 @@ class CoreTest(unittest.TestCase):
         flow = "10.0.0.1:12020 -> 127.0.0.1:50000"
         stream._remember([{
             "flow": flow,
-            "ts_ns": now_ns - 10_000_000_000,
+            "ts_ns": now_ns - 20_000_000_000,
             "type": "world_info_prefix",
             "data": {"fields": {"character_uid": 111}},
         }, {
             "flow": flow,
-            "ts_ns": now_ns - 10_000_000_000,
+            "ts_ns": now_ns - 20_000_000_000,
             "type": "appear_player_list",
             "data": {"units": [
                 {"uid": 10, "character_uid": 111, "name": "Local"},
@@ -797,7 +810,7 @@ class CoreTest(unittest.TestCase):
             "data": {"target_uid": 40},
         }, {
             "flow": flow,
-            "ts_ns": now_ns - 10_000_000_000,
+            "ts_ns": now_ns - 20_000_000_000,
             "type": "appear_player_list",
             "data": {"units": [
                 {"uid": 40, "character_uid": 444, "name": "Alvo ativo"},
@@ -816,6 +829,32 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(
             {int(player["character_uid"]) for player in players},
             {111, 333, 444},
+        )
+
+    def test_live_stream_prunes_expired_combat_events_even_when_flows_are_out_of_order(self):
+        stream = LiveEventStream()
+        now_ns = time.time_ns()
+        stream._remember([
+            {
+                "flow": "new",
+                "ts_ns": now_ns,
+                "type": "select_target_request",
+                "data": {"target_uid": 20},
+            },
+            {
+                "flow": "old",
+                "ts_ns": now_ns - 60_000_000_000,
+                "type": "select_target_request",
+                "data": {"target_uid": 30},
+            },
+        ])
+        stream.last_received_ns = now_ns
+
+        events = stream.snapshot()
+
+        self.assertEqual(
+            [event["data"]["target_uid"] for event in events],
+            [20],
         )
 
     def test_live_stream_never_evicts_active_boss_under_parallel_event_load(self):

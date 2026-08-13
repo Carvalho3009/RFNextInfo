@@ -22,7 +22,11 @@ Estado: implementação local validada; ajustes complementares em
 - **Aliado** e **Neutro** aparecem em Próximos não hostis, com o status visível.
 - O alvo atual depende da seleção/combate confirmado e não do status manual.
 - O alvo atual não é repetido nas listas de próximos.
-- A retenção visual permanece em três segundos.
+- O alvo atual é limpo após três segundos sem nova confirmação.
+- Os próximos permanecem por até quinze segundos desde a última confirmação,
+  pois a aparição não é retransmitida continuamente e ainda não há evento de
+  saída de alcance confirmado no decoder. Participantes com combate recente
+  renovam a presença; não há retenção indefinida.
 - Guilda e status observados são atualizados pelo jogo e pelo site enquanto não
   houver uma escolha manual para o respectivo campo.
 - Uma escolha manual tem prioridade sobre observações posteriores.
@@ -50,8 +54,10 @@ idempotência.
 
 ## Validação local
 
-- programa: 237 testes aprovados e 1 ignorado porque a área de notificação não
+- programa: 247 testes aprovados e 1 ignorado porque a área de notificação não
   está disponível no ambiente de teste;
+- reprodução do acúmulo real: 17.666 eventos fora da janela foram reduzidos a
+  1 evento válido em 0,94 ms;
 - servidor: compilação e autoteste integral aprovados com importação
   idempotente, validação dos quatro status e devolução consolidada;
 - revisão Fable não executada porque a sessão OAuth do Claude estava expirada;

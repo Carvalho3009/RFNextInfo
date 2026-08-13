@@ -11,6 +11,34 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_combat_refresh_does_not_rebuild_the_pvp_database(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["combat-refresh-performance-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            window.snapshot = {"session_id": "session", "combat_monitors": []}
+            with (
+                mock.patch.object(window, "_render_combat") as render_combat,
+                mock.patch.object(window, "_render_pvp_database") as render_database,
+                mock.patch.object(window, "_evaluate_alerts"),
+                mock.patch.object(window, "_finish_combat_load"),
+            ):
+                window._apply_combat_data({
+                    "session_id": "session",
+                    "combat_monitors": [],
+                })
+
+            render_combat.assert_called_once_with()
+            render_database.assert_not_called()
+            window.close()
+
     def test_game_catalogs_follow_portuguese_and_english_setting(self):
         from app.main import FARM_LABELS_PT_EN
         from app.ui_qt.data import load_boss_catalog, load_farm_catalog

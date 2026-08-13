@@ -75,6 +75,7 @@ from app.ui_qt.operations import (
     SiteUploadEngine,
 )
 from core.store import CaptureStore
+from core.combat_monitor import NEARBY_PLAYER_STALE_SECONDS
 from core.knowledge import KnowledgeStore
 
 
@@ -4554,7 +4555,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 payload.get("combat_monitors") or []
             )
             self._render_combat()
-            self._render_pvp_database()
             self._evaluate_alerts(self.snapshot["combat_monitors"])
         self._finish_combat_load()
 
@@ -5868,7 +5868,8 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             if str(item.get("character_uid") or "") != target_uid
             and not item.get("stale")
-            and float(item.get("age_seconds") or 0) <= 3
+            and float(item.get("age_seconds") or 0)
+            <= NEARBY_PLAYER_STALE_SECONDS
         ]
         groups = {
             "target": [target] if target_valid else [],
@@ -5886,6 +5887,8 @@ class MainWindow(QtWidgets.QMainWindow):
         }
         status_labels = {"ally": "Aliado", "neutral": "Neutro"}
         for key, overlay in self.pvp_overlays.items():
+            if overlay._drag_offset is not None:
+                continue
             summary = overlay.summary
             rows = overlay.rows
             while rows.count():
