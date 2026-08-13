@@ -352,6 +352,43 @@ class AppLogicTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "página de acesso"):
                 client.connect("CarvalhoRF", "token-" + "a" * 32)
 
+    def test_site_profile_downloads_pvp_final_with_get(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = b'{"revision":2,"characters":[]}'
+        with tempfile.TemporaryDirectory() as folder, patch(
+            "app.site_profile.urllib.request.urlopen", return_value=response
+        ) as urlopen:
+            client = SiteProfileClient(Path(folder))
+            client.state = {"profile": "Carvalho", "token": "token"}
+            result = client.download_observations()
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(result["revision"], 2)
+        self.assertEqual(request.get_method(), "GET")
+        self.assertIsNone(request.data)
+        self.assertTrue(request.full_url.endswith("/api/pvp-sync/final"))
+
+    def test_site_profile_downloads_pvp_final_larger_than_64k(self):
+        payload = json.dumps({
+            "revision": 3,
+            "characters": [
+                {"character_uid": str(index), "name": "Personagem " + "x" * 80}
+                for index in range(1000)
+            ],
+        }).encode()
+        self.assertGreater(len(payload), 64 * 1024)
+        with tempfile.TemporaryDirectory() as folder, patch(
+            "app.site_profile.urllib.request.urlopen", return_value=BytesIO(payload)
+        ):
+            client = SiteProfileClient(Path(folder))
+            client.state = {"profile": "Carvalho", "token": "token"}
+            result = client.download_observations()
+
+        self.assertEqual(result["revision"], 3)
+        self.assertEqual(len(result["characters"]), 1000)
+
     def test_site_profile_preserves_detail_from_http_error(self):
         error = urllib.error.HTTPError(
             "https://site/api/import/market", 422, "Unprocessable", {},

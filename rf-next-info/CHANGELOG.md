@@ -1,9 +1,56 @@
 # Changelog
 
+## 1.0.4 — instalação manual
+
+- Consolida as correções de Banco PvP, inventário e envios preparadas após a
+  1.0.3.
+- Corrige o ciclo de vida do Monitor PvP para remover personagens antigos,
+  reconhecer a identidade atual e limpar os overlays ao desligar o monitor.
+- Mantém distribuição manual, sem Authenticode e sem atualização automática.
+
+## 1.0.3 — instalação manual
+
+- Consolida as correções e recursos em desenvolvimento descritos abaixo em
+  um novo instalador completo, mantendo atualização manual e sem Authenticode.
+- Separa envio e recebimento do Banco PvP, adiciona filtros, edição em lote e
+  preserva posição e largura das colunas.
+
+## Em desenvolvimento — Banco PvP, Inventário e Envios
+
+- Permite editar qualquer guilda no Banco PvP, adiciona o status Ignorar e
+  oculta os UIDs ignorados sem impedir a sincronização com outros clientes.
+- Integra o decoder de `guild_id` e das listas inimiga/aliada para preencher
+  guilda e status PvP observados automaticamente, preservando edições manuais.
+- Adiciona Classe, derivada do biosuit, e Rover ao Banco PvP; os códigos
+  observados passam pela aprovação temporário/final e o rover respeita o idioma
+  configurado para os dados do jogo.
+- Substitui o envio a cada edição por intervalo configurável de 1 a 60 minutos,
+  padrão de 5 minutos, e separa `Enviar ao site`, `Receber do site` e a
+  atualização estritamente local.
+- Adiciona filtros de texto/status, seleção e edição em lote e preservação da
+  ordem e largura ajustadas das colunas do Banco PvP.
+- Troca a seleção implícita por caixas de seleção em cada UID e permite aplicar
+  somente guilda, somente status ou ambos aos registros marcados.
+- Aceita respostas maiores do Banco Final sem confundir JSON truncado com uma
+  página de acesso, mantendo limite máximo de segurança.
+- Restringe `Enviar ao site` do Banco PvP aos personagens; mobs e HP não fazem
+  mais parte desse pacote. HP desconhecido legado também é normalizado.
+- Corrige a reconstrução do inventário para preservar itens com slots repetidos
+  usando o UID de cada instância.
+- Permite definir a categoria de um item pelo menu de contexto e reaplica a
+  escolha local pelo código do item.
+- Adiciona envio de Inventário e Tudo por cliente; os botões mostram o
+  personagem reconhecido e o site persiste o inventário sanitizado por UID.
+
 ## Em desenvolvimento — Banco e overlays PvP
 
 - Separa o PvP em overlays móveis de alvo atual, próximos hostis e próximos
   não hostis, sempre limitados ao cliente selecionado.
+- Remove jogadores remotos sem confirmação após três segundos, limita a janela
+  efêmera de combate e mantém somente a identidade local necessária, evitando
+  que entidades antigas ocupem o monitor e atrasem o reconhecimento das novas.
+- A identidade recebida ao vivo substitui a identidade antiga da sessão; ao
+  desligar o monitor do cliente, os três overlays são limpos imediatamente.
 - Adiciona Banco PvP com UID, personagem, guilda e status manual
   Aliado/Inimigo/Neutro, usando a sincronização sanitizada já existente.
 

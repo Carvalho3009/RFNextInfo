@@ -1013,6 +1013,60 @@ def parse_inventory_payload(decoded: bytes) -> dict[str, Any] | None:
     return None
 
 
+def parse_guild_relation_payload(decoded: bytes) -> dict[str, Any] | None:
+    """Decodifica as listas de guildas inimigas e aliadas recebidas do jogo."""
+    if len(decoded) < HEADER_SIZE:
+        return None
+    opcode = int.from_bytes(decoded[4:6], "little")
+    messages = {
+        0x0D3F: ("enemy_guild_list", "FL2C_ans_enemy_guild_list_Message", "enemy"),
+        0x0D4D: ("amity_guild_list", "FL2C_ans_amity_guild_list_Message", "amity"),
+    }
+    if opcode not in messages:
+        return None
+    payload = decoded[HEADER_SIZE:]
+    if len(payload) < 12:
+        return None
+    result_code, owner_guild_id, guild_count = struct.unpack_from("<HQH", payload)
+    cursor = 12
+    guilds = []
+    try:
+        for _ in range(guild_count):
+            (guild_id,), cursor = _read_struct(payload, cursor, "<Q", "guild ID")
+            guild_name, cursor = _read_utf16le_u16(payload, cursor, "guild name")
+            raw, cursor = _read_struct(payload, cursor, "<BHBB", "guild raw fields")
+            representative_name_raw, cursor = _read_utf16le_u16(
+                payload, cursor, "guild representative name"
+            )
+            (tail_u16_raw,), cursor = _read_struct(payload, cursor, "<H", "guild tail")
+            guilds.append({
+                "guild_id": guild_id,
+                "guild_name": guild_name,
+                "f0_u8_raw": raw[0],
+                "f1_u16_raw": raw[1],
+                "f3_u8_raw": raw[2],
+                "f4_u8_raw": raw[3],
+                "representative_name_raw": representative_name_raw,
+                "tail_u16_raw": tail_u16_raw,
+            })
+    except (DecodeError, UnicodeDecodeError, struct.error):
+        return None
+    if cursor != len(payload):
+        return None
+    event_type, message, relation = messages[opcode]
+    return {
+        "type": event_type,
+        "message": message,
+        "direction": "FL2C",
+        "confidence": "alto-layout-exato-6-listas-44-registros",
+        "relation": relation,
+        "result_code": result_code,
+        "owner_guild_id": owner_guild_id,
+        "guild_count": guild_count,
+        "guilds": guilds,
+    }
+
+
 def _parse_player_profile_payload(payload: bytes) -> dict[str, Any] | None:
     if len(payload) < 3:
         return None
@@ -1578,6 +1632,7 @@ def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
                 return None
             state = APPEAR_PLAYER_STATE.unpack_from(payload, name_end)
             state_end = name_end + APPEAR_PLAYER_STATE.size
+            state_tail = payload[state_end:record_end]
             units.append(
                 {
                     "character_uid": values[0],
@@ -1597,7 +1652,8 @@ def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
                     "position_x": state[7],
                     "position_y": state[8],
                     "position_z": state[9],
-                    "state_tail_hex": payload[state_end:record_end].hex(),
+                    "guild_id": struct.unpack_from("<Q", state_tail, 43)[0],
+                    "state_tail_hex": state_tail.hex(),
                 }
             )
             cursor = record_end
@@ -1606,7 +1662,7 @@ def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
                 "type": "appear_player_list",
                 "message": "FG2C_appear_player_list_Message",
                 "direction": "FG2C",
-                "confidence": "alto-layout-exato-3778-frames-7993-registros",
+                "confidence": "alto-layout-exato-3778-frames-7993-registros+guild-2316-correlacoes",
                 "units": units,
             }
     if opcode == 0x0307 and len(payload) == struct.calcsize("<HHHHqq"):
@@ -2258,6 +2314,8 @@ def self_test() -> None:
     player_state = APPEAR_PLAYER_STATE.pack(
         77, 2, 1000, 750, 200, 150, 0, 1.0, 2.0, 3.0
     )
+    player_tail = bytearray(APPEAR_PLAYER_TAIL_SIZE - APPEAR_PLAYER_STATE.size)
+    struct.pack_into("<Q", player_tail, 43, 612_606_160_000_006)
     player_payload = (
         struct.pack("<H", 1)
         + APPEAR_PLAYER_PREFIX.pack(
@@ -2265,7 +2323,7 @@ def self_test() -> None:
         )
         + player_name.encode("utf-16le")
         + player_state
-        + bytes(APPEAR_PLAYER_TAIL_SIZE - APPEAR_PLAYER_STATE.size)
+        + player_tail
     )
     player_frame = bytearray(HEADER_SIZE + len(player_payload))
     player_frame[4:6] = (0x0305).to_bytes(2, "little")
@@ -2274,6 +2332,21 @@ def self_test() -> None:
     assert parsed_player["character_uid"] == 123456
     assert parsed_player["uid"] == 77
     assert parsed_player["current_hp"] == 750
+    assert parsed_player["guild_id"] == 612_606_160_000_006
+    guild_name = "McDonalds".encode("utf-16le")
+    representative_name = "monkeybones".encode("utf-16le")
+    guild_payload = (
+        struct.pack("<HQHQH", 0, 612_606_160_000_006, 1, 612_606_160_000_043, 9)
+        + guild_name
+        + struct.pack("<BHBBH", 8, 137, 5, 86, 11)
+        + representative_name
+        + struct.pack("<H", 5013)
+    )
+    guild_frame = bytearray(HEADER_SIZE + len(guild_payload))
+    guild_frame[4:6] = (0x0D3F).to_bytes(2, "little")
+    guild_frame[6:] = guild_payload
+    guild_list = parse_guild_relation_payload(guild_frame)
+    assert guild_list["guilds"][0]["guild_name"] == "McDonalds"
     restore_frame = bytearray(HEADER_SIZE + RESTORE_HP_FP.size)
     restore_frame[4:6] = (0x0311).to_bytes(2, "little")
     restore_frame[6:] = RESTORE_HP_FP.pack(77, 800, 1000, 50, 160, 200, 10, 1)

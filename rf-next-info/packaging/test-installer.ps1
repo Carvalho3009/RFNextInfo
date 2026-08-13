@@ -23,7 +23,13 @@ if (-not $EvidenceRoot) {
 $EvidenceRoot = [IO.Path]::GetFullPath($EvidenceRoot)
 $InstallDir = Join-Path $EvidenceRoot 'installed'
 $CompileDir = Join-Path $EvidenceRoot 'setup'
-$Installer = Join-Path $CompileDir 'RF QOL Setup 1.0.0-smoke.exe'
+$Python = if ($env:RFQOL_BUILD_PYTHON) {
+    $env:RFQOL_BUILD_PYTHON
+} else {
+    Join-Path $Project '.venv313\Scripts\python.exe'
+}
+$Version = (& $Python -c 'from app.main import VERSION; print(VERSION)').Trim()
+$Installer = Join-Path $CompileDir "RF QOL Setup $Version-smoke.exe"
 New-Item -ItemType Directory -Path $CompileDir -Force | Out-Null
 
 Push-Location $Project

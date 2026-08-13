@@ -1,6 +1,7 @@
 import hashlib
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -13,7 +14,9 @@ from app.ui_qt.operations import (
     SiteUploadEngine,
     _site_loot_rows,
 )
+from app.ui_qt.data import ReadOnlySnapshotReader
 from core.capture import CaptureStatus
+from core.knowledge import KnowledgeStore
 from core.store import CaptureStore
 
 
@@ -150,6 +153,61 @@ class _DeniedLicense:
     @staticmethod
     def require(_capability, _feature="base"):
         raise PermissionError("licença necessária")
+
+
+class ReadOnlySnapshotReaderTest(unittest.TestCase):
+    def test_live_identity_replaces_old_session_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            source = root / "old.pcap"
+            source.write_bytes(b"old")
+            store = CaptureStore(database)
+            try:
+                store.add_events(source, [{
+                    "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                    "stream_offset": 1,
+                    "bundle_seq": 0,
+                    "opcode": 0x0106,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": 101,
+                        "character_name": "Antigo",
+                    }},
+                }], "session", client_ports=((50000,),))
+            finally:
+                store.close()
+            now_ns = time.time_ns()
+            events = [{
+                "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                "ts_ns": now_ns,
+                "type": "world_info_prefix",
+                "data": {"fields": {
+                    "character_uid": 202,
+                    "character_name": "Novo",
+                }},
+            }, {
+                "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                "ts_ns": now_ns,
+                "type": "appear_player_list",
+                "data": {"units": [{
+                    "uid": 20,
+                    "character_uid": 202,
+                    "name": "Novo",
+                }]},
+            }]
+
+            result = ReadOnlySnapshotReader(
+                database, _AllowedLicense()
+            ).load_live_combat(events, ((50000,),))
+
+            self.assertEqual(len(result["combat_monitors"]), 1)
+            monitor = result["combat_monitors"][0]
+            self.assertEqual(
+                (monitor["character_uid"], monitor["character_name"]),
+                ("202", "Novo"),
+            )
+            self.assertEqual(monitor["local_combat_uid"], 20)
 
 
 class CaptureEngineTest(unittest.TestCase):
@@ -695,6 +753,171 @@ class CaptureEngineTest(unittest.TestCase):
 
 
 class SiteUploadEngineTest(unittest.TestCase):
+    def test_pvp_send_and_receive_are_independent(self):
+        class Site:
+            connected = True
+            profile = "Profile"
+
+            def upload_observations(self, payload, key):
+                self.uploaded = (payload, key)
+                return {"characters": [{
+                    "character_uid": "123",
+                    "name": "Não mesclar no envio",
+                    "pvp_status": "enemy",
+                    "first_seen_at": "2026-08-12T10:00:00+00:00",
+                    "last_seen_at": "2026-08-12T10:00:00+00:00",
+                }]}
+
+            def download_observations(self):
+                self.downloaded = True
+                return {
+                    "revision": 7,
+                    "characters": [{
+                        "character_uid": "123",
+                        "name": "Banco Final",
+                        "pvp_status": "ally",
+                        "first_seen_at": "2026-08-12T10:00:00+00:00",
+                        "last_seen_at": "2026-08-12T11:00:00+00:00",
+                    }],
+                }
+
+        event = {
+            "type": "appear_player_list",
+            "data": {"units": [{"character_uid": 123, "name": "Local"}]},
+        }
+        mob_event = {
+            "type": "appear_monster_list",
+            "data": {"units": [{"npc_index": 305208, "max_hp": 0}]},
+        }
+        capture = mock.Mock()
+        capture.session_envelope.return_value = {"events": [event, mob_event]}
+        site = Site()
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "app.ui_qt.operations.CaptureStore", return_value=capture
+        ):
+            knowledge_path = Path(directory) / "knowledge.sqlite3"
+            engine = SiteUploadEngine(Path("capture.sqlite3"), site, _AllowedLicense())
+            sent = engine.send_observations("session", knowledge_path)
+            knowledge = KnowledgeStore(knowledge_path)
+            try:
+                after_send = knowledge.characters()[0]
+                pending_mobs = knowledge.pending_payload()["mobs"]
+            finally:
+                knowledge.close()
+            received = engine.receive_observations(knowledge_path)
+            knowledge = KnowledgeStore(knowledge_path)
+            try:
+                after_receive = knowledge.characters()[0]
+            finally:
+                knowledge.close()
+
+        self.assertEqual(sent["sent_characters"], 1)
+        self.assertEqual(sent["sent_mobs"], 0)
+        self.assertEqual(site.uploaded[0]["mobs"], [])
+        self.assertEqual(len(pending_mobs), 1)
+        self.assertEqual(after_send["name"], "Local")
+        self.assertEqual(after_send["upload_state"], "sent")
+        self.assertEqual(received["synced_characters"], 1)
+        self.assertEqual(after_receive["name"], "Banco Final")
+        self.assertEqual(after_receive["pvp_status"], "ally")
+        self.assertTrue(site.downloaded)
+
+    def test_inventory_send_contains_only_the_selected_character(self):
+        class Site:
+            connected = True
+            profile = "Profile"
+
+            def upload_live(self, mode, payload, key):
+                self.sent = (mode, payload, key)
+                return {"receipt": "inventory-ok"}
+
+        class License(_AllowedLicense):
+            installation_id = "install-1"
+            lease = "lease-1"
+
+        site = Site()
+        store = mock.Mock()
+        snapshot = {
+            "session_id": "session",
+            "characters": [
+                {"uid": "101", "name": "Alice", "client_key": "client:a"},
+                {"uid": "202", "name": "Bob", "client_key": "client:b"},
+            ],
+            "inventories": {
+                "101": [{
+                    "item_index": 270062,
+                    "name": "Material",
+                    "quantity": 25,
+                    "kind": "stackable",
+                    "category": "materials",
+                    "slot": 7,
+                }],
+                "202": [{
+                    "item_index": 270063,
+                    "name": "Outro cliente",
+                    "quantity": 1,
+                    "kind": "stackable",
+                    "category": "other",
+                    "slot": 7,
+                }],
+            },
+        }
+        with mock.patch("app.ui_qt.operations.CaptureStore", return_value=store):
+            result = SiteUploadEngine(
+                Path("capture.sqlite3"), site, License()
+            ).send_mode("inventory", 0, snapshot, "pt")
+
+        mode, payload, _key = site.sent
+        self.assertEqual((mode, result["receipt"]), ("inventory", "inventory-ok"))
+        self.assertEqual(payload["profiles"][0]["character_uid"], "101")
+        self.assertEqual(
+            [item["name"] for item in payload["capture"]["inventory"]],
+            ["Material"],
+        )
+
+    def test_send_all_keeps_the_selected_client_and_available_domains(self):
+        class Site:
+            connected = True
+            profile = "Profile"
+
+        class License(_AllowedLicense):
+            installation_id = "install-1"
+            lease = "lease-1"
+
+        engine = SiteUploadEngine(Path("capture.sqlite3"), Site(), License())
+        snapshot = {
+            "session_id": "session",
+            "characters": [
+                {"uid": "101", "name": "Alice", "client_key": "client:a"},
+                {"uid": "202", "name": "Bob", "client_key": "client:b"},
+            ],
+            "inventories": {
+                "101": [{
+                    "item_index": 270062, "quantity": 1, "kind": "stackable"
+                }],
+                "202": [{
+                    "item_index": 270063, "quantity": 1, "kind": "stackable"
+                }],
+            },
+            "collection_type_counts_by_uid": {"101": {1: 1, 2: 1}},
+        }
+        sent = []
+        with mock.patch.object(
+            engine,
+            "send_mode",
+            side_effect=lambda mode, client, _snapshot, _language: (
+                sent.append((mode, client))
+                or {"target": "Cliente A", "receipt": mode}
+            ),
+        ):
+            result = engine.send_all(0, snapshot, "pt")
+
+        self.assertEqual(
+            sent,
+            [("character", 0), ("inventory", 0), ("codex", 0), ("memory_chips", 0)],
+        )
+        self.assertEqual(result["uid"], "101")
+
     def test_codex_send_reuses_the_latest_complete_snapshot(self):
         class Site:
             connected = True
@@ -832,6 +1055,7 @@ class SiteUploadEngineTest(unittest.TestCase):
                 "name": "Material",
                 "quantity": 25,
                 "kind": "stackable",
+                "category": "other",
                 "slot": 7,
                 "refinement": 0,
                 "locked": False,

@@ -5,6 +5,7 @@ import sqlite3
 import struct
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -28,6 +29,11 @@ from core.ingest import _decode_stream_resync, _pcapng_to_pcap, _safe_parse
 from core.live_stream import LiveEventDecoder, LiveEventStream
 from core.knowledge import KnowledgeStore
 from core.rfnext_frame_decode import (
+    APPEAR_PLAYER_PREFIX,
+    APPEAR_PLAYER_STATE,
+    APPEAR_PLAYER_TAIL_SIZE,
+    HEADER_SIZE,
+    parse_guild_relation_payload,
     parse_inventory_payload,
     parse_observation_payload,
     pcap_tcp_streams,
@@ -36,6 +42,114 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    def test_guild_relation_decode_enriches_pvp_without_overwriting_manual(self):
+        guild_name = "Guilda Rival".encode("utf-16le")
+        representative = "Líder".encode("utf-16le")
+        payload = (
+            struct.pack("<HQHQH", 0, 100, 1, 200, len("Guilda Rival"))
+            + guild_name
+            + struct.pack("<BHBBH", 0, 0, 0, 0, len("Líder"))
+            + representative
+            + struct.pack("<H", 0)
+        )
+        frame = bytearray(HEADER_SIZE + len(payload))
+        frame[4:6] = (0x0D3F).to_bytes(2, "little")
+        frame[6:] = payload
+        relation = parse_guild_relation_payload(frame)
+        self.assertEqual(relation["relation"], "enemy")
+        self.assertEqual(relation["guilds"][0]["guild_name"], "Guilda Rival")
+        from core import rfnext_frame_decode as decoder
+        self.assertEqual(
+            _safe_parse(decoder, bytes(frame), 12020)["type"],
+            "enemy_guild_list",
+        )
+
+        tail = bytearray(APPEAR_PLAYER_TAIL_SIZE - APPEAR_PLAYER_STATE.size)
+        struct.pack_into("<Q", tail, 43, 200)
+        player_name = "Rival"
+        player_payload = (
+            struct.pack("<H", 1)
+            + APPEAR_PLAYER_PREFIX.pack(222, 0, 1, 0, 2, 0, len(player_name))
+            + player_name.encode("utf-16le")
+            + APPEAR_PLAYER_STATE.pack(20, 2, 1000, 900, 100, 100, 0, 0.0, 0.0, 0.0)
+            + tail
+        )
+        player_frame = bytearray(HEADER_SIZE + len(player_payload))
+        player_frame[4:6] = (0x0305).to_bytes(2, "little")
+        player_frame[6:] = player_payload
+        player = parse_observation_payload(player_frame)["units"][0]
+        self.assertEqual(player["guild_id"], 200)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                store.observe_events([
+                    {"type": relation["type"], "data": relation},
+                    {"type": "appear_player_list", "data": {"units": [player]}},
+                ])
+                observed = store.characters()[0]
+                current_relation = [{
+                    "nearby_players": [{
+                        "character_uid": "222", "pvp_status": "ally"
+                    }],
+                    "bosses": [],
+                }]
+                store.enrich_combat_monitors(current_relation)
+                store.update_pvp_identity(
+                    222, guild_name="Guilda manual", status="neutral"
+                )
+                store.observe_events([
+                    {"type": relation["type"], "data": relation},
+                ])
+                manual = store.characters()[0]
+                manual_relation = [{
+                    "nearby_players": [{
+                        "character_uid": "222", "pvp_status": "enemy"
+                    }],
+                    "bosses": [],
+                }]
+                store.enrich_combat_monitors(manual_relation)
+            finally:
+                store.close()
+        self.assertEqual(
+            (observed["guild_name"], observed["pvp_status"], observed["pvp_status_source"]),
+            ("Guilda Rival", "enemy", "observed"),
+        )
+        self.assertEqual(
+            (manual["guild_name"], manual["pvp_status"], manual["pvp_status_source"]),
+            ("Guilda manual", "neutral", "manual"),
+        )
+        self.assertEqual(current_relation[0]["nearby_players"][0]["pvp_status"], "ally")
+        self.assertEqual(manual_relation[0]["nearby_players"][0]["pvp_status"], "neutral")
+
+    def test_guild_relation_reaches_live_and_combat_snapshots(self):
+        relation = {
+            "type": "enemy_guild_list",
+            "relation": "enemy",
+            "guilds": [{"guild_id": 200, "guild_name": "Guilda Rival"}],
+        }
+        events = [
+            {"ts_ns": 9_000_000_000, "type": "enemy_guild_list", "data": relation},
+            {
+                "ts_ns": 10_000_000_000,
+                "type": "appear_player_list",
+                "data": {"units": [
+                    {"character_uid": 111, "uid": 10, "name": "Local", "guild_id": 100, "max_hp": 1000, "current_hp": 1000},
+                    {"character_uid": 222, "uid": 20, "name": "Rival", "guild_id": 200, "max_hp": 1000, "current_hp": 1000},
+                ]},
+            },
+        ]
+        monitor = summarize_combat(events, "111", now_ns=10_000_000_000)
+        self.assertEqual(
+            (monitor["nearby_players"][0]["guild_name"], monitor["nearby_players"][0]["pvp_status"]),
+            ("Guilda Rival", "enemy"),
+        )
+        stream = LiveEventStream()
+        stream._remember([{
+            "flow": "flow", "type": "enemy_guild_list", "data": relation,
+        }])
+        self.assertIn("enemy_guild_list", [item["type"] for item in stream.snapshot()])
+
     def test_inventory_decoder_and_store_apply_snapshot_and_delta(self):
         def frame(opcode: int, payload: bytes) -> bytes:
             value = bytearray(6 + len(payload))
@@ -47,6 +161,14 @@ class CoreTest(unittest.TestCase):
             "<H6sIQBQ", 7, bytes.fromhex("010203040506"), 270062, 12, 0, 0
         )
         snapshot = parse_inventory_payload(frame(0x0401, struct.pack("<BH", 1, 1) + item))
+        second = struct.pack(
+            "<H6sIQBQ", 7, bytes.fromhex("111213141516"), 270063, 4, 0, 0
+        )
+        snapshot["items"].append(
+            parse_inventory_payload(
+                frame(0x0401, struct.pack("<BH", 1, 1) + second)
+            )["items"][0]
+        )
         delta = parse_inventory_payload(
             frame(
                 0x0402,
@@ -90,8 +212,11 @@ class CoreTest(unittest.TestCase):
                 current = store.inventory_items("session", "101")
             finally:
                 store.close()
-        self.assertEqual(len(current), 1)
-        self.assertEqual(current[0]["count"], 25)
+        self.assertEqual(len(current), 2)
+        self.assertEqual(
+            {item["item_index"]: item["count"] for item in current},
+            {270062: 25, 270063: 4},
+        )
 
     def test_safe_parse_keeps_only_sanitized_character_list_from_login(self):
         class Decoder:
@@ -171,8 +296,23 @@ class CoreTest(unittest.TestCase):
                 store.close()
             self.assertEqual(result, {"characters": 1, "mobs": 1})
             self.assertEqual(payload["characters"][0]["character_uid"], "123")
+            self.assertTrue(payload["characters"][0]["guild_presence_known"])
+            self.assertFalse(payload["characters"][0]["pvp_status_presence_known"])
             self.assertEqual(payload["mobs"][0]["location"], "Android Junkyard")
             self.assertNotIn("segredo", json.dumps(payload, ensure_ascii=False))
+
+    def test_knowledge_store_serializes_unknown_mob_hp_as_null(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                store.observe_events([{
+                    "type": "appear_monster_list",
+                    "data": {"units": [{"npc_index": 305208, "max_hp": 0}]},
+                }])
+                payload = store.pending_payload()
+            finally:
+                store.close()
+        self.assertIsNone(payload["mobs"][0]["max_hp"])
 
     def test_knowledge_store_merges_newer_character_identity_from_site(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -208,7 +348,43 @@ class CoreTest(unittest.TestCase):
                 [{"name": "Karvalho", "damage": 900, "dps_hp": 90.0}],
             )
 
-    def test_pvp_bank_persists_manual_status_and_protects_observed_guild(self):
+    def test_final_site_bank_replaces_pending_manual_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                store.observe_events([{
+                    "type": "appear_player_list",
+                    "data": {"units": [{"character_uid": 123, "name": "Rival", "uid": 1}]},
+                }])
+                store.update_pvp_identity(123, guild_name="Proposta", status="enemy")
+                payload = store.pending_payload()
+                store.merge_remote_characters([{
+                    "character_uid": "123",
+                    "name": "Rival Final",
+                    "biosuit_item_index": 2075041,
+                    "rover_item_index": 4000000,
+                    "guild_name": "Guilda Final",
+                    "guild_source": "manual",
+                    "guild_updated_at": "2026-08-12T12:00:00+00:00",
+                    "pvp_status": "ally",
+                    "pvp_status_updated_at": "2026-08-12T12:00:00+00:00",
+                    "protocol_version": "1.29.8",
+                    "first_seen_at": "2026-08-10T10:00:00+00:00",
+                    "last_seen_at": "2026-08-12T12:00:00+00:00",
+                }])
+                final = store.characters()[0]
+            finally:
+                store.close()
+            self.assertTrue(payload["characters"][0]["guild_presence_known"])
+            self.assertTrue(payload["characters"][0]["pvp_status_presence_known"])
+            self.assertEqual(
+                (final["name"], final["guild_name"], final["pvp_status"]),
+                ("Rival Final", "Guilda Final", "ally"),
+            )
+            self.assertEqual(final["biosuit_item_index"], 2075041)
+            self.assertEqual(final["rover_item_index"], 4000000)
+
+    def test_pvp_bank_persists_manual_status_and_allows_observed_guild_edit(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
             try:
@@ -228,8 +404,10 @@ class CoreTest(unittest.TestCase):
                     123, guild_name="Manual", status="enemy"
                 )
                 observed = store.update_pvp_identity(
-                    456, guild_name="Não substituir", status="ally"
+                    456, guild_name="Substituída", status="ignored"
                 )
+                visible = store.characters()
+                all_rows = store.characters(include_ignored=True)
                 payload = store.pending_payload()
                 monitors = [{
                     "pvp": {"character_uid": "123", "name": "Sem Guilda"},
@@ -246,13 +424,17 @@ class CoreTest(unittest.TestCase):
                 (manual["guild_name"], manual["guild_source"], manual["pvp_status"]),
                 ("Manual", "manual", "enemy"),
             )
-            self.assertEqual(observed["guild_name"], "Observada")
-            self.assertEqual(observed["pvp_status"], "ally")
+            self.assertEqual(observed["guild_name"], "Substituída")
+            self.assertEqual(observed["guild_source"], "manual")
+            self.assertEqual(observed["pvp_status"], "ignored")
+            self.assertEqual([row["character_uid"] for row in visible], ["123"])
+            self.assertEqual(len(all_rows), 2)
+            self.assertIn("456", [row["character_uid"] for row in payload["characters"]])
             self.assertEqual(payload["schema_version"], 2)
             self.assertEqual(monitors[0]["pvp"]["pvp_status"], "enemy")
             self.assertEqual(
                 [item["pvp_status"] for item in monitors[0]["nearby_players"]],
-                ["enemy", "ally"],
+                ["enemy", "ignored"],
             )
 
     def test_pvp_bank_rejects_invalid_manual_status(self):
@@ -583,6 +765,58 @@ class CoreTest(unittest.TestCase):
         expired = summarize_combat(events, "111", now_ns=4_100_000_000)
         self.assertEqual(recent["pvp"]["name"], "Rival")
         self.assertIsNone(expired["pvp"])
+
+    def test_live_stream_prunes_old_remote_players_and_keeps_local_player(self):
+        stream = LiveEventStream()
+        now_ns = time.time_ns()
+        flow = "10.0.0.1:12020 -> 127.0.0.1:50000"
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": now_ns - 10_000_000_000,
+            "type": "world_info_prefix",
+            "data": {"fields": {"character_uid": 111}},
+        }, {
+            "flow": flow,
+            "ts_ns": now_ns - 10_000_000_000,
+            "type": "appear_player_list",
+            "data": {"units": [
+                {"uid": 10, "character_uid": 111, "name": "Local"},
+                {"uid": 20, "character_uid": 222, "name": "Antigo"},
+            ]},
+        }, {
+            "flow": flow,
+            "ts_ns": now_ns,
+            "type": "appear_player_list",
+            "data": {"units": [
+                {"uid": 30, "character_uid": 333, "name": "Novo"},
+            ]},
+        }, {
+            "flow": flow,
+            "ts_ns": now_ns,
+            "type": "select_target_request",
+            "data": {"target_uid": 40},
+        }, {
+            "flow": flow,
+            "ts_ns": now_ns - 10_000_000_000,
+            "type": "appear_player_list",
+            "data": {"units": [
+                {"uid": 40, "character_uid": 444, "name": "Alvo ativo"},
+            ]},
+        }])
+        stream.last_received_ns = now_ns
+
+        events = stream.snapshot()
+        players = [
+            unit
+            for event in events
+            if event.get("type") == "appear_player_list"
+            for unit in (event.get("data") or {}).get("units") or []
+        ]
+
+        self.assertEqual(
+            {int(player["character_uid"]) for player in players},
+            {111, 333, 444},
+        )
 
     def test_live_stream_never_evicts_active_boss_under_parallel_event_load(self):
         stream = LiveEventStream(max_events=3, boss_indexes={375100})

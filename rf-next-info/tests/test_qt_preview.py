@@ -32,7 +32,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         )
 
     def test_changing_game_data_language_keeps_farm_and_reloads_snapshot(self):
-        from PySide6 import QtWidgets
+        from PySide6 import QtCore, QtWidgets
 
         from app.main import FARM_LABELS_PT_EN
         from app.ui_qt.data import load_preferences
@@ -291,6 +291,13 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertIn("Materiais", window.inventory_status.text())
             window.inventory_category_tabs.setCurrentIndex(0)
             self.assertEqual(window.inventory_table.rowCount(), 0)
+            window._set_inventory_category(270062, "other")
+            window.inventory_category_tabs.setCurrentIndex(5)
+            self.assertEqual(window.inventory_table.rowCount(), 1)
+            self.assertEqual(
+                window.preferences["inventory_category_overrides"]["270062"],
+                "other",
+            )
             window.close()
 
     def test_send_shortcuts_are_absent_from_ui_and_settings(self):
@@ -302,6 +309,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
         create_application(["send-shortcuts-removed-test"])
         window = MainWindow(load_data=False)
         window.capture_timer.stop()
+        window.snapshot = {
+            "profiles": [{
+                "uid": "101", "name": "Alice", "client_key": "client:a"
+            }]
+        }
+        window._refresh_client_labels()
         self.assertEqual(
             set(DEFAULT_GLOBAL_SHORTCUTS),
             {"monitor_pve", "monitor_pvp", "monitor_boss"},
@@ -312,9 +325,17 @@ class QtPreviewSmokeTest(unittest.TestCase):
             label.text() for label in sends_page.findChildren(QtWidgets.QLabel)
         }
         self.assertTrue({"F1", "F2", "F3", "F4"}.isdisjoint(labels))
+        self.assertIn(("inventory", 0), window.send_buttons)
+        self.assertIn(("all", 0), window.send_buttons)
+        self.assertEqual(
+            window.send_buttons[("inventory", 0)].text(),
+            "Enviar Cliente A - Alice",
+        )
         window.close()
 
     def test_pvp_database_edits_empty_guild_and_manual_status(self):
+        from PySide6 import QtCore, QtWidgets
+
         from app.ui_qt.main import MainWindow, create_application
         from core.knowledge import KnowledgeStore
 
@@ -327,6 +348,13 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 preferences_path=root / "preferences.json",
             )
             window.capture_timer.stop()
+            buttons = {
+                button.text()
+                for button in window.findChildren(QtWidgets.QPushButton)
+            }
+            self.assertIn("Enviar ao site", buttons)
+            self.assertIn("Receber do site", buttons)
+            self.assertIn("Atualizar", buttons)
             knowledge = KnowledgeStore(window.knowledge_path)
             try:
                 knowledge.observe_events([{
@@ -335,14 +363,23 @@ class QtPreviewSmokeTest(unittest.TestCase):
                         "uid": 1,
                         "character_uid": 123,
                         "name": "Rival",
+                        "biosuit_item_index": 2075041,
+                        "rover_item_index": 4000000,
                     }]},
                 }])
             finally:
                 knowledge.close()
             window._render_pvp_database()
             self.assertEqual(window.pvp_database_table.rowCount(), 1)
-            guild = window.pvp_database_table.cellWidget(0, 2)
-            status = window.pvp_database_table.cellWidget(0, 3)
+            self.assertEqual(window.pvp_database_table.columnCount(), 7)
+            self.assertTrue(
+                window.pvp_database_table.item(0, 0).flags()
+                & QtCore.Qt.ItemFlag.ItemIsUserCheckable
+            )
+            self.assertEqual(window.pvp_database_table.item(0, 3).text(), "Arbiter")
+            self.assertEqual(window.pvp_database_table.item(0, 4).text(), "Sirius")
+            guild = window.pvp_database_table.cellWidget(0, 5)
+            status = window.pvp_database_table.cellWidget(0, 6)
             guild.setText("Guilda manual")
             status.setCurrentIndex(status.findData("enemy"))
             knowledge = KnowledgeStore(window.knowledge_path)
@@ -353,8 +390,103 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertEqual(row["guild_name"], "Guilda manual")
             self.assertEqual(row["guild_source"], "manual")
             self.assertEqual(row["pvp_status"], "enemy")
-            self.assertTrue(guild.isReadOnly())
+            self.assertFalse(guild.isReadOnly())
+            window.pvp_sync_interval.setValue(7)
+            self.assertEqual(window.preferences["pvp_sync_interval_minutes"], 7)
+            status.setCurrentIndex(status.findData("ignored"))
+            self.assertEqual(window.pvp_database_table.rowCount(), 0)
             window.close()
+
+    def test_pvp_database_filters_batch_edit_and_persists_columns(self):
+        from PySide6 import QtWidgets
+
+        from app.ui_qt.main import MainWindow, create_application
+        from core.knowledge import KnowledgeStore
+
+        create_application(["pvp-database-batch-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            preferences = root / "preferences.json"
+            database = root / "capture.sqlite3"
+            window = MainWindow(
+                load_data=False,
+                database_path=database,
+                preferences_path=preferences,
+            )
+            window.capture_timer.stop()
+            knowledge = KnowledgeStore(window.knowledge_path)
+            try:
+                knowledge.observe_events([{
+                    "type": "appear_player_list",
+                    "data": {"units": [
+                        {"character_uid": 101, "name": "Rival Um"},
+                        {"character_uid": 102, "name": "Rival Dois"},
+                        {"character_uid": 103, "name": "Vizinho"},
+                    ]},
+                }])
+            finally:
+                knowledge.close()
+            window._render_pvp_database()
+            window.pvp_database_filter.setText("Rival")
+            window._select_visible_pvp_rows()
+            self.assertEqual(len(window._checked_pvp_uids()), 2)
+            window.pvp_batch_guild_enabled.setChecked(True)
+            window.pvp_batch_guild.setText("Guilda em lote")
+            window.pvp_batch_status.setCurrentIndex(
+                window.pvp_batch_status.findData("enemy")
+            )
+            window._apply_pvp_batch_edit()
+
+            knowledge = KnowledgeStore(window.knowledge_path)
+            try:
+                rows = {
+                    row["character_uid"]: row for row in knowledge.characters()
+                }
+            finally:
+                knowledge.close()
+            self.assertEqual(rows["101"]["guild_name"], "Guilda em lote")
+            self.assertEqual(rows["102"]["pvp_status"], "enemy")
+            self.assertEqual(rows["103"]["pvp_status"], "neutral")
+
+            window.pvp_batch_guild_enabled.setChecked(False)
+            window.pvp_batch_status.setCurrentIndex(
+                window.pvp_batch_status.findData("ally")
+            )
+            window._apply_pvp_batch_edit()
+            knowledge = KnowledgeStore(window.knowledge_path)
+            try:
+                rows = {
+                    row["character_uid"]: row for row in knowledge.characters()
+                }
+            finally:
+                knowledge.close()
+            self.assertEqual(rows["101"]["guild_name"], "Guilda em lote")
+            self.assertEqual(rows["101"]["pvp_status"], "ally")
+            self.assertEqual(rows["102"]["pvp_status"], "ally")
+            self.assertEqual(rows["103"]["pvp_status"], "neutral")
+
+            header = window.pvp_database_table.horizontalHeader()
+            self.assertTrue(header.sectionsMovable())
+            self.assertEqual(
+                header.sectionResizeMode(1),
+                QtWidgets.QHeaderView.ResizeMode.Interactive,
+            )
+            header.moveSection(header.visualIndex(1), 2)
+            header.resizeSection(1, 222)
+            window._save_pvp_header_state()
+            expected_position = header.visualIndex(1)
+            window.close()
+
+            reopened = MainWindow(
+                load_data=False,
+                database_path=database,
+                preferences_path=preferences,
+            )
+            reopened.capture_timer.stop()
+            restored = reopened.pvp_database_table.horizontalHeader()
+            self.assertEqual(restored.visualIndex(1), expected_position)
+            self.assertEqual(restored.sectionSize(1), 222)
+            reopened.close()
 
     @unittest.skipUnless(os.name == "nt", "Contador de RAM disponível no Windows")
     def test_process_memory_reader_returns_current_working_set(self):
@@ -420,6 +552,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
                     "eta_seconds": 30,
                 }],
             }]}
+            window.monitor_client_enabled["pvp"][0] = True
+            window.monitor_client_enabled["pvp"][1] = True
             for kind in ("target", "hostile", "non_hostile"):
                 window._toggle_pvp_overlay(True, kind)
             target_overlay = window.pvp_overlays["target"]
@@ -480,6 +614,13 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertEqual(
                 target_overlay.summary.text(),
                 "Alvo atual · Personagem B · Nenhum",
+            )
+            self.assertEqual(target_overlay.rows.count(), 0)
+            window.monitor_client_enabled["pvp"][1] = False
+            window._render_combat()
+            self.assertEqual(
+                target_overlay.summary.text(),
+                "Alvo atual · Personagem B · Monitor desligado",
             )
             self.assertEqual(target_overlay.rows.count(), 0)
             self.assertTrue(
@@ -1286,7 +1427,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF QOL — 1.0.0")
+        self.assertEqual(result["title"], "RF QOL — 1.0.4")
         self.assertEqual(result["page_count"], 11)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [

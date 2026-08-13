@@ -1,6 +1,8 @@
 # Inventário no RF QOL 1.0
 
-Estado: implementação local validada em 2026-08-11. Não publicado.
+Estado: implementação local validada em 2026-08-11; correção de instâncias e
+categoria manual definida em
+`SPEC-CORRECOES-BANCO-PVP-INVENTARIO-ENVIOS-1.0.md`. Não publicado.
 
 ## Objetivo
 

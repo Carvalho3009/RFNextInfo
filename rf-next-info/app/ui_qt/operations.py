@@ -99,6 +99,35 @@ class SiteUploadEngine:
             raise ValueError("O cliente selecionado ainda não possui personagem identificado")
         return selected
 
+    @staticmethod
+    def _inventory_rows(snapshot: dict, uid: str) -> list[dict[str, object]]:
+        rows = []
+        for item in dict(snapshot.get("inventories") or {}).get(uid, []):
+            if int(item.get("item_index") or 0) <= 0 or int(item.get("quantity") or 0) <= 0:
+                continue
+            row = {
+                key: item.get(key)
+                for key in (
+                    "item_index",
+                    "name",
+                    "quantity",
+                    "kind",
+                    "category",
+                    "slot",
+                    "refinement",
+                    "locked",
+                    "expires_at",
+                )
+            }
+            row["category"] = str(
+                item.get("category")
+                or ("equipment" if item.get("kind") == "equipment" else "other")
+            )
+            if item.get("category_source") == "manual":
+                row["category_source"] = "manual"
+            rows.append(row)
+        return rows
+
     def send_mode(
         self, mode: str, client_index: int, snapshot: dict, language: str
     ) -> dict[str, object]:
@@ -140,35 +169,23 @@ class SiteUploadEngine:
                         item_names,
                         game_language=language,
                     )
-                else:
+                elif mode in {"codex", "memory_chips"}:
                     envelope = store.latest_collection_envelope(uid)
                     summary = {}
+                elif mode == "inventory":
+                    envelope = {}
+                    summary = {}
+                else:
+                    raise ValueError("Tipo de envio inválido")
                 site_summary = {
                     **summary,
                     "loot": _site_loot_rows(summary.get("loot")),
                 }
-                if mode == "character":
+                if mode in {"character", "inventory"}:
                     site_summary["inventory_schema_version"] = 1
-                    site_summary["inventory"] = [
-                        {
-                            key: item.get(key)
-                            for key in (
-                                "item_index",
-                                "name",
-                                "quantity",
-                                "kind",
-                                "slot",
-                                "refinement",
-                                "locked",
-                                "expires_at",
-                            )
-                        }
-                        for item in dict(snapshot.get("inventories") or {}).get(
-                            uid, []
-                        )
-                        if int(item.get("item_index") or 0) > 0
-                        and int(item.get("quantity") or 0) > 0
-                    ]
+                    site_summary["inventory"] = self._inventory_rows(snapshot, uid)
+                    if mode == "inventory" and not site_summary["inventory"]:
+                        raise ValueError("Ainda não existem itens de inventário para enviar")
                 metadata.update(character_name=character, marks_mode="merge")
                 profile = {
                     "profile": self.site_profile.profile,
@@ -180,7 +197,7 @@ class SiteUploadEngine:
                         className=summary["character_class"],
                         loadout=summary["loadout"],
                     )
-                else:
+                elif mode in {"codex", "memory_chips"}:
                     requested = {1} if mode == "codex" else {2}
                     marks, seen = _collection_marks(envelope, requested)
                     if not marks:
@@ -192,7 +209,7 @@ class SiteUploadEngine:
                 payload = {
                     "metadata": metadata,
                     "profiles": [profile],
-                    "capture": site_summary if mode == "character" else {},
+                    "capture": site_summary if mode in {"character", "inventory"} else {},
                     "loadout": summary["loadout"] if mode == "character" else {},
                     "subsession_reports": [],
                 }
@@ -212,6 +229,32 @@ class SiteUploadEngine:
         ).encode()).hexdigest()
         response = self.site_profile.upload_live(mode, payload, key)
         return {"target": target, "receipt": response.get("receipt", ""), "uid": uid}
+
+    def send_all(
+        self, client_index: int, snapshot: dict, language: str
+    ) -> dict[str, object]:
+        selected = self._selected_character(snapshot, client_index)
+        uid = str(selected["uid"])
+        modes = ["character"]
+        if self._inventory_rows(snapshot, uid):
+            modes.append("inventory")
+        counts = dict(
+            dict(snapshot.get("collection_type_counts_by_uid") or {}).get(uid) or {}
+        )
+        if counts.get(1):
+            modes.append("codex")
+        if counts.get(2):
+            modes.append("memory_chips")
+        results = [
+            self.send_mode(mode, client_index, snapshot, language)
+            for mode in modes
+        ]
+        return {
+            "target": results[0]["target"],
+            "uid": uid,
+            "modes": modes,
+            "receipts": [item.get("receipt", "") for item in results],
+        }
 
     def send_subsessions(
         self, identifiers: list[str], snapshot: dict, language: str
@@ -350,6 +393,7 @@ class SiteUploadEngine:
             )
             knowledge.observe_events(envelope.get("events") or [])
             payload = knowledge.pending_payload()
+            payload["mobs"] = []
             payload["metadata"] = {
                 **self._metadata("observations"),
                 "session_id": session_id,
@@ -366,13 +410,26 @@ class SiteUploadEngine:
             ).encode()).hexdigest()
             response = self.site_profile.upload_observations(payload, key)
             knowledge.mark_uploaded(payload)
+            response["sent_characters"] = len(payload["characters"])
+            response["sent_mobs"] = len(payload["mobs"])
+            return response
+        finally:
+            knowledge.close()
+            capture.close()
+
+    def receive_observations(self, knowledge_path: Path) -> dict[str, object]:
+        self.license.require("recebimento do Banco PvP")
+        if not self.site_profile.connected:
+            raise ValueError("Conecte o token do Profile antes de receber")
+        response = self.site_profile.download_observations()
+        knowledge = KnowledgeStore(knowledge_path)
+        try:
             response["synced_characters"] = knowledge.merge_remote_characters(
                 response.get("characters") or []
             )
             return response
         finally:
             knowledge.close()
-            capture.close()
 
 
 class ExportEngine:

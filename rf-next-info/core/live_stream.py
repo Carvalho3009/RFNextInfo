@@ -7,6 +7,7 @@ import queue
 import socket
 import struct
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -19,6 +20,8 @@ from core import rfnext_frame_decode as decoder
 
 MAX_FRAME_BYTES = 1024 * 1024
 MAX_FLOW_BUFFER_BYTES = 4 * 1024 * 1024
+LIVE_PLAYER_ANCHOR_SECONDS = 3
+LIVE_COMBAT_EVENT_SECONDS = 20
 COMBAT_EVENT_TYPES = frozenset({
     "restore_hp_fp",
     "dying_unit",
@@ -30,6 +33,7 @@ COMBAT_EVENT_TYPES = frozenset({
     "FG2C_notify_boss_result_Message",
 })
 APPEARANCE_EVENT_TYPES = frozenset({"appear_player_list", "appear_monster_list"})
+GUILD_RELATION_EVENT_TYPES = frozenset({"enemy_guild_list", "amity_guild_list"})
 BOSS_EVENT_OPCODES = frozenset({0x031C, 0x031D, 0x031F, 0x0331, 0x0C05, 0x0C0A})
 
 
@@ -217,6 +221,7 @@ class LiveEventStream:
         self._boss_anchors: dict[tuple[str, str, int], dict[str, Any]] = {}
         self._boss_events: deque[dict[str, Any]] = deque()
         self._identities: dict[str, dict[str, Any]] = {}
+        self._guild_relations: dict[tuple[str, str], dict[str, Any]] = {}
         self._boss_indexes = frozenset(
             _boss_indexes() if boss_indexes is None else boss_indexes
         )
@@ -245,13 +250,60 @@ class LiveEventStream:
 
     def snapshot(self) -> list[dict[str, Any]]:
         with self._lock:
+            self._prune_stale_live_state()
             return [
                 *self._identities.values(),
+                *self._guild_relations.values(),
                 *self._anchors.values(),
                 *self._boss_anchors.values(),
                 *self._events,
                 *self._boss_events,
             ]
+
+    def _prune_stale_live_state(self) -> None:
+        """Descarta estado efêmero vencido sem perder a identidade local."""
+        if self.last_received_ns < 1_500_000_000_000_000_000:
+            return
+        reference_ns = max(int(self.last_received_ns), time.time_ns())
+        player_cutoff = reference_ns - LIVE_PLAYER_ANCHOR_SECONDS * 1_000_000_000
+        combat_cutoff = reference_ns - LIVE_COMBAT_EVENT_SECONDS * 1_000_000_000
+        local_character_uids = {
+            str(fields["character_uid"])
+            for event in self._identities.values()
+            if (
+                isinstance((fields := (event.get("data") or {}).get("fields")), dict)
+                and fields.get("character_uid") is not None
+            )
+        }
+        active_player_uids: set[int] = set()
+        for event in self._events:
+            if int(event.get("ts_ns") or 0) < player_cutoff:
+                continue
+            data = event.get("data") or {}
+            for name in ("uid", "caster_uid", "main_target_uid", "target_uid"):
+                value = data.get(name)
+                if isinstance(value, (int, float)):
+                    active_player_uids.add(int(value))
+            active_player_uids.update(
+                int(value)
+                for result in data.get("effect_results") or []
+                if isinstance((value := result.get("uid")), (int, float))
+            )
+        for key, event in tuple(self._anchors.items()):
+            if key[1] != "player" or int(event.get("ts_ns") or 0) >= player_cutoff:
+                continue
+            units = (event.get("data") or {}).get("units") or []
+            character_uid = str((units[0] if units else {}).get("character_uid") or "")
+            if (
+                character_uid not in local_character_uids
+                and key[2] not in active_player_uids
+            ):
+                self._anchors.pop(key, None)
+        while (
+            self._events
+            and int(self._events[0].get("ts_ns") or 0) < combat_cutoff
+        ):
+            self._events.popleft()
 
     def metrics(self) -> dict[str, int | float | bool]:
         try:
@@ -286,6 +338,7 @@ class LiveEventStream:
             self._boss_anchors.clear()
             self._boss_events.clear()
             self._identities.clear()
+            self._guild_relations.clear()
         self._decoder = LiveEventDecoder()
         self.decode_errors = 0
         self.processed_packets = 0
@@ -328,6 +381,9 @@ class LiveEventStream:
                 self.decoded_events += 1
                 if kind == "world_info_prefix":
                     self._identities[flow] = event
+                    continue
+                if kind in GUILD_RELATION_EVENT_TYPES:
+                    self._guild_relations[(flow, kind)] = event
                     continue
                 if kind in APPEARANCE_EVENT_TYPES:
                     entity_type = "player" if kind == "appear_player_list" else "monster"

@@ -287,7 +287,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.active_client = 0
         self.active_category = "pc"
         self.snapshot: dict[str, object] = {}
-        self.preferences: dict[str, object] = {}
+        self.preferences: dict[str, object] = load_preferences(self.preferences_path)
         self.selected_subsessions: set[str] = set()
         self.subsession_page = 1
         self.editing_subsession_id: str | None = None
@@ -324,7 +324,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.live_combat_ports: tuple[tuple[int, ...], ...] = ()
         self.pending_export_cleanup = False
         self.pending_observation_session = ""
-        self.observation_sync_next_due = 0.0
+        self.observation_sync_next_due = time.monotonic() + 300
         self.pending_auto_market: tuple[str, str] | None = None
         self.auto_market_retry_after = 0.0
         self.inventory_icon_cache: dict[int, QtGui.QIcon] = {}
@@ -1231,9 +1231,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.send_buttons: dict[tuple[str, int], QtWidgets.QPushButton] = {}
         domains = (
             ("character", "Personagem + equipamentos", False),
+            ("inventory", "Inventário", False),
             ("market", "Mercado", True),
             ("codex", "Codex", False),
             ("memory_chips", "Memory Chips", False),
+            ("all", "Tudo do cliente", False),
         )
         for index, (mode, title, general) in enumerate(domains):
             card = QtWidgets.QFrame(objectName="panel")
@@ -1558,6 +1560,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inventory_table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
         )
+        self.inventory_table.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.inventory_table.customContextMenuRequested.connect(
+            self._show_inventory_category_menu
+        )
         self.inventory_table.verticalHeader().setVisible(False)
         header = self.inventory_table.horizontalHeader()
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
@@ -1582,30 +1590,118 @@ class MainWindow(QtWidgets.QMainWindow):
         heading = QtWidgets.QHBoxLayout()
         heading.addWidget(_label("Banco PvP", "title"))
         heading.addStretch(1)
+        heading.addWidget(_label("Enviar a cada", "muted"))
+        self.pvp_sync_interval = QtWidgets.QSpinBox()
+        self.pvp_sync_interval.setRange(1, 60)
+        self.pvp_sync_interval.setSuffix(" min")
+        self.pvp_sync_interval.setValue(5)
+        self.pvp_sync_interval.valueChanged.connect(
+            self._save_pvp_sync_interval
+        )
+        heading.addWidget(self.pvp_sync_interval)
+        send_now = QtWidgets.QPushButton("Enviar ao site")
+        send_now.setToolTip("Envia as alterações pendentes ao Banco Temporário.")
+        send_now.clicked.connect(self._send_pvp_database_now)
+        heading.addWidget(send_now)
+        receive_now = QtWidgets.QPushButton("Receber do site")
+        receive_now.setToolTip("Recebe somente o Banco Final aprovado.")
+        receive_now.clicked.connect(self._receive_pvp_database_now)
+        heading.addWidget(receive_now)
         refresh = QtWidgets.QPushButton("Atualizar")
         refresh.clicked.connect(self._render_pvp_database)
         heading.addWidget(refresh)
         column.addLayout(heading)
         note = _label(
-            "A guilda pode ser preenchida manualmente somente quando ainda não foi observada. "
-            "O status é sempre uma escolha manual.",
+            "A guilda e o status podem ser alterados manualmente. Alterações ficam "
+            "pendentes até o próximo intervalo ou até Enviar ao site.",
             "muted",
         )
         note.setWordWrap(True)
         column.addWidget(note)
-        self.pvp_database_table = QtWidgets.QTableWidget(0, 4)
+
+        filters = QtWidgets.QHBoxLayout()
+        self.pvp_database_filter = QtWidgets.QLineEdit()
+        self.pvp_database_filter.setPlaceholderText(
+            "Filtrar UID, personagem, classe, rover ou guilda"
+        )
+        self.pvp_database_filter.textChanged.connect(self._filter_pvp_database)
+        filters.addWidget(self.pvp_database_filter, 1)
+        self.pvp_database_status_filter = QtWidgets.QComboBox()
+        for label, value in (
+            ("Todos os status", ""),
+            ("Aliado", "ally"),
+            ("Inimigo", "enemy"),
+            ("Neutro", "neutral"),
+        ):
+            self.pvp_database_status_filter.addItem(label, value)
+        self.pvp_database_status_filter.currentIndexChanged.connect(
+            self._filter_pvp_database
+        )
+        filters.addWidget(self.pvp_database_status_filter)
+        column.addLayout(filters)
+
+        batch = QtWidgets.QHBoxLayout()
+        select_visible = QtWidgets.QPushButton("Selecionar visíveis")
+        select_visible.clicked.connect(self._select_visible_pvp_rows)
+        batch.addWidget(select_visible)
+        clear_selection = QtWidgets.QPushButton("Desmarcar todos")
+        batch.addWidget(clear_selection)
+        self.pvp_batch_guild_enabled = QtWidgets.QCheckBox("Alterar guilda")
+        batch.addWidget(self.pvp_batch_guild_enabled)
+        self.pvp_batch_guild = QtWidgets.QLineEdit()
+        self.pvp_batch_guild.setPlaceholderText("Nova guilda; vazio limpa")
+        self.pvp_batch_guild.setEnabled(False)
+        self.pvp_batch_guild_enabled.toggled.connect(self.pvp_batch_guild.setEnabled)
+        batch.addWidget(self.pvp_batch_guild, 1)
+        self.pvp_batch_status = QtWidgets.QComboBox()
+        self.pvp_batch_status.addItem("Manter status atual", None)
+        for label, value in (
+            ("Aliado", "ally"),
+            ("Inimigo", "enemy"),
+            ("Neutro", "neutral"),
+            ("Ignorar", "ignored"),
+        ):
+            self.pvp_batch_status.addItem(label, value)
+        batch.addWidget(self.pvp_batch_status)
+        apply_batch = QtWidgets.QPushButton("Aplicar aos marcados")
+        apply_batch.clicked.connect(self._apply_pvp_batch_edit)
+        batch.addWidget(apply_batch)
+        column.addLayout(batch)
+
+        self.pvp_database_table = QtWidgets.QTableWidget(0, 7)
         self.pvp_database_table.setHorizontalHeaderLabels(
-            ("UID", "Personagem", "Guilda", "Status")
+            ("", "UID", "Personagem", "Classe", "Rover", "Guilda", "Status")
         )
         self.pvp_database_table.verticalHeader().setVisible(False)
         self.pvp_database_table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
+        self.pvp_database_table.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.NoSelection
+        )
         header = self.pvp_database_table.horizontalHeader()
+        header.setSectionsMovable(True)
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
+        saved_header = str(self.preferences.get("pvp_database_header_state") or "")
+        restored = bool(saved_header) and header.restoreState(
+                QtCore.QByteArray.fromBase64(saved_header.encode("ascii"))
+            )
+        if not restored:
+            for index, width in enumerate((42, 170, 220, 120, 140, 220, 120)):
+                header.resizeSection(index, width)
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.pvp_header_save_timer = QtCore.QTimer(self)
+        self.pvp_header_save_timer.setSingleShot(True)
+        self.pvp_header_save_timer.setInterval(250)
+        self.pvp_header_save_timer.timeout.connect(self._save_pvp_header_state)
+        header.sectionMoved.connect(
+            lambda *_args: self.pvp_header_save_timer.start()
+        )
+        header.sectionResized.connect(
+            lambda *_args: self.pvp_header_save_timer.start()
+        )
+        clear_selection.clicked.connect(self._clear_pvp_checks)
         column.addWidget(self.pvp_database_table, 1)
         self.pvp_database_status = _label("Nenhum UID observado.", "muted")
         column.addWidget(self.pvp_database_status)
@@ -1614,29 +1710,65 @@ class MainWindow(QtWidgets.QMainWindow):
     def _render_pvp_database(self) -> None:
         if not hasattr(self, "pvp_database_table"):
             return
+        checked_uids = self._checked_pvp_uids()
         knowledge = KnowledgeStore(self.knowledge_path)
         try:
             rows = knowledge.characters()
         finally:
             knowledge.close()
+        self.pvp_database_rows = {
+            str(row["character_uid"]): row for row in rows
+        }
         self.pvp_database_table.setRowCount(len(rows))
-        labels = {"ally": "Aliado", "enemy": "Inimigo", "neutral": "Neutro"}
+        labels = {
+            "ally": "Aliado",
+            "enemy": "Inimigo",
+            "neutral": "Neutro",
+            "ignored": "Ignorar",
+        }
         for row_index, row in enumerate(rows):
             uid = str(row["character_uid"])
+            biosuit_index = row.get("biosuit_item_index")
+            biosuit = BIOSUITS.get(str(biosuit_index or ""), {})
+            class_name = str(biosuit.get("class_name") or "")
+            rover_index = row.get("rover_item_index")
+            rover = ROVERS.get(str(rover_index or ""), {})
+            rover_name = game_catalog_name(
+                rover,
+                self.preferences.get("item_name_language"),
+            )
+            check_cell = QtWidgets.QTableWidgetItem()
+            check_cell.setFlags(
+                QtCore.Qt.ItemFlag.ItemIsEnabled
+                | QtCore.Qt.ItemFlag.ItemIsUserCheckable
+            )
+            check_cell.setCheckState(
+                QtCore.Qt.CheckState.Checked
+                if uid in checked_uids else QtCore.Qt.CheckState.Unchecked
+            )
             uid_cell = QtWidgets.QTableWidgetItem(uid)
             uid_cell.setFlags(uid_cell.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
             name_cell = QtWidgets.QTableWidgetItem(str(row.get("name") or "—"))
             name_cell.setFlags(name_cell.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+            class_cell = QtWidgets.QTableWidgetItem(class_name or "—")
+            class_cell.setFlags(class_cell.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+            class_cell.setToolTip(
+                f"Biosuit #{biosuit_index}" if biosuit_index else "Biosuit não identificado"
+            )
+            rover_cell = QtWidgets.QTableWidgetItem(rover_name or "—")
+            rover_cell.setFlags(rover_cell.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+            rover_cell.setToolTip(
+                f"Rover #{rover_index}" if rover_index else "Rover não identificado"
+            )
             guild = QtWidgets.QLineEdit(str(row.get("guild_name") or ""))
             guild.setPlaceholderText("Guilda não identificada")
-            guild.setReadOnly(bool(row.get("guild_name")))
             guild.editingFinished.connect(
                 lambda current_uid=uid, editor=guild: self._save_pvp_identity(
                     current_uid, editor, None
                 )
             )
             status = QtWidgets.QComboBox()
-            for value in ("ally", "enemy", "neutral"):
+            for value in ("ally", "enemy", "neutral", "ignored"):
                 status.addItem(labels[value], value)
             selected = status.findData(str(row.get("pvp_status") or "neutral"))
             status.setCurrentIndex(max(0, selected))
@@ -1644,14 +1776,118 @@ class MainWindow(QtWidgets.QMainWindow):
                 lambda _index, current_uid=uid, editor=guild, combo=status:
                     self._save_pvp_identity(current_uid, editor, combo)
             )
-            self.pvp_database_table.setItem(row_index, 0, uid_cell)
-            self.pvp_database_table.setItem(row_index, 1, name_cell)
-            self.pvp_database_table.setCellWidget(row_index, 2, guild)
-            self.pvp_database_table.setCellWidget(row_index, 3, status)
+            self.pvp_database_table.setItem(row_index, 0, check_cell)
+            self.pvp_database_table.setItem(row_index, 1, uid_cell)
+            self.pvp_database_table.setItem(row_index, 2, name_cell)
+            self.pvp_database_table.setItem(row_index, 3, class_cell)
+            self.pvp_database_table.setItem(row_index, 4, rover_cell)
+            self.pvp_database_table.setCellWidget(row_index, 5, guild)
+            self.pvp_database_table.setCellWidget(row_index, 6, status)
+        self._filter_pvp_database()
+
+    def _filter_pvp_database(self, *_args) -> None:
+        if not hasattr(self, "pvp_database_table"):
+            return
+        query = (
+            self.pvp_database_filter.text().strip().casefold()
+            if hasattr(self, "pvp_database_filter") else ""
+        )
+        wanted_status = (
+            str(self.pvp_database_status_filter.currentData() or "")
+            if hasattr(self, "pvp_database_status_filter") else ""
+        )
+        visible = 0
+        for row in range(self.pvp_database_table.rowCount()):
+            values = [
+                self.pvp_database_table.item(row, column).text()
+                for column in range(1, 5)
+            ]
+            guild = self.pvp_database_table.cellWidget(row, 5)
+            status = self.pvp_database_table.cellWidget(row, 6)
+            values.append(guild.text() if guild else "")
+            matches = (
+                (not query or query in " ".join(values).casefold())
+                and (not wanted_status or (status and status.currentData() == wanted_status))
+            )
+            self.pvp_database_table.setRowHidden(row, not matches)
+            visible += int(matches)
+        rows = list(getattr(self, "pvp_database_rows", {}).values())
         pending = sum(row.get("upload_state") == "pending" for row in rows)
         self.pvp_database_status.setText(
-            f"{len(rows)} UID(s) · {pending} aguardando sincronização"
+            f"{visible} de {len(rows)} UID(s) · {pending} aguardando envio"
             if rows else "Nenhum UID observado."
+        )
+
+    def _checked_pvp_uids(self) -> set[str]:
+        if not hasattr(self, "pvp_database_table"):
+            return set()
+        return {
+            self.pvp_database_table.item(row, 1).text()
+            for row in range(self.pvp_database_table.rowCount())
+            if self.pvp_database_table.item(row, 0).checkState()
+            == QtCore.Qt.CheckState.Checked
+        }
+
+    def _select_visible_pvp_rows(self) -> None:
+        self._clear_pvp_checks()
+        for row in range(self.pvp_database_table.rowCount()):
+            if not self.pvp_database_table.isRowHidden(row):
+                self.pvp_database_table.item(row, 0).setCheckState(
+                    QtCore.Qt.CheckState.Checked
+                )
+
+    def _clear_pvp_checks(self) -> None:
+        for row in range(self.pvp_database_table.rowCount()):
+            self.pvp_database_table.item(row, 0).setCheckState(
+                QtCore.Qt.CheckState.Unchecked
+            )
+
+    def _apply_pvp_batch_edit(self) -> None:
+        uids = self._checked_pvp_uids()
+        change_guild = self.pvp_batch_guild_enabled.isChecked()
+        status = self.pvp_batch_status.currentData()
+        if not uids:
+            self.pvp_database_status.setText("Marque ao menos um UID.")
+            return
+        if not change_guild and status is None:
+            self.pvp_database_status.setText("Escolha uma alteração para aplicar.")
+            return
+        knowledge = KnowledgeStore(self.knowledge_path)
+        changed = 0
+        try:
+            current = {
+                str(item["character_uid"]): item
+                for item in knowledge.characters(include_ignored=True)
+            }
+            for uid in uids:
+                row = current.get(uid)
+                if row is None:
+                    continue
+                knowledge.update_pvp_identity(
+                    uid,
+                    guild_name=(
+                        self.pvp_batch_guild.text()
+                        if change_guild else row.get("guild_name") or ""
+                    ),
+                    status=status if status is not None else row.get("pvp_status") or "neutral",
+                )
+                changed += 1
+        except ValueError as error:
+            self.pvp_database_status.setText(str(error))
+            return
+        finally:
+            knowledge.close()
+        self._render_pvp_database()
+        self.pvp_database_status.setText(
+            f"{changed} UID(s) alterado(s); envio pendente."
+        )
+
+    def _save_pvp_header_state(self) -> None:
+        state = bytes(
+            self.pvp_database_table.horizontalHeader().saveState().toBase64()
+        ).decode("ascii")
+        self.preferences = save_preferences(
+            {"pvp_database_header_state": state}, self.preferences_path
         )
 
     def _save_pvp_identity(
@@ -1683,12 +1919,34 @@ class MainWindow(QtWidgets.QMainWindow):
         finally:
             knowledge.close()
         guild.setText(str(saved.get("guild_name") or ""))
-        guild.setReadOnly(bool(saved.get("guild_name")))
         self.pvp_database_status.setText("Alteração salva; sincronização pendente.")
-        session = str(self.snapshot.get("session_id") or "")
-        if session and self.site_profile.connected:
-            self.pending_observation_session = session
-            QtCore.QTimer.singleShot(0, self._flush_observation_upload)
+        if saved.get("pvp_status") == "ignored":
+            self._render_pvp_database()
+
+    def _save_pvp_sync_interval(self, minutes: int) -> None:
+        self.preferences = save_preferences(
+            {"pvp_sync_interval_minutes": int(minutes)}, self.preferences_path
+        )
+        self.observation_sync_next_due = time.monotonic() + int(minutes) * 60
+
+    def _send_pvp_database_now(self) -> None:
+        self.pvp_database_status.setText("Enviando alterações ao site…")
+        self._maybe_sync_observations(time.monotonic(), force=True)
+
+    def _receive_pvp_database_now(self) -> None:
+        if not self.site_profile.connected:
+            self.pvp_database_status.setText(
+                "Valide o token do Profile antes de receber."
+            )
+            return
+        if self.site_busy:
+            self.pvp_database_status.setText("Aguarde a operação atual terminar.")
+            return
+        self.pvp_database_status.setText("Recebendo Banco Final do site…")
+        self._run_site_operation(
+            "observations:receive",
+            lambda: self.site_uploader.receive_observations(self.knowledge_path),
+        )
 
     def _build_settings_page(self) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget(objectName="pageConfigurações")
@@ -1956,12 +2214,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_monitor_shortcut_labels(shortcuts)
         self._sync_global_hotkeys(shortcuts)
         self.setting_storage.setText(f"Capturas: {capture_directory}\nPreferências salvas para a interface estável e para o preview.")
-        if self.site_profile.connected:
-            alert_payload = self._site_alert_preferences()
-            self._run_site_operation(
-                "alerts:save",
-                lambda: self.site_profile.save_monitor_alerts(alert_payload),
-            )
         QtWidgets.QMessageBox.information(self, "Configurações", "Configurações salvas.")
 
     def _alert_preferences(self) -> dict[str, object]:
@@ -1975,28 +2227,6 @@ class MainWindow(QtWidgets.QMainWindow):
             "low_hp": self.alert_low_hp.isChecked(),
             "low_hp_percent": self.alert_low_hp_percent.value(),
             "sound": self.alert_sound.isChecked(),
-        }
-
-    def _site_alert_preferences(self) -> dict[str, object]:
-        local = self._alert_preferences()
-        return {
-            "characters_enabled": local["characters_enabled"],
-            "characters": [
-                value.strip()
-                for value in str(local["characters"]).split(",")
-                if value.strip()
-            ],
-            "guilds_enabled": local["guilds_enabled"],
-            "guilds": [
-                value.strip()
-                for value in str(local["guilds"]).split(",")
-                if value.strip()
-            ],
-            "pvp_hit": local["pvp_hit"],
-            "boss_detected": local["boss_detected"],
-            "low_hp": local["low_hp"],
-            "low_hp_percent": local["low_hp_percent"],
-            "sound": local["sound"],
         }
 
     def _save_alert_settings(self) -> None:
@@ -2120,7 +2350,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.subsession_filter.setItemText(index + 1, self._client_name(index))
         for (_mode, index), button in self.send_buttons.items():
             if index >= 0:
-                button.setText(f"Enviar {self._client_name(index)}")
+                button.setText(f"Enviar {self._client_title(index)}")
 
     def _disconnect_site_profile(self) -> None:
         self.site_profile.disconnect()
@@ -3074,6 +3304,15 @@ class MainWindow(QtWidgets.QMainWindow):
             f"{int(collections.get(2) or 0)} pacote(s) lido(s)"
             if collections.get(2) else "Nenhum registro identificado"
         )
+        inventory_count = sum(
+            len(items)
+            for items in dict(snapshot.get("inventories") or {}).values()
+        )
+        self.send_status_labels["inventory"].setText(
+            f"{inventory_count} item(ns) lido(s)"
+            if inventory_count else "Nenhum item identificado"
+        )
+        self.send_status_labels["all"].setText("Envio completo separado por cliente")
         self._set_send_controls()
 
     def _inventory_icon(self, item_index: int) -> QtGui.QIcon:
@@ -3113,14 +3352,7 @@ class MainWindow(QtWidgets.QMainWindow):
         items = [
             item
             for item in items
-            if str(
-                item.get("category")
-                or (
-                    "equipment"
-                    if item.get("kind") == "equipment"
-                    else "other"
-                )
-            ) == category
+            if self._inventory_category(item) == category
         ]
         query = self.inventory_search.text().strip().casefold()
         if query:
@@ -3145,6 +3377,7 @@ class MainWindow(QtWidgets.QMainWindow):
             name_cell = QtWidgets.QTableWidgetItem(
                 self._inventory_icon(item_index), label
             )
+            name_cell.setData(QtCore.Qt.ItemDataRole.UserRole, item_index)
             name_cell.setToolTip(f"Item {item_index}")
             rarity = int(item.get("rarity") or 0)
             color = RARITY_COLORS.get(rarity)
@@ -3177,6 +3410,72 @@ class MainWindow(QtWidgets.QMainWindow):
             else "Aguardando o personagem deste cliente ser identificado."
         )
 
+    def _inventory_category(self, item: dict[str, object]) -> str:
+        overrides = dict(self.preferences.get("inventory_category_overrides") or {})
+        item_index = str(int(item.get("item_index") or 0))
+        category = str(overrides.get(item_index) or item.get("category") or "")
+        allowed = {key for key, _label_text in INVENTORY_CATEGORIES}
+        if category in allowed:
+            return category
+        return "equipment" if item.get("kind") == "equipment" else "other"
+
+    def _apply_inventory_category_overrides(self) -> None:
+        self._apply_inventory_overrides_to_snapshot(self.snapshot)
+
+    def _apply_inventory_overrides_to_snapshot(self, snapshot: dict) -> None:
+        for items in dict(snapshot.get("inventories") or {}).values():
+            for item in items:
+                if isinstance(item, dict):
+                    item["category"] = self._inventory_category(item)
+                    if str(item.get("item_index") or "") in dict(
+                        self.preferences.get("inventory_category_overrides") or {}
+                    ):
+                        item["category_source"] = "manual"
+
+    def _show_inventory_category_menu(self, position: QtCore.QPoint) -> None:
+        row = self.inventory_table.rowAt(position.y())
+        cell = self.inventory_table.item(row, 0) if row >= 0 else None
+        if cell is None:
+            return
+        item_index = int(cell.data(QtCore.Qt.ItemDataRole.UserRole) or 0)
+        if item_index <= 0:
+            return
+        current = next(
+            (
+                self._inventory_category(item)
+                for items in dict(self.snapshot.get("inventories") or {}).values()
+                for item in items
+                if int(item.get("item_index") or 0) == item_index
+            ),
+            "other",
+        )
+        menu = QtWidgets.QMenu(self)
+        for key, label in INVENTORY_CATEGORIES:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(key == current)
+            action.triggered.connect(
+                lambda checked=False, selected=key: self._set_inventory_category(
+                    item_index, selected
+                )
+            )
+        menu.exec(self.inventory_table.viewport().mapToGlobal(position))
+
+    def _set_inventory_category(self, item_index: int, category: str) -> None:
+        allowed = {key for key, _label_text in INVENTORY_CATEGORIES}
+        if category not in allowed:
+            return
+        overrides = dict(self.preferences.get("inventory_category_overrides") or {})
+        overrides[str(int(item_index))] = category
+        self.preferences = save_preferences(
+            {"inventory_category_overrides": overrides}, self.preferences_path
+        )
+        self._apply_inventory_category_overrides()
+        self._render_inventory()
+        self.inventory_status.setText(
+            f"Categoria do item {item_index} atualizada manualmente."
+        )
+
     def _set_send_controls(self) -> None:
         enabled = bool(
             self.site_profile.connected
@@ -3186,7 +3485,6 @@ class MainWindow(QtWidgets.QMainWindow):
         characters = [
             item for item in self.snapshot.get("characters") or [] if item.get("uid")
         ]
-        collections = dict(self.snapshot.get("collection_type_counts") or {})
         collections_by_uid = dict(
             self.snapshot.get("collection_type_counts_by_uid") or {}
         )
@@ -3196,24 +3494,29 @@ class MainWindow(QtWidgets.QMainWindow):
             if item.get("client_key") and item.get("uid")
         }
         availability = {
-            "character": bool(characters),
             "market": any(
                 int((item.get("summary") or {}).get("market_events") or 0)
                 for item in characters
             ),
-            "codex": bool(collections.get(1)),
-            "memory_chips": bool(collections.get(2)),
         }
         for (mode, _client), button in self.send_buttons.items():
-            mode_available = availability[mode]
-            if mode in {"codex", "memory_chips"}:
+            if mode == "market":
+                mode_available = availability["market"]
+            else:
                 uid = characters_by_client.get(f"client:{chr(97 + _client)}")
                 if uid is None and len(characters) == 1:
                     uid = str(characters[0]["uid"])
-                kind = 1 if mode == "codex" else 2
-                mode_available = bool(
-                    uid and dict(collections_by_uid.get(uid) or {}).get(kind)
-                )
+                if mode in {"character", "all"}:
+                    mode_available = bool(uid)
+                elif mode == "inventory":
+                    mode_available = bool(
+                        uid and dict(self.snapshot.get("inventories") or {}).get(uid)
+                    )
+                else:
+                    kind = 1 if mode == "codex" else 2
+                    mode_available = bool(
+                        uid and dict(collections_by_uid.get(uid) or {}).get(kind)
+                    )
             available = (
                 enabled
                 and mode_available
@@ -3698,7 +4001,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.send_status_labels[mode].setText(
             "Lendo e enviando Mercado geral…"
             if mode == "market"
-            else f"Lendo e enviando {self._client_name(target)}…"
+            else f"Lendo e enviando {self._client_title(target)}…"
         )
         language = str(self.preferences.get("item_name_language") or "pt")
 
@@ -3723,6 +4026,9 @@ class MainWindow(QtWidgets.QMainWindow):
             snapshot = ReadOnlySnapshotReader(
                 self.database_path, self.license_client
             ).load(language)
+            self._apply_inventory_overrides_to_snapshot(snapshot)
+            if mode == "all":
+                return self.site_uploader.send_all(target, snapshot, language)
             return self.site_uploader.send_mode(mode, target, snapshot, language)
 
         self._run_site_operation(
@@ -3830,29 +4136,40 @@ class MainWindow(QtWidgets.QMainWindow):
                     dict(result or {}), uploaded=name == "export_upload"
                 )
             QtCore.QTimer.singleShot(0, self._flush_observation_upload)
-        elif name == "observations":
+        elif name == "observations:send":
             if error is not None:
                 self.log.error(
                     "observation_upload_failed error_type=%s",
                     type(error).__name__,
                 )
+                self._render_pvp_database()
+                self.pvp_database_status.setText(f"Falha no envio: {error}")
             else:
                 data = dict(result or {})
                 self.log.info(
                     "observation_upload_completed characters=%s mobs=%s skipped=%s",
-                    data.get("characters", 0),
-                    data.get("mobs", 0),
+                    data.get("sent_characters", 0),
+                    data.get("sent_mobs", 0),
                     bool(data.get("skipped")),
                 )
+                self._render_pvp_database()
+                self.pvp_database_status.setText(
+                    f"{data.get('sent_characters', 0)} UID(s) enviado(s) ao Banco Temporário."
+                )
+        elif name == "observations:receive":
             self._render_pvp_database()
-        elif name == "alerts:save":
             if error is not None:
                 self.log.error(
-                    "monitor_alert_sync_failed error_type=%s",
+                    "observation_download_failed error_type=%s",
                     type(error).__name__,
                 )
+                self.pvp_database_status.setText(f"Falha no recebimento: {error}")
             else:
-                self.log.info("monitor_alert_sync_completed")
+                data = dict(result or {})
+                self.pvp_database_status.setText(
+                    f"Banco Final recebido · revisão {data.get('revision', 0)} · "
+                    f"{data.get('synced_characters', 0)} UID(s)."
+                )
         elif name == "auto_market":
             pending, self.pending_auto_market = self.pending_auto_market, None
             if error is not None:
@@ -4022,6 +4339,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preferences = dict(payload.get("preferences") or {})
         set_detailed(self.log, bool(self.preferences.get("detailed_logging", False)))
         self.snapshot = dict(payload.get("snapshot") or {})
+        self._apply_inventory_category_overrides()
+        if hasattr(self, "pvp_sync_interval"):
+            self.pvp_sync_interval.blockSignals(True)
+            self.pvp_sync_interval.setValue(
+                self._bounded(
+                    self.preferences.get("pvp_sync_interval_minutes"), 1, 60, 5
+                )
+            )
+            self.pvp_sync_interval.blockSignals(False)
+        if self.observation_sync_next_due <= 0:
+            self.observation_sync_next_due = (
+                time.monotonic() + self._pvp_sync_interval_seconds()
+            )
         self._reconcile_uid_selections()
         stats = dict(self.snapshot.get("stats") or {})
         self.log.debug(
@@ -4142,7 +4472,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.pending_observation_session = ""
         self._run_site_operation(
-            "observations",
+            "observations:send",
             lambda: self.site_uploader.send_observations(
                 session, self.knowledge_path
             ),
@@ -4189,6 +4519,34 @@ class MainWindow(QtWidgets.QMainWindow):
             ),
         )
 
+    def _pvp_sync_interval_seconds(self) -> int:
+        minutes = (
+            self.pvp_sync_interval.value()
+            if hasattr(self, "pvp_sync_interval")
+            else self._bounded(
+                self.preferences.get("pvp_sync_interval_minutes"), 1, 60, 5
+            )
+        )
+        return int(minutes) * 60
+
+    def _maybe_sync_observations(self, now: float, *, force: bool = False) -> None:
+        session = str(
+            self.snapshot.get("session_id") or self.last_capture_session or ""
+        )
+        if not session or not self.site_profile.connected:
+            if force and hasattr(self, "pvp_database_status"):
+                self.pvp_database_status.setText(
+                    "Valide o token do Profile e carregue uma sessão antes de sincronizar."
+                )
+            return
+        if not force and now < self.observation_sync_next_due:
+            return
+        if self.site_busy:
+            return
+        self.observation_sync_next_due = now + self._pvp_sync_interval_seconds()
+        self.pending_observation_session = session
+        self._flush_observation_upload()
+
     @QtCore.Slot(object)
     def _apply_combat_data(self, payload: dict[str, object]) -> None:
         if payload.get("session_id") == self.snapshot.get("session_id"):
@@ -4198,11 +4556,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self._render_combat()
             self._render_pvp_database()
             self._evaluate_alerts(self.snapshot["combat_monitors"])
-            now = time.monotonic()
-            if self.site_profile.connected and now >= self.observation_sync_next_due:
-                self.observation_sync_next_due = now + 300
-                self.pending_observation_session = str(payload.get("session_id") or "")
-                QtCore.QTimer.singleShot(0, self._flush_observation_upload)
         self._finish_combat_load()
 
     def _evaluate_alerts(self, monitors: list[dict[str, Any]]) -> None:
@@ -5154,9 +5507,10 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         engine = self.capture_engine
         monitor = self.monitor_engine
+        now = time.monotonic()
+        self._maybe_sync_observations(now)
         if not engine and not monitor:
             return
-        now = time.monotonic()
         if self.license_active and now - self.last_license_refresh_at >= 60:
             self._refresh_license_online()
         if engine and engine.active and now - self.last_heartbeat_at >= 15:
@@ -5495,7 +5849,11 @@ class MainWindow(QtWidgets.QMainWindow):
             if monitor
             else self._client_name(selected_index)
         )
-        target = dict(monitor.get("pvp") or {})
+        monitor_enabled = bool(
+            0 <= selected_index < len(self.monitor_client_enabled.get("pvp", []))
+            and self.monitor_client_enabled["pvp"][selected_index]
+        )
+        target = dict(monitor.get("pvp") or {}) if monitor_enabled else {}
         target_valid = not (
             not target
             or target.get("stale")
@@ -5504,7 +5862,10 @@ class MainWindow(QtWidgets.QMainWindow):
         target_uid = str(target.get("character_uid") or "") if target_valid else ""
         nearby = [
             item
-            for item in list(monitor.get("nearby_players") or [])
+            for item in (
+                list(monitor.get("nearby_players") or [])
+                if monitor_enabled else []
+            )
             if str(item.get("character_uid") or "") != target_uid
             and not item.get("stale")
             and float(item.get("age_seconds") or 0) <= 3
@@ -5534,7 +5895,11 @@ class MainWindow(QtWidgets.QMainWindow):
             values = groups[key]
             summary.setText(
                 f"{titles[key]} · {origin}"
-                + ("" if values else " · Nenhum")
+                + (
+                    " · Monitor desligado"
+                    if not monitor_enabled
+                    else "" if values else " · Nenhum"
+                )
             )
             for player in values[:10]:
                 row = QtWidgets.QFrame(objectName="secondaryMetricGroup")

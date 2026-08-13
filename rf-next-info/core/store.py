@@ -1643,6 +1643,9 @@ class CaptureStore:
         observed_at: int | None = None
 
         def item_key(kind: str, item: dict[str, Any]) -> tuple[str, str]:
+            item_uid = str(item.get("item_uid_hex") or "").strip().casefold()
+            if item_uid and item_uid != "000000000000":
+                return kind, f"uid:{item_uid}"
             return kind, f"slot:{int(item.get('inventory_slot') or 0)}"
 
         for ts_ns, event_type, raw in rows:
@@ -1775,6 +1778,8 @@ class CaptureStore:
         """Eventos confirmados e recentes para os monitores PvE/PvP."""
         kinds = (
             "appear_player_list",
+            "enemy_guild_list",
+            "amity_guild_list",
             "appear_monster_list",
             "restore_hp_fp",
             "dying_unit",
@@ -1800,7 +1805,10 @@ class CaptureStore:
         recent = [row for row in rows if int(row[1] or 0) >= cutoff]
         appearances = [
             row for row in rows
-            if row[2] in {"appear_player_list", "appear_monster_list"}
+            if row[2] in {
+                "appear_player_list", "appear_monster_list",
+                "enemy_guild_list", "amity_guild_list",
+            }
         ]
 
         def contains_local(row: tuple[Any, ...]) -> bool:

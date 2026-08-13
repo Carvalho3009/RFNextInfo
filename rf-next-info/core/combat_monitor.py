@@ -21,6 +21,7 @@ def summarize_combat(
     ordered = sorted(events, key=lambda event: (event.get("ts_ns") or 0))
     players: dict[int, dict[str, Any]] = {}
     monsters: dict[int, dict[str, Any]] = {}
+    guild_relations: dict[str, tuple[str, str]] = {}
     local_uid: int | None = None
     npc_names = npc_names or {}
     boss_catalog = boss_catalog or {}
@@ -34,13 +35,29 @@ def summarize_combat(
         data = event.get("data") or {}
         timestamp = int(event.get("ts_ns") or 0)
         kind = event.get("type")
-        if kind == "appear_player_list":
+        if kind in {"enemy_guild_list", "amity_guild_list"}:
+            status = "enemy" if kind == "enemy_guild_list" else "ally"
+            for guild in data.get("guilds") or []:
+                guild_id = str(guild.get("guild_id") or "")
+                if not guild_id:
+                    continue
+                guild_name = str(guild.get("guild_name") or "")
+                guild_relations[guild_id] = (guild_name, status)
+                for player in players.values():
+                    if str(player.get("guild_id") or "") == guild_id:
+                        player.update(guild_name=guild_name, pvp_status=status)
+        elif kind == "appear_player_list":
             for unit in data.get("units") or []:
                 uid = _integer(unit.get("uid"))
                 if uid is None:
                     continue
                 monsters.pop(uid, None)
                 players[uid] = _entity("player", unit, timestamp)
+                relation = guild_relations.get(str(unit.get("guild_id") or ""))
+                if relation:
+                    players[uid].update(
+                        guild_name=relation[0], pvp_status=relation[1]
+                    )
                 _record_hp(hp_history, uid, timestamp, players[uid].get("current_hp"))
                 if str(unit.get("character_uid")) == str(character_uid):
                     local_uid = uid
@@ -304,6 +321,7 @@ def _entity(kind: str, unit: dict[str, Any], timestamp: int) -> dict[str, Any]:
         "realm": _integer(unit.get("realm_raw", unit.get("realm"))),
         "guild_id": unit.get("guild_id"),
         "guild_name": str(unit.get("guild_name") or ""),
+        "pvp_status": str(unit.get("pvp_status") or "neutral"),
         "group_id": unit.get("group_id") or unit.get("party_id"),
         "max_hp": _integer(unit.get("max_hp")),
         "current_hp": _integer(unit.get("current_hp")),

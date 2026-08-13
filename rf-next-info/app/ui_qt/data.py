@@ -207,8 +207,6 @@ class ReadOnlySnapshotReader:
         }
         for index, ports in enumerate(client_ports[:7]):
             key = f"client:{chr(97 + index)}"
-            if key in identities:
-                continue
             routed = [event for event in events if _event_matches_ports(event, ports)]
             for event in reversed(routed):
                 if event.get("type") != "world_info_prefix":

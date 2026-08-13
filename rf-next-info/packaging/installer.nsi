@@ -6,7 +6,7 @@ RequestExecutionLevel admin
 !endif
 Name "RF QOL"
 !ifndef APP_VERSION
-!define APP_VERSION "1.0.0"
+!define APP_VERSION "1.0.4"
 !endif
 !ifndef APP_SOURCE
 !define APP_SOURCE "..\dist\RF QOL"

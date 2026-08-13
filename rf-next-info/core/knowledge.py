@@ -14,7 +14,7 @@ from typing import Any, Iterable
 
 PROTOCOL_VERSION = "1.28.5"
 SENSITIVE_OPCODE = 0x0101
-PVP_STATUSES = {"ally", "enemy", "neutral"}
+PVP_STATUSES = {"ally", "enemy", "neutral", "ignored"}
 
 
 def _now() -> str:
@@ -82,6 +82,7 @@ class KnowledgeStore:
             "guild_source": "TEXT NOT NULL DEFAULT ''",
             "guild_updated_at": "TEXT NOT NULL DEFAULT ''",
             "pvp_status": "TEXT NOT NULL DEFAULT 'neutral'",
+            "pvp_status_source": "TEXT NOT NULL DEFAULT ''",
             "pvp_status_updated_at": "TEXT NOT NULL DEFAULT ''",
         }
         for name, definition in additions.items():
@@ -95,6 +96,10 @@ class KnowledgeStore:
                  guild_updated_at=CASE WHEN guild_name!='' THEN last_seen_at ELSE '' END,
                  pvp_status_updated_at=first_seen_at
                WHERE pvp_status_updated_at=''"""
+        )
+        self.conn.execute(
+            """UPDATE character_observations SET pvp_status_source='manual'
+               WHERE pvp_status_source='' AND pvp_status!='neutral'"""
         )
         self.conn.commit()
 
@@ -115,8 +120,18 @@ class KnowledgeStore:
             _text(item.get("guild_name"), 80),
             "observed" if _text(item.get("guild_name"), 80) else "",
             seen_at if _text(item.get("guild_name"), 80) else "",
-            PROTOCOL_VERSION,
+            (
+                _text(item.get("pvp_status"), 12).casefold()
+                if _text(item.get("pvp_status"), 12).casefold() in {"ally", "enemy"}
+                else "neutral"
+            ),
+            (
+                "observed"
+                if _text(item.get("pvp_status"), 12).casefold() in {"ally", "enemy"}
+                else ""
+            ),
             seen_at,
+            PROTOCOL_VERSION,
             seen_at,
             seen_at,
         )
@@ -124,32 +139,67 @@ class KnowledgeStore:
             """INSERT INTO character_observations
                (character_uid,name,level,biosuit_item_index,rover_item_index,
                 guild_id,guild_name,guild_source,guild_updated_at,
-                protocol_version,first_seen_at,last_seen_at,pvp_status_updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                pvp_status,pvp_status_source,pvp_status_updated_at,
+                protocol_version,first_seen_at,last_seen_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(character_uid) DO UPDATE SET
                  name=CASE WHEN excluded.name!='' THEN excluded.name ELSE name END,
                  level=COALESCE(excluded.level,level),
                  biosuit_item_index=COALESCE(excluded.biosuit_item_index,biosuit_item_index),
                  rover_item_index=COALESCE(excluded.rover_item_index,rover_item_index),
                  guild_id=COALESCE(excluded.guild_id,guild_id),
-                 guild_name=CASE WHEN excluded.guild_name!='' THEN excluded.guild_name ELSE guild_name END,
-                 guild_source=CASE WHEN excluded.guild_name!='' THEN 'observed' ELSE guild_source END,
-                 guild_updated_at=CASE WHEN excluded.guild_name!='' THEN excluded.guild_updated_at ELSE guild_updated_at END,
+                 guild_name=CASE WHEN guild_source!='manual' AND excluded.guild_name!='' THEN excluded.guild_name ELSE guild_name END,
+                 guild_source=CASE WHEN guild_source!='manual' AND excluded.guild_name!='' THEN 'observed' ELSE guild_source END,
+                 guild_updated_at=CASE WHEN guild_source!='manual' AND excluded.guild_name!='' THEN excluded.guild_updated_at ELSE guild_updated_at END,
+                 pvp_status=CASE WHEN pvp_status_source!='manual' AND excluded.pvp_status_source='observed' THEN excluded.pvp_status ELSE pvp_status END,
+                 pvp_status_source=CASE WHEN pvp_status_source!='manual' AND excluded.pvp_status_source='observed' THEN 'observed' ELSE pvp_status_source END,
+                 pvp_status_updated_at=CASE WHEN pvp_status_source!='manual' AND excluded.pvp_status_source='observed' THEN excluded.pvp_status_updated_at ELSE pvp_status_updated_at END,
                  last_seen_at=excluded.last_seen_at,upload_state='pending'""",
             values,
         )
         return True
 
+    def _guild_relation(self, data: dict[str, Any], seen_at: str) -> None:
+        relation = str(data.get("relation") or "")
+        status = "enemy" if relation == "enemy" else "ally" if relation == "amity" else ""
+        if not status:
+            return
+        for guild in data.get("guilds") or []:
+            if not isinstance(guild, dict):
+                continue
+            guild_id = str(_integer(guild.get("guild_id")) or "")
+            if not guild_id:
+                continue
+            guild_name = _text(guild.get("guild_name"), 80)
+            self.conn.execute(
+                """UPDATE character_observations SET
+                     guild_name=CASE WHEN guild_source!='manual' AND ?!='' THEN ? ELSE guild_name END,
+                     guild_source=CASE WHEN guild_source!='manual' AND ?!='' THEN 'observed' ELSE guild_source END,
+                     guild_updated_at=CASE WHEN guild_source!='manual' AND ?!='' THEN ? ELSE guild_updated_at END,
+                     pvp_status=CASE WHEN pvp_status_source!='manual' THEN ? ELSE pvp_status END,
+                     pvp_status_source=CASE WHEN pvp_status_source!='manual' THEN 'observed' ELSE pvp_status_source END,
+                     pvp_status_updated_at=CASE WHEN pvp_status_source!='manual' THEN ? ELSE pvp_status_updated_at END,
+                     upload_state='pending'
+                   WHERE guild_id=?""",
+                (
+                    guild_name, guild_name,
+                    guild_name,
+                    guild_name, seen_at,
+                    status, seen_at, guild_id,
+                ),
+            )
+
     def _mob(self, item: dict[str, Any], seen_at: str, location: str) -> bool:
         npc = _integer(item.get("npc_index"))
         if npc is None or npc <= 0:
             return False
+        max_hp = _integer(item.get("max_hp"))
         values = (
             npc,
             PROTOCOL_VERSION,
             _text(item.get("name"), 100),
             _integer(item.get("level")),
-            _integer(item.get("max_hp")),
+            max_hp if max_hp and max_hp > 0 else None,
             _text(location or item.get("location"), 160),
             seen_at,
             seen_at,
@@ -172,6 +222,7 @@ class KnowledgeStore:
         self, events: Iterable[dict[str, Any]], *, location: str = ""
     ) -> dict[str, int]:
         characters = mobs = 0
+        guild_relations: dict[str, tuple[str, str]] = {}
         seen_at = _now()
         for event in events:
             if _integer(event.get("opcode")) == SENSITIVE_OPCODE:
@@ -179,7 +230,15 @@ class KnowledgeStore:
             data = event.get("data") if isinstance(event.get("data"), dict) else event
             fields = data.get("fields") if isinstance(data.get("fields"), dict) else data
             kind = str(event.get("type") or data.get("type") or "")
-            if kind in {"character_list", "ans_all_character_infos"}:
+            if kind in {"enemy_guild_list", "amity_guild_list"}:
+                self._guild_relation(data, seen_at)
+                status = "enemy" if kind == "enemy_guild_list" else "ally"
+                for guild in data.get("guilds") or []:
+                    if isinstance(guild, dict) and _integer(guild.get("guild_id")):
+                        guild_relations[str(_integer(guild.get("guild_id")))] = (
+                            _text(guild.get("guild_name"), 80), status
+                        )
+            elif kind in {"character_list", "ans_all_character_infos"}:
                 for item in fields.get("characters") or []:
                     if isinstance(item, dict) and self._character(item, seen_at):
                         characters += 1
@@ -188,7 +247,16 @@ class KnowledgeStore:
                     characters += 1
             elif kind == "appear_player_list":
                 for item in fields.get("units") or []:
-                    if isinstance(item, dict) and self._character(item, seen_at):
+                    if not isinstance(item, dict):
+                        continue
+                    relation = guild_relations.get(str(_integer(item.get("guild_id")) or ""))
+                    if relation:
+                        item = {
+                            **item,
+                            "guild_name": relation[0],
+                            "pvp_status": relation[1],
+                        }
+                    if self._character(item, seen_at):
                         characters += 1
             elif kind == "appear_monster_list":
                 for item in fields.get("units") or []:
@@ -219,14 +287,24 @@ class KnowledgeStore:
         characters = [dict(row) for row in self.conn.execute(
             """SELECT character_uid,name,level,biosuit_item_index,rover_item_index,
                       guild_id,guild_name,guild_source,guild_updated_at,
-                      pvp_status,pvp_status_updated_at,
+                      pvp_status,pvp_status_source,pvp_status_updated_at,
                       protocol_version,first_seen_at,last_seen_at
                FROM character_observations WHERE upload_state='pending'
                ORDER BY last_seen_at LIMIT ?""",
             (limit,),
         )]
+        for item in characters:
+            item["guild_presence_known"] = (
+                item.get("guild_source") in {"manual", "observed"}
+                or bool(item.get("guild_name"))
+            )
+            item["pvp_status_presence_known"] = (
+                item.get("pvp_status_source") in {"manual", "observed"}
+            )
         mobs = [dict(row) for row in self.conn.execute(
-            """SELECT npc_index,name,level,max_hp,location,protocol_version,
+            """SELECT npc_index,name,level,
+                      CASE WHEN max_hp>0 THEN max_hp END AS max_hp,
+                      location,protocol_version,
                       first_seen_at,last_seen_at
                FROM mob_observations WHERE upload_state='pending'
                ORDER BY last_seen_at LIMIT ?""",
@@ -234,14 +312,16 @@ class KnowledgeStore:
         )]
         return {"schema_version": 2, "characters": characters, "mobs": mobs}
 
-    def characters(self) -> list[dict[str, Any]]:
+    def characters(self, *, include_ignored: bool = False) -> list[dict[str, Any]]:
+        where = "" if include_ignored else "WHERE pvp_status!='ignored'"
         return [
             dict(row)
             for row in self.conn.execute(
-                """SELECT character_uid,name,guild_name,guild_source,pvp_status,
-                          last_seen_at,upload_state
-                   FROM character_observations
-                   ORDER BY name COLLATE NOCASE,character_uid"""
+                f"""SELECT character_uid,name,biosuit_item_index,rover_item_index,
+                           guild_name,guild_source,pvp_status,pvp_status_source,
+                           last_seen_at,upload_state
+                    FROM character_observations {where}
+                    ORDER BY name COLLATE NOCASE,character_uid"""
             )
         ]
 
@@ -254,27 +334,40 @@ class KnowledgeStore:
         if not uid or normalized_status not in PVP_STATUSES:
             raise ValueError("UID ou status PvP inválido.")
         current = self.conn.execute(
-            """SELECT guild_name,guild_source FROM character_observations
+            """SELECT guild_name,guild_source,pvp_status FROM character_observations
                WHERE character_uid=?""",
             (uid,),
         ).fetchone()
         if current is None:
             raise ValueError("UID ainda não foi observado.")
-        if guild and current["guild_name"] and current["guild_source"] != "manual":
-            guild = str(current["guild_name"])
+        guild_changed = guild != str(current["guild_name"] or "")
+        status_changed = normalized_status != str(current["pvp_status"] or "neutral")
+        if not guild_changed and not status_changed:
+            return dict(
+                self.conn.execute(
+                    "SELECT * FROM character_observations WHERE character_uid=?",
+                    (uid,),
+                ).fetchone()
+            )
         updated_at = _now()
         self.conn.execute(
             """UPDATE character_observations SET
-                 guild_name=CASE WHEN ?!='' THEN ? ELSE guild_name END,
-                 guild_source=CASE WHEN ?!='' AND guild_source!='observed'
-                                   THEN 'manual' ELSE guild_source END,
-                 guild_updated_at=CASE WHEN ?!='' AND guild_source!='observed'
-                                       THEN ? ELSE guild_updated_at END,
-                 pvp_status=?,pvp_status_updated_at=?,upload_state='pending'
+                 guild_name=CASE WHEN ? THEN ? ELSE guild_name END,
+                 guild_source=CASE WHEN ? THEN 'manual' ELSE guild_source END,
+                 guild_updated_at=CASE WHEN ? THEN ? ELSE guild_updated_at END,
+                 pvp_status=CASE WHEN ? THEN ? ELSE pvp_status END,
+                 pvp_status_source=CASE WHEN ? THEN 'manual' ELSE pvp_status_source END,
+                 pvp_status_updated_at=CASE WHEN ? THEN ? ELSE pvp_status_updated_at END,
+                 upload_state='pending'
                WHERE character_uid=?""",
             (
-                guild, guild, guild, guild, updated_at,
-                normalized_status, updated_at, uid,
+                guild_changed, guild,
+                guild_changed,
+                guild_changed, updated_at,
+                status_changed, normalized_status,
+                status_changed,
+                status_changed, updated_at,
+                uid,
             ),
         )
         self.conn.commit()
@@ -312,6 +405,14 @@ class KnowledgeStore:
             last_seen = _text(item.get("last_seen_at"), 40)
             if uid is None or uid <= 0 or not first_seen or not last_seen:
                 continue
+            status = _text(item.get("pvp_status"), 12).casefold() or "neutral"
+            if status not in PVP_STATUSES:
+                continue
+            status_source = _text(item.get("pvp_status_source"), 12).casefold()
+            if status_source not in {"", "manual", "observed"}:
+                continue
+            if not status_source and status != "neutral":
+                status_source = "manual"
             values = (
                 str(uid),
                 _text(item.get("name"), 80),
@@ -322,7 +423,8 @@ class KnowledgeStore:
                 _text(item.get("guild_name"), 80),
                 _text(item.get("guild_source"), 12),
                 _text(item.get("guild_updated_at"), 40),
-                _text(item.get("pvp_status"), 12).casefold() or "neutral",
+                status,
+                status_source,
                 _text(item.get("pvp_status_updated_at"), 40) or first_seen,
                 _text(item.get("protocol_version"), 20) or PROTOCOL_VERSION,
                 first_seen,
@@ -332,31 +434,22 @@ class KnowledgeStore:
                 """INSERT INTO character_observations
                    (character_uid,name,level,biosuit_item_index,rover_item_index,
                     guild_id,guild_name,guild_source,guild_updated_at,
-                    pvp_status,pvp_status_updated_at,
+                    pvp_status,pvp_status_source,pvp_status_updated_at,
                     protocol_version,first_seen_at,last_seen_at,
                     upload_state)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'sent')
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'sent')
                    ON CONFLICT(character_uid) DO UPDATE SET
-                     name=CASE WHEN excluded.last_seen_at>=last_seen_at AND excluded.name!='' THEN excluded.name ELSE name END,
-                     level=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.level,level) ELSE level END,
-                     biosuit_item_index=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.biosuit_item_index,biosuit_item_index) ELSE biosuit_item_index END,
-                     rover_item_index=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.rover_item_index,rover_item_index) ELSE rover_item_index END,
-                     guild_id=CASE WHEN excluded.last_seen_at>=last_seen_at THEN COALESCE(excluded.guild_id,guild_id) ELSE guild_id END,
-                     guild_name=CASE
-                       WHEN excluded.guild_name='' THEN guild_name
-                       WHEN excluded.guild_source='observed' THEN excluded.guild_name
-                       WHEN guild_source='observed' THEN guild_name
-                       WHEN excluded.guild_updated_at>=guild_updated_at THEN excluded.guild_name
-                       ELSE guild_name END,
-                     guild_source=CASE
-                       WHEN excluded.guild_name='' THEN guild_source
-                       WHEN excluded.guild_source='observed' THEN 'observed'
-                       WHEN guild_source='observed' THEN guild_source
-                       WHEN excluded.guild_updated_at>=guild_updated_at THEN excluded.guild_source
-                       ELSE guild_source END,
-                     guild_updated_at=MAX(guild_updated_at,excluded.guild_updated_at),
-                     pvp_status=CASE WHEN excluded.pvp_status_updated_at>=pvp_status_updated_at THEN excluded.pvp_status ELSE pvp_status END,
-                     pvp_status_updated_at=MAX(pvp_status_updated_at,excluded.pvp_status_updated_at),
+                     name=excluded.name,
+                     level=excluded.level,
+                     biosuit_item_index=excluded.biosuit_item_index,
+                     rover_item_index=excluded.rover_item_index,
+                     guild_id=excluded.guild_id,
+                     guild_name=excluded.guild_name,
+                     guild_source=excluded.guild_source,
+                     guild_updated_at=excluded.guild_updated_at,
+                     pvp_status=excluded.pvp_status,
+                     pvp_status_source=excluded.pvp_status_source,
+                     pvp_status_updated_at=excluded.pvp_status_updated_at,
                      protocol_version=CASE WHEN excluded.last_seen_at>=last_seen_at THEN excluded.protocol_version ELSE protocol_version END,
                      first_seen_at=MIN(first_seen_at,excluded.first_seen_at),
                      last_seen_at=MAX(last_seen_at,excluded.last_seen_at),
@@ -372,7 +465,7 @@ class KnowledgeStore:
             str(row["character_uid"]): dict(row)
             for row in self.conn.execute(
                 """SELECT character_uid,name,level,biosuit_item_index,rover_item_index,
-                          guild_id,guild_name,pvp_status
+                          guild_id,guild_name,guild_source,pvp_status,pvp_status_source
                    FROM character_observations"""
             )
         }
@@ -399,8 +492,15 @@ class KnowledgeStore:
                     if item.get(field) in (None, "") and identity.get(field) not in (None, ""):
                         item[field] = identity[field]
                         changed = True
-                if identity.get("pvp_status") in PVP_STATUSES and (
+                if (
+                    identity.get("pvp_status") in PVP_STATUSES
+                    and (
+                        identity.get("pvp_status_source") == "manual"
+                        or item.get("pvp_status") not in {"ally", "enemy"}
+                    )
+                    and (
                     item.get("pvp_status") != identity["pvp_status"]
+                    )
                 ):
                     item["pvp_status"] = identity["pvp_status"]
                     changed = True

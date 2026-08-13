@@ -10,6 +10,9 @@ from pathlib import Path
 from .protected_state import protect, unprotect
 
 
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+
+
 class SiteProfileClient:
     def __init__(
         self,
@@ -108,6 +111,7 @@ class SiteProfileClient:
             "market",
             "codex",
             "memory_chips",
+            "inventory",
             "subsession",
         }:
             raise ValueError("Tipo de envio inválido")
@@ -168,41 +172,46 @@ class SiteProfileClient:
             idempotency_key,
         )
 
-    def save_monitor_alerts(self, payload: dict) -> dict:
+    def download_observations(self) -> dict:
         if not self.connected:
-            raise ValueError("Conecte o token do Profile antes de salvar alertas")
+            raise ValueError("Conecte o token do Profile antes de receber")
         return self._request(
-            "/api/monitor-alerts",
-            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(),
+            "/api/pvp-sync/final",
+            None,
             self.state["token"],
-            "application/json",
+            "",
+            method="GET",
         )
 
     def _request(
         self,
         route: str,
-        body: bytes,
+        body: bytes | None,
         token: str,
         content_type: str,
         idempotency_key: str = "",
+        method: str = "POST",
     ) -> dict:
         headers = {
             "Accept": "application/json",
             "Authorization": f"Bearer {token}",
-            "Content-Type": content_type,
             "User-Agent": self.user_agent,
         }
+        if content_type:
+            headers["Content-Type"] = content_type
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
         request = urllib.request.Request(
             self.server + route,
             data=body,
             headers=headers,
-            method="POST",
+            method=method,
         )
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
-                payload = response.read(64 * 1024)
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(payload) > MAX_RESPONSE_BYTES:
+                    raise ValueError("A resposta do site excedeu o limite seguro")
                 try:
                     result = json.loads(payload)
                 except (TypeError, ValueError):
@@ -219,11 +228,11 @@ class SiteProfileClient:
                 detail = response.get("error") or response.get("detail") or ""
             except (OSError, ValueError, AttributeError):
                 detail = ""
-            raise ValueError(detail or f"Envio recusado (HTTP {error.code})") from None
+            raise ValueError(detail or f"Operação recusada (HTTP {error.code})") from None
         except urllib.error.URLError as error:
             raise ValueError("Não foi possível alcançar o site") from error
         except TimeoutError:
             raise ValueError(
-                "O site não confirmou o envio em 20 segundos. "
-                "Os dados podem ter sido recebidos; aguarde antes de reenviar."
+                "O site não confirmou a operação em 20 segundos. "
+                "Se era um envio, os dados podem ter sido recebidos; aguarde antes de reenviar."
             ) from None

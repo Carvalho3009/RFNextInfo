@@ -136,7 +136,7 @@ Roadmap:
 
 Nome final do produto: `RF QOL`.
 Executável final: `RF QOL.exe`.
-Instalador final: `RF QOL Setup 1.0.0.exe`.
+Instalador atual: `RF QOL Setup 1.0.4.exe`.
 Domínio, suporte e empresa exibida: Karvalho.
 Assinatura de código do Windows: não utilizada por decisão do owner.
 Logo: Karvalho.
