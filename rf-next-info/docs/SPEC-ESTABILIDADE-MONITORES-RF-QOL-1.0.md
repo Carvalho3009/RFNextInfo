@@ -45,3 +45,12 @@ Estado: aprovado para implementação local pelo owner
 - publicação somente na branch órfã `download/rf-qol-1.0.5`, sem GitHub
   Release;
 - validação obrigatória do instalador local e do arquivo baixado novamente.
+
+## Resultado do empacotamento
+
+- fonte limpa: `5a702b157eb6873f56117bd0ae5030ae49bd5385`;
+- instalador: `RF QOL Setup 1.0.5.exe`, 48.361.534 bytes;
+- SHA-256: `1483BD3CD800740F3977F4AFE29B3828BC8A55B42E0299C966510FCC771E168F`;
+- assinatura: `NotSigned`;
+- publicação: branch órfã `download/rf-qol-1.0.5`, commit `bd1ac85`,
+  reconferida pela URL pública.

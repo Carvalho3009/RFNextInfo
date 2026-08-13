@@ -84,6 +84,7 @@ sem publicação do instalador
 | 12 ago 2026 | Build 1.0.3 | Versão/sequência avançadas para `1.0.3/4`. As caixas de seleção, edição em lote de status e correção do recebimento foram empacotadas. 242 testes, autoteste empacotado e ensaio isolado instalar/autotestar/desinstalar passaram. Instalador `RF QOL Setup 1.0.3.exe`, 48.349.279 bytes, SHA-256 `5A5DABE679E1DC1EC372D73EB48349BF0F7E0EF5E1C51C20600518B4D4F488E3`, `NotSigned`. Branch órfã `download/rf-qol-1.0.3`, commit `c8f1536d0a6376fe5a209f6ec8bbac8e4a7f98b3`; download público reconferido byte a byte. | Publicado somente como link direto; sem GitHub Release e sem instalação local; árvore-fonte ainda não consolidada em commit |
 | 12 ago 2026 | Hotfix Banco PvP | O pacote da aba Banco PvP continha 30 mobs legados com `max_hp=0`, e o contrato do site rejeitava todo o lote. O cliente foi restringido a enviar somente personagens nessa ação e passou a serializar HP desconhecido como `null`. Para recuperar imediatamente o instalador 1.0.3, o servidor passou a tratar apenas `0`/`"0"` como desconhecido. Backup SQLite íntegro `B4DC177D...D3E3E`; somente `rfnext` foi recriado na imagem `20e07384...52d90c`. Autoteste implantado, banco íntegro, API `401`, Authentik `302` e 243 testes do programa aprovados. Às 19:00:39, o cliente instalado confirmou `observation_upload_completed characters=1551`. | Compatibilidade ativa e envio real concluído; correção definitiva do cliente pronta localmente, ainda sem novo instalador |
 | 13 ago 2026 | Build 1.0.4 | Versão/sequência avançadas para `1.0.4/5`. A correção definitiva do Banco PvP, inventário/envios e o ciclo de vida do Monitor PvP foram consolidados no commit-fonte limpo `10ce3906a12720d59dc8d19d235fb5ed1c877390`. 245 testes passaram em 272,671 s; configuração de confiança, autoteste empacotado e ensaio isolado instalar/autotestar/desinstalar foram aprovados. Instalador `RF QOL Setup 1.0.4.exe`, 48.359.711 bytes, SHA-256 `3D6E17FE07BB4308F25D787CC3EAB9AAB6E57B4AD3BEC595F67142ECA1459371`, `NotSigned`. Branch órfã `download/rf-qol-1.0.4`, commit `a289387dfefe89f3a0bb6687e9a6c4a08a4b16eb`; download público reconferido byte a byte. | Publicado somente como link direto; sem GitHub Release e sem instalação local |
+| 13 ago 2026 | Build 1.0.5 | Versão/sequência avançadas para `1.0.5/6`. As correções da auditoria dos monitores, modos de foco e o intervalo PvP de 0,5 s foram construídos do commit-fonte limpo `5a702b157eb6873f56117bd0ae5030ae49bd5385`. 256 testes passaram em 374,853 s; configuração de confiança, autoteste empacotado e ensaio isolado instalar/autotestar/desinstalar foram aprovados. Instalador `RF QOL Setup 1.0.5.exe`, 48.361.534 bytes, SHA-256 `1483BD3CD800740F3977F4AFE29B3828BC8A55B42E0299C966510FCC771E168F`, `NotSigned`. Branch órfã `download/rf-qol-1.0.5`, commit `bd1ac85`; o download público foi reconferido byte a byte. | Publicado somente como link direto; sem GitHub Release e sem instalação local |
 | 10 ago 2026 | Licença/Produção | O emissor `7a1e199` foi promovido após backup e staging. As 20 licenças existentes migraram para 2 PC + 1 emulador; lease descartável 2+5 passou pela superfície pública e pelo cliente antes de ser revogada. | Produção concluída |
 | 10 ago 2026 | Captura/Rotas | A abertura do BlueStacks durante uma captura não invalida mais os clientes PC quando suas conexões ficam momentaneamente ausentes. A troca real de PID da mesma família continua bloqueando a herança automática de identidade. | Concluído local; instalação atual não substituída |
 
@@ -321,3 +322,15 @@ dados reais permanecem intactos.
 - Validação local: 256 testes aprovados em 357,242 s, além dos quatro testes
   diretamente afetados, `compileall`, `pip check` e `git diff --check`.
 - A etapa não altera decoder, licença, servidor, instalador ou publicação.
+
+## Instalador 1.0.5 — 13 ago 2026
+
+- O owner autorizou gerar e publicar o instalador completo após a validação
+  local das correções dos monitores.
+- O candidato foi construído de fonte limpa, permaneceu em modo de atualização
+  manual e não gerou manifestos de update ou rollback automático.
+- O ensaio isolado confirmou instalação, autoteste pós-instalação,
+  desinstalação e remoção do executável instalado.
+- A branch pública contém somente instalador, checksum, termos, procedência,
+  SBOM, lock, resultado do ensaio e README; nenhuma GitHub Release foi criada.
+- Link validado: `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.5/RF%20QOL%20Setup%201.0.5.exe`.
