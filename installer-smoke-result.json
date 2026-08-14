@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "tested_at_utc": "2026-08-14T01:33:57.2651657Z",
+  "installer_sha256": "9BD42D2EA201BA57BD5B9FC930A51A4BFF46B74C9F3A00A4BDAB020150C33AF1",
+  "compiler": "v3.12",
+  "compiler_sha256": "B043E554AFEFBFC56315669D0B4779793AEAE67F0F2A7A790E2EA91F05298EFF",
+  "authenticode_status": "NotSigned",
+  "installed_executable_removed": true
+}
