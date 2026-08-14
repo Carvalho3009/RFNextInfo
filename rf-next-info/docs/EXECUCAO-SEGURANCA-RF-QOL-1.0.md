@@ -334,3 +334,13 @@ dados reais permanecem intactos.
 - A branch pública contém somente instalador, checksum, termos, procedência,
   SBOM, lock, resultado do ensaio e README; nenhuma GitHub Release foi criada.
 - Link validado: `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.5/RF%20QOL%20Setup%201.0.5.exe`.
+
+## Correção local pós-1.0.5 — 13 ago 2026
+
+- O alvo atual voltou ao topo do Monitor PvP, antes de jogadores próximos.
+- A aba e os overlays agora recalculam a expiração dos jogadores próximos pelo
+  relógio local uma vez por segundo, mesmo quando nenhum pacote novo chega.
+- A retenção aprovada de até quinze segundos foi preservada.
+- Validação: quatro testes diretamente afetados e a suíte integral de 258
+  testes passaram; `compileall`, `pip check` e `git diff --check` aprovados.
+- Estado: correção somente local; nenhum novo instalador ou publicação.

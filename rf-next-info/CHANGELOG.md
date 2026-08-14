@@ -1,5 +1,11 @@
 # Changelog
 
+## Próxima correção
+
+- Mantém o alvo atual no topo do Monitor PvP, antes de jogadores próximos.
+- Remove jogadores hostis vencidos da aba e do overlay pelo relógio da
+  interface, mesmo quando nenhum pacote novo chega.
+
 ## 1.0.5 — instalação manual
 
 - Permite configurar o Monitor PvP entre 0,5 e 60 segundos, com padrão de

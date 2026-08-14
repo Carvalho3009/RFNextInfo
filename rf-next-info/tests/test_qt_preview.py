@@ -1005,6 +1005,75 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertIn("Alvo B", widgets["target"].text())
         window.close()
 
+    def test_pvp_target_is_above_nearby_players(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["pvp-target-order-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        widgets = window.combat_widgets["pvp"][0]
+        layout = window.combat_page_layouts["pvp"]["cards"][0].layout()
+
+        self.assertLess(
+            layout.indexOf(widgets["target"]),
+            layout.indexOf(widgets["nearby_empty"].parentWidget()),
+        )
+        window.close()
+
+    def test_pvp_hostiles_expire_without_new_packets(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["pvp-hostile-expiry-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window.license_client.require = mock.Mock(return_value={"active": True})
+        window._apply_license({
+            "active": True,
+            "message": "Licença válida",
+            "features": ["base", "monitor-pvp"],
+            "connection_limits": {"pc": 2, "emulators": 1},
+        })
+        observed_at = time.time_ns()
+        window.monitor_client_enabled["pvp"][0] = True
+        window.monitor_enabled["pvp"] = True
+        window.snapshot = {"combat_monitors": [{
+            "client_key": "client:a",
+            "character_name": "Leitor",
+            "pvp": {},
+            "nearby_players": [{
+                "character_uid": "2",
+                "name": "Hostil antigo",
+                "pvp_status": "enemy",
+                "last_seen_ns": observed_at,
+                "age_seconds": 0.0,
+                "stale": False,
+            }],
+        }]}
+        window._render_combat()
+        window._toggle_pvp_overlay(True, "hostile")
+        self.assertEqual(window.pvp_overlays["hostile"].rows.count(), 1)
+        self.assertEqual(
+            window.combat_widgets["pvp"][0]["nearby_layout"].count(), 1
+        )
+
+        window.pvp_nearby_next_due = 0.0
+        with mock.patch(
+            "app.ui_qt.main.time.time_ns",
+            return_value=observed_at + 16_000_000_000,
+        ):
+            window._capture_tick()
+
+        self.assertEqual(window.pvp_overlays["hostile"].rows.count(), 0)
+        self.assertEqual(
+            window.combat_widgets["pvp"][0]["nearby_layout"].count(), 0
+        )
+        self.assertEqual(
+            window.combat_widgets["pvp"][0]["nearby_empty"].text(),
+            "Nenhum registro recente.",
+        )
+        window._toggle_pvp_overlay(False, "hostile")
+        window.close()
+
     def test_monitor_page_requests_checkpoint_preview_without_rotation(self):
         from app.ui_qt.main import MainWindow, create_application
 

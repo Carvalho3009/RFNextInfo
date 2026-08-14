@@ -54,3 +54,11 @@ Estado: aprovado para implementação local pelo owner
 - assinatura: `NotSigned`;
 - publicação: branch órfã `download/rf-qol-1.0.5`, commit `bd1ac85`,
   reconferida pela URL pública.
+
+## Correção pós-1.0.5
+
+- O alvo atual deve permanecer no topo do Monitor PvP, antes da lista de
+  jogadores próximos.
+- A retenção de jogadores próximos continua em até quinze segundos, mas a aba
+  e os overlays devem expirar pelo relógio local mesmo sem novos pacotes.
+- A correção permanece local até nova autorização de instalador/publicação.

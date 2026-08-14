@@ -886,6 +886,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 boss_layout.setSpacing(8)
                 boss_column.addLayout(boss_layout)
                 layout.addWidget(boss_panel)
+            if mode == "pvp":
+                layout.addWidget(target)
+                layout.addWidget(progress)
+                layout.addLayout(stats)
             nearby_layout = None
             nearby_empty = None
             if mode in {"pve", "pvp"}:
@@ -905,7 +909,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 nearby_layout.setSpacing(12)
                 nearby_column.addLayout(nearby_layout)
                 layout.addWidget(nearby_panel)
-            if mode != "boss":
+            if mode == "pve":
                 layout.addWidget(target)
                 layout.addWidget(progress)
                 layout.addLayout(stats)
@@ -5588,6 +5592,11 @@ class MainWindow(QtWidgets.QMainWindow):
         monitor = self.monitor_engine
         now = time.monotonic()
         self._maybe_sync_observations(now)
+        if (
+            self.monitor_enabled.get("pvp")
+            and now >= self.pvp_nearby_next_due
+        ):
+            self._render_combat()
         if not engine and not monitor:
             return
         if self.license_active and now - self.last_license_refresh_at >= 60:
@@ -5775,9 +5784,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     continue
                 nearby_key = "nearby_monsters" if mode == "pve" else "nearby_players"
                 if mode != "pvp" or refresh_pvp_nearby:
+                    nearby = list((monitor or {}).get(nearby_key) or [])
+                    if mode == "pvp":
+                        nearby = self._recent_pvp_players(nearby)
                     self._render_nearby(
                         widgets,
-                        list((monitor or {}).get(nearby_key) or []),
+                        nearby,
                         mode,
                         dict((monitor or {}).get("player_counts") or {}),
                     )
@@ -5841,6 +5853,7 @@ class MainWindow(QtWidgets.QMainWindow):
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+        empty.setText("Nenhum registro recente.")
         empty.setVisible(not entities)
         if mode == "pvp" and entities:
             empty.setVisible(True)
@@ -5920,6 +5933,24 @@ class MainWindow(QtWidgets.QMainWindow):
             None,
         )
 
+    @staticmethod
+    def _recent_pvp_players(
+        players: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        cutoff = time.time_ns() - NEARBY_PLAYER_STALE_SECONDS * 1_000_000_000
+        recent = []
+        for player in players:
+            if player.get("stale"):
+                continue
+            last_seen = int(player.get("last_seen_ns") or 0)
+            if last_seen >= 1_500_000_000_000_000_000:
+                if last_seen < cutoff:
+                    continue
+            elif float(player.get("age_seconds") or 0) > NEARBY_PLAYER_STALE_SECONDS:
+                continue
+            recent.append(player)
+        return recent
+
     def _update_pvp_overlay(
         self,
         monitors: list[dict[str, Any]],
@@ -5955,14 +5986,12 @@ class MainWindow(QtWidgets.QMainWindow):
         target_uid = str(target.get("character_uid") or "") if target_valid else ""
         nearby = [
             item
-            for item in (
+            for item in self._recent_pvp_players(
                 list(monitor.get("nearby_players") or [])
-                if monitor_enabled else []
+                if monitor_enabled
+                else []
             )
             if str(item.get("character_uid") or "") != target_uid
-            and not item.get("stale")
-            and float(item.get("age_seconds") or 0)
-            <= NEARBY_PLAYER_STALE_SECONDS
         ]
         groups = {
             "target": [target] if target_valid else [],
