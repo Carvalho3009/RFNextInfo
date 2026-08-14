@@ -1,6 +1,6 @@
 # Changelog
 
-## Próxima correção
+## 1.0.6 — instalação manual
 
 - Mantém o alvo atual no topo do Monitor PvP, antes de jogadores próximos.
 - Remove jogadores hostis vencidos da aba e do overlay pelo relógio da
