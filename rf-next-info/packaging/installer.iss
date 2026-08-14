@@ -1,5 +1,5 @@
 #define AppName "RF QOL"
-#define AppVersion "1.0.7"
+#define AppVersion "1.0.8"
 #define AppPublisher "Karvalho"
 #define AppExeName "RF QOL.exe"
 

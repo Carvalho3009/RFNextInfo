@@ -26,7 +26,7 @@ comercial sob as licenças zlib/libpng, bzip2 e CPLv1 aplicáveis.
 3. Rodar toda a regressão e o self-test do servidor.
 4. Executar `packaging/build.ps1 -Release`.
 5. Confirmar `update_mode=manual` na procedência.
-6. Confirmar que `RF QOL.exe` e `RF QOL Setup 1.0.7.exe` permanecem
+6. Confirmar que `RF QOL.exe` e `RF QOL Setup 1.0.8.exe` permanecem
    `NotSigned`, conforme a decisão do owner.
 7. Verificar que `release-provenance.json`, `sbom-python.json`, lock e
    `SHA256SUMS.txt` correspondem aos bytes finais.

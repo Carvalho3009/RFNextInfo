@@ -1,6 +1,6 @@
 # Changelog
 
-## Em desenvolvimento — decoder 2026-08-14
+## 1.0.8 — instalação manual
 
 - Integra os layouts confirmados mais recentes para movimento, saída de sala,
   desaparecimento de entidades, teleporte e troca de slots de equipamento.

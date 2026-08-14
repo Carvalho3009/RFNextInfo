@@ -61,6 +61,6 @@ do resultado.
 
 ## Fora do escopo
 
-Esta etapa não altera licença, servidor, interface, versão do aplicativo,
-instalador ou publicação. A leitura permanece passiva por pacotes e não migra
-o cliente para leitura de memória do processo do jogo.
+Esta etapa não altera licença, servidor ou interface. A leitura permanece
+passiva por pacotes e não migra o cliente para leitura de memória do processo
+do jogo. A implementação foi selecionada para o instalador manual 1.0.8.
