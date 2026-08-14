@@ -357,4 +357,7 @@ dados reais permanecem intactos.
   `FF309CA6F76DED3B460122FDAAE5D9B3AD6E55ADB988AB14A2C59A474984FB71`.
 - Instalador e executável permanecem `NotSigned`; atualização continua manual.
   Nenhum manifesto automático foi gerado.
-- Estado: artefato preparado somente no ambiente local; não enviado ao GitHub.
+- Publicação: branch órfã `download/rf-qol-1.0.6`, commit `b4122e5`, sem
+  GitHub Release. O arquivo público foi baixado novamente e coincidiu em
+  tamanho e SHA-256 com o candidato local.
+- Link validado: `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.6/RF%20QOL%20Setup%201.0.6.exe`.

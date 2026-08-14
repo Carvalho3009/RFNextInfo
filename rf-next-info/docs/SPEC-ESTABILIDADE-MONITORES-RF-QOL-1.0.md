@@ -73,4 +73,6 @@ Estado: aprovado para implementação local pelo owner
 - SHA-256: `FF309CA6F76DED3B460122FDAAE5D9B3AD6E55ADB988AB14A2C59A474984FB71`;
 - assinatura: `NotSigned`; modo de atualização: `manual`;
 - ensaio isolado de instalação, autoteste e desinstalação aprovado;
-- nenhum manifesto automático ou publicação foi gerado.
+- nenhum manifesto automático foi gerado;
+- publicação: branch órfã `download/rf-qol-1.0.6`, commit `b4122e5`, com o
+  download público reconferido byte a byte.
