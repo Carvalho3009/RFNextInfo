@@ -361,3 +361,14 @@ dados reais permanecem intactos.
   GitHub Release. O arquivo público foi baixado novamente e coincidiu em
   tamanho e SHA-256 com o candidato local.
 - Link validado: `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.6/RF%20QOL%20Setup%201.0.6.exe`.
+
+## Correção do overlay PvP pós-1.0.6 — 13 ago 2026
+
+- Relato real: personagens vistos em outro mapa permaneciam no overlay de
+  próximos hostis por mais de um minuto.
+- Reprodução: uma aparição antiga no segundo 1 seguida de atualização de HP
+  no mesmo UID no segundo 61 mantinha incorretamente o personagem como visto
+  há um segundo.
+- Correção: o resumo de próximos passou a usar o instante da aparição, separado
+  do instante de atualização de HP e combate.
+- A regressão nova e os testes diretamente relacionados foram aprovados.

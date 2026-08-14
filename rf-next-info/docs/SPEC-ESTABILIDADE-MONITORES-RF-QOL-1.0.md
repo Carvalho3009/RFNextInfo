@@ -76,3 +76,13 @@ Estado: aprovado para implementação local pelo owner
 - nenhum manifesto automático foi gerado;
 - publicação: branch órfã `download/rf-qol-1.0.6`, commit `b4122e5`, com o
   download público reconferido byte a byte.
+
+## Correção pós-1.0.6
+
+- Sintoma confirmado: personagens vistos em outro mapa permaneciam por mais
+  de um minuto no overlay de próximos hostis.
+- Causa reproduzida: um pacote posterior de HP podia reutilizar o mesmo UID e
+  renovar o horário do personagem antigo, embora não houvesse nova aparição.
+- Regra corrigida: a presença na lista de próximos usa somente o horário da
+  última aparição confirmada; atualizações de HP continuam atualizando a vida,
+  mas não prorrogam os quinze segundos de presença.

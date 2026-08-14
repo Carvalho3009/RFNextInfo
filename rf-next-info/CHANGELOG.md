@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.7 — instalação manual
+
+- Corrige o Monitor PvP para que pacotes de combate com UID reutilizado não
+  renovem personagens vistos anteriormente em outro mapa. A permanência na
+  lista de próximos agora depende da última aparição confirmada e vence após
+  quinze segundos.
+
 ## 1.0.6 — instalação manual
 
 - Mantém o alvo atual no topo do Monitor PvP, antes de jogadores próximos.

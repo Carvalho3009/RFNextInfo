@@ -207,7 +207,11 @@ def summarize_combat(
         name = str(entity.get("name") or "").strip()
         if uid == local_uid or not character or not name:
             continue
-        target = _target_snapshot(entity, reference_ns, nearby_stale_seconds)
+        target = _target_snapshot(
+            {**entity, "last_seen_ns": entity["appeared_at_ns"]},
+            reference_ns,
+            nearby_stale_seconds,
+        )
         if not target or target["stale"] or target.get("dead"):
             continue
         previous = nearby_players_by_identity.get(character)
@@ -331,6 +335,7 @@ def _entity(kind: str, unit: dict[str, Any], timestamp: int) -> dict[str, Any]:
         "max_hp": _integer(unit.get("max_hp")),
         "current_hp": _integer(unit.get("current_hp")),
         "dead": False,
+        "appeared_at_ns": timestamp,
         "last_seen_ns": timestamp,
     }
 

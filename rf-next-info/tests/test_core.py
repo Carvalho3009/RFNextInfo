@@ -685,6 +685,28 @@ class CoreTest(unittest.TestCase):
         expired = summarize_combat(events, "111", now_ns=18_000_000_000)
         self.assertEqual(expired["nearby_players"], [])
 
+    def test_pvp_nearby_presence_is_not_refreshed_by_reused_combat_uid(self):
+        second = 1_000_000_000
+        events = [
+            {
+                "ts_ns": second,
+                "type": "appear_player_list",
+                "data": {"units": [
+                    {"character_uid": 111, "uid": 10, "name": "Local"},
+                    {"character_uid": 222, "uid": 20, "name": "Mapa anterior"},
+                ]},
+            },
+            {
+                "ts_ns": 61 * second,
+                "type": "restore_hp_fp",
+                "data": {"uid": 20, "current_hp": 100, "max_hp": 100},
+            },
+        ]
+
+        result = summarize_combat(events, "111", now_ns=62 * second)
+
+        self.assertEqual(result["nearby_players"], [])
+
     def test_combat_monitor_lists_only_catalogued_live_bosses(self):
         events = [
             {"ts_ns": 1_000_000_000, "type": "appear_monster_list", "data": {"units": [
