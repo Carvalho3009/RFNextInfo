@@ -381,3 +381,7 @@ dados reais permanecem intactos.
 - Instalador `RF QOL Setup 1.0.7.exe`, 48.372.327 bytes, SHA-256
   `9D0014A7CF06E80AF550A9B01977FEFD91252F4B94E22AD4EDF6C55D1ACC9E6A`,
   `NotSigned` e atualização manual.
+- Publicação: branch órfã `download/rf-qol-1.0.7`, commit `94eb6e0`, sem
+  GitHub Release. O arquivo público foi baixado novamente e coincidiu em
+  tamanho e SHA-256 com o candidato local.
+- Link validado: `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.7/RF%20QOL%20Setup%201.0.7.exe`.
