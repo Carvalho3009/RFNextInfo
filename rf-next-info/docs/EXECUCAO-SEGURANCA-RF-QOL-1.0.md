@@ -343,4 +343,18 @@ dados reais permanecem intactos.
 - A retenção aprovada de até quinze segundos foi preservada.
 - Validação: quatro testes diretamente afetados e a suíte integral de 258
   testes passaram; `compileall`, `pip check` e `git diff --check` aprovados.
-- Estado: correção somente local; nenhum novo instalador ou publicação.
+- Estado: correção incorporada ao instalador local 1.0.6; nenhuma publicação.
+
+## Instalador 1.0.6 — 13 ago 2026
+
+- Versão `1.0.6`, sequência interna `7`, construída do commit-fonte limpo
+  `6d13a9929a9004d09815d4320495dbd9145d1de9`.
+- A suíte integral aprovou 258 testes em 431,141 s; o build completo terminou
+  em 530,20 s.
+- O ensaio isolado aprovou instalação, autoteste pós-instalação e
+  desinstalação em 62,46 s, confirmando a remoção do executável instalado.
+- Instalador `RF QOL Setup 1.0.6.exe`, 48.368.631 bytes, SHA-256
+  `FF309CA6F76DED3B460122FDAAE5D9B3AD6E55ADB988AB14A2C59A474984FB71`.
+- Instalador e executável permanecem `NotSigned`; atualização continua manual.
+  Nenhum manifesto automático foi gerado.
+- Estado: artefato preparado somente no ambiente local; não enviado ao GitHub.

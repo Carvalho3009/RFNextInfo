@@ -64,3 +64,13 @@ Estado: aprovado para implementação local pelo owner
 - A correção será empacotada como versão `1.0.6`, sequência interna `7`, em
   instalador completo NSIS, manual e sem assinatura digital.
 - O instalador permanece local; publicação exige autorização separada.
+
+## Resultado do empacotamento 1.0.6
+
+- fonte limpa: `6d13a9929a9004d09815d4320495dbd9145d1de9`;
+- 258 testes aprovados em 431,141 s;
+- instalador: `RF QOL Setup 1.0.6.exe`, 48.368.631 bytes;
+- SHA-256: `FF309CA6F76DED3B460122FDAAE5D9B3AD6E55ADB988AB14A2C59A474984FB71`;
+- assinatura: `NotSigned`; modo de atualização: `manual`;
+- ensaio isolado de instalação, autoteste e desinstalação aprovado;
+- nenhum manifesto automático ou publicação foi gerado.
