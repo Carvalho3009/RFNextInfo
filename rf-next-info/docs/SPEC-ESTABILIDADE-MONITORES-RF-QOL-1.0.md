@@ -86,3 +86,5 @@ Estado: aprovado para implementação local pelo owner
 - Regra corrigida: a presença na lista de próximos usa somente o horário da
   última aparição confirmada; atualizações de HP continuam atualizando a vida,
   mas não prorrogam os quinze segundos de presença.
+- Empacotamento: versão `1.0.7`, sequência interna `8`, instalador manual sem
+  assinatura digital e publicação por link direto, sem GitHub Release.
