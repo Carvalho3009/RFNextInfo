@@ -35,6 +35,7 @@ from core.rfnext_frame_decode import (
     HEADER_SIZE,
     parse_guild_relation_payload,
     parse_inventory_payload,
+    parse_marked_gameplay_payload,
     parse_observation_payload,
     pcap_tcp_streams,
 )
@@ -42,6 +43,123 @@ from core.store import CaptureStore
 
 
 class CoreTest(unittest.TestCase):
+    @staticmethod
+    def _decoder_frame(opcode: int, payload: bytes) -> bytes:
+        frame = bytearray(HEADER_SIZE + len(payload))
+        frame[4:6] = opcode.to_bytes(2, "little")
+        frame[6:] = payload
+        return bytes(frame)
+
+    def test_latest_marked_decoder_movement_disappear_teleport_and_equipment(self):
+        movement_payload = bytes.fromhex(
+            "00014436bc5e4373cd53440000000003d1c143d699a343fe2c8341360d4d13000000"
+        )
+        movement = parse_marked_gameplay_payload(
+            self._decoder_frame(0x0301, movement_payload), 12010
+        )
+        self.assertEqual(movement["type"], "move_player_request")
+        self.assertTrue(movement["fields"]["moving_flag"])
+        self.assertAlmostEqual(movement["fields"]["position"][0], 387.633, places=3)
+        movement_update = parse_marked_gameplay_payload(
+            self._decoder_frame(
+                0x0302, struct.pack("<I", 268_525_523) + movement_payload[:-2]
+            ),
+            12010,
+        )
+        self.assertEqual(movement_update["fields"]["entity_uid"], 268_525_523)
+
+        exit_room = parse_marked_gameplay_payload(
+            self._decoder_frame(
+                0x0204, bytes.fromhex("993d194205a95955d600001000")
+            ),
+            12010,
+        )
+        self.assertEqual(exit_room["type"], "exit_room_result")
+        self.assertEqual(exit_room["fields"]["entity_uid"], 268_435_670)
+
+        disappear = parse_marked_gameplay_payload(
+            self._decoder_frame(0x030A, struct.pack("<HIB", 1, 268_435_670, 2)),
+            12010,
+        )
+        self.assertEqual(disappear["fields"]["entity_uids"], [268_435_670])
+        self.assertEqual(disappear["fields"]["units"][0]["reason"], "random_teleport")
+        from core import rfnext_frame_decode as decoder
+        self.assertEqual(
+            _safe_parse(
+                decoder,
+                self._decoder_frame(0x030A, struct.pack("<HIB", 1, 268_435_670, 2)),
+                12010,
+            )["type"],
+            "disappear_unit_list",
+        )
+        self.assertIsNone(
+            parse_marked_gameplay_payload(
+                self._decoder_frame(0x030A, struct.pack("<H", 1)), 12010
+            )
+        )
+
+        warp_payload = bytes.fromhex("d35f01103fff9743c4daba43819581410000b20400000000")
+        warp = parse_marked_gameplay_payload(
+            self._decoder_frame(0x040A, warp_payload), 12010
+        )
+        self.assertEqual(warp["type"], "warp_player")
+        self.assertEqual(warp["fields"]["map_index_candidate"], 1202)
+        for opcode, payload, event_type in (
+            (0x0408, bytes.fromhex("5d020000"), "request_teleport"),
+            (0x0409, bytes.fromhex("00005d020000"), "request_teleport_result"),
+            (0x040B, b"", "end_warp_player"),
+        ):
+            with self.subTest(opcode=opcode):
+                parsed = parse_marked_gameplay_payload(
+                    self._decoder_frame(opcode, payload), 12010
+                )
+                self.assertEqual(parsed["type"], event_type)
+
+        equip = parse_marked_gameplay_payload(
+            self._decoder_frame(
+                0x0501, struct.pack("<HBQ", 1, 7, 0x01D038EA22F80002)
+            ),
+            12020,
+        )
+        self.assertEqual(equip["fields"]["equipment_part"], "ear_cuffs")
+        equip_response = parse_marked_gameplay_payload(
+            self._decoder_frame(
+                0x0502,
+                struct.pack("<HHHBQ", 0, 225, 1, 1, 0x01D038EB29400014),
+            ),
+            12020,
+        )
+        self.assertEqual(equip_response["fields"]["result"], 0)
+        self.assertEqual(equip_response["fields"]["equipment_part"], "weapon")
+
+    def test_disappear_event_removes_player_from_live_state_immediately(self):
+        stream = LiveEventStream()
+        flow = "127.0.0.1:12010 -> 127.0.0.1:50000"
+        stream._remember([
+            {
+                "flow": flow,
+                "ts_ns": 1,
+                "type": "appear_player_list",
+                "data": {"units": [{"uid": 20, "character_uid": 222, "name": "Rival"}]},
+            },
+            {
+                "flow": flow,
+                "ts_ns": 2,
+                "type": "disappear_unit_list",
+                "data": {"fields": {"entity_uids": [20]}},
+            },
+        ])
+
+        self.assertNotIn(
+            20,
+            {
+                int(unit["uid"])
+                for event in stream.snapshot()
+                if event.get("type") == "appear_player_list"
+                for unit in (event.get("data") or {}).get("units") or []
+            },
+        )
+
     def test_guild_relation_decode_enriches_pvp_without_overwriting_manual(self):
         guild_name = "Guilda Rival".encode("utf-16le")
         representative = "Líder".encode("utf-16le")

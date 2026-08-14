@@ -1,5 +1,15 @@
 # Changelog
 
+## Em desenvolvimento — decoder 2026-08-14
+
+- Integra os layouts confirmados mais recentes para movimento, saída de sala,
+  desaparecimento de entidades, teleporte e troca de slots de equipamento.
+- Remove imediatamente do estado vivo os jogadores e monstros informados pelo
+  servidor como fora de alcance, sem aguardar somente o vencimento de quinze
+  segundos do Monitor PvP.
+- Preserva a leitura de alvo atual, o pedido de habilidade, os dois formatos já
+  observados de equipamento e as validações defensivas existentes no RF QOL.
+
 ## 1.0.7 — instalação manual
 
 - Corrige o Monitor PvP para que pacotes de combate com UID reutilizado não

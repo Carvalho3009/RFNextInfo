@@ -443,6 +443,17 @@ class LiveEventStream:
                         if target is self._anchors and len(target) > self._max_entity_anchors:
                             target.pop(next(iter(target)))
                     continue
+                if kind == "disappear_unit_list":
+                    fields = (event.get("data") or {}).get("fields") or {}
+                    for uid in fields.get("entity_uids") or []:
+                        if not isinstance(uid, (int, float)):
+                            continue
+                        uid = int(uid)
+                        self._anchors.pop((flow, "player", uid), None)
+                        self._anchors.pop((flow, "monster", uid), None)
+                        self._boss_anchors.pop((flow, "player", uid), None)
+                        self._boss_anchors.pop((flow, "monster", uid), None)
+                    continue
                 if kind == "dying_unit":
                     uid = (event.get("data") or {}).get("uid")
                     if isinstance(uid, (int, float)):

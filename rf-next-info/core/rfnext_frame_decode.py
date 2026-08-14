@@ -55,6 +55,10 @@ FIELD_MONSTER_FLAG_BITS = {
     4: "FIELD_MONSTER_FLAG_ALIVE",
     5: "FIELD_MONSTER_FLAG_SKILL_EFFECT",
 }
+DISAPPEAR_REASONS = {
+    1: "death",
+    2: "random_teleport",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +630,116 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
     payload = decoded[HEADER_SIZE:]
 
     if port == 12010:
+        if opcode == 0x0204 and len(payload) == 13:
+            character_uid, entity_uid, result_raw = struct.unpack("<QIB", payload)
+            return {
+                "type": "exit_room_result",
+                "message": "FG2C_ans_exitroom_Message",
+                "direction": "FG2C",
+                "confidence": "alto-layout-exato-captura-marcada-2026-08-14",
+                "fields": {
+                    "character_uid": character_uid,
+                    "entity_uid": entity_uid,
+                    "result_raw": result_raw,
+                },
+            }
+        if opcode in (0x0301, 0x0302):
+            expected_size = 34 if opcode == 0x0301 else 36
+            if len(payload) != expected_size:
+                return None
+            offset = 0 if opcode == 0x0301 else 4
+            fields = {
+                "state_a_raw": payload[offset],
+                "state_b_raw": payload[offset + 1],
+                "movement_flags_raw": payload[offset + 2],
+                "moving_flag": bool(payload[offset + 2] & 0x40),
+                "movement_vector": list(struct.unpack_from("<fff", payload, offset + 3)),
+                "position": list(struct.unpack_from("<fff", payload, offset + 15)),
+                "client_tick_raw": struct.unpack_from("<I", payload, offset + 27)[0],
+                "reserved_tail_hex": payload[offset + 31:].hex(),
+            }
+            if opcode == 0x0302:
+                fields["entity_uid"] = struct.unpack_from("<I", payload)[0]
+            return {
+                "type": "move_player_request" if opcode == 0x0301 else "move_player_update",
+                "message": (
+                    "FC2G_ask_move_player_Message"
+                    if opcode == 0x0301
+                    else "FG2C_ans_move_player_Message"
+                ),
+                "direction": "FC2G" if opcode == 0x0301 else "FG2C",
+                "confidence": "alto-518-movimentos-captura-marcada-2026-08-14",
+                "fields": fields,
+            }
+        if opcode == 0x030A and len(payload) >= 2:
+            count = struct.unpack_from("<H", payload)[0]
+            if len(payload) != 2 + count * 5:
+                return None
+            units = []
+            for index in range(count):
+                reason_raw = payload[2 + index * 5 + 4]
+                unit = {
+                    "entity_uid": struct.unpack_from("<I", payload, 2 + index * 5)[0],
+                    "reason_raw": reason_raw,
+                }
+                if reason_raw in DISAPPEAR_REASONS:
+                    unit["reason"] = DISAPPEAR_REASONS[reason_raw]
+                    unit["reason_confidence"] = "alto-captura-marcada-2026-08-14"
+                units.append(unit)
+            return {
+                "type": "disappear_unit_list",
+                "message": "FG2C_disappear_unit_list_Message",
+                "direction": "FG2C",
+                "confidence": "alto-layout-exato-388-frames+5-saidas-uid-alvo",
+                "fields": {
+                    "count": count,
+                    "units": units,
+                    "entity_uids": [unit["entity_uid"] for unit in units],
+                    "visibility_event": "disappear",
+                },
+            }
+        if opcode == 0x0408 and len(payload) == 4:
+            return {
+                "type": "request_teleport",
+                "message": "FC2G_ask_request_teleport_Message",
+                "direction": "FC2G",
+                "confidence": "alto-7-ciclos-2-marcados",
+                "fields": {"teleport_index": struct.unpack("<I", payload)[0]},
+            }
+        if opcode == 0x0409 and len(payload) == 6:
+            result, teleport_index = struct.unpack("<HI", payload)
+            return {
+                "type": "request_teleport_result",
+                "message": "FG2C_ans_request_teleport_Message",
+                "direction": "FG2C",
+                "confidence": "alto-7-ciclos-2-marcados",
+                "fields": {"result": result, "teleport_index": teleport_index},
+            }
+        if opcode == 0x040A and len(payload) == 24:
+            entity_uid, x, y, z, f16_u16_raw, map_index_candidate, f22_u16_raw = (
+                struct.unpack("<IfffHIH", payload)
+            )
+            return {
+                "type": "warp_player",
+                "message": "FG2C_warp_player_Message",
+                "direction": "FG2C",
+                "confidence": "alto-9-warps-7-locais-2-entidade-proxima",
+                "fields": {
+                    "entity_uid": entity_uid,
+                    "position": [x, y, z],
+                    "f16_u16_raw": f16_u16_raw,
+                    "map_index_candidate": map_index_candidate,
+                    "f22_u16_raw": f22_u16_raw,
+                },
+            }
+        if opcode == 0x040B and not payload:
+            return {
+                "type": "end_warp_player",
+                "message": "FC2G_end_warp_player_Message",
+                "direction": "FC2G",
+                "confidence": "alto-7-ciclos-2-marcados",
+                "fields": {},
+            }
         if opcode == 0x0407 and len(payload) == 75:
             return {
                 "type": "player_equip_update",
@@ -640,6 +754,47 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
         return None
     if port != 12020:
         return None
+
+    if opcode == 0x0501 and len(payload) == 11:
+        preset_raw, equipment_slot, item_uid = struct.unpack("<HBQ", payload)
+        return {
+            "type": "change_equip_slot_request",
+            "message": "FC2L_ask_change_equip_slot_Message",
+            "direction": "FC2L",
+            "confidence": "alto-4-mudancas-marcadas-2-slots",
+            "fields": {
+                "preset_raw": preset_raw,
+                "equipment_slot": equipment_slot,
+                "equipment_part": (
+                    EQUIPMENT_PART_NAMES[equipment_slot - 1]
+                    if 1 <= equipment_slot <= len(EQUIPMENT_PART_NAMES)
+                    else None
+                ),
+                "item_uid": item_uid,
+            },
+        }
+    if opcode == 0x0502 and len(payload) == 15:
+        result, f2_u16_raw, preset_raw, equipment_slot, item_uid = struct.unpack(
+            "<HHHBQ", payload
+        )
+        return {
+            "type": "change_equip_slot_response",
+            "message": "FL2C_ans_change_equip_slot_Message",
+            "direction": "FL2C",
+            "confidence": "alto-4-mudancas-marcadas-2-slots",
+            "fields": {
+                "result": result,
+                "f2_u16_raw": f2_u16_raw,
+                "preset_raw": preset_raw,
+                "equipment_slot": equipment_slot,
+                "equipment_part": (
+                    EQUIPMENT_PART_NAMES[equipment_slot - 1]
+                    if 1 <= equipment_slot <= len(EQUIPMENT_PART_NAMES)
+                    else None
+                ),
+                "item_uid": item_uid,
+            },
+        }
 
     if opcode == 0x1303 and len(payload) == 4:
         return {
@@ -1653,6 +1808,7 @@ def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
                     "position_y": state[8],
                     "position_z": state[9],
                     "guild_id": struct.unpack_from("<Q", state_tail, 43)[0],
+                    "visibility_event": "enter_range",
                     "state_tail_hex": state_tail.hex(),
                 }
             )
@@ -1663,6 +1819,8 @@ def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
                 "message": "FG2C_appear_player_list_Message",
                 "direction": "FG2C",
                 "confidence": "alto-layout-exato-3778-frames-7993-registros+guild-2316-correlacoes",
+                "hostile_alert_rule": "local-if-guild-id-is-in-enemy-guild-list",
+                "hostility_in_message": False,
                 "units": units,
             }
     if opcode == 0x0307 and len(payload) == struct.calcsize("<HHHHqq"):
@@ -2880,6 +3038,17 @@ def main() -> int:
                             if name:
                                 result["item_name_ptbr"] = name
                     info["observation"] = observation
+                inventory = parse_inventory_payload(decoded)
+                if inventory is not None:
+                    for item in inventory.get("items", [inventory.get("item")]):
+                        if item:
+                            name = names.get(item["item_index"])
+                            if name:
+                                item["item_name_ptbr"] = name
+                    info["inventory"] = inventory
+                guild_relation = parse_guild_relation_payload(decoded)
+                if guild_relation is not None:
+                    info["guild_relation"] = guild_relation
                 collection = parse_collection_payload(decoded)
                 if collection is not None:
                     add_collection_catalog(collection, collection_slots)
