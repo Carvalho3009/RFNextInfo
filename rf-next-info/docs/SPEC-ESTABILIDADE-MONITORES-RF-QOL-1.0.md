@@ -88,3 +88,13 @@ Estado: aprovado para implementação local pelo owner
   mas não prorrogam os quinze segundos de presença.
 - Empacotamento: versão `1.0.7`, sequência interna `8`, instalador manual sem
   assinatura digital e publicação por link direto, sem GitHub Release.
+
+## Resultado do empacotamento 1.0.7
+
+- fonte limpa: `50ca52a799d7ef9ee9c19380ee560bfbbe13c752`;
+- 259 testes aprovados em 431,272 s;
+- instalador: `RF QOL Setup 1.0.7.exe`, 48.372.327 bytes;
+- SHA-256: `9D0014A7CF06E80AF550A9B01977FEFD91252F4B94E22AD4EDF6C55D1ACC9E6A`;
+- assinatura: `NotSigned`; modo de atualização: `manual`;
+- ensaio isolado de instalação, autoteste e desinstalação aprovado em 60,44 s;
+- nenhum manifesto automático foi gerado.

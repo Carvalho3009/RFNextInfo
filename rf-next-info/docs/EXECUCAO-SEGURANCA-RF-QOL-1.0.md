@@ -372,3 +372,12 @@ dados reais permanecem intactos.
 - Correção: o resumo de próximos passou a usar o instante da aparição, separado
   do instante de atualização de HP e combate.
 - A regressão nova e os testes diretamente relacionados foram aprovados.
+- Versão `1.0.7`, sequência interna `8`, construída do commit-fonte limpo
+  `50ca52a799d7ef9ee9c19380ee560bfbbe13c752`.
+- A suíte integral aprovou 259 testes em 431,272 s; o build completo terminou
+  em 527,72 s.
+- O ensaio isolado de instalação, autoteste e desinstalação foi aprovado em
+  60,44 s, com remoção confirmada do executável instalado.
+- Instalador `RF QOL Setup 1.0.7.exe`, 48.372.327 bytes, SHA-256
+  `9D0014A7CF06E80AF550A9B01977FEFD91252F4B94E22AD4EDF6C55D1ACC9E6A`,
+  `NotSigned` e atualização manual.
