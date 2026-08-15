@@ -52,3 +52,9 @@ O instalador substitui o arquivo da branch órfã
 `download/rf-qol-1.0.8`, sem GitHub Release. O link permanece:
 
 `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.8/RF%20QOL%20Setup%201.0.8.exe`
+
+Publicação concluída no commit de artefatos
+`8a2736fdc8565fd1c252d9e884b5cf64350db1a6`. O arquivo foi baixado novamente
+pela URL pública e conferido com 48.374.153 bytes, SHA-256
+`6495A27AA653246823B56A6159AD9601C7BFCB9293077E15916CED1DCCF045D2`,
+ProductVersion/FileVersion `1.0.8` e Authenticode `NotSigned`.
