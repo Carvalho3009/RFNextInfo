@@ -1,18 +1,18 @@
-# RF QOL 1.0.8
+# RF QOL 1.0.9
 
 Instalador manual do RF QOL para Windows.
 
 ## Download
 
-[Baixar RF QOL Setup 1.0.8.exe](https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.8/RF%20QOL%20Setup%201.0.8.exe)
+[Baixar RF QOL Setup 1.0.9.exe](https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.9/RF%20QOL%20Setup%201.0.9.exe)
 
 ## Verificacao
 
-- SHA-256: `6495A27AA653246823B56A6159AD9601C7BFCB9293077E15916CED1DCCF045D2`
+- SHA-256: `E4B2E32650114FA062AC7FD4EE8289B4147E9A2BAB29758D680A335F71216D9F`
 - O instalador nao possui assinatura digital.
 - Consulte `SHA256SUMS.txt`, os termos de uso e os arquivos de proveniencia desta branch.
 
-Este rebuild inclui o decoder de ranking de EXP e o envio automatico,
-deduplicado e autenticado, quando o ranking for reconhecido.
+Esta versao corrige o envio automatico do ranking de EXP para enviar somente
+o Top 100 integro aceito pelo contrato do site.
 
-Esta branch contem somente os artefatos de distribuicao da versao 1.0.8. O codigo-fonte permanece fora dela.
+Esta branch contem somente os artefatos de distribuicao da versao 1.0.9. O codigo-fonte permanece fora dela.
