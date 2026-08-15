@@ -64,3 +64,17 @@ do resultado.
 Esta etapa não altera licença, servidor ou interface. A leitura permanece
 passiva por pacotes e não migra o cliente para leitura de memória do processo
 do jogo. A implementação foi selecionada para o instalador manual 1.0.8.
+
+## Empacotamento 1.0.8
+
+- versão `1.0.8`, sequência interna `9`;
+- commit-fonte limpo: `94ce7cae9bc9a3e2ad08077ccb0b2130414d2822`;
+- suíte de release: 261 testes aprovados em 431,527 segundos;
+- instalação, autoteste pós-instalação e desinstalação: aprovados;
+- instalador: `RF QOL Setup 1.0.8.exe`, 48.369.441 bytes;
+- SHA-256: `FF57CD239EA1ED8A0E49F8EEC863874499443B86F4B2461B9F876B7CC297BF1F`;
+- ProductVersion e FileVersion: `1.0.8`;
+- instalador e executável: `NotSigned`, conforme decisão do owner;
+- atualização: manual; nenhum manifesto automático ou assinatura de
+  procedência foi gerado;
+- Termos de Uso: aceite obrigatório preservado.

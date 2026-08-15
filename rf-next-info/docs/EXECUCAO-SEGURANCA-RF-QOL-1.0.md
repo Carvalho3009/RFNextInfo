@@ -385,3 +385,20 @@ dados reais permanecem intactos.
   GitHub Release. O arquivo público foi baixado novamente e coincidiu em
   tamanho e SHA-256 com o candidato local.
 - Link validado: `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.7/RF%20QOL%20Setup%201.0.7.exe`.
+
+## Decoder e instalador 1.0.8 — 14 ago 2026
+
+- O decoder confirmado em 14/08/2026 incorporou movimento, saída de sala,
+  desaparecimento, teleporte e troca de slots de equipamento sem remover os
+  contratos anteriores de alvo, habilidades, guildas e equipamento.
+- O evento explícito de desaparecimento agora remove o UID do estado vivo do
+  monitor imediatamente; o vencimento de quinze segundos permanece como
+  proteção para perda de pacote.
+- Versão `1.0.8`, sequência interna `9`, construída em worktree limpo do commit
+  `94ce7cae9bc9a3e2ad08077ccb0b2130414d2822`.
+- A suíte de release aprovou 261 testes em 431,527 s. O ensaio isolado aprovou
+  instalação, autoteste pós-instalação, desinstalação e remoção do executável.
+- Instalador `RF QOL Setup 1.0.8.exe`, 48.369.441 bytes, SHA-256
+  `FF57CD239EA1ED8A0E49F8EEC863874499443B86F4B2461B9F876B7CC297BF1F`.
+- ProductVersion/FileVersion `1.0.8`; instalador e executável `NotSigned`;
+  atualização manual e nenhum manifesto automático gerado.
