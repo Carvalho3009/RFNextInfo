@@ -1499,6 +1499,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 exp_rank_snapshot=lambda _session: {
                     "snapshot_key": "1:44",
                     "signature": "a" * 64,
+                    "completeness": "complete",
                     "records": [{"rank": 1}],
                 },
                 close=lambda: None,

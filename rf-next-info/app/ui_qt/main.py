@@ -4616,7 +4616,12 @@ class MainWindow(QtWidgets.QMainWindow):
         signature = str(ranking.get("signature") or "")
         snapshot_key = str(ranking.get("snapshot_key") or "")
         sent = dict(self.preferences.get("auto_exp_rank_signatures") or {})
-        if not signature or not snapshot_key or sent.get(snapshot_key) == signature:
+        if (
+            ranking.get("completeness") != "complete"
+            or not signature
+            or not snapshot_key
+            or sent.get(snapshot_key) == signature
+        ):
             return
         self.pending_auto_exp_rank = (snapshot_key, signature)
         self._run_site_operation(

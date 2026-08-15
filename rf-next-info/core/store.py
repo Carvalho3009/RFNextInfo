@@ -25,6 +25,8 @@ SCHEMA_VERSION = 1
 MAX_EXPORT_BYTES = 512 * 1024 * 1024
 SENSITIVE_KEYS = ("token", "ticket", "password", "secret", "authorization", "jwt")
 CLIENT_KEYS = tuple(f"client:{chr(97 + index)}" for index in range(7))
+EXP_RANK_TOP_LIMIT = 100
+EXP_RANK_CAPTURE_WINDOW_NS = 15 * 60 * 1_000_000_000
 
 
 def _level_curve() -> dict[int, int]:
@@ -1287,7 +1289,7 @@ class CaptureStore:
         return hashlib.sha256(f"{session_id}:{canonical}".encode()).hexdigest()
 
     def exp_rank_snapshot(self, session_id: str) -> dict[str, Any]:
-        """Retorna o ranking mais recente, apenas com campos decodificados seguros."""
+        """Retorna o Top 100 mais recente com integridade explícita."""
         parsed_rows: list[tuple[int, int, dict[str, Any]]] = []
         for event_id, ts_ns, data_json in self.conn.execute(
             """SELECT id,COALESCE(ts_ns,0),data_json FROM events
@@ -1308,21 +1310,55 @@ class CaptureStore:
         if not parsed_rows:
             return {}
 
-        latest_records = parsed_rows[0][2].get("records") or []
-        latest = next((item for item in latest_records if isinstance(item, dict)), None)
-        if latest is None:
-            return {}
-        try:
-            scope_id = int(latest.get("scope_id_raw"))
-            ranking_cycle = int(latest.get("ranking_cycle_raw"))
-        except (TypeError, ValueError):
-            return {}
-        if not (0 <= scope_id < 2**32 and 0 <= ranking_cycle < 2**32):
-            return {}
+        def record_context(raw: object) -> tuple[int, int] | None:
+            if not isinstance(raw, dict):
+                return None
+            try:
+                context = (
+                    int(raw.get("scope_id_raw")),
+                    int(raw.get("ranking_cycle_raw")),
+                )
+            except (TypeError, ValueError):
+                return None
+            return context if all(0 <= value < 2**32 for value in context) else None
 
-        by_uid: dict[str, dict[str, Any]] = {}
-        captured_at_ns = 0
-        for _event_id, ts_ns, data in reversed(parsed_rows):
+        target_context = next(
+            (
+                context
+                for _event_id, _ts_ns, data in parsed_rows
+                for raw in (data.get("records") or [])
+                if (context := record_context(raw)) is not None
+            ),
+            None,
+        )
+        if target_context is None:
+            return {}
+        scope_id, ranking_cycle = target_context
+        context_rows = [
+            row
+            for row in parsed_rows
+            if any(
+                record_context(raw) == target_context
+                for raw in (row[2].get("records") or [])
+            )
+        ]
+        anchor_ts_ns = context_rows[0][1]
+        if anchor_ts_ns > 0:
+            selected_rows = [
+                row
+                for row in context_rows
+                if 0 <= anchor_ts_ns - row[1] <= EXP_RANK_CAPTURE_WINDOW_NS
+                and row[1] > 0
+            ]
+        else:
+            selected_rows = context_rows[:1]
+
+        by_rank: dict[int, dict[str, Any]] = {}
+        conflicted_ranks: set[int] = set()
+        contributing_events: set[int] = set()
+        captured_times: list[int] = []
+        for event_id, ts_ns, data in reversed(selected_rows):
+            event_contributed = False
             for raw in data.get("records") or []:
                 if not isinstance(raw, dict):
                     continue
@@ -1340,7 +1376,7 @@ class CaptureStore:
                     uid <= 0
                     or uid != uid_repeat
                     or not 0 <= total_exp <= 2**63 - 1
-                    or not 1 <= rank < 2**32
+                    or not 1 <= rank <= EXP_RANK_TOP_LIMIT
                     or not 0 <= previous_rank < 2**32
                     or (record_scope, record_cycle) != (scope_id, ranking_cycle)
                 ):
@@ -1348,7 +1384,7 @@ class CaptureStore:
                 guild_mark = str(raw.get("guild_mark_hex") or "").lower()
                 if not re.fullmatch(r"[0-9a-f]{8}", guild_mark):
                     guild_mark = ""
-                by_uid[str(uid)] = {
+                record = {
                     "character_uid": str(uid),
                     "character_name": str(raw.get("character_name") or "").strip()[:80],
                     "guild_name": str(raw.get("guild_name") or "").strip()[:80],
@@ -1357,9 +1393,36 @@ class CaptureStore:
                     "rank": rank,
                     "previous_rank": previous_rank,
                 }
-                captured_at_ns = max(captured_at_ns, ts_ns)
-        if not by_uid:
+                previous = by_rank.get(rank)
+                if previous is not None and previous != record:
+                    conflicted_ranks.add(rank)
+                by_rank[rank] = record
+                event_contributed = True
+            if event_contributed:
+                contributing_events.add(event_id)
+                if ts_ns > 0:
+                    captured_times.append(ts_ns)
+        if not by_rank:
             return {}
+
+        ranks_by_uid: dict[str, set[int]] = {}
+        for rank, record in by_rank.items():
+            ranks_by_uid.setdefault(str(record["character_uid"]), set()).add(rank)
+        duplicate_uids = {
+            uid for uid, ranks in ranks_by_uid.items() if len(ranks) > 1
+        }
+        conflict_count = len(conflicted_ranks) + len(duplicate_uids)
+        observed_positions = sorted(by_rank)
+        missing_positions = sorted(
+            set(range(1, EXP_RANK_TOP_LIMIT + 1)) - set(observed_positions)
+        )
+        completeness = (
+            "complete"
+            if not missing_positions and conflict_count == 0
+            else "partial"
+        )
+        first_captured_at_ns = min(captured_times, default=0)
+        captured_at_ns = max(captured_times, default=0)
 
         info = None
         for ts_ns, data_json in self.conn.execute(
@@ -1381,24 +1444,41 @@ class CaptureStore:
                         "previous_rank": int(fields.get("previous_rank")),
                         "ranking_time_ms": int(fields.get("ranking_time_ms")),
                     }
-                    captured_at_ns = max(captured_at_ns, int(ts_ns or 0))
                     break
             except (TypeError, ValueError):
                 continue
 
         records = sorted(
-            by_uid.values(), key=lambda item: (int(item["rank"]), item["character_uid"])
+            by_rank.values(), key=lambda item: int(item["rank"])
         )
         content = {
             "schema_version": 1,
             "scope_id": scope_id,
             "ranking_cycle": ranking_cycle,
+            "top_limit": EXP_RANK_TOP_LIMIT,
+            "record_count": len(records),
+            "observed_positions": observed_positions,
+            "missing_positions": missing_positions,
+            "completeness": completeness,
+            "conflict_count": conflict_count,
+            "source_pages": len(contributing_events),
+            "first_captured_at_ns": first_captured_at_ns,
             "captured_at_ns": captured_at_ns,
+            "capture_span_ns": max(0, captured_at_ns - first_captured_at_ns),
             "records": records,
             **({"player_info": info} if info else {}),
         }
         canonical = json.dumps(
-            {key: value for key, value in content.items() if key != "captured_at_ns"},
+            {
+                key: value
+                for key, value in content.items()
+                if key not in {
+                    "first_captured_at_ns",
+                    "captured_at_ns",
+                    "capture_span_ns",
+                    "source_pages",
+                }
+            },
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),

@@ -1032,6 +1032,9 @@ class CoreTest(unittest.TestCase):
                     )
                 snapshot = store.exp_rank_snapshot("s")
                 self.assertEqual([item["rank"] for item in snapshot["records"]], [1, 2])
+                self.assertEqual(snapshot["completeness"], "partial")
+                self.assertEqual(snapshot["record_count"], 2)
+                self.assertEqual(snapshot["missing_positions"], list(range(3, 101)))
                 self.assertEqual(snapshot["snapshot_key"], "1:44")
                 self.assertRegex(snapshot["signature"], r"^[a-f0-9]{64}$")
                 self.assertNotIn("profile_uid_raw", snapshot["records"][0])
@@ -1039,6 +1042,53 @@ class CoreTest(unittest.TestCase):
                 store.conn.execute("UPDATE events SET ts_ns=999")
                 self.assertEqual(
                     store.exp_rank_snapshot("s")["signature"], first_signature
+                )
+            finally:
+                store.close()
+
+    def test_exp_rank_snapshot_limits_packet_of_300_to_complete_top_100(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+            try:
+                records = []
+                for rank in range(1, 301):
+                    uid = 10_000 + rank
+                    records.append({
+                        "character_uid": uid,
+                        "character_uid_repeat": uid,
+                        "character_name": f"Jogador {rank}",
+                        "guild_name": "Guilda",
+                        "guild_mark_hex": "84000457",
+                        "total_exp": 1_000_000 - rank,
+                        "rank": rank,
+                        "previous_rank": rank,
+                        "scope_id_raw": 1,
+                        "ranking_cycle_raw": 44,
+                    })
+                store.conn.execute(
+                    """INSERT INTO events(session_id,source,flow,stream_offset,bundle_seq,
+                       ts_ns,opcode,type,character_uid,data_json)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        "s", "memory", "flow", 1, 0, 100,
+                        0x1A02, "exp_rank_list", None,
+                        json.dumps({
+                            "field_decode": "captura-layout-exato",
+                            "records": records,
+                        }),
+                    ),
+                )
+
+                snapshot = store.exp_rank_snapshot("s")
+
+                self.assertEqual(snapshot["completeness"], "complete")
+                self.assertEqual(snapshot["record_count"], 100)
+                self.assertEqual(snapshot["observed_positions"], list(range(1, 101)))
+                self.assertEqual(snapshot["missing_positions"], [])
+                self.assertEqual(snapshot["conflict_count"], 0)
+                self.assertEqual(
+                    [item["rank"] for item in snapshot["records"]],
+                    list(range(1, 101)),
                 )
             finally:
                 store.close()

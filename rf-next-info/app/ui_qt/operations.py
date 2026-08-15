@@ -429,6 +429,11 @@ class SiteUploadEngine:
         records = list(ranking.get("records") or [])
         if not records:
             raise ValueError("Ainda não existem dados de ranking de EXP para enviar")
+        if ranking.get("completeness") != "complete":
+            raise ValueError(
+                "O Top 100 de EXP ainda está parcial; aguarde a leitura completa "
+                "antes do envio"
+            )
         payload = {
             "metadata": {
                 **self._metadata("exp_rank"),
