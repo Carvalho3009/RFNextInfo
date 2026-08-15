@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.9 — instalação manual
+
+- Corrige o envio automático do Ranking de EXP para respeitar o contrato Top
+  100 do site, mesmo quando o servidor do jogo entrega 300 posições no pacote.
+- Mantém capturas parciais ou conflitantes pendentes e envia somente posições
+  únicas de um mesmo escopo e ciclo.
+
 ## 1.0.8 — instalação manual
 
 - Integra os layouts confirmados mais recentes para movimento, saída de sala,

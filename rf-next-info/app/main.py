@@ -60,8 +60,8 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "1.0.8"
-RELEASE_SEQUENCE = 9
+VERSION = "1.0.9"
+RELEASE_SEQUENCE = 10
 DISCORD_URL = "https://discord.gg/D3hhdMgkj"
 ASSETS = ROOT / "assets"
 
