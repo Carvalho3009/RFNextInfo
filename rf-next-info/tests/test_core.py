@@ -34,6 +34,7 @@ from core.rfnext_frame_decode import (
     APPEAR_PLAYER_TAIL_SIZE,
     HEADER_SIZE,
     parse_guild_relation_payload,
+    parse_exp_rank_payload,
     parse_inventory_payload,
     parse_marked_gameplay_payload,
     parse_observation_payload,
@@ -131,6 +132,34 @@ class CoreTest(unittest.TestCase):
         )
         self.assertEqual(equip_response["fields"]["result"], 0)
         self.assertEqual(equip_response["fields"]["equipment_part"], "weapon")
+
+    def test_latest_decoder_reads_exp_rank_and_ingest_routes_it(self):
+        name, guild = "Carvalho", "BLOOD"
+        record = (
+            struct.pack(
+                "<QQIIIIQ",
+                6_150_132_606_160_036_456,
+                28_502_264_098,
+                102,
+                101,
+                1,
+                44_594_176,
+                6_150_132_606_160_036_456,
+            )
+            + struct.pack("<H", len(name))
+            + name.encode("utf-16le")
+            + struct.pack("<QI", 8_975_062_754_656_233_889, 142_633)
+            + struct.pack("<H", len(guild))
+            + guild.encode("utf-16le")
+            + bytes.fromhex("84000457")
+        )
+        frame = self._decoder_frame(0x1A02, struct.pack("<H", 1) + record)
+        parsed = parse_exp_rank_payload(frame, 12020)
+        self.assertEqual(parsed["records"][0]["rank"], 102)
+        self.assertEqual(parsed["records"][0]["guild_name"], "BLOOD")
+        from core import rfnext_frame_decode as decoder
+        self.assertEqual(_safe_parse(decoder, frame, 12020)["type"], "exp_rank_list")
+        self.assertIsNone(parse_exp_rank_payload(frame, 12010))
 
     def test_disappear_event_removes_player_from_live_state_immediately(self):
         stream = LiveEventStream()
@@ -969,6 +998,50 @@ class CoreTest(unittest.TestCase):
             [(row["name"], row["damage"], row["dps_hp"]) for row in guilds],
             [("Guild B", 300, 300.0), ("Guild A", 1800, 200.0)],
         )
+
+    def test_exp_rank_snapshot_merges_pages_and_excludes_profile_fields(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+            try:
+                for offset, uid, rank in ((1, 101, 1), (2, 202, 2)):
+                    store.conn.execute(
+                        """INSERT INTO events(session_id,source,flow,stream_offset,bundle_seq,
+                           ts_ns,opcode,type,character_uid,data_json)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            "s", "memory", "flow", offset, 0, offset * 100,
+                            0x1A02, "exp_rank_list", None,
+                            json.dumps({
+                                "field_decode": "captura-layout-exato",
+                                "records": [{
+                                    "character_uid": uid,
+                                    "character_uid_repeat": uid,
+                                    "character_name": f"Jogador {uid}",
+                                    "guild_name": "Guilda",
+                                    "guild_mark_hex": "84000457",
+                                    "profile_uid_raw": 999,
+                                    "profile_value_raw": 123,
+                                    "total_exp": 1000 - rank,
+                                    "rank": rank,
+                                    "previous_rank": rank + 1,
+                                    "scope_id_raw": 1,
+                                    "ranking_cycle_raw": 44,
+                                }],
+                            }),
+                        ),
+                    )
+                snapshot = store.exp_rank_snapshot("s")
+                self.assertEqual([item["rank"] for item in snapshot["records"]], [1, 2])
+                self.assertEqual(snapshot["snapshot_key"], "1:44")
+                self.assertRegex(snapshot["signature"], r"^[a-f0-9]{64}$")
+                self.assertNotIn("profile_uid_raw", snapshot["records"][0])
+                first_signature = snapshot["signature"]
+                store.conn.execute("UPDATE events SET ts_ns=999")
+                self.assertEqual(
+                    store.exp_rank_snapshot("s")["signature"], first_signature
+                )
+            finally:
+                store.close()
 
     def test_pvp_target_is_cleared_after_three_seconds_without_confirmation(self):
         events = [

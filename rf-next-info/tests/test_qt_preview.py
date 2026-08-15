@@ -1478,6 +1478,42 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window.capture_engine = None
         window.close()
 
+    def test_exp_rank_upload_is_automatic_and_deduplicated(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["auto-exp-rank-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            window.capture_engine = SimpleNamespace(current_session="session")
+            window.site_profile = SimpleNamespace(connected=True)
+            window.preferences = {"auto_exp_rank_signatures": {}}
+            operations = []
+            window._run_site_operation = lambda name, callback: operations.append(name)
+            store = SimpleNamespace(
+                exp_rank_snapshot=lambda _session: {
+                    "snapshot_key": "1:44",
+                    "signature": "a" * 64,
+                    "records": [{"rank": 1}],
+                },
+                close=lambda: None,
+            )
+            with mock.patch("app.ui_qt.main.CaptureStore", return_value=store):
+                window._maybe_auto_exp_rank_upload()
+                self.assertEqual(operations, ["auto_exp_rank"])
+                window._site_operation_finished(
+                    "auto_exp_rank", {"records": 1}, None
+                )
+                window._maybe_auto_exp_rank_upload()
+                self.assertEqual(operations, ["auto_exp_rank"])
+            window.capture_engine = None
+            window.close()
+
     def test_beta_parity_actions_are_connected_and_fullscreen_shows_both_clients(self):
         from PySide6 import QtWidgets
 

@@ -315,8 +315,12 @@ class AppLogicTest(unittest.TestCase):
                     {"profiles": []},
                     "d" * 64,
                 )
+                client.upload_exp_rank(
+                    {"metadata": {}, "exp_rank": {"records": []}},
+                    "e" * 64,
+                )
 
-            self.assertEqual(urlopen.call_count, 6)
+            self.assertEqual(urlopen.call_count, 7)
             self.assertTrue(client.connected)
             requests = [call.args[0] for call in urlopen.call_args_list]
             self.assertTrue(
@@ -325,9 +329,7 @@ class AppLogicTest(unittest.TestCase):
                     for request in requests
                 )
             )
-            self.assertTrue(
-                requests[-1].full_url.endswith("/api/import/farm-session")
-            )
+            self.assertTrue(requests[-1].full_url.endswith("/api/import/exp-rank"))
             self.assertEqual(
                 {
                     request.get_header("Authorization")

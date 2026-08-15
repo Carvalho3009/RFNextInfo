@@ -1286,6 +1286,129 @@ class CaptureStore:
         canonical = json.dumps(sorted(completed.items()), separators=(",", ":"))
         return hashlib.sha256(f"{session_id}:{canonical}".encode()).hexdigest()
 
+    def exp_rank_snapshot(self, session_id: str) -> dict[str, Any]:
+        """Retorna o ranking mais recente, apenas com campos decodificados seguros."""
+        parsed_rows: list[tuple[int, int, dict[str, Any]]] = []
+        for event_id, ts_ns, data_json in self.conn.execute(
+            """SELECT id,COALESCE(ts_ns,0),data_json FROM events
+               WHERE session_id=? AND type='exp_rank_list'
+               ORDER BY id DESC LIMIT 2000""",
+            (session_id,),
+        ):
+            try:
+                data = json.loads(data_json)
+            except (TypeError, ValueError):
+                continue
+            if data.get("field_decode") != "captura-layout-exato":
+                continue
+            records = data.get("records")
+            if not isinstance(records, list):
+                continue
+            parsed_rows.append((int(event_id), int(ts_ns or 0), data))
+        if not parsed_rows:
+            return {}
+
+        latest_records = parsed_rows[0][2].get("records") or []
+        latest = next((item for item in latest_records if isinstance(item, dict)), None)
+        if latest is None:
+            return {}
+        try:
+            scope_id = int(latest.get("scope_id_raw"))
+            ranking_cycle = int(latest.get("ranking_cycle_raw"))
+        except (TypeError, ValueError):
+            return {}
+        if not (0 <= scope_id < 2**32 and 0 <= ranking_cycle < 2**32):
+            return {}
+
+        by_uid: dict[str, dict[str, Any]] = {}
+        captured_at_ns = 0
+        for _event_id, ts_ns, data in reversed(parsed_rows):
+            for raw in data.get("records") or []:
+                if not isinstance(raw, dict):
+                    continue
+                try:
+                    uid = int(raw.get("character_uid"))
+                    uid_repeat = int(raw.get("character_uid_repeat"))
+                    total_exp = int(raw.get("total_exp"))
+                    rank = int(raw.get("rank"))
+                    previous_rank = int(raw.get("previous_rank"))
+                    record_scope = int(raw.get("scope_id_raw"))
+                    record_cycle = int(raw.get("ranking_cycle_raw"))
+                except (TypeError, ValueError):
+                    continue
+                if (
+                    uid <= 0
+                    or uid != uid_repeat
+                    or not 0 <= total_exp <= 2**63 - 1
+                    or not 1 <= rank < 2**32
+                    or not 0 <= previous_rank < 2**32
+                    or (record_scope, record_cycle) != (scope_id, ranking_cycle)
+                ):
+                    continue
+                guild_mark = str(raw.get("guild_mark_hex") or "").lower()
+                if not re.fullmatch(r"[0-9a-f]{8}", guild_mark):
+                    guild_mark = ""
+                by_uid[str(uid)] = {
+                    "character_uid": str(uid),
+                    "character_name": str(raw.get("character_name") or "").strip()[:80],
+                    "guild_name": str(raw.get("guild_name") or "").strip()[:80],
+                    "guild_mark_hex": guild_mark,
+                    "total_exp": total_exp,
+                    "rank": rank,
+                    "previous_rank": previous_rank,
+                }
+                captured_at_ns = max(captured_at_ns, ts_ns)
+        if not by_uid:
+            return {}
+
+        info = None
+        for ts_ns, data_json in self.conn.execute(
+            """SELECT COALESCE(ts_ns,0),data_json FROM events
+               WHERE session_id=? AND type='exp_rank_info'
+               ORDER BY id DESC LIMIT 100""",
+            (session_id,),
+        ):
+            try:
+                data = json.loads(data_json)
+                fields = data.get("fields") or {}
+                if (
+                    data.get("field_decode") == "captura-layout-exato"
+                    and int(fields.get("scope_id_raw")) == scope_id
+                    and int(fields.get("ranking_cycle_raw")) == ranking_cycle
+                ):
+                    info = {
+                        "rank": int(fields.get("rank")),
+                        "previous_rank": int(fields.get("previous_rank")),
+                        "ranking_time_ms": int(fields.get("ranking_time_ms")),
+                    }
+                    captured_at_ns = max(captured_at_ns, int(ts_ns or 0))
+                    break
+            except (TypeError, ValueError):
+                continue
+
+        records = sorted(
+            by_uid.values(), key=lambda item: (int(item["rank"]), item["character_uid"])
+        )
+        content = {
+            "schema_version": 1,
+            "scope_id": scope_id,
+            "ranking_cycle": ranking_cycle,
+            "captured_at_ns": captured_at_ns,
+            "records": records,
+            **({"player_info": info} if info else {}),
+        }
+        canonical = json.dumps(
+            {key: value for key, value in content.items() if key != "captured_at_ns"},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return {
+            **content,
+            "snapshot_key": f"{scope_id}:{ranking_cycle}",
+            "signature": hashlib.sha256(canonical.encode()).hexdigest(),
+        }
+
     def capture_windows(self, session_id: str) -> list[dict[str, Any]]:
         return [
             {

@@ -172,6 +172,17 @@ class SiteProfileClient:
             idempotency_key,
         )
 
+    def upload_exp_rank(self, payload: dict, idempotency_key: str) -> dict:
+        if not self.connected:
+            raise ValueError("Conecte o token do Profile antes de enviar")
+        return self._request(
+            "/api/import/exp-rank",
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(),
+            self.state["token"],
+            "application/json",
+            idempotency_key,
+        )
+
     def download_observations(self) -> dict:
         if not self.connected:
             raise ValueError("Conecte o token do Profile antes de receber")

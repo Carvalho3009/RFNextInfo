@@ -331,6 +331,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.observation_sync_next_due = time.monotonic() + 300
         self.pending_auto_market: tuple[str, str] | None = None
         self.auto_market_retry_after = 0.0
+        self.pending_auto_exp_rank: tuple[str, str] | None = None
+        self.auto_exp_rank_retry_after = 0.0
         self.inventory_icon_cache: dict[int, QtGui.QIcon] = {}
         self.item_icon_zip: zipfile.ZipFile | None = None
         try:
@@ -4198,6 +4200,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.pvp_database_status.setText(
                     f"{data.get('sent_characters', 0)} UID(s) enviado(s) ao Banco Temporário."
                 )
+            QtCore.QTimer.singleShot(0, self._maybe_auto_exp_rank_upload)
         elif name == "observations:receive":
             self._render_pvp_database()
             if error is not None:
@@ -4239,6 +4242,31 @@ class MainWindow(QtWidgets.QMainWindow):
                     "Mercado enviado automaticamente"
                 )
                 self.log.info("auto_market_upload_completed")
+            QtCore.QTimer.singleShot(0, self._maybe_auto_exp_rank_upload)
+        elif name == "auto_exp_rank":
+            pending, self.pending_auto_exp_rank = self.pending_auto_exp_rank, None
+            if error is not None:
+                self.auto_exp_rank_retry_after = time.monotonic() + 60
+                self.log.error(
+                    "auto_exp_rank_upload_failed error_type=%s",
+                    type(error).__name__,
+                )
+            elif pending:
+                self.auto_exp_rank_retry_after = 0.0
+                snapshot_key, signature = pending
+                signatures = dict(
+                    self.preferences.get("auto_exp_rank_signatures") or {}
+                )
+                signatures[snapshot_key] = signature
+                signatures = dict(list(signatures.items())[-50:])
+                self.preferences = save_preferences(
+                    {"auto_exp_rank_signatures": signatures},
+                    self.preferences_path,
+                )
+                self.log.info(
+                    "auto_exp_rank_upload_completed records=%s",
+                    dict(result or {}).get("records", 0),
+                )
         elif name == "diagnostic:file":
             if error is not None:
                 QtWidgets.QMessageBox.information(
@@ -4563,6 +4591,37 @@ class MainWindow(QtWidgets.QMainWindow):
                 ).load(language),
                 language,
             ),
+        )
+
+    def _maybe_auto_exp_rank_upload(self) -> None:
+        engine = self.capture_engine
+        session = str(
+            (engine and engine.current_session)
+            or self.snapshot.get("session_id")
+            or self.last_capture_session
+            or ""
+        )
+        if (
+            not session
+            or not self.site_profile.connected
+            or self.site_busy
+            or time.monotonic() < self.auto_exp_rank_retry_after
+        ):
+            return
+        store = CaptureStore(self.database_path, readonly=True)
+        try:
+            ranking = store.exp_rank_snapshot(session)
+        finally:
+            store.close()
+        signature = str(ranking.get("signature") or "")
+        snapshot_key = str(ranking.get("snapshot_key") or "")
+        sent = dict(self.preferences.get("auto_exp_rank_signatures") or {})
+        if not signature or not snapshot_key or sent.get(snapshot_key) == signature:
+            return
+        self.pending_auto_exp_rank = (snapshot_key, signature)
+        self._run_site_operation(
+            "auto_exp_rank",
+            lambda: self.site_uploader.send_exp_rank(session),
         )
 
     def _pvp_sync_interval_seconds(self) -> int:
@@ -5502,6 +5561,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.next_read_at = time.monotonic() + self._general_read_interval_seconds()
             self._load_readonly_data()
             QtCore.QTimer.singleShot(0, self._maybe_auto_market_upload)
+            QtCore.QTimer.singleShot(0, self._maybe_auto_exp_rank_upload)
         elif name == "preview":
             now = datetime.now().strftime("%H:%M:%S")
             now_mono = time.monotonic()
@@ -5528,6 +5588,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif name == "pause":
             self.top_capture.setText("Captura — pausada")
             self._load_readonly_data()
+            QtCore.QTimer.singleShot(0, self._maybe_auto_exp_rank_upload)
             if any(self.monitor_enabled.values()):
                 QtCore.QTimer.singleShot(0, self._resume_active_monitors)
         elif name == "stop":
@@ -5544,6 +5605,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if self.site_profile.connected and self.last_capture_session:
                     self.pending_observation_session = self.last_capture_session
             self._load_readonly_data()
+            QtCore.QTimer.singleShot(0, self._maybe_auto_exp_rank_upload)
             if any(self.monitor_enabled.values()):
                 QtCore.QTimer.singleShot(0, self._resume_active_monitors)
             self.top_next_read.setText("Próx. leitura: —")

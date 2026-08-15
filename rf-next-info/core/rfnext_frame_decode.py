@@ -599,6 +599,106 @@ def parse_login_session_payload(decoded: bytes, port: int) -> dict[str, Any] | N
     return result
 
 
+EXP_RANK_MESSAGES = {
+    0x1A01: ("exp_rank_list_request", "FC2L_ask_exp_rank_list_Message", "FC2L"),
+    0x1A02: ("exp_rank_list", "FL2C_ans_exp_rank_list_Message", "FL2C"),
+    0x1A03: ("exp_rank_info_request", "FC2L_ask_exp_rank_info_Message", "FC2L"),
+    0x1A04: ("exp_rank_info", "FL2C_ans_exp_rank_info_Message", "FL2C"),
+}
+
+
+def parse_exp_rank_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
+    """Decodifica o ranking de EXP observado no serviço de jogo TCP 12020."""
+    if port != 12020 or len(decoded) < HEADER_SIZE:
+        return None
+    opcode = int.from_bytes(decoded[4:6], "little")
+    entry = EXP_RANK_MESSAGES.get(opcode)
+    if entry is None:
+        return None
+    type_name, message, direction = entry
+    payload = decoded[HEADER_SIZE:]
+    result: dict[str, Any] = {
+        "type": type_name,
+        "opcode": f"0x{opcode:04x}",
+        "message": message,
+        "direction": direction,
+        "confidence": "alto-layout-exato-captura-20260814",
+        "payload_length": len(payload),
+    }
+    try:
+        if opcode == 0x1A01:
+            if len(payload) != 8:
+                raise DecodeError("0x1a01 payload must have 8 bytes")
+            start_index, requested_count = struct.unpack("<II", payload)
+            result["fields"] = {
+                "start_index": start_index,
+                "requested_count": requested_count,
+            }
+        elif opcode == 0x1A02:
+            (record_count,), cursor = _read_struct(payload, 0, "<H", "EXP rank count")
+            records = []
+            for _ in range(record_count):
+                prefix, cursor = _read_struct(
+                    payload, cursor, "<QQIIIIQ", "EXP rank record prefix"
+                )
+                character_name, cursor = _read_utf16le_u16(
+                    payload, cursor, "EXP rank character name"
+                )
+                profile, cursor = _read_struct(
+                    payload, cursor, "<QI", "EXP rank profile fields"
+                )
+                guild_name, cursor = _read_utf16le_u16(
+                    payload, cursor, "EXP rank guild name"
+                )
+                mark_end = cursor + 4
+                if mark_end > len(payload):
+                    raise DecodeError("truncated EXP rank guild mark")
+                records.append(
+                    {
+                        "character_uid": prefix[0],
+                        "total_exp": prefix[1],
+                        "rank": prefix[2],
+                        "previous_rank": prefix[3],
+                        "scope_id_raw": prefix[4],
+                        "ranking_cycle_raw": prefix[5],
+                        "character_uid_repeat": prefix[6],
+                        "character_name": character_name,
+                        "profile_uid_raw": profile[0],
+                        "profile_value_raw": profile[1],
+                        "guild_name": guild_name,
+                        "guild_mark_hex": payload[cursor:mark_end].hex(),
+                    }
+                )
+                cursor = mark_end
+            if cursor != len(payload):
+                raise DecodeError(f"0x1a02 has {len(payload) - cursor} trailing bytes")
+            result["record_count"] = record_count
+            result["records"] = records
+        elif opcode == 0x1A03:
+            if payload:
+                raise DecodeError("0x1a03 payload must be empty")
+            result["fields"] = {}
+        elif opcode == 0x1A04:
+            if len(payload) != 24:
+                raise DecodeError("0x1a04 payload must have 24 bytes")
+            rank, previous_rank, scope_id, ranking_cycle, ranking_time_ms = struct.unpack(
+                "<IIIIQ", payload
+            )
+            result["fields"] = {
+                "rank": rank,
+                "previous_rank": previous_rank,
+                "scope_id_raw": scope_id,
+                "ranking_cycle_raw": ranking_cycle,
+                "ranking_time_ms": ranking_time_ms,
+            }
+    except (DecodeError, struct.error, UnicodeDecodeError) as exc:
+        result["field_decode"] = "layout-mismatch"
+        result["field_decode_error"] = str(exc)
+        return result
+    result["field_decode"] = "captura-layout-exato"
+    return result
+
+
 SALVAGE_ITEM = struct.Struct("<QIQ")
 EQUIPMENT_PART_NAMES = (
     "weapon",
@@ -2449,6 +2549,43 @@ def self_test() -> None:
     assert int.from_bytes(expanded[1:3], "little") == len(expanded)
     assert compressed_info["compressed"] is True
     assert len(decode_stream(wire + bytes(compressed))) == 2
+    rank_name = "Carvalho"
+    rank_guild = "BLOOD"
+    rank_record = (
+        struct.pack(
+            "<QQIIIIQ",
+            6_150_132_606_160_036_456,
+            28_502_264_098,
+            102,
+            101,
+            1,
+            44_594_176,
+            6_150_132_606_160_036_456,
+        )
+        + struct.pack("<H", len(rank_name))
+        + rank_name.encode("utf-16le")
+        + struct.pack("<QI", 8_975_062_754_656_233_889, 142_633)
+        + struct.pack("<H", len(rank_guild))
+        + rank_guild.encode("utf-16le")
+        + bytes.fromhex("84000457")
+    )
+    rank_frame = bytearray(HEADER_SIZE + 2 + len(rank_record))
+    rank_frame[4:6] = (0x1A02).to_bytes(2, "little")
+    rank_frame[6:] = struct.pack("<H", 1) + rank_record
+    rank_list = parse_exp_rank_payload(bytes(rank_frame), 12020)
+    assert rank_list["record_count"] == 1
+    assert rank_list["records"][0]["character_name"] == "Carvalho"
+    assert rank_list["records"][0]["total_exp"] == 28_502_264_098
+    assert rank_list["records"][0]["rank"] == 102
+    assert parse_exp_rank_payload(bytes(rank_frame), 12010) is None
+    rank_info_frame = bytearray(HEADER_SIZE + 24)
+    rank_info_frame[4:6] = (0x1A04).to_bytes(2, "little")
+    rank_info_frame[6:] = struct.pack(
+        "<IIIIQ", 102, 101, 1, 44_594_176, 1_786_726_800_000
+    )
+    rank_info = parse_exp_rank_payload(bytes(rank_info_frame), 12020)
+    assert rank_info["fields"]["rank"] == 102
+    assert rank_info["fields"]["ranking_time_ms"] == 1_786_726_800_000
     exp_frame = bytearray(HEADER_SIZE + 24)
     exp_frame[1:3] = len(exp_frame).to_bytes(2, "little")
     exp_frame[4:6] = (0x0307).to_bytes(2, "little")
@@ -3065,6 +3202,9 @@ def main() -> int:
                     and login_session is not None
                 ):
                     info["decoded"] = login_session
+                exp_rank = parse_exp_rank_payload(decoded, args.port)
+                if "decoded" not in info and exp_rank is not None:
+                    info["decoded"] = exp_rank
                 marked_gameplay = parse_marked_gameplay_payload(decoded, args.port)
                 if marked_gameplay is not None:
                     flow_key = flow or f"port:{args.port}"

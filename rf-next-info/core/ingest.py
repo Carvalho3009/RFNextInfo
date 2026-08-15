@@ -156,6 +156,11 @@ def _safe_parse(
             or getattr(
                 decoder, "parse_guild_relation_payload", lambda _value: None
             )(decoded)
+            or getattr(
+                decoder,
+                "parse_exp_rank_payload",
+                lambda _value, _port: None,
+            )(decoded, port)
             or decoder.parse_observation_payload(decoded)
             or decoder.parse_marked_gameplay_payload(decoded, port)
             or getattr(decoder, "parse_inventory_payload", lambda _value: None)(

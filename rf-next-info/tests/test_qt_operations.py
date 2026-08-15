@@ -802,6 +802,49 @@ class CaptureEngineTest(unittest.TestCase):
 
 
 class SiteUploadEngineTest(unittest.TestCase):
+    def test_exp_rank_send_requires_server_confirmation(self):
+        class Site:
+            connected = True
+            profile = "Profile"
+
+            def upload_exp_rank(self, payload, key):
+                self.uploaded = (payload, key)
+                return {"received_exp_rank": 1}
+
+        class License(_AllowedLicense):
+            installation_id = "install-1"
+            lease = "lease-1"
+
+        ranking = {
+            "schema_version": 1,
+            "scope_id": 1,
+            "ranking_cycle": 44,
+            "captured_at_ns": 123,
+            "records": [{
+                "character_uid": "101",
+                "character_name": "Alice",
+                "guild_name": "Guilda",
+                "guild_mark_hex": "84000457",
+                "total_exp": 999,
+                "rank": 1,
+                "previous_rank": 2,
+            }],
+            "snapshot_key": "1:44",
+            "signature": "a" * 64,
+        }
+        store = mock.Mock()
+        store.exp_rank_snapshot.return_value = ranking
+        site = Site()
+        with mock.patch("app.ui_qt.operations.CaptureStore", return_value=store):
+            engine = SiteUploadEngine(Path("capture.sqlite3"), site, License())
+            result = engine.send_exp_rank("session")
+            self.assertEqual(result["records"], 1)
+            self.assertEqual(site.uploaded[0]["exp_rank"]["records"][0]["rank"], 1)
+            self.assertNotIn("signature", site.uploaded[0]["exp_rank"])
+            site.upload_exp_rank = lambda _payload, _key: {"ok": True}
+            with self.assertRaisesRegex(ValueError, "contrato do ranking"):
+                engine.send_exp_rank("session")
+
     def test_pvp_send_and_receive_are_independent(self):
         class Site:
             connected = True

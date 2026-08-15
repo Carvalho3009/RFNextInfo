@@ -417,6 +417,47 @@ class SiteUploadEngine:
             knowledge.close()
             capture.close()
 
+    def send_exp_rank(self, session_id: str) -> dict[str, object]:
+        self.license.require("envio do ranking de EXP")
+        if not self.site_profile.connected:
+            raise ValueError("Valide o token do Profile antes de enviar")
+        capture = CaptureStore(self.database_path, readonly=True)
+        try:
+            ranking = capture.exp_rank_snapshot(session_id)
+        finally:
+            capture.close()
+        records = list(ranking.get("records") or [])
+        if not records:
+            raise ValueError("Ainda não existem dados de ranking de EXP para enviar")
+        payload = {
+            "metadata": {
+                **self._metadata("exp_rank"),
+                "session_id": session_id,
+                "privacy": "decoded-fields-only; no raw payload or opcode 0x0101",
+            },
+            "exp_rank": {
+                key: value
+                for key, value in ranking.items()
+                if key not in {"signature", "snapshot_key"}
+            },
+        }
+        key = hashlib.sha256(
+            f"{self.site_profile.profile}\0exp-rank\0{ranking['signature']}".encode()
+        ).hexdigest()
+        response = self.site_profile.upload_exp_rank(payload, key)
+        received = response.get("received_exp_rank")
+        if not isinstance(received, int) or received != len(records):
+            raise ValueError(
+                "O site ainda não confirmou o contrato do ranking de EXP. "
+                "O envio será tentado novamente automaticamente."
+            )
+        return {
+            "records": received,
+            "signature": ranking["signature"],
+            "snapshot_key": ranking["snapshot_key"],
+            "duplicate": bool(response.get("duplicate")),
+        }
+
     def receive_observations(self, knowledge_path: Path) -> dict[str, object]:
         self.license.require("recebimento do Banco PvP")
         if not self.site_profile.connected:
