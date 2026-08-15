@@ -78,3 +78,7 @@ do jogo. A implementação foi selecionada para o instalador manual 1.0.8.
 - atualização: manual; nenhum manifesto automático ou assinatura de
   procedência foi gerado;
 - Termos de Uso: aceite obrigatório preservado.
+- publicação: branch órfã `download/rf-qol-1.0.8`, commit `6d1595b`, sem
+  GitHub Release;
+- link validado por novo download, com tamanho e SHA-256 idênticos ao candidato:
+  `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.8/RF%20QOL%20Setup%201.0.8.exe`.

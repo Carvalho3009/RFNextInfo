@@ -402,3 +402,8 @@ dados reais permanecem intactos.
   `FF57CD239EA1ED8A0E49F8EEC863874499443B86F4B2461B9F876B7CC297BF1F`.
 - ProductVersion/FileVersion `1.0.8`; instalador e executável `NotSigned`;
   atualização manual e nenhum manifesto automático gerado.
+- Publicação: branch órfã `download/rf-qol-1.0.8`, commit `6d1595b`, sem
+  GitHub Release. O download público retornou 48.369.441 bytes e SHA-256
+  `FF57CD239EA1ED8A0E49F8EEC863874499443B86F4B2461B9F876B7CC297BF1F`,
+  idênticos ao candidato local.
+- Link validado: `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.8/RF%20QOL%20Setup%201.0.8.exe`.
