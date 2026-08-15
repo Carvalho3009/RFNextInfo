@@ -25,3 +25,21 @@ Top 100 íntegro e, por isso, responde HTTP 422.
 3. o payload produzido passa no validador do contrato ativo;
 4. regressão completa do RF QOL;
 5. instalador e publicação dependem de autorização específica do owner.
+
+## Resultado da release
+
+- autorização do owner recebida em 15/08/2026;
+- versão `1.0.9`, sequência interna `10`;
+- 266 testes aprovados no build de release;
+- executável empacotado e smoke de instalação, autoteste e desinstalação
+  aprovados;
+- instalador `RF QOL Setup 1.0.9.exe`, 48.373.255 bytes;
+- SHA-256
+  `E4B2E32650114FA062AC7FD4EE8289B4147E9A2BAB29758D680A335F71216D9F`;
+- ProductVersion e FileVersion `1.0.9`; Authenticode `NotSigned`;
+- código do hotfix: `9cd59fc`; preparação da release: `d60048c`;
+- artefatos publicados em `download/rf-qol-1.0.9`, commit `f4240ae`;
+- download público refeito e validado com os mesmos bytes, hash, versão e
+  estado de assinatura;
+- link:
+  `https://github.com/Carvalho3009/RFNextInfo/raw/refs/heads/download/rf-qol-1.0.9/RF%20QOL%20Setup%201.0.9.exe`.
