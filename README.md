@@ -8,8 +8,11 @@ Instalador manual do RF QOL para Windows.
 
 ## Verificacao
 
-- SHA-256: `FF57CD239EA1ED8A0E49F8EEC863874499443B86F4B2461B9F876B7CC297BF1F`
+- SHA-256: `6495A27AA653246823B56A6159AD9601C7BFCB9293077E15916CED1DCCF045D2`
 - O instalador nao possui assinatura digital.
 - Consulte `SHA256SUMS.txt`, os termos de uso e os arquivos de proveniencia desta branch.
+
+Este rebuild inclui o decoder de ranking de EXP e o envio automatico,
+deduplicado e autenticado, quando o ranking for reconhecido.
 
 Esta branch contem somente os artefatos de distribuicao da versao 1.0.8. O codigo-fonte permanece fora dela.
