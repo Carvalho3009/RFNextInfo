@@ -617,6 +617,14 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
             self.assertTrue(any("Rival confirmado" in label.text() for label in pvp_labels))
             self.assertFalse(any("Rigarden" in label.text() for label in pvp_labels))
+            window.snapshot["combat_monitors"][0]["character_name"] = ""
+            window._render_combat()
+            self.assertEqual(
+                target_overlay.summary.text(),
+                "Alvo atual · Personagem não vinculado",
+            )
+            self.assertEqual(target_overlay.rows.count(), 1)
+            window.snapshot["combat_monitors"][0]["character_name"] = "Personagem A"
             window.snapshot["combat_monitors"].append({
                 "client_key": "client:b",
                 "character_name": "Personagem B",

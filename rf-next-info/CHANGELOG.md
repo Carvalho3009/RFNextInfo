@@ -1,5 +1,11 @@
 # Changelog
 
+## Em desenvolvimento
+
+- Permite exibir a vida do alvo selecionado na rota confirmada de um cliente
+  mesmo antes de o personagem local ser reconhecido, sem misturar clientes ou
+  criar monitores provisórios sem seleção de alvo.
+
 ## 1.0.10 — instalação manual
 
 - Mantém o log técnico detalhado sempre ativo, preservando a sanitização de

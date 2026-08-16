@@ -266,7 +266,15 @@ class ReadOnlySnapshotReader:
             key = f"client:{chr(97 + index)}"
             profile = identities.get(key)
             if not profile:
-                continue
+                has_target = any(
+                    event.get("type")
+                    in {"select_target_request", "use_skill_request"}
+                    and (event.get("data") or {}).get("target_uid") is not None
+                    for event in routed
+                )
+                if not has_target:
+                    continue
+                profile = {"uid": "", "name": "", "client_key": key}
             monitor = summarize_combat(
                 routed,
                 str(profile["uid"]),
