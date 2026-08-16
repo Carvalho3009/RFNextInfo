@@ -231,6 +231,105 @@ class ReadOnlySnapshotReaderTest(unittest.TestCase):
             )
             self.assertEqual(monitor["local_combat_uid"], 20)
 
+    def test_live_reader_routes_exitlag_flow_by_confirmed_character_uid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            source = root / "profile.pcap"
+            source.write_bytes(b"profile")
+            store = CaptureStore(database)
+            try:
+                store.add_events(source, [{
+                    "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                    "stream_offset": 1,
+                    "bundle_seq": 0,
+                    "opcode": 0x0106,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": 101,
+                        "character_name": "Local",
+                    }},
+                }], "session", client_ports=((50000,),))
+            finally:
+                store.close()
+            tunneled_flow = "127.0.0.1:61000 -> 127.0.0.1:9001"
+            events = [{
+                "flow": tunneled_flow,
+                "ts_ns": time.time_ns(),
+                "type": "world_info_prefix",
+                "data": {"fields": {
+                    "character_uid": 101,
+                    "character_name": "Local",
+                }},
+            }, {
+                "flow": tunneled_flow,
+                "ts_ns": time.time_ns(),
+                "type": "appear_player_list",
+                "data": {"units": [{
+                    "uid": 20,
+                    "character_uid": 202,
+                    "name": "Inimigo",
+                    "pvp_status": "enemy",
+                }]},
+            }]
+
+            result = ReadOnlySnapshotReader(
+                database, _AllowedLicense()
+            ).load_live_combat(events, ((50000,),), modes=("pvp",))
+
+        self.assertEqual(len(result["combat_monitors"]), 1)
+        self.assertEqual(result["combat_monitors"][0]["client_key"], "client:a")
+        self.assertEqual(result["routing_metrics"], {
+            "total_events": 2,
+            "associated_events": 2,
+            "identity_associated_events": 2,
+            "identity_bound_flows": 1,
+            "unmatched_events": 0,
+        })
+
+    def test_live_reader_does_not_mix_uid_bound_exitlag_flows(self):
+        profiles = [
+            {"uid": "101", "name": "A", "client_key": "client:a"},
+            {"uid": "202", "name": "B", "client_key": "client:b"},
+        ]
+        flow = "127.0.0.1:61001 -> 127.0.0.1:9001"
+        events = [{
+            "flow": flow,
+            "type": "world_info_prefix",
+            "data": {"fields": {
+                "character_uid": 202,
+                "character_name": "B",
+            }},
+        }, {
+            "flow": flow,
+            "type": "appear_player_list",
+            "data": {"units": [{"character_uid": 303, "name": "Alvo"}]},
+        }]
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "capture.sqlite3"
+            store = CaptureStore(database)
+            store.close()
+            with mock.patch.object(
+                CaptureStore, "latest_session", return_value="session"
+            ), mock.patch.object(
+                CaptureStore, "session_profiles", return_value=profiles
+            ), mock.patch(
+                "app.ui_qt.data.summarize_combat", side_effect=({}, {})
+            ) as summarize:
+                result = ReadOnlySnapshotReader(
+                    database, _AllowedLicense()
+                ).load_live_combat(
+                    events, ((50000,), (50001,)), modes=("pvp",)
+                )
+
+        self.assertEqual(summarize.call_count, 2)
+        self.assertEqual(summarize.call_args_list[0].args[0], [])
+        self.assertEqual(summarize.call_args_list[1].args[0], events)
+        self.assertEqual(
+            [row["client_key"] for row in result["combat_monitors"]],
+            ["client:a", "client:b"],
+        )
+
 
 class CaptureEngineTest(unittest.TestCase):
     def test_denied_license_cannot_start_capture_or_monitor(self):

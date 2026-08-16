@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.10 — instalação manual
+
+- Mantém o log técnico detalhado sempre ativo, preservando a sanitização de
+  licenças, tokens, endereços e conteúdo bruto de pacotes.
+- Aceita portas secundárias do próprio processo do ProjectRF quando o ExitLag
+  redireciona a conexão e associa o fluxo PvP ao cliente pela UID confirmada.
+- Não inclui conexões pertencentes ao serviço do ExitLag na captura.
+
 ## 1.0.9 — instalação manual
 
 - Corrige o envio automático do Ranking de EXP para respeitar o contrato Top

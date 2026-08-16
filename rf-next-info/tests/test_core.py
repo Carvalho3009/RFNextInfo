@@ -2019,8 +2019,29 @@ class CoreTest(unittest.TestCase):
             routes = clients_for_executable(
                 game, (12000, 12010, 12020, 12040)
             )
-        self.assertEqual((local_ports, remote_ports, clients), ((50100,), (12020,), 1))
-        self.assertEqual(routes[0]["local_ports"], (50100,))
+        self.assertEqual(
+            (local_ports, remote_ports, clients),
+            ((50100, 50101), (12020,), 1),
+        )
+        self.assertEqual(routes[0]["local_ports"], (50100, 50101))
+        self.assertEqual(routes[0]["remote_ports"], (12020,))
+
+    def test_exitlag_secondary_route_stays_scoped_to_the_game_pid(self):
+        game = r"C:\Games\ProjectRF.exe"
+        exitlag = r"C:\Program Files\ExitLag\ExitLagPmService.exe"
+        rows = [(10, 50101, 9001), (20, 50200, 443)]
+        paths = {10: game, 20: exitlag}
+        with patch("core.connections._tcp_rows", return_value=rows), patch(
+            "core.connections._process_path", side_effect=paths.get
+        ):
+            processes = connected_processes((12020,))
+            routes = clients_for_executable(game, (12020,))
+
+        self.assertEqual(next(iter(processes.values()))[1], {50101})
+        self.assertEqual(next(iter(processes.values()))[2], set())
+        self.assertEqual(routes[0]["local_ports"], (50101,))
+        self.assertEqual(routes[0]["remote_ports"], ())
+        self.assertNotIn(50200, routes[0]["local_ports"])
 
     def test_pc_and_bluestacks_connections_are_discovered_separately(self):
         paths = {

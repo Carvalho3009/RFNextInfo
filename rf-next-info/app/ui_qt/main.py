@@ -337,7 +337,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.item_icon_zip: zipfile.ZipFile | None = None
         try:
             self.log_path = LOG_PATH
-            self.log = configure_log(self.log_path, VERSION)
+            self.log = configure_log(self.log_path, VERSION, detailed=True)
         except OSError as error:
             raise OSError(f"Não foi possível gravar o log em {LOG_PATH}") from error
         install_exception_hooks(self.log)
@@ -2045,9 +2045,11 @@ class MainWindow(QtWidgets.QMainWindow):
             "Enviar Leilão/Mercado automaticamente ao concluir a lista"
         )
         self.setting_delete_export = QtWidgets.QCheckBox("Excluir após exportar")
-        self.setting_detailed_log = QtWidgets.QCheckBox("Ativar log completo (detalhado)")
+        self.setting_detailed_log = QtWidgets.QCheckBox("Log completo (sempre ativo)")
+        self.setting_detailed_log.setChecked(True)
+        self.setting_detailed_log.setEnabled(False)
         self.setting_detailed_log.setToolTip(
-            "Registra ações e etapas internas. Pode aumentar o tamanho do arquivo; "
+            "Registra sempre ações e etapas internas. Pode aumentar o tamanho do arquivo; "
             "chaves, tokens e conteúdo bruto de pacotes continuam removidos."
         )
         behavior_layout.addWidget(self.setting_minimize); behavior_layout.addWidget(self.setting_auto_export); behavior_layout.addWidget(self.setting_auto_market); behavior_layout.addWidget(self.setting_delete_export); behavior_layout.addWidget(self.setting_detailed_log); behavior_layout.addStretch(1)
@@ -2154,7 +2156,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_auto_export.setChecked(bool(preferences.get("auto_export", False)))
         self.setting_auto_market.setChecked(bool(preferences.get("auto_market_upload", True)))
         self.setting_delete_export.setChecked(bool(preferences.get("delete_after_export", False)))
-        self.setting_detailed_log.setChecked(bool(preferences.get("detailed_logging", False)))
+        self.setting_detailed_log.setChecked(True)
         monitor_intervals = dict(preferences.get("monitor_intervals") or {})
         monitor_focus = dict(preferences.get("monitor_focus") or {})
         for mode, controls in self.monitor_controls.items():
@@ -2225,7 +2227,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "auto_export": self.setting_auto_export.isChecked(),
             "auto_market_upload": self.setting_auto_market.isChecked(),
             "delete_after_export": self.setting_delete_export.isChecked(),
-            "detailed_logging": self.setting_detailed_log.isChecked(),
+            "detailed_logging": True,
             "channel": self.update_channel.currentData(),
             "monitor_intervals": {
                 mode: controls["interval"].value()
@@ -2238,7 +2240,7 @@ class MainWindow(QtWidgets.QMainWindow):
             },
             "alerts": self._alert_preferences(),
         }, self.preferences_path)
-        set_detailed(self.log, self.setting_detailed_log.isChecked())
+        set_detailed(self.log, True)
         self.log.debug(
             "settings_saved decode_interval=%s language=%s minimize=%s auto_export=%s "
             "delete_after_export=%s",
@@ -4407,7 +4409,7 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(object)
     def _apply_readonly_data(self, payload: dict[str, object]) -> None:
         self.preferences = dict(payload.get("preferences") or {})
-        set_detailed(self.log, bool(self.preferences.get("detailed_logging", False)))
+        set_detailed(self.log, True)
         self.snapshot = dict(payload.get("snapshot") or {})
         self._apply_inventory_category_overrides()
         if hasattr(self, "pvp_sync_interval"):
@@ -4659,6 +4661,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(object)
     def _apply_combat_data(self, payload: dict[str, object]) -> None:
+        routing = payload.get("routing_metrics")
+        if isinstance(routing, dict):
+            self.log.debug(
+                "combat_routing total=%s associated=%s identity_associated=%s "
+                "identity_flows=%s unmatched=%s",
+                routing.get("total_events", 0),
+                routing.get("associated_events", 0),
+                routing.get("identity_associated_events", 0),
+                routing.get("identity_bound_flows", 0),
+                routing.get("unmatched_events", 0),
+            )
         if payload.get("session_id") == self.snapshot.get("session_id"):
             self.snapshot["combat_monitors"] = list(
                 payload.get("combat_monitors") or []
