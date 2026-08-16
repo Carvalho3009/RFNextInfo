@@ -213,23 +213,54 @@ class ReadOnlySnapshotReader:
             for profile in profiles
             if profile.get("uid")
         }
-        routed_events = [
-            [event for event in events if _event_matches_ports(event, ports)]
-            for ports in client_ports[:7]
+        keys = [
+            f"client:{chr(97 + index)}"
+            for index in range(len(client_ports[:7]))
         ]
-        for index, routed in enumerate(routed_events):
-            key = f"client:{chr(97 + index)}"
-            for event in reversed(routed):
-                if event.get("type") != "world_info_prefix":
-                    continue
+        uid_to_key = {
+            str(profile.get("uid")): key
+            for key, profile in identities.items()
+            if key in keys and profile.get("uid")
+        }
+        port_matches = [
+            tuple(
+                index
+                for index, ports in enumerate(client_ports[:7])
+                if _event_matches_ports(event, ports)
+            )
+            for event in events
+        ]
+        flow_owners: dict[str, str] = {}
+        routed_events: list[list[dict[str, Any]]] = [[] for _key in keys]
+        associated_events = 0
+        identity_associated_events = 0
+        for event, matches in zip(events, port_matches):
+            flow = str(event.get("flow") or "")
+            if event.get("type") == "world_info_prefix":
                 fields = (event.get("data") or {}).get("fields") or {}
-                if fields.get("character_uid"):
-                    identities[key] = {
-                        "uid": str(fields["character_uid"]),
+                uid = str(fields.get("character_uid") or "")
+                owner = uid_to_key.get(uid)
+                if not owner and len(matches) == 1:
+                    owner = keys[matches[0]]
+                if owner:
+                    identities[owner] = {
+                        "uid": uid,
                         "name": str(fields.get("character_name") or ""),
-                        "client_key": key,
+                        "client_key": owner,
                     }
-                    break
+                    if flow:
+                        flow_owners[flow] = owner
+            owner = flow_owners.get(flow)
+            if owner in keys:
+                routed_events[keys.index(owner)].append(event)
+                associated_events += 1
+                identity_associated_events += 1
+                continue
+            if not matches:
+                continue
+            for index in matches:
+                routed_events[index].append(event)
+            associated_events += 1
         monitors = []
         for index, routed in enumerate(routed_events):
             key = f"client:{chr(97 + index)}"
@@ -249,7 +280,17 @@ class ReadOnlySnapshotReader:
                 client_key=key,
             )
             monitors.append(monitor)
-        return {"session_id": session_id, "combat_monitors": monitors}
+        return {
+            "session_id": session_id,
+            "combat_monitors": monitors,
+            "routing_metrics": {
+                "total_events": len(events),
+                "associated_events": associated_events,
+                "identity_associated_events": identity_associated_events,
+                "identity_bound_flows": len(flow_owners),
+                "unmatched_events": len(events) - associated_events,
+            },
+        }
 
     def _empty(self) -> dict[str, Any]:
         return {

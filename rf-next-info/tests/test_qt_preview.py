@@ -1696,7 +1696,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF QOL — 1.0.9")
+        self.assertEqual(result["title"], "RF QOL — 1.0.10")
         self.assertEqual(result["page_count"], 11)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
@@ -1957,7 +1957,9 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
 
             window.setting_capture_directory.setText(str(root / "captures"))
-            window.setting_detailed_log.setChecked(True)
+            self.assertTrue(window.setting_detailed_log.isChecked())
+            self.assertFalse(window.setting_detailed_log.isEnabled())
+            window.setting_detailed_log.setChecked(False)
             with mock.patch.object(QtWidgets.QMessageBox, "information"):
                 window._save_settings()
             saved_preferences = load_preferences(preferences_path)

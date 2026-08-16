@@ -120,20 +120,41 @@ def _process_path(pid: int) -> str | None:
 def _connected_processes(
     allowed_remote_ports: tuple[int, ...],
     executable_prefixes: tuple[str, ...],
+    *,
+    include_same_pid_local_ports: bool = False,
 ) -> dict[str, tuple[set[int], set[int], set[int]]]:
     allowed = set(allowed_remote_ports)
     prefixes = tuple(value.casefold() for value in executable_prefixes)
     result: dict[str, tuple[set[int], set[int], set[int]]] = {}
     paths: dict[int, str | None] = {}
-    for pid, local_port, remote_port in _tcp_rows():
+    rows = _tcp_rows()
+
+    def matching_path(pid: int) -> str | None:
         if pid not in paths:
             paths[pid] = _process_path(pid)
         path = paths[pid]
-        if not path:
+        if path and os.path.basename(path).casefold().startswith(prefixes):
+            return path
+        return None
+
+    matching_pids = {
+        pid for pid, _local_port, _remote_port in rows if matching_path(pid)
+    }
+    allowed_pids = {
+        pid
+        for pid, _local_port, remote_port in rows
+        if matching_path(pid) and (not allowed or remote_port in allowed)
+    }
+    eligible_pids = matching_pids if include_same_pid_local_ports else allowed_pids
+    for pid, local_port, remote_port in rows:
+        path = matching_path(pid)
+        if not path or pid not in eligible_pids:
             continue
-        if not os.path.basename(path).casefold().startswith(prefixes):
-            continue
-        if allowed and remote_port not in allowed:
+        if (
+            allowed
+            and remote_port not in allowed
+            and not include_same_pid_local_ports
+        ):
             continue
         key = os.path.normcase(os.path.abspath(path))
         pids, local_ports, remote_ports = result.setdefault(
@@ -141,7 +162,8 @@ def _connected_processes(
         )
         pids.add(pid)
         local_ports.add(local_port)
-        remote_ports.add(remote_port)
+        if not allowed or remote_port in allowed:
+            remote_ports.add(remote_port)
     return result
 
 
@@ -149,7 +171,11 @@ def connected_processes(
     allowed_remote_ports: tuple[int, ...] = (),
 ) -> dict[str, tuple[set[int], set[int], set[int]]]:
     """Retorna clientes PC ProjectRF por executável, sem expor IPs."""
-    return _connected_processes(allowed_remote_ports, ("projectrf",))
+    return _connected_processes(
+        allowed_remote_ports,
+        ("projectrf",),
+        include_same_pid_local_ports=True,
+    )
 
 
 def emulator_processes(
@@ -183,17 +209,33 @@ def clients_for_executable(
     allowed = set(allowed_remote_ports)
     clients: dict[int, tuple[set[int], set[int]]] = {}
     paths: dict[int, str | None] = {}
-    for pid, local_port, remote_port in _tcp_rows():
+    rows = _tcp_rows()
+
+    def belongs_to_selected(pid: int) -> bool:
         if pid not in paths:
             paths[pid] = _process_path(pid)
         path = paths[pid]
-        if not path or os.path.normcase(os.path.abspath(path)) != selected:
-            continue
-        if allowed and remote_port not in allowed:
+        return bool(path and os.path.normcase(os.path.abspath(path)) == selected)
+
+    matching_pids = {
+        pid for pid, _local_port, _remote_port in rows if belongs_to_selected(pid)
+    }
+    allowed_pids = {
+        pid
+        for pid, _local_port, remote_port in rows
+        if belongs_to_selected(pid) and (not allowed or remote_port in allowed)
+    }
+    include_same_pid_local_ports = os.path.basename(selected).casefold().startswith(
+        "projectrf"
+    )
+    eligible_pids = matching_pids if include_same_pid_local_ports else allowed_pids
+    for pid, local_port, remote_port in rows:
+        if pid not in eligible_pids or not belongs_to_selected(pid):
             continue
         local_ports, remote_ports = clients.setdefault(pid, (set(), set()))
         local_ports.add(local_port)
-        remote_ports.add(remote_port)
+        if not allowed or remote_port in allowed:
+            remote_ports.add(remote_port)
     return [
         {
             "pid": pid,
