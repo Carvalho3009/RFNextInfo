@@ -4486,6 +4486,16 @@ class MainWindow(QtWidgets.QMainWindow):
         active_modes = tuple(
             mode for mode, enabled in self.monitor_enabled.items() if enabled
         )
+        pvp_client_key = next(
+            (
+                _client_key(index)
+                for index, enabled in enumerate(
+                    self.monitor_client_enabled["pvp"]
+                )
+                if enabled
+            ),
+            None,
+        )
         active_locations: dict[str, str] = {}
         for subsession in list(self.snapshot.get("subsessions") or []):
             if subsession.get("ended_ns") is not None:
@@ -4514,9 +4524,12 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.live_combat_ports,
                         language,
                         active_modes,
+                        pvp_client_key,
                     )
                     if self.live_combat_events
-                    else reader.load_combat(language, active_modes)
+                    else reader.load_combat(
+                        language, active_modes, pvp_client_key
+                    )
                 )
                 knowledge = KnowledgeStore(self.knowledge_path)
                 try:
@@ -4692,17 +4705,20 @@ class MainWindow(QtWidgets.QMainWindow):
             for value in str(alerts.get("guilds") or "").split(",")
             if value.strip()
         }
-        for monitor in monitors:
-            for player in list(monitor.get("nearby_players") or []):
-                name = str(player.get("name") or "").casefold()
-                guild = str(player.get("guild_name") or "").casefold()
-                if alerts.get("characters_enabled") and name in wanted_characters:
-                    self._fire_alert(f"character:{name}", f"Personagem próximo: {player.get('name')}")
-                if alerts.get("guilds_enabled") and guild in wanted_guilds:
-                    self._fire_alert(f"guild:{guild}", f"Guilda próxima: {player.get('guild_name')}")
-            pvp = dict(monitor.get("pvp") or {})
-            if alerts.get("pvp_hit") and pvp.get("direction") == "entrada":
-                self._fire_alert("pvp_hit", f"Ataque PvP recebido de {pvp.get('name') or 'jogador'}")
+        for fallback, monitor in enumerate(monitors):
+            client_index = self._monitor_client_index(monitor, fallback)
+            pvp_enabled = self.monitor_client_enabled["pvp"][client_index]
+            if pvp_enabled:
+                for player in list(monitor.get("nearby_players") or []):
+                    name = str(player.get("name") or "").casefold()
+                    guild = str(player.get("guild_name") or "").casefold()
+                    if alerts.get("characters_enabled") and name in wanted_characters:
+                        self._fire_alert(f"character:{name}", f"Personagem próximo: {player.get('name')}")
+                    if alerts.get("guilds_enabled") and guild in wanted_guilds:
+                        self._fire_alert(f"guild:{guild}", f"Guilda próxima: {player.get('guild_name')}")
+                pvp = dict(monitor.get("pvp") or {})
+                if alerts.get("pvp_hit") and pvp.get("direction") == "entrada":
+                    self._fire_alert("pvp_hit", f"Ataque PvP recebido de {pvp.get('name') or 'jogador'}")
             if alerts.get("boss_detected"):
                 for boss in list(monitor.get("bosses") or []):
                     boss_key = boss.get("npc_index") or boss.get("uid") or boss.get("name")
@@ -5021,10 +5037,13 @@ class MainWindow(QtWidgets.QMainWindow):
         controls = self.monitor_controls[mode]
         tabs = controls.get("tabs")
         if tabs is not None:
-            if enabled and not self._client_allowed(tabs.currentIndex()):
+            index = tabs.currentIndex()
+            if enabled and not self._client_allowed(index):
                 self._disable_monitor_mode(mode)
                 return
-            self.monitor_client_enabled[mode][tabs.currentIndex()] = enabled
+            if mode == "pvp" and enabled:
+                self.monitor_client_enabled[mode] = [False] * CLIENT_SLOT_COUNT
+            self.monitor_client_enabled[mode][index] = enabled
             self.monitor_enabled[mode] = any(self.monitor_client_enabled[mode])
         else:
             self.monitor_enabled[mode] = enabled

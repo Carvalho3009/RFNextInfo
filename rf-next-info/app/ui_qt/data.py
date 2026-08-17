@@ -150,7 +150,10 @@ class ReadOnlySnapshotReader:
             database.close()
 
     def load_combat(
-        self, language: str = "pt", modes: Iterable[str] | None = None
+        self,
+        language: str = "pt",
+        modes: Iterable[str] | None = None,
+        pvp_client_key: str | None = None,
     ) -> dict[str, Any]:
         """Lê somente os monitores sem reconstruir toda a sessão."""
         self.license.require("leitura dos monitores")
@@ -167,18 +170,24 @@ class ReadOnlySnapshotReader:
                 names = load_npc_names(language) if "pve" in active_modes else {}
                 bosses = load_boss_catalog(language) if "boss" in active_modes else {}
                 for profile in database.session_profiles(session_id):
+                    client_key = str(profile.get("client_key") or "")
+                    monitor_modes = (
+                        active_modes - {"pvp"}
+                        if pvp_client_key and client_key != pvp_client_key
+                        else active_modes
+                    )
                     monitor = summarize_combat(
                         database.combat_events(session_id, profile["uid"]),
                         profile["uid"],
                         names,
                         boss_catalog=bosses,
-                        modes=active_modes,
+                        modes=monitor_modes,
                     )
                     monitor.update(
                         {
                             "character_uid": profile["uid"],
                             "character_name": profile.get("name") or "",
-                            "client_key": profile.get("client_key") or "",
+                            "client_key": client_key,
                         }
                     )
                     monitors.append(monitor)
@@ -192,6 +201,7 @@ class ReadOnlySnapshotReader:
         client_ports: tuple[tuple[int, ...], ...],
         language: str = "pt",
         modes: Iterable[str] | None = None,
+        pvp_client_key: str | None = None,
     ) -> dict[str, Any]:
         """Resume eventos efêmeros do Pktmon sem gravá-los no banco."""
         self.license.require("leitura do monitor em tempo real")
@@ -272,15 +282,22 @@ class ReadOnlySnapshotReader:
                     and (event.get("data") or {}).get("target_uid") is not None
                     for event in routed
                 )
-                if not has_target:
+                if not has_target or (
+                    pvp_client_key and key != pvp_client_key
+                ):
                     continue
                 profile = {"uid": "", "name": "", "client_key": key}
+            monitor_modes = (
+                tuple(mode for mode in active_modes if mode != "pvp")
+                if pvp_client_key and key != pvp_client_key
+                else modes
+            )
             monitor = summarize_combat(
                 routed,
                 str(profile["uid"]),
                 names,
                 boss_catalog=bosses,
-                modes=modes,
+                modes=monitor_modes,
             )
             monitor.update(
                 character_uid=str(profile["uid"]),

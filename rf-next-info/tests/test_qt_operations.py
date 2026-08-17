@@ -192,6 +192,25 @@ class ReadOnlySnapshotReaderTest(unittest.TestCase):
         self.assertEqual(monitor["pvp"]["name"], "Alvo")
         self.assertEqual(monitor["pvp"]["hp_percent"], 75.0)
 
+    def test_live_target_only_enters_the_selected_pvp_route(self):
+        events = [{
+            "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+            "type": "select_target_request",
+            "data": {"target_uid": 30},
+        }]
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = ReadOnlySnapshotReader(
+                Path(directory) / "missing.sqlite3", _AllowedLicense()
+            ).load_live_combat(
+                events,
+                ((50000,), (50001,)),
+                modes=("pvp",),
+                pvp_client_key="client:b",
+            )
+
+        self.assertEqual(result["combat_monitors"], [])
+
     def test_live_reader_routes_each_client_only_once_and_limits_modes(self):
         events = [{
             "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
@@ -355,12 +374,21 @@ class ReadOnlySnapshotReaderTest(unittest.TestCase):
                 result = ReadOnlySnapshotReader(
                     database, _AllowedLicense()
                 ).load_live_combat(
-                    events, ((50000,), (50001,)), modes=("pvp",)
+                    events,
+                    ((50000,), (50001,)),
+                    modes=("pvp",),
+                    pvp_client_key="client:b",
                 )
 
         self.assertEqual(summarize.call_count, 2)
         self.assertEqual(summarize.call_args_list[0].args[0], [])
         self.assertEqual(summarize.call_args_list[1].args[0], events)
+        self.assertNotIn(
+            "pvp", summarize.call_args_list[0].kwargs["modes"]
+        )
+        self.assertEqual(
+            summarize.call_args_list[1].kwargs["modes"], ("pvp",)
+        )
         self.assertEqual(
             [row["client_key"] for row in result["combat_monitors"]],
             ["client:a", "client:b"],

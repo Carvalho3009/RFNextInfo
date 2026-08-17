@@ -5,6 +5,8 @@
 - Permite exibir a vida do alvo selecionado na rota confirmada de um cliente
   mesmo antes de o personagem local ser reconhecido, sem misturar clientes ou
   criar monitores provisórios sem seleção de alvo.
+- Mantém somente uma rota ativa no Monitor PvP: ao ligar outro cliente, o PvP
+  anterior é desligado sem afetar os monitores PvE e Boss.
 
 ## 1.0.10 — instalação manual
 

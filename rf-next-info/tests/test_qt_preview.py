@@ -837,7 +837,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.capture_engine = None
             window.close()
 
-    def test_pve_and_pvp_activation_is_independent_per_client_tab(self):
+    def test_pve_is_per_client_and_pvp_keeps_only_one_active_route(self):
         from app.ui_qt.main import MainWindow, create_application
 
         create_application(["monitor-client-tabs-test"])
@@ -875,7 +875,59 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 window.monitor_client_enabled["pvp"],
                 [True, False, False, False, False, False, False],
             )
+            pvp["tabs"].setCurrentIndex(1)
+            pvp["enabled"].setChecked(True)
+            self.assertEqual(
+                window.monitor_client_enabled["pvp"],
+                [False, True, False, False, False, False, False],
+            )
             self.assertTrue(window.monitor_enabled["pvp"])
+            pvp["tabs"].setCurrentIndex(0)
+            self.assertFalse(pvp["enabled"].isChecked())
+        window.close()
+
+    def test_pvp_alerts_only_use_the_active_route(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["monitor-exclusive-pvp-alert-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window.monitor_client_enabled["pvp"][1] = True
+        monitors = [
+            {
+                "client_key": "client:a",
+                "nearby_players": [{"name": "Rota A", "guild_name": "Guilda A"}],
+                "pvp": {"direction": "entrada", "name": "Atacante A"},
+                "bosses": [{"uid": "boss-a", "name": "Boss A"}],
+            },
+            {
+                "client_key": "client:b",
+                "nearby_players": [{"name": "Rota B", "guild_name": "Guilda B"}],
+                "pvp": {"direction": "entrada", "name": "Atacante B"},
+            },
+        ]
+        alerts = {
+            "characters_enabled": True,
+            "characters": "Rota A, Rota B",
+            "guilds_enabled": True,
+            "guilds": "Guilda A, Guilda B",
+            "pvp_hit": True,
+            "boss_detected": True,
+            "low_hp": False,
+        }
+        with (
+            mock.patch.object(window, "_alert_preferences", return_value=alerts),
+            mock.patch.object(window, "_fire_alert") as fire_alert,
+        ):
+            window._evaluate_alerts(monitors)
+
+        fired_keys = [call.args[0] for call in fire_alert.call_args_list]
+        self.assertIn("character:rota b", fired_keys)
+        self.assertIn("guild:guilda b", fired_keys)
+        self.assertIn("pvp_hit", fired_keys)
+        self.assertIn("boss:boss-a", fired_keys)
+        self.assertNotIn("character:rota a", fired_keys)
+        self.assertNotIn("guild:guilda a", fired_keys)
         window.close()
 
     def test_boss_and_pvp_focus_are_independent_and_persisted(self):
