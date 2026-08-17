@@ -1,6 +1,6 @@
 # Changelog
 
-## Em desenvolvimento
+## 1.0.11 — instalação manual
 
 - Desativa temporariamente a aba, atualização e sincronização do Banco PvP,
   preservando os dados locais e mantendo o Monitor PvP ativo.

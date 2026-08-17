@@ -1791,7 +1791,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF QOL — 1.0.10")
+        self.assertEqual(result["title"], "RF QOL — 1.0.11")
         self.assertEqual(result["page_count"], 11)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
