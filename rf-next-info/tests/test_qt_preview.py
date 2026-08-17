@@ -1796,8 +1796,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
             "Visão geral", "Envios", "Monitor PvE", "Monitor PvP",
-            "Banco PvP", "Alertas", "Subsessões", "Configurações", "Tutorial",
-            "Inventário",
+            "Alertas", "Subsessões", "Configurações", "Tutorial", "Inventário",
         ])
         self.assertFalse(result["navigation_enabled"]["Monitor PvE"])
         self.assertFalse(result["navigation_enabled"]["Monitor PvP"])
