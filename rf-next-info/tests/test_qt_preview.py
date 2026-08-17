@@ -11,6 +11,41 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_pvp_database_is_hidden_and_sync_disabled(self):
+        from app.ui_qt.main import MainWindow, PAGES, create_application
+
+        create_application(["pvp-database-disabled-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        bank_index = next(
+            index for index, (title, _description) in enumerate(PAGES)
+            if title == "Banco PvP"
+        )
+        monitor_index = next(
+            index for index, (title, _description) in enumerate(PAGES)
+            if title == "Monitor PvP"
+        )
+
+        self.assertTrue(window.nav_buttons[bank_index].isHidden())
+        self.assertFalse(window.nav_buttons[bank_index].isEnabled())
+        self.assertFalse(window.nav_buttons[monitor_index].isHidden())
+        window.license_client.require = mock.Mock(return_value={"active": True})
+        window._apply_license({
+            "active": True,
+            "message": "Licença válida",
+            "features": ["base", "monitor-pvp"],
+            "connection_limits": {"pc": 2, "emulators": 1},
+        })
+        with mock.patch.object(window, "_resume_active_monitors"):
+            window.monitor_controls["pvp"]["enabled"].setChecked(True)
+        self.assertTrue(window.monitor_enabled["pvp"])
+        window.pending_observation_session = "session"
+        with mock.patch.object(window, "_run_site_operation") as run_site:
+            window._maybe_sync_observations(time.monotonic(), force=True)
+        run_site.assert_not_called()
+        self.assertEqual(window.pending_observation_session, "")
+        window.close()
+
     def test_combat_refresh_does_not_rebuild_the_pvp_database(self):
         from app.ui_qt.main import MainWindow, create_application
 

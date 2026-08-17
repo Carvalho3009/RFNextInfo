@@ -2,6 +2,8 @@
 
 ## Em desenvolvimento
 
+- Desativa temporariamente a aba, atualização e sincronização do Banco PvP,
+  preservando os dados locais e mantendo o Monitor PvP ativo.
 - Permite exibir a vida do alvo selecionado na rota confirmada de um cliente
   mesmo antes de o personagem local ser reconhecido, sem misturar clientes ou
   criar monitores provisórios sem seleção de alvo.

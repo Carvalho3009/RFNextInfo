@@ -103,6 +103,7 @@ MONITOR_FEATURES = {
 }
 FOCUS_READ_INTERVAL_SECONDS = 300
 PVP_NEARBY_REFRESH_SECONDS = 1.0
+PVP_DATABASE_ENABLED = False
 MONITOR_SHORTCUT_OPTIONS = tuple(
     f"{modifier}+F{number}"
     for modifier in ("Ctrl", "Alt", "Shift")
@@ -664,6 +665,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.nav_group.addButton(button, index)
             self.nav_buttons.append(button)
             column.addWidget(button)
+            if title == "Banco PvP" and not PVP_DATABASE_ENABLED:
+                button.setVisible(False)
+                button.setEnabled(False)
         self.nav_buttons[0].setChecked(True)
         column.addStretch(1)
         return sidebar
@@ -1959,10 +1963,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.observation_sync_next_due = time.monotonic() + int(minutes) * 60
 
     def _send_pvp_database_now(self) -> None:
+        if not PVP_DATABASE_ENABLED:
+            self.pvp_database_status.setText("Banco PvP temporariamente desativado.")
+            return
         self.pvp_database_status.setText("Enviando alterações ao site…")
         self._maybe_sync_observations(time.monotonic(), force=True)
 
     def _receive_pvp_database_now(self) -> None:
+        if not PVP_DATABASE_ENABLED:
+            self.pvp_database_status.setText("Banco PvP temporariamente desativado.")
+            return
         if not self.site_profile.connected:
             self.pvp_database_status.setText(
                 "Valide o token do Profile antes de receber."
@@ -4448,7 +4458,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._render_subsessions()
         self._render_sends()
         self._render_inventory()
-        self._render_pvp_database()
+        if PVP_DATABASE_ENABLED:
+            self._render_pvp_database()
         engine = self._ensure_capture_engine()
         if engine.current_session:
             self.top_capture.setText(
@@ -4536,13 +4547,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     knowledge.enrich_combat_monitors(
                         payload.get("combat_monitors") or []
                     )
-                    for monitor in payload.get("combat_monitors") or []:
-                        knowledge.observe_combat(
-                            [monitor],
-                            location=active_locations.get(
-                                str(monitor.get("client_key") or ""), ""
-                            ),
-                        )
+                    if PVP_DATABASE_ENABLED:
+                        for monitor in payload.get("combat_monitors") or []:
+                            knowledge.observe_combat(
+                                [monitor],
+                                location=active_locations.get(
+                                    str(monitor.get("client_key") or ""), ""
+                                ),
+                            )
                 finally:
                     knowledge.close()
                 self.combat_loaded.emit(payload)
@@ -4553,6 +4565,9 @@ class MainWindow(QtWidgets.QMainWindow):
         threading.Thread(target=worker, daemon=True).start()
 
     def _flush_observation_upload(self) -> None:
+        if not PVP_DATABASE_ENABLED:
+            self.pending_observation_session = ""
+            return
         session = self.pending_observation_session
         if not session or not self.site_profile.connected:
             return
@@ -4655,6 +4670,9 @@ class MainWindow(QtWidgets.QMainWindow):
         return int(minutes) * 60
 
     def _maybe_sync_observations(self, now: float, *, force: bool = False) -> None:
+        if not PVP_DATABASE_ENABLED:
+            self.pending_observation_session = ""
+            return
         session = str(
             self.snapshot.get("session_id") or self.last_capture_session or ""
         )
@@ -5639,7 +5657,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.preferences = save_preferences(
                     {"capture_pending": False}, self.preferences_path
                 )
-                if self.site_profile.connected and self.last_capture_session:
+                if (
+                    PVP_DATABASE_ENABLED
+                    and self.site_profile.connected
+                    and self.last_capture_session
+                ):
                     self.pending_observation_session = self.last_capture_session
             self._load_readonly_data()
             QtCore.QTimer.singleShot(0, self._maybe_auto_exp_rank_upload)
