@@ -11,6 +11,41 @@ from unittest import mock
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 não instalado")
 class QtPreviewSmokeTest(unittest.TestCase):
+    def test_pvp_database_is_hidden_and_sync_disabled(self):
+        from app.ui_qt.main import MainWindow, PAGES, create_application
+
+        create_application(["pvp-database-disabled-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        bank_index = next(
+            index for index, (title, _description) in enumerate(PAGES)
+            if title == "Banco PvP"
+        )
+        monitor_index = next(
+            index for index, (title, _description) in enumerate(PAGES)
+            if title == "Monitor PvP"
+        )
+
+        self.assertTrue(window.nav_buttons[bank_index].isHidden())
+        self.assertFalse(window.nav_buttons[bank_index].isEnabled())
+        self.assertFalse(window.nav_buttons[monitor_index].isHidden())
+        window.license_client.require = mock.Mock(return_value={"active": True})
+        window._apply_license({
+            "active": True,
+            "message": "Licença válida",
+            "features": ["base", "monitor-pvp"],
+            "connection_limits": {"pc": 2, "emulators": 1},
+        })
+        with mock.patch.object(window, "_resume_active_monitors"):
+            window.monitor_controls["pvp"]["enabled"].setChecked(True)
+        self.assertTrue(window.monitor_enabled["pvp"])
+        window.pending_observation_session = "session"
+        with mock.patch.object(window, "_run_site_operation") as run_site:
+            window._maybe_sync_observations(time.monotonic(), force=True)
+        run_site.assert_not_called()
+        self.assertEqual(window.pending_observation_session, "")
+        window.close()
+
     def test_combat_refresh_does_not_rebuild_the_pvp_database(self):
         from app.ui_qt.main import MainWindow, create_application
 
@@ -617,6 +652,14 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
             self.assertTrue(any("Rival confirmado" in label.text() for label in pvp_labels))
             self.assertFalse(any("Rigarden" in label.text() for label in pvp_labels))
+            window.snapshot["combat_monitors"][0]["character_name"] = ""
+            window._render_combat()
+            self.assertEqual(
+                target_overlay.summary.text(),
+                "Alvo atual · Personagem não vinculado",
+            )
+            self.assertEqual(target_overlay.rows.count(), 1)
+            window.snapshot["combat_monitors"][0]["character_name"] = "Personagem A"
             window.snapshot["combat_monitors"].append({
                 "client_key": "client:b",
                 "character_name": "Personagem B",
@@ -829,7 +872,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.capture_engine = None
             window.close()
 
-    def test_pve_and_pvp_activation_is_independent_per_client_tab(self):
+    def test_pve_is_per_client_and_pvp_keeps_only_one_active_route(self):
         from app.ui_qt.main import MainWindow, create_application
 
         create_application(["monitor-client-tabs-test"])
@@ -867,7 +910,59 @@ class QtPreviewSmokeTest(unittest.TestCase):
                 window.monitor_client_enabled["pvp"],
                 [True, False, False, False, False, False, False],
             )
+            pvp["tabs"].setCurrentIndex(1)
+            pvp["enabled"].setChecked(True)
+            self.assertEqual(
+                window.monitor_client_enabled["pvp"],
+                [False, True, False, False, False, False, False],
+            )
             self.assertTrue(window.monitor_enabled["pvp"])
+            pvp["tabs"].setCurrentIndex(0)
+            self.assertFalse(pvp["enabled"].isChecked())
+        window.close()
+
+    def test_pvp_alerts_only_use_the_active_route(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["monitor-exclusive-pvp-alert-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window.monitor_client_enabled["pvp"][1] = True
+        monitors = [
+            {
+                "client_key": "client:a",
+                "nearby_players": [{"name": "Rota A", "guild_name": "Guilda A"}],
+                "pvp": {"direction": "entrada", "name": "Atacante A"},
+                "bosses": [{"uid": "boss-a", "name": "Boss A"}],
+            },
+            {
+                "client_key": "client:b",
+                "nearby_players": [{"name": "Rota B", "guild_name": "Guilda B"}],
+                "pvp": {"direction": "entrada", "name": "Atacante B"},
+            },
+        ]
+        alerts = {
+            "characters_enabled": True,
+            "characters": "Rota A, Rota B",
+            "guilds_enabled": True,
+            "guilds": "Guilda A, Guilda B",
+            "pvp_hit": True,
+            "boss_detected": True,
+            "low_hp": False,
+        }
+        with (
+            mock.patch.object(window, "_alert_preferences", return_value=alerts),
+            mock.patch.object(window, "_fire_alert") as fire_alert,
+        ):
+            window._evaluate_alerts(monitors)
+
+        fired_keys = [call.args[0] for call in fire_alert.call_args_list]
+        self.assertIn("character:rota b", fired_keys)
+        self.assertIn("guild:guilda b", fired_keys)
+        self.assertIn("pvp_hit", fired_keys)
+        self.assertIn("boss:boss-a", fired_keys)
+        self.assertNotIn("character:rota a", fired_keys)
+        self.assertNotIn("guild:guilda a", fired_keys)
         window.close()
 
     def test_boss_and_pvp_focus_are_independent_and_persisted(self):
@@ -1696,13 +1791,12 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(result["platform"], "offscreen")
         self.assertEqual((result["width"], result["height"]), (1180, 664))
         self.assertEqual((result["minimum_width"], result["minimum_height"]), (1180, 664))
-        self.assertEqual(result["title"], "RF QOL — 1.0.10")
+        self.assertEqual(result["title"], "RF QOL — 1.0.11")
         self.assertEqual(result["page_count"], 11)
         self.assertEqual(result["active_page"], 1)
         self.assertEqual(result["navigation"], [
             "Visão geral", "Envios", "Monitor PvE", "Monitor PvP",
-            "Banco PvP", "Alertas", "Subsessões", "Configurações", "Tutorial",
-            "Inventário",
+            "Alertas", "Subsessões", "Configurações", "Tutorial", "Inventário",
         ])
         self.assertFalse(result["navigation_enabled"]["Monitor PvE"])
         self.assertFalse(result["navigation_enabled"]["Monitor PvP"])
