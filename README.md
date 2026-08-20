@@ -7,12 +7,12 @@ QOL normal.
 ## Artefato
 
 - `RF QOL Setup 2.0.0-rc1 Homologacao.exe`
-- SHA-256: `1E71372AE8165F9F06AA1FCCE7EDB76FC861D19EC0AB08B62F56716EB0626D34`
+- SHA-256: `A4E91C9EBAC4191CF866B0BCAD3718CEE40F93DD2FCB902B58E621940A20122E`
 - Authenticode: `NotSigned`
 
 ## Validação automática
 
-- 389 testes aprovados;
+- 393 testes aprovados;
 - autoteste do executável empacotado aprovado;
 - instalação silenciosa em pasta temporária aprovada;
 - autoteste pós-instalação com `self_test=0`;
