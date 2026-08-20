@@ -7,12 +7,15 @@ QOL normal.
 ## Artefato
 
 - `RF QOL Setup 2.0.0-rc1 Homologacao.exe`
-- SHA-256: `A4E91C9EBAC4191CF866B0BCAD3718CEE40F93DD2FCB902B58E621940A20122E`
+- SHA-256: `1EAC8C1E57366DA1FC0F6623F18B4756252AC6BA555102B96F139C46623979E6`
 - Authenticode: `NotSigned`
 
 ## Validação automática
 
-- 393 testes aprovados;
+- 396 testes aprovados;
+- atualização dos cartões e monitores validada sem a falha de carregamento;
+- rotação automática por duração restaurada, preservando encerramentos por
+  teleporte, morte e inatividade sem iniciar outra subsessão;
 - autoteste do executável empacotado aprovado;
 - instalação silenciosa em pasta temporária aprovada;
 - autoteste pós-instalação com `self_test=0`;
