@@ -2399,7 +2399,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         window._render_exp_rank()
 
         self.assertEqual(window.exp_rank_table.rowCount(), 2)
-        self.assertEqual(window.exp_rank_table.columnCount(), 7)
+        self.assertEqual(window.exp_rank_table.columnCount(), 6)
         self.assertEqual(
             [
                 window.exp_rank_table.horizontalHeaderItem(column).text()
@@ -2407,7 +2407,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             ],
             [
                 "Posição", "Variação", "Personagem", "Guilda",
-                "Nível", "EXP %", "EXP total",
+                "Nível", "EXP total (%)",
             ],
         )
         self.assertFalse(window.exp_rank_table.alternatingRowColors())
@@ -2420,7 +2420,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertIn("Alice", visible)
         self.assertIn("Karvalho", visible)
         self.assertNotEqual(window.exp_rank_table.item(0, 4).text(), "—")
-        self.assertTrue(window.exp_rank_table.item(0, 5).text().endswith("%"))
+        self.assertIn("%", window.exp_rank_table.item(0, 5).text())
         self.assertNotIn("88776655", visible)
         self.assertNotIn("84000457", visible)
         window.exp_rank_search.setText("outra")
@@ -2479,7 +2479,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             self.assertEqual(window._export_exp_rank_csv(current_path), current_path)
             current_csv = current_path.read_text(encoding="utf-8-sig")
             self.assertTrue(current_csv.startswith(
-                "Posição;Variação;Personagem;Guilda;Nível;EXP %;EXP total\n"
+                "Posição;Variação;Personagem;Guilda;Nível;EXP total (%)\n"
             ))
             self.assertIn("Alice", current_csv)
             self.assertNotIn("Bruno", current_csv)
@@ -2493,8 +2493,8 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
             history_csv = expected_history_path.read_text(encoding="utf-8-sig")
             self.assertTrue(history_csv.startswith(
-                "Captura;Posição;Personagem;Nível;EXP %;EXP total;"
-                "Ganho;Ganho %;EXP/h;%/h\n"
+                "Captura;Posição;Personagem;Nível;EXP total (%);"
+                "Ganho (%);EXP/h (%)\n"
             ))
             self.assertIn("Alice", history_csv)
             self.assertIn("20.000", history_csv)
@@ -2820,6 +2820,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
                     "rover_name": "Sirius",
                     "rover_grade": 1,
                     "diamonds": 123,
+                    "exp": 125_000_000,
                     "exp_percent": 42.5,
                     "exp_gained": 1_000,
                     "exp_gained_percent": 2.5,
@@ -2839,7 +2840,9 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertEqual(card["biosuit_name"].text(), "Destilador Terminator")
         self.assertEqual(card["rover_name"].text(), "Sirius")
         self.assertEqual(card["diamonds"].text(), "123")
-        self.assertEqual(card["exp_percent"].text(), "42,50%")
+        self.assertEqual(
+            card["exp_percent"].text(), "125.000.000 (42,50%)"
+        )
         self.assertEqual(card["exp_progress"].value(), 4_250)
         self.assertEqual(card["values"]["duration"].text(), "01:00:00")
         self.assertEqual(
@@ -2853,6 +2856,56 @@ class QtPreviewSmokeTest(unittest.TestCase):
             card["values"]["contribution"].text(),
             "+60.500 · 60.500/h",
         )
+
+        window.snapshot["characters"][0]["summary"]["contribution"] = 120_000
+        window.snapshot["stats"]["ended_ns"] += 30_000_000_000
+        window._render_general_summary()
+        self.assertEqual(
+            card["values"]["contribution"].text(),
+            "+120.000 · 60.500/h",
+        )
+        window.snapshot["stats"]["ended_ns"] += 30_000_000_000
+        window._render_general_summary()
+        self.assertEqual(
+            card["values"]["contribution"].text(),
+            "+120.000 · 118.033/h",
+        )
+        window.close()
+
+    def test_general_summary_restores_missing_rover_from_confirmed_history(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["general-summary-rover-history-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window.visible_client_slots = [0]
+        window.snapshot = {
+            "session_id": "session",
+            "stats": {},
+            "characters": [{
+                "client_key": "client:a",
+                "uid": "101",
+                "name": "Carvalho",
+                "summary": {},
+            }],
+            "client_bindings": [{
+                "client_key": "client:a",
+                "uid": "101",
+                "name": "Carvalho",
+                "source": "canonical",
+            }],
+            "character_history": [{
+                "uid": "101",
+                "name": "Carvalho",
+                "rover_item_index": 4_000_000,
+            }],
+        }
+
+        window._render_general_summary()
+
+        card = window.general_summary_cards[0]
+        self.assertEqual(card["rover_name"].text(), "Sirius")
+        self.assertEqual(card["rover_icon"].toolTip(), "Sirius")
         window.close()
 
     def test_all_program_tables_allow_resize_reorder_and_double_click_autofit(self):
@@ -3275,7 +3328,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.overview_grid.getItemPosition(
                 window.overview_grid.indexOf(window.map_card)
             ),
-            (1, 0, 1, 2),
+            (1, 0, 1, 1),
         )
         self.assertTrue(window.overview_map_preview.hasHeightForWidth())
         self.assertEqual(window.overview_map_preview.heightForWidth(480), 480)
@@ -3283,7 +3336,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.overview_grid.getItemPosition(
                 window.overview_grid.indexOf(window.health_card)
             ),
-            (2, 0, 1, 2),
+            (1, 1, 1, 1),
         )
         window.view_subsession_button.click()
         self.assertEqual(window.page_stack.currentIndex(), SUBSESSIONS_PAGE_INDEX)
@@ -3850,7 +3903,17 @@ class QtPreviewSmokeTest(unittest.TestCase):
                         "contribution",
                     )
                 ],
-                ["Carvalho", "01:00:00", "10", "1.000", "2,50%", "1.000 (2,50%)", "2,50%", "60.500"],
+                ["Carvalho", "01:00:00", "10", "1.000 (2,50%)", "2,50%", "1.000 (2,50%)", "2,50%", "60.500"],
+            )
+            self.assertTrue(
+                window.subsession_table.isColumnHidden(
+                    SUBSESSION_COLUMN_INDEX["exp_percent"]
+                )
+            )
+            self.assertTrue(
+                window.subsession_table.isColumnHidden(
+                    SUBSESSION_COLUMN_INDEX["exp_hour_percent"]
+                )
             )
             self.assertEqual(
                 window.subsession_table.item(

@@ -353,6 +353,165 @@ class ReadOnlySnapshotReaderTest(unittest.TestCase):
             result["routing_metrics"]["single_client_fallback_events"], 1
         )
 
+    def test_live_reader_keeps_boss_health_on_the_correct_recovered_client(self):
+        profiles = [
+            {"uid": "101", "name": "A", "client_key": "client:a"},
+            {"uid": "202", "name": "B", "client_key": "client:b"},
+        ]
+        now_ns = time.time_ns()
+        flow_a = "10.0.0.1:12010 -> 127.0.0.1:52000"
+        flow_b = "10.0.0.1:12010 -> 127.0.0.1:52001"
+        events = [
+            {
+                "flow": flow_a,
+                "ts_ns": now_ns,
+                "type": "world_info_prefix",
+                "data": {"fields": {
+                    "character_uid": 101, "character_name": "A",
+                }},
+            },
+            {
+                "flow": flow_b,
+                "ts_ns": now_ns,
+                "type": "world_info_prefix",
+                "data": {"fields": {
+                    "character_uid": 202, "character_name": "B",
+                }},
+            },
+            {
+                "flow": flow_b,
+                "ts_ns": now_ns,
+                "type": "appear_monster_list",
+                "data": {"units": [{
+                    "uid": 30,
+                    "npc_index": 375100,
+                    "max_hp": 500_000_000,
+                    "current_hp": 500_000_000,
+                }]},
+            },
+            {
+                "flow": flow_b,
+                "ts_ns": now_ns + 1,
+                "type": "use_skill_result",
+                "data": {
+                    "ret": 0,
+                    "caster_uid": 77,
+                    "effect_results": [{
+                        "uid": 30,
+                        "hp_damage": 1_000,
+                        "final_hp": 499_999_000,
+                    }],
+                },
+            },
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "capture.sqlite3"
+            store = CaptureStore(database)
+            store.close()
+            with mock.patch.object(
+                CaptureStore, "latest_session", return_value="session"
+            ), mock.patch.object(
+                CaptureStore, "session_profiles", return_value=profiles
+            ):
+                result = ReadOnlySnapshotReader(
+                    database, _AllowedLicense()
+                ).load_live_combat(
+                    events, ((52000,), (52001,)), modes=("boss",)
+                )
+
+        monitors = {
+            item["client_key"]: item for item in result["combat_monitors"]
+        }
+        self.assertEqual(monitors["client:a"]["bosses"], [])
+        self.assertEqual(
+            monitors["client:b"]["bosses"][0]["current_hp"],
+            499_999_000,
+        )
+        self.assertEqual(result["routing_metrics"]["unmatched_events"], 0)
+
+    def test_live_reader_reports_farm_activity_for_both_routed_clients(self):
+        profiles = [
+            {"uid": "101", "name": "A", "client_key": "client:a"},
+            {"uid": "202", "name": "B", "client_key": "client:b"},
+        ]
+        now_ns = time.time_ns()
+        events = []
+        for index, (port, character_uid, combat_uid, monster_uid) in enumerate((
+            (52000, 101, 10, 30),
+            (52001, 202, 20, 40),
+        )):
+            flow = f"10.0.0.1:12010 -> 127.0.0.1:{port}"
+            events.extend((
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": character_uid,
+                        "character_name": chr(65 + index),
+                    }},
+                },
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns,
+                    "type": "appear_player_list",
+                    "data": {"units": [{
+                        "uid": combat_uid,
+                        "character_uid": character_uid,
+                        "name": chr(65 + index),
+                        "max_hp": 1_000,
+                        "current_hp": 1_000,
+                    }]},
+                },
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns,
+                    "type": "appear_monster_list",
+                    "data": {"units": [{
+                        "uid": monster_uid,
+                        "npc_index": 5,
+                        "max_hp": 1_000,
+                        "current_hp": 1_000,
+                    }]},
+                },
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns + 1,
+                    "type": "use_skill_result",
+                    "data": {
+                        "ret": 0,
+                        "caster_uid": combat_uid,
+                        "effect_results": [{
+                            "uid": monster_uid,
+                            "hp_damage": 100,
+                            "final_hp": 900,
+                        }],
+                    },
+                },
+            ))
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "capture.sqlite3"
+            store = CaptureStore(database)
+            store.close()
+            with mock.patch.object(
+                CaptureStore, "latest_session", return_value="session"
+            ), mock.patch.object(
+                CaptureStore, "session_profiles", return_value=profiles
+            ):
+                result = ReadOnlySnapshotReader(
+                    database, _AllowedLicense()
+                ).load_live_combat(
+                    events, ((52000,), (52001,)), modes=("pve",)
+                )
+
+        monitors = {
+            item["client_key"]: item for item in result["combat_monitors"]
+        }
+        self.assertEqual(set(monitors), {"client:a", "client:b"})
+        self.assertTrue(monitors["client:a"]["pve_activity"])
+        self.assertTrue(monitors["client:b"]["pve_activity"])
+        self.assertEqual(result["routing_metrics"]["unmatched_events"], 0)
+
     def test_live_reader_does_not_mix_uid_bound_exitlag_flows(self):
         profiles = [
             {"uid": "101", "name": "A", "client_key": "client:a"},
@@ -767,7 +926,7 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertEqual(engine.client_ports, ((51000,), (51001,)))
             self.assertNotIn(50000, started["capture_client_ports"][0])
 
-    def test_resume_with_restarted_clients_does_not_guess_uid_routes(self):
+    def test_resume_with_restarted_clients_recovers_observed_routes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "rfnext-20260805-120000-001-01-001.etl").write_bytes(b"etl")
@@ -796,8 +955,43 @@ class CaptureEngineTest(unittest.TestCase):
 
             started = engine.start()
 
-            self.assertEqual(started["capture_client_ports"], [])
-            self.assertEqual(started["capture_client_pids"], [])
+            self.assertEqual(
+                started["capture_client_ports"], [[52000], [52001]]
+            )
+            self.assertEqual(started["capture_client_pids"], [30, 40])
+            self.assertTrue(engine.route_identity_trusted)
+
+    def test_attached_capture_without_saved_pids_recovers_live_routes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "rfnext-20260805-120000-001-01-001.etl").write_bytes(b"etl")
+            engine = CaptureEngine(
+                root,
+                root / "capture.sqlite3",
+                _AllowedLicense(),
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({30, 40}, {52000, 52001}, {12020})
+                },
+                client_reader=lambda *_args: [
+                    {"pid": 30, "local_ports": (52000,), "remote_ports": (12020,)},
+                    {"pid": 40, "local_ports": (52001,), "remote_ports": (12020,)},
+                ],
+            )
+            engine.restore({
+                "capture_pending": True,
+                "last_session": "Profile-20260805-120000-001",
+                "capture_prefix": "rfnext-20260805-120000-001-01",
+                "capture_ports": [12020],
+                "capture_client_pids": [],
+            })
+
+            engine._refresh_routes()
+
+            self.assertTrue(engine.route_identity_trusted)
+            self.assertEqual(engine.client_pids, [30, 40])
+            self.assertEqual(engine.client_ports, ((52000,), (52001,)))
 
     def test_send_hotkeys_are_ignored_and_monitor_hotkeys_remain_global(self):
         definitions = GlobalHotkeys.definitions({

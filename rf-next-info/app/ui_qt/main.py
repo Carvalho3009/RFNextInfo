@@ -223,10 +223,10 @@ SUBSESSION_COLUMNS = (
     ("exp_potion", "Poção de EXP", 130, False),
     ("kills", "Kills", 58, True),
     ("finalizations", "Finaliz.", 72, False),
-    ("exp_total", "XP total", 90, True),
-    ("exp_percent", "XP %", 66, True),
-    ("exp_hour", "XP/h", 90, True),
-    ("exp_hour_percent", "XP/h %", 72, True),
+    ("exp_total", "XP", 150, True),
+    ("exp_percent", "XP % (legado)", 66, False),
+    ("exp_hour", "XP/h", 150, True),
+    ("exp_hour_percent", "XP/h % (legado)", 72, False),
     ("credits", "Créditos", 96, False),
     ("credits_hour", "Créditos/h", 100, False),
     ("contribution", "Contrib.", 96, True),
@@ -248,7 +248,7 @@ SUBSESSION_CARD_DEFAULT_FIELDS = (
     "mobs",
     "levels",
     "kills",
-    "exp_percent",
+    "exp_total",
     "exp_hour",
 )
 
@@ -1317,12 +1317,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_card.show()
         self.overview_grid.addWidget(self.session_card, 0, 0)
         self.overview_grid.addWidget(self.subsession_card, 0, 1)
-        self.overview_grid.addWidget(self.map_card, 1, 0, 1, 2)
-        self.overview_grid.addWidget(self.health_card, 2, 0, 1, 2)
+        self.overview_grid.addWidget(self.map_card, 1, 0)
+        self.overview_grid.addWidget(self.health_card, 1, 1)
         for column in range(2):
             self.overview_grid.setColumnStretch(column, 1)
-        for row in range(3):
-            self.overview_grid.setRowStretch(row, 1 if row < 2 else 0)
+        self.overview_grid.setRowStretch(0, 0)
+        self.overview_grid.setRowStretch(1, 1)
 
     def _open_active_subsession(self) -> None:
         self.page_stack.setCurrentIndex(SUBSESSIONS_PAGE_INDEX)
@@ -2266,7 +2266,7 @@ class MainWindow(QtWidgets.QMainWindow):
             action = subsession_fields_menu.addAction(label_text)
             action.setCheckable(True)
             action.setChecked(key in selected_card_fields)
-            if key == "exp_hour_percent":
+            if key in {"exp_percent", "exp_hour_percent"}:
                 action.setVisible(False)
             action.toggled.connect(
                 lambda checked, field=key: self._set_subsession_card_field_visible(
@@ -2298,7 +2298,9 @@ class MainWindow(QtWidgets.QMainWindow):
             field_layout.setContentsMargins(0, 0, 0, 0)
             field_layout.setSpacing(1)
             caption = _label(
-                "XP/h (bruto e %)" if key == "exp_hour" else label_text,
+                "XP (bruto e %)" if key == "exp_total"
+                else "XP/h (bruto e %)" if key == "exp_hour"
+                else label_text,
                 "muted",
             )
             value = _label("—", "metricValue")
@@ -2316,7 +2318,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_levels_line = self.subsession_card_values["levels"]
         self.subsession_metrics = {
             key: self.subsession_card_values[key]
-            for key in ("kills", "exp_percent", "exp_hour_percent")
+            for key in ("kills", "exp_total", "exp_hour")
         }
         self._apply_subsession_card_fields(selected_card_fields)
         self.view_subsession_button = QtWidgets.QPushButton(
@@ -2500,6 +2502,7 @@ class MainWindow(QtWidgets.QMainWindow):
             | QtCore.Qt.AlignmentFlag.AlignLeft
         )
         self.general_summary_cards: list[dict[str, Any]] = []
+        self.general_summary_rate_cache: dict[str, tuple[int, float | None]] = {}
         for index in range(CLIENT_SLOT_COUNT):
             frame = QtWidgets.QFrame(objectName="dashboardCard")
             frame.setMinimumWidth(420)
@@ -2558,7 +2561,7 @@ class MainWindow(QtWidgets.QMainWindow):
             exp_progress.setFixedHeight(9)
             exp_row.addWidget(exp_progress, 1)
             exp_percent = _label("—", "metricCompact")
-            exp_percent.setMinimumWidth(54)
+            exp_percent.setMinimumWidth(140)
             exp_percent.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
             exp_row.addWidget(exp_percent)
             layout.addLayout(exp_row)
@@ -2613,6 +2616,7 @@ class MainWindow(QtWidgets.QMainWindow):
             and self.capture_engine.active
             and self.capture_engine.current_session == self.snapshot.get("session_id")
         )
+        active_rate_keys: set[str] = set()
         for index, card in enumerate(self.general_summary_cards):
             card["frame"].setVisible(index in self.visible_client_slots)
             if index not in self.visible_client_slots:
@@ -2649,12 +2653,25 @@ class MainWindow(QtWidgets.QMainWindow):
             credits_total = summary.get("credits_total")
             credits_gained = summary.get("credits")
             contribution = summary.get("contribution")
-            hours = duration / 3600 if duration else 0
-            contribution_hour = (
-                float(contribution) / hours
-                if hours and isinstance(contribution, (int, float))
-                else None
+            minute_bucket = duration // 60
+            rate_key = "\0".join((
+                str(character.get("uid") or _client_key(index)),
+                str(started_ns or 0),
+            ))
+            active_rate_keys.add(rate_key)
+            cached_bucket, contribution_hour = self.general_summary_rate_cache.get(
+                rate_key, (-1, None)
             )
+            if cached_bucket != minute_bucket:
+                contribution_hour = (
+                    float(contribution) * 60 / minute_bucket
+                    if minute_bucket > 0
+                    and isinstance(contribution, (int, float))
+                    else None
+                )
+                self.general_summary_rate_cache[rate_key] = (
+                    minute_bucket, contribution_hour
+                )
             values = card["values"]
             card["diamonds"].setText(self._format_value(summary.get("diamonds")))
             card["class_name"].setText(
@@ -2666,7 +2683,9 @@ class MainWindow(QtWidgets.QMainWindow):
             card["rover_name"].setText(
                 str(summary.get("rover_name") or "Rover —")
             )
-            card["exp_percent"].setText(self._format_value(percent, "%"))
+            card["exp_percent"].setText(
+                self._format_exp(summary.get("exp"), percent)
+            )
             card["exp_progress"].setValue(
                 max(0, min(10_000, round(float(percent) * 100)))
                 if isinstance(percent, (int, float)) else 0
@@ -2685,6 +2704,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"+{self._format_value(contribution)} · "
                 f"{self._format_value(contribution_hour)}/h"
             )
+        self.general_summary_rate_cache = {
+            key: value
+            for key, value in self.general_summary_rate_cache.items()
+            if key in active_rate_keys
+        }
 
     def _build_sends_page(self, *, embedded: bool = False) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget(objectName="pageEnvios")
@@ -2875,6 +2899,8 @@ class MainWindow(QtWidgets.QMainWindow):
             action = columns_menu.addAction(label_text)
             action.setCheckable(True)
             action.setChecked(visible)
+            if key in {"exp_percent", "exp_hour_percent"}:
+                action.setVisible(False)
             action.toggled.connect(
                 lambda checked, selected=key: self._set_subsession_column_visible(
                     selected, checked
@@ -3365,11 +3391,11 @@ class MainWindow(QtWidgets.QMainWindow):
         summary_row.addWidget(self.exp_rank_status, 1)
         column.addWidget(summary)
 
-        self.exp_rank_table = QtWidgets.QTableWidget(0, 7)
+        self.exp_rank_table = QtWidgets.QTableWidget(0, 6)
         self.exp_rank_table.setHorizontalHeaderLabels(
             (
                 "Posição", "Variação", "Personagem", "Guilda",
-                "Nível", "EXP %", "EXP total",
+                "Nível", "EXP total (%)",
             )
         )
         self.exp_rank_table.setSelectionBehavior(
@@ -3381,7 +3407,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.exp_rank_table.setAlternatingRowColors(False)
         self.exp_rank_table.verticalHeader().setVisible(False)
         header = self.exp_rank_table.horizontalHeader()
-        for index in (0, 1, 4, 5, 6):
+        for index in (0, 1, 4, 5):
             header.setSectionResizeMode(
                 index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
             )
@@ -3389,10 +3415,10 @@ class MainWindow(QtWidgets.QMainWindow):
             header.setSectionResizeMode(
                 index, QtWidgets.QHeaderView.ResizeMode.Stretch
             )
-        self.exp_rank_history_table = QtWidgets.QTableWidget(0, 10)
+        self.exp_rank_history_table = QtWidgets.QTableWidget(0, 7)
         self.exp_rank_history_table.setHorizontalHeaderLabels((
-            "Captura", "Posição", "Personagem", "Nível", "EXP %",
-            "EXP total", "Ganho", "Ganho %", "EXP/h", "%/h",
+            "Captura", "Posição", "Personagem", "Nível",
+            "EXP total (%)", "Ganho (%)", "EXP/h (%)",
         ))
         self.exp_rank_history_table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
@@ -3403,15 +3429,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.exp_rank_history_table.setAlternatingRowColors(False)
         self.exp_rank_history_table.verticalHeader().setVisible(False)
         history_header = self.exp_rank_history_table.horizontalHeader()
-        for index in (0, 1, 3, 4, 6, 7, 8, 9):
+        for index in (0, 1, 3, 4, 5, 6):
             history_header.setSectionResizeMode(
                 index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
             )
         history_header.setSectionResizeMode(
             2, QtWidgets.QHeaderView.ResizeMode.Stretch
-        )
-        history_header.setSectionResizeMode(
-            5, QtWidgets.QHeaderView.ResizeMode.Stretch
         )
         self.exp_rank_tabs = QtWidgets.QTabWidget()
         self.exp_rank_tabs.addTab(self.exp_rank_table, "Ranking atual")
@@ -6043,11 +6066,13 @@ class MainWindow(QtWidgets.QMainWindow):
             None,
         )
         selected_uid = self._uid_selections().get(key)
+        current_uid = str((character or {}).get("uid") or "")
         historical = next(
             (
                 item
                 for item in self.snapshot.get("character_history") or []
-                if str(item.get("uid") or "") == str(selected_uid or "")
+                if str(item.get("uid") or "")
+                == str(current_uid or selected_uid or "")
             ),
             None,
         )
@@ -6059,10 +6084,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 or binding.get("source") == "manual"
             )
         )
-        if not use_history:
+        if not historical:
             return character, summary, False
 
-        if character is None:
+        if character is None and use_history:
             character = {
                 "uid": str(historical.get("uid") or ""),
                 "name": str(historical.get("name") or ""),
@@ -6095,7 +6120,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 rover_grade=rover.get("grade"),
             )
             used = True
-        return character, summary, used
+        return character, summary, bool(use_history and used)
 
     def _uid_selections(self) -> dict[str, str]:
         value = self.preferences.get("client_uid_selections")
@@ -6598,7 +6623,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     width = default_width
                 header.resizeSection(column, width)
                 if key != "select":
-                    shown = key in visible
+                    shown = (
+                        key in visible
+                        and key not in {"exp_percent", "exp_hour_percent"}
+                    )
                     self.subsession_table.setColumnHidden(column, not shown)
                     action = self.subsession_column_actions[key]
                     action.blockSignals(True)
@@ -6617,7 +6645,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _selected_subsession_card_fields(self) -> list[str]:
         return [
             key for key, _label_text, _width, _visible in SUBSESSION_COLUMNS[1:]
-            if key != "exp_hour_percent"
+            if key not in {"exp_percent", "exp_hour_percent"}
             and self.subsession_card_field_actions[key].isChecked()
         ]
 
@@ -6629,7 +6657,9 @@ class MainWindow(QtWidgets.QMainWindow):
         active = bool(getattr(self, "_overview_has_subsession", False))
         for key, widget in self.subsession_card_field_widgets.items():
             widget.setVisible(
-                active and key in selected and key != "exp_hour_percent"
+                active
+                and key in selected
+                and key not in {"exp_percent", "exp_hour_percent"}
             )
 
     def _set_subsession_card_field_visible(self, key: str, visible: bool) -> None:
@@ -6735,7 +6765,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ),
             "kills": self._format_value(int(summary.get("kills") or 0)),
             "finalizations": self._format_value(int(summary.get("finalizations") or 0)),
-            "exp_total": self._format_value(exp_total),
+            "exp_total": self._format_exp(exp_total, exp_percent),
             "exp_percent": self._format_value(exp_percent, "%"),
             "exp_hour": (
                 f"{self._format_value(exp_hour)} "
@@ -7032,17 +7062,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QTableWidgetItem(str(record.get("guild_name") or "—")),
                 QtWidgets.QTableWidgetItem(str(level) if level is not None else "—"),
                 QtWidgets.QTableWidgetItem(
-                    f"{level_percent:.2f}%".replace(".", ",")
-                    if level_percent is not None else "—"
-                ),
-                QtWidgets.QTableWidgetItem(
-                    self._format_count(record.get("total_exp"))
+                    self._format_exp(record.get("total_exp"), level_percent)
                 ),
             )
             for column, cell in enumerate(cells):
-                if column in (0, 1, 4, 5):
+                if column in (0, 1, 4):
                     cell.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                elif column == 6:
+                elif column == 5:
                     cell.setTextAlignment(
                         QtCore.Qt.AlignmentFlag.AlignRight
                         | QtCore.Qt.AlignmentFlag.AlignVCenter
@@ -7079,12 +7105,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 str(record.get("rank") or "—"),
                 str(record.get("character_name") or "Não identificado"),
                 str(record.get("level") or "—"),
-                self._format_percent(record.get("level_percent")),
-                self._format_count(record.get("total_exp")),
-                self._format_signed_count(record.get("gained_exp")),
-                self._format_signed_percent(record.get("gained_percent")),
-                self._format_count(record.get("exp_per_hour")),
-                self._format_signed_percent(record.get("exp_percent_per_hour")),
+                self._format_exp(
+                    record.get("total_exp"), record.get("level_percent")
+                ),
+                self._format_exp(
+                    record.get("gained_exp"), record.get("gained_percent")
+                ),
+                self._format_exp(
+                    record.get("exp_per_hour"),
+                    record.get("exp_percent_per_hour"),
+                ),
             )
             for column, value in enumerate(values):
                 cell = QtWidgets.QTableWidgetItem(value)
@@ -9983,6 +10013,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 tuple(int(port) for port in group)
                 for group in data.get("client_ports") or []
             )
+            recovered_routes = {
+                "capture_client_pids": list(data.get("client_pids") or []),
+                "capture_pc_client_pids": list(
+                    data.get("pc_client_pids") or []
+                ),
+                "capture_emulator_client_pids": list(
+                    data.get("emulator_client_pids") or []
+                ),
+            }
+            if any(recovered_routes.values()) and any(
+                list(self.preferences.get(key) or []) != value
+                for key, value in recovered_routes.items()
+            ):
+                self.preferences = save_preferences(
+                    recovered_routes, self.preferences_path
+                )
             self.log.debug("monitor_metrics %s", metrics)
             self._evaluate_live_drop_alerts()
             if (
@@ -11086,7 +11132,7 @@ class MainWindow(QtWidgets.QMainWindow):
             f"{duration // 3600:02d}:{(duration % 3600) // 60:02d}:{duration % 60:02d}"
         )
         percent = summary.get("exp_percent")
-        self.exp_percent.setText(f"{percent:.2f}%".replace(".", ",") if isinstance(percent, (int, float)) else "—")
+        self.exp_percent.setText(self._format_exp(summary.get("exp"), percent))
         self.exp_progress.setValue(round(float(percent) * 100) if isinstance(percent, (int, float)) else 0)
         self._set_character_icon(str(summary.get("character_class") or ""), int(summary.get("biosuit_grade") or 0))
         self._set_rover_icon(
@@ -11112,6 +11158,11 @@ class MainWindow(QtWidgets.QMainWindow):
         for metric, label in self.metric_labels.items():
             suffix = "%" if metric in {"exp_percent", "exp_hour_percent"} else ""
             label.setText(self._format_value(values.get(metric), suffix))
+        self.metric_labels["exp_hour_percent"].setText(
+            self._format_exp(
+                values.get("exp_hour"), values.get("exp_hour_percent")
+            )
+        )
         epic_labels = (
             ("weapon", "Arma"),
             ("armor", "Armadura"),
@@ -11605,6 +11656,14 @@ class MainWindow(QtWidgets.QMainWindow):
             return "—"
         number = f"{value:,.2f}" if suffix else f"{value:,.0f}"
         return number.replace(",", "_").replace(".", ",").replace("_", ".") + suffix
+
+    @classmethod
+    def _format_exp(cls, raw: object, percent: object) -> str:
+        if not isinstance(raw, (int, float)) and not isinstance(
+            percent, (int, float)
+        ):
+            return "—"
+        return f"{cls._format_value(raw)} ({cls._format_value(percent, '%')})"
 
     def _build_footer(self) -> QtWidgets.QWidget:
         footer = QtWidgets.QWidget(objectName="statusbar")

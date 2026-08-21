@@ -1472,6 +1472,8 @@ class CaptureEngine:
             self.route_identity_trusted = bool(
                 not resuming
                 or known_pids and set(known_pids).intersection(active_pids)
+                or routes
+                or emulator_routes
             )
             if self.route_identity_trusted:
                 self.pc_client_pids, groups = _merge_client_routes(
@@ -1617,9 +1619,16 @@ class CaptureEngine:
         if self.route_identity_trusted and emulator_replaced:
             self.emulator_client_pids = []
             self.emulator_client_ports = ()
-        # Uma substituição em tempo de execução é uma nova rota observada,
-        # não um motivo para desativar o roteamento pelo restante da sessão.
-        # O CaptureStore confirma a correspondência lógica pelo UID canônico.
+        # Ao retomar uma captura, PIDs e portas locais podem ter expirado. Uma
+        # rota atual observada pelo processo do jogo recupera os slots físicos;
+        # o CaptureStore confirma a identidade lógica pelo UID canônico antes
+        # de atribuir definitivamente os eventos ao cliente.
+        if not self.route_identity_trusted and (routes or emulator_routes):
+            self.pc_client_pids = []
+            self.emulator_client_pids = []
+            self.pc_client_ports = ()
+            self.emulator_client_ports = ()
+            self.route_identity_trusted = True
         if self.route_identity_trusted:
             self.pc_client_pids, groups = _merge_client_routes(
                 self.pc_client_pids, list(self.pc_client_ports), routes
@@ -1758,6 +1767,9 @@ class CaptureEngine:
                 "fast": True,
                 "events": events,
                 "client_ports": [list(group) for group in self.client_ports],
+                "client_pids": list(self.client_pids),
+                "pc_client_pids": list(self.pc_client_pids),
+                "emulator_client_pids": list(self.emulator_client_pids),
                 "map": self.map_module.snapshot(
                     events,
                     self.client_ports,
