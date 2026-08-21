@@ -1696,7 +1696,7 @@ class CoreTest(unittest.TestCase):
             [],
         )
 
-    def test_farm_activity_infers_local_caster_from_confirmed_request_response(self):
+    def test_farm_activity_infers_local_caster_when_response_number_is_not_request_sequence(self):
         events = [{
             "ts_ns": 500_000_000,
             "type": "appear_monster_list",
@@ -1713,7 +1713,7 @@ class CoreTest(unittest.TestCase):
             "ts_ns": 1_100_000_000,
             "type": "use_skill_result",
             "data": {
-                "ret": 0, "response_number": 77, "caster_uid": 10,
+                "ret": 0, "response_number": 0, "caster_uid": 10,
                 "skill_index": 9, "main_target_uid": 30,
                 "effect_results": [{
                     "uid": 30, "hp_damage": 250, "final_hp": 750,

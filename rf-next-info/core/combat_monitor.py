@@ -38,7 +38,7 @@ def summarize_combat(
     target_damage: dict[int, dict[int, list[tuple[int, int]]]] = {}
     accumulated_target_damage: dict[int, dict[int, tuple[int, int]]] = {}
     accumulated_damage_players: dict[int, dict[str, Any]] = {}
-    local_skill_requests: list[tuple[int, int | None, int | None, int | None]] = []
+    local_skill_requests: list[tuple[int, int | None, int | None]] = []
     last_pve: tuple[int, int] | None = None
     last_pve_activity: tuple[int, int, str] | None = None
     last_pve_kill: tuple[int, int, str] | None = None
@@ -165,26 +165,26 @@ def summarize_combat(
                     timestamp,
                     _integer(data.get("skill_index")),
                     target_uid,
-                    _integer(data.get("request_sequence_raw")),
                 ))
                 local_skill_requests = local_skill_requests[-64:]
         elif kind in {"use_skill_result", "use_normal_skill_result"}:
             if data.get("ret") not in (None, 0):
                 continue
             caster = _integer(data.get("caster_uid"))
-            response = _integer(data.get("response_number"))
             skill_index = _integer(data.get("skill_index"))
             main_target_uid = _integer(data.get("main_target_uid"))
             for request in reversed(local_skill_requests):
-                requested_at, requested_skill, requested_target, sequence = request
+                requested_at, requested_skill, requested_target = request
                 if timestamp - requested_at > LOCAL_SKILL_CORRELATION_SECONDS * 1_000_000_000:
                     break
                 if requested_skill is not None and requested_skill != skill_index:
                     continue
                 if requested_target is not None and requested_target != main_target_uid:
                     continue
-                if sequence is not None and response is not None and sequence != response:
-                    continue
+                # ``response_number`` não ecoa ``request_sequence_raw`` no
+                # protocolo atual (normalmente chega como 0/1). Exigir essa
+                # igualdade descartava toda a correlação real e mantinha o
+                # status Ocioso apesar de dano e abates confirmados.
                 if caster is not None:
                     local_uid = caster
                 break
