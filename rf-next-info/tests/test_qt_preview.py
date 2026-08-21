@@ -1168,6 +1168,23 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window._render_combat()
             self.assertEqual(window.boss_overlay_hp.text(), "HP 500.000 / 1.000.000")
             self.assertEqual(window.boss_overlay_progress.value(), 500)
+            retained_boss = dict(
+                window.snapshot["combat_monitors"][0]["bosses"][0]
+            )
+            window.snapshot["combat_monitors"][0]["bosses"].clear()
+            window._render_combat()
+            self.assertEqual(window.boss_overlay_name.text(), "Aguardando boss próximo")
+            self.assertEqual(window.boss_overlay_hp.text(), "HP —")
+            self.assertEqual(window.boss_overlay_progress.value(), 0)
+            self.assertEqual(
+                window.boss_dps_overlay_name.text(), "Aguardando boss próximo"
+            )
+            self.assertEqual(
+                window.boss_dps_overlay_rate.text(),
+                "DPS — · Dano acumulado — · Tempo restante —",
+            )
+            window.snapshot["combat_monitors"][0]["bosses"].append(retained_boss)
+            window._render_combat()
             boss_position = position + QtCore.QPoint(80, 80)
             window.boss_overlay.mousePressEvent(SimpleNamespace(
                 button=lambda: QtCore.Qt.MouseButton.LeftButton,

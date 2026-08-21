@@ -32,6 +32,68 @@ class _AllowedLicense:
 
 
 class QtReadOnlyDataTest(unittest.TestCase):
+    def test_latest_snapshot_isolates_three_sequential_capture_sessions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            store = CaptureStore(database)
+            try:
+                for index, session_id in enumerate(("session-1", "session-2", "session-3")):
+                    source = root / f"{session_id}.pcap"
+                    source.write_bytes(session_id.encode("ascii"))
+                    port = 50_000 + index
+                    character_uid = 101 + index
+                    events = [{
+                        "flow": f"10.0.0.1:12020 -> 127.0.0.1:{port}",
+                        "stream_offset": 1,
+                        "bundle_seq": 0,
+                        "ts_ns": 1 + index,
+                        "opcode": 0x0106,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {
+                            "character_uid": character_uid,
+                            "character_name": f"Personagem {index + 1}",
+                        }},
+                    }]
+                    if index < 2:
+                        events.append({
+                            "flow": f"10.0.0.1:12020 -> 127.0.0.1:{port}",
+                            "stream_offset": 2,
+                            "bundle_seq": 0,
+                            "ts_ns": 2 + index,
+                            "opcode": 0x040A,
+                            "type": "drop_item_field",
+                            "data": {"ret": 0, "results": [{
+                                "ret": 0,
+                                "item_index": 270_000 + index,
+                                "count": index + 1,
+                            }]},
+                        })
+                    store.add_events(
+                        source, events, session_id, client_ports=((port,),)
+                    )
+            finally:
+                store.close()
+
+            snapshot = ReadOnlySnapshotReader(
+                database, _AllowedLicense()
+            ).load()
+            reopened = CaptureStore(database, readonly=True)
+            try:
+                old_drops = reopened.recent_drop_events("session-1")
+                middle_drops = reopened.recent_drop_events("session-2")
+            finally:
+                reopened.close()
+
+        self.assertEqual(snapshot["session_id"], "session-3")
+        self.assertEqual(
+            [(row["uid"], row["name"]) for row in snapshot["profiles"]],
+            [("103", "Personagem 3")],
+        )
+        self.assertEqual(snapshot["drop_events"], [])
+        self.assertEqual(old_drops[0]["data"]["results"][0]["item_index"], 270_000)
+        self.assertEqual(middle_drops[0]["data"]["results"][0]["item_index"], 270_001)
+
     def test_live_drop_routing_assigns_client_without_exposing_flow(self):
         routed = route_live_drop_events(
             [{

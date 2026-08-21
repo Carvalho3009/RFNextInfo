@@ -707,10 +707,10 @@ class LiveEventStream:
                         self._anchors.pop((flow, "player", uid), None)
                         self._anchors.pop((flow, "monster", uid), None)
                         self._boss_anchors.pop((flow, "player", uid), None)
-                        # O servidor pode emitir desaparecimento transitório
-                        # durante o próprio encontro. A âncora do Boss expira
-                        # pela idade ou é encerrada por dying_unit; removê-la
-                        # aqui interrompia o terceiro encontro no meio.
+                        # Saída de proximidade encerra a presença visual do
+                        # Boss imediatamente. O acumulado de dano permanece
+                        # separado e pode ser retomado se o mesmo UID reaparecer.
+                        self._boss_anchors.pop((flow, "monster", uid), None)
                         self._map_events.pop((flow, "entity", uid), None)
                         self._map_events.pop((flow, "warp", uid), None)
                     continue
@@ -859,15 +859,25 @@ class LiveEventStream:
         }:
             return True
         data = event.get("data") or {}
+        flow = str(event.get("flow") or "")
+        uid = data.get("uid")
+        if (
+            event.get("type") == "dying_unit"
+            and isinstance(uid, (int, float))
+            and any(
+                key[0] == flow and key[1] == int(uid)
+                for key in self._boss_damage_totals
+            )
+        ):
+            # A morte pode chegar depois do evento de saída de proximidade,
+            # quando a âncora visual já foi liberada.
+            return True
         if data.get("_known_entity_kind") == "monster":
-            uid = data.get("uid")
-            flow = str(event.get("flow") or "")
             if isinstance(uid, (int, float)) and any(
                 key[0] == flow and key[1] == int(uid)
                 for key in self._boss_damage_totals
             ):
                 return True
-        flow = str(event.get("flow") or "")
         boss_uids = {
             key[2] for key in self._boss_anchors if key[0] == flow
         }

@@ -1729,7 +1729,7 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(result["pve_activity"]["kind"], "damage")
         self.assertEqual(result["pve_activity"]["target_uid"], 30)
 
-    def test_live_boss_total_survives_event_ring_and_transient_disappearance(self):
+    def test_live_boss_disappears_from_proximity_but_total_survives_reappearance(self):
         stream = LiveEventStream(
             boss_indexes={375100}, max_boss_events=2,
             boss_event_seconds=3600,
@@ -1772,11 +1772,26 @@ class CoreTest(unittest.TestCase):
         totals = [item for item in snapshot if item.get("type") == "boss_damage_total"]
         self.assertEqual(totals[0]["data"]["damage"], 600)
         self.assertEqual(stream.metrics()["boss_events"], 2)
-        self.assertEqual(stream.metrics()["boss_anchors"], 1)
+        self.assertEqual(stream.metrics()["boss_anchors"], 0)
         monitor = summarize_combat(
             snapshot, "111",
             boss_catalog={375100: {"name": "Boss"}},
             now_ns=4_000_000_000,
+        )
+        self.assertEqual(monitor["bosses"], [])
+
+        stream._remember([{
+            "flow": flow, "ts_ns": 4_100_000_000,
+            "type": "appear_monster_list",
+            "data": {"units": [{
+                "uid": 30, "npc_index": 375100,
+                "max_hp": 10_000, "current_hp": 9_400,
+            }]},
+        }])
+        monitor = summarize_combat(
+            stream.snapshot(), "111",
+            boss_catalog={375100: {"name": "Boss"}},
+            now_ns=4_200_000_000,
         )
         self.assertEqual(
             monitor["bosses"][0]["top_damage_players"][0]["damage"], 600
@@ -1784,6 +1799,42 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(
             monitor["bosses"][0]["top_damage_guilds"][0]["name"], "Karvalho"
         )
+
+    def test_boss_death_after_disappearance_releases_retained_encounter(self):
+        stream = LiveEventStream(boss_indexes={375100})
+        flow = "10.0.0.1:12010 -> 127.0.0.1:50000"
+        stream._remember([{
+            "flow": flow, "ts_ns": 1_000_000_000,
+            "type": "appear_monster_list",
+            "data": {"units": [{
+                "uid": 30, "npc_index": 375100,
+                "max_hp": 10_000, "current_hp": 10_000,
+            }]},
+        }, {
+            "flow": flow, "ts_ns": 2_000_000_000,
+            "type": "use_skill_result",
+            "data": {
+                "ret": 0, "caster_uid": 77,
+                "effect_results": [{
+                    "uid": 30, "hp_damage": 100, "final_hp": 9_900,
+                }],
+            },
+        }, {
+            "flow": flow, "ts_ns": 3_000_000_000,
+            "type": "disappear_unit_list",
+            "data": {"fields": {"entity_uids": [30]}},
+        }])
+        self.assertEqual(stream.metrics()["boss_anchors"], 0)
+        self.assertEqual(stream.metrics()["boss_damage_buckets"], 1)
+
+        stream._remember([{
+            "flow": flow, "ts_ns": 4_000_000_000,
+            "type": "dying_unit",
+            "data": {"uid": 30, "killer_uid": 99},
+        }])
+
+        self.assertEqual(stream.metrics()["boss_anchors"], 0)
+        self.assertEqual(stream.metrics()["boss_damage_buckets"], 0)
 
     def test_guild_dps_survives_knowledge_enrichment_without_summing_player_rates(self):
         now_ns = 10_000_000_000

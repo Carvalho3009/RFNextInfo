@@ -20,6 +20,7 @@ from app.ui_qt.operations import (
 from app.ui_qt.data import ReadOnlySnapshotReader
 from core.capture import CaptureStatus
 from core.knowledge import KnowledgeStore
+from core.live_stream import LiveEventStream
 from core.pktmon_realtime import RealtimeCapture
 from core.store import CaptureStore
 
@@ -512,6 +513,168 @@ class ReadOnlySnapshotReaderTest(unittest.TestCase):
         self.assertTrue(monitors["client:b"]["pve_activity"])
         self.assertEqual(result["routing_metrics"]["unmatched_events"], 0)
 
+    def test_live_reader_isolates_farm_activity_for_all_seven_clients(self):
+        profiles = [
+            {
+                "uid": str(1_000 + index),
+                "name": f"Personagem {index + 1}",
+                "client_key": f"client:{chr(ord('a') + index)}",
+            }
+            for index in range(7)
+        ]
+        now_ns = time.time_ns()
+        events = []
+        ports = []
+        for index, profile in enumerate(profiles):
+            port = 52_000 + index
+            combat_uid = 10_000 + index
+            monster_uid = 30_000 + index
+            flow = f"10.0.0.1:12010 -> 127.0.0.1:{port}"
+            ports.append((port,))
+            events.extend((
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": int(profile["uid"]),
+                        "character_name": profile["name"],
+                    }},
+                },
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns,
+                    "type": "appear_player_list",
+                    "data": {"units": [{
+                        "uid": combat_uid,
+                        "character_uid": int(profile["uid"]),
+                        "name": profile["name"],
+                    }]},
+                },
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns,
+                    "type": "appear_monster_list",
+                    "data": {"units": [{
+                        "uid": monster_uid,
+                        "npc_index": 5,
+                        "max_hp": 1_000,
+                        "current_hp": 1_000,
+                    }]},
+                },
+                {
+                    "flow": flow,
+                    "ts_ns": now_ns + 1,
+                    "type": "use_skill_result",
+                    "data": {
+                        "ret": 0,
+                        "caster_uid": combat_uid,
+                        "effect_results": [{
+                            "uid": monster_uid,
+                            "hp_damage": 100 + index,
+                            "final_hp": 900 - index,
+                        }],
+                    },
+                },
+            ))
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "capture.sqlite3"
+            CaptureStore(database).close()
+            with mock.patch.object(
+                CaptureStore, "latest_session", return_value="session"
+            ), mock.patch.object(
+                CaptureStore, "session_profiles", return_value=profiles
+            ):
+                result = ReadOnlySnapshotReader(
+                    database, _AllowedLicense()
+                ).load_live_combat(events, tuple(ports), modes=("pve",))
+
+        monitors = {
+            item["client_key"]: item for item in result["combat_monitors"]
+        }
+        self.assertEqual(set(monitors), {
+            f"client:{chr(ord('a') + index)}" for index in range(7)
+        })
+        self.assertEqual(
+            {item["local_combat_uid"] for item in monitors.values()},
+            {10_000 + index for index in range(7)},
+        )
+        self.assertTrue(all(item["pve_activity"] for item in monitors.values()))
+        self.assertEqual(result["routing_metrics"]["unmatched_events"], 0)
+
+    def test_boss_disappearance_is_scoped_per_client_and_keeps_encounter_total(self):
+        profiles = [
+            {"uid": "101", "name": "A", "client_key": "client:a"},
+            {"uid": "202", "name": "B", "client_key": "client:b"},
+        ]
+        now_ns = time.time_ns()
+        flows = [
+            "10.0.0.1:12010 -> 127.0.0.1:52000",
+            "10.0.0.1:12010 -> 127.0.0.1:52001",
+        ]
+        events = []
+        for index, (flow, profile) in enumerate(zip(flows, profiles)):
+            events.extend((
+                {
+                    "flow": flow, "ts_ns": now_ns,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": int(profile["uid"]),
+                        "character_name": profile["name"],
+                    }},
+                },
+                {
+                    "flow": flow, "ts_ns": now_ns,
+                    "type": "appear_monster_list",
+                    "data": {"units": [{
+                        "uid": 30, "npc_index": 375100,
+                        "max_hp": 10_000, "current_hp": 10_000,
+                    }]},
+                },
+                {
+                    "flow": flow, "ts_ns": now_ns + 1,
+                    "type": "use_skill_result",
+                    "data": {
+                        "ret": 0, "caster_uid": 70 + index,
+                        "effect_results": [{
+                            "uid": 30,
+                            "hp_damage": 1_000 * (index + 1),
+                            "final_hp": 9_000 - 1_000 * index,
+                        }],
+                    },
+                },
+            ))
+        events.append({
+            "flow": flows[0], "ts_ns": now_ns + 2,
+            "type": "disappear_unit_list",
+            "data": {"fields": {"entity_uids": [30]}},
+        })
+        stream = LiveEventStream(boss_indexes={375100})
+        stream._remember(events)
+
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "capture.sqlite3"
+            CaptureStore(database).close()
+            with mock.patch.object(
+                CaptureStore, "latest_session", return_value="session"
+            ), mock.patch.object(
+                CaptureStore, "session_profiles", return_value=profiles
+            ):
+                result = ReadOnlySnapshotReader(
+                    database, _AllowedLicense()
+                ).load_live_combat(
+                    stream.snapshot(), ((52000,), (52001,)), modes=("boss",)
+                )
+
+        monitors = {
+            item["client_key"]: item for item in result["combat_monitors"]
+        }
+        self.assertEqual(monitors["client:a"]["bosses"], [])
+        self.assertEqual(monitors["client:b"]["bosses"][0]["current_hp"], 8_000)
+        self.assertEqual(monitors["client:b"]["bosses"][0]["total_damage"], 2_000)
+        self.assertEqual(stream.metrics()["boss_anchors"], 1)
+        self.assertEqual(stream.metrics()["boss_damage_buckets"], 2)
+
     def test_live_reader_does_not_mix_uid_bound_exitlag_flows(self):
         profiles = [
             {"uid": "101", "name": "A", "client_key": "client:a"},
@@ -555,6 +718,124 @@ class ReadOnlySnapshotReaderTest(unittest.TestCase):
         self.assertEqual(
             [row["client_key"] for row in result["combat_monitors"]],
             ["client:a", "client:b"],
+        )
+
+    def test_persisted_combat_fallback_uses_only_latest_session_for_two_clients(self):
+        now_ns = time.time_ns()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            store = CaptureStore(database)
+            try:
+                old_source = root / "old.pcap"
+                old_source.write_bytes(b"old")
+                store.add_events(old_source, [{
+                    "flow": "10.0.0.1:12020 -> 127.0.0.1:51000",
+                    "stream_offset": 1,
+                    "bundle_seq": 0,
+                    "ts_ns": now_ns - 1_000,
+                    "opcode": 0x0106,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": 999,
+                        "character_name": "Sessão antiga",
+                    }},
+                }], "session-old", client_ports=((51000,),))
+
+                new_source = root / "new.pcap"
+                new_source.write_bytes(b"new")
+                events = []
+                for index, (port, character_uid, combat_uid, monster_uid) in enumerate((
+                    (52000, 101, 10, 30),
+                    (52001, 202, 20, 40),
+                )):
+                    identity_port = 53_000 + index
+                    identity_flow = (
+                        f"10.0.0.1:12020 -> 127.0.0.1:{identity_port}"
+                    )
+                    combat_flow = f"10.0.0.1:12010 -> 127.0.0.1:{port}"
+                    base = index * 10
+                    events.extend((
+                        {
+                            "flow": identity_flow,
+                            "stream_offset": base + 1,
+                            "bundle_seq": 0,
+                            "ts_ns": now_ns,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {"fields": {
+                                "character_uid": character_uid,
+                                "character_name": chr(65 + index),
+                            }},
+                        },
+                        {
+                            "flow": combat_flow,
+                            "stream_offset": base + 2,
+                            "bundle_seq": 0,
+                            "ts_ns": now_ns,
+                            "opcode": 0x0306,
+                            "type": "appear_player_list",
+                            "data": {"units": [{
+                                "uid": combat_uid,
+                                "character_uid": character_uid,
+                                "name": chr(65 + index),
+                            }]},
+                        },
+                        {
+                            "flow": combat_flow,
+                            "stream_offset": base + 3,
+                            "bundle_seq": 0,
+                            "ts_ns": now_ns,
+                            "opcode": 0x0305,
+                            "type": "appear_monster_list",
+                            "data": {"units": [{
+                                "uid": monster_uid,
+                                "npc_index": 5,
+                                "max_hp": 1_000,
+                                "current_hp": 1_000,
+                            }]},
+                        },
+                        {
+                            "flow": combat_flow,
+                            "stream_offset": base + 4,
+                            "bundle_seq": 0,
+                            "ts_ns": now_ns + 1,
+                            "opcode": 0x0603,
+                            "type": "use_skill_result",
+                            "data": {
+                                "ret": 0,
+                                "caster_uid": combat_uid,
+                                "effect_results": [{
+                                    "uid": monster_uid,
+                                    "hp_damage": 100,
+                                    "final_hp": 900,
+                                }],
+                            },
+                        },
+                    ))
+                store.add_events(
+                    new_source,
+                    events,
+                    "session-new",
+                    client_ports=((52000, 53000), (52001, 53001)),
+                )
+            finally:
+                store.close()
+
+            result = ReadOnlySnapshotReader(
+                database, _AllowedLicense()
+            ).load_combat(modes=("pve",))
+
+        self.assertEqual(result["session_id"], "session-new")
+        monitors = {
+            item["client_key"]: item for item in result["combat_monitors"]
+        }
+        self.assertEqual(set(monitors), {"client:a", "client:b"})
+        self.assertTrue(monitors["client:a"]["pve_activity"])
+        self.assertTrue(monitors["client:b"]["pve_activity"])
+        self.assertNotIn(
+            "Sessão antiga",
+            {item["character_name"] for item in monitors.values()},
         )
 
 
@@ -1227,6 +1508,53 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertNotEqual(second["session_id"], first)
             self.assertFalse(second["resumed"])
             self.assertEqual(engine.current_session, second["session_id"])
+            engine.stop_without_reading()
+
+    def test_start_new_clears_ephemeral_boss_state_from_previous_session(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "app.ui_qt.operations.CaptureStore", _FakeStore
+        ):
+            engine = CaptureEngine(
+                Path(directory),
+                Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
+                profile="Teste",
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({10}, {50000}, {12020})
+                },
+                client_reader=lambda *_args: [{
+                    "pid": 10, "local_ports": (50000,),
+                    "remote_ports": (12020,),
+                }],
+            )
+
+            first = engine.start()["session_id"]
+            engine.live_events._remember([{
+                "flow": "10.0.0.1:12010 -> 127.0.0.1:50000",
+                "ts_ns": time.time_ns(),
+                "type": "appear_monster_list",
+                "data": {"units": [{
+                    "uid": 30, "npc_index": 600030,
+                    "max_hp": 10_000, "current_hp": 10_000,
+                }]},
+            }])
+            self.assertEqual(engine.live_events.metrics()["boss_anchors"], 1)
+
+            engine.stop(pause=True)
+            second = engine.start_new()
+
+            self.assertEqual(second["previous_session"], first)
+            self.assertEqual(engine.live_events.metrics()["boss_anchors"], 0)
+            self.assertEqual(engine.live_events.metrics()["boss_damage_buckets"], 0)
+            self.assertEqual(
+                [
+                    event for event in engine.live_events.snapshot()
+                    if event.get("type") == "appear_monster_list"
+                ],
+                [],
+            )
             engine.stop_without_reading()
 
     def test_falls_back_to_rotating_etl_when_realtime_api_is_unavailable(self):
