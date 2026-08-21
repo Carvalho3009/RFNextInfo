@@ -6427,8 +6427,6 @@ class MainWindow(QtWidgets.QMainWindow):
         now = time.time_ns()
         create_next = self.subsession_auto_next.isChecked()
         next_duration = self.subsession_auto_minutes.value()
-        store = CaptureStore(self.database_path)
-        changed = False
         monitors = {
             str(item.get("client_key") or ""): item
             for item in self.snapshot.get("combat_monitors") or []
@@ -6439,33 +6437,65 @@ class MainWindow(QtWidgets.QMainWindow):
             for item in (self.snapshot.get("map") or {}).get("clients") or []
             if isinstance(item, dict)
         }
-        try:
-            for active in store.subsessions(session_id):
-                if active.get("ended_ns") is not None:
-                    continue
-                duration = int(active.get("duration_minutes") or 0)
-                timed_boundary = (
-                    int(active["started_ns"])
-                    + duration * 60 * 1_000_000_000
-                    if duration > 0 else None
-                )
-                signal = automatic_subsession_end(
-                    active,
-                    monitors.get(str(active.get("client_key") or "")),
-                    spatial_clients.get(str(active.get("client_key") or "")),
-                    now_ns=now,
-                )
-                boundaries = [
-                    (timed_boundary, "duração") if timed_boundary else None,
-                    signal,
+
+        snapshot_subsessions = self.snapshot.get("subsessions")
+        if isinstance(snapshot_subsessions, list):
+            active_subsessions = [
+                item
+                for item in snapshot_subsessions
+                if isinstance(item, dict)
+                and item.get("ended_ns") is None
+                and str(item.get("session_id") or session_id) == session_id
+            ]
+        else:
+            # Compatibilidade durante a primeira carga e nos testes. A leitura
+            # não executa migrações nem disputa uma transação de escrita.
+            readonly = CaptureStore(self.database_path, readonly=True)
+            try:
+                active_subsessions = [
+                    item
+                    for item in readonly.subsessions(session_id)
+                    if item.get("ended_ns") is None
                 ]
-                boundaries = [item for item in boundaries if item is not None]
-                if not boundaries:
-                    continue
-                boundary_ns, end_reason = min(boundaries)
-                if now < boundary_ns:
-                    continue
+            finally:
+                readonly.close()
+
+        due: list[tuple[dict[str, object], int, str]] = []
+        for active in active_subsessions:
+            duration = int(active.get("duration_minutes") or 0)
+            timed_boundary = (
+                int(active["started_ns"])
+                + duration * 60 * 1_000_000_000
+                if duration > 0 else None
+            )
+            signal = automatic_subsession_end(
+                active,
+                monitors.get(str(active.get("client_key") or "")),
+                spatial_clients.get(str(active.get("client_key") or "")),
+                now_ns=now,
+            )
+            boundaries = [
+                (timed_boundary, "duração") if timed_boundary else None,
+                signal,
+            ]
+            boundaries = [item for item in boundaries if item is not None]
+            if not boundaries:
+                continue
+            boundary_ns, end_reason = min(boundaries)
+            if now >= boundary_ns:
+                due.append((active, int(boundary_ns), str(end_reason)))
+
+        # Este método roda a cada 250 ms. Não abra o banco de escrita quando
+        # nenhuma subsessão realmente precisa mudar de estado.
+        if not due:
+            return
+
+        store = CaptureStore(self.database_path)
+        changed = False
+        try:
+            for active, boundary_ns, end_reason in due:
                 store.end_subsession(str(active["id"]), boundary_ns)
+                active["ended_ns"] = boundary_ns
                 self.log.info(
                     "subsession_auto_ended id=%s reason=%s boundary_ns=%s delay_ms=%s",
                     active["id"],
@@ -9977,7 +10007,27 @@ class MainWindow(QtWidgets.QMainWindow):
         elif name == "preview":
             now = datetime.now().strftime("%H:%M:%S")
             now_mono = time.monotonic()
-            if self._licensed_status_modes():
+            monitor_refresh_due = any(
+                enabled and self.monitor_next_due[mode] <= now_mono
+                for mode, enabled in self.monitor_enabled.items()
+            )
+            drop_alert_active = self.alert_item_drop.isChecked()
+            drop_refresh_due = (
+                drop_alert_active and self.drop_alert_next_due <= now_mono
+            )
+            standalone_status_active = bool(
+                self._licensed_status_modes()
+            ) and not (any(self.monitor_enabled.values()) or drop_alert_active)
+            status_refresh_due = (
+                standalone_status_active
+                and self.program_status_preview_next_due <= now_mono
+            )
+            combat_refresh_due = (
+                monitor_refresh_due
+                or status_refresh_due
+                or (drop_refresh_due and bool(self._licensed_status_modes()))
+            )
+            if status_refresh_due:
                 self.program_status_preview_next_due = (
                     now_mono + PROGRAM_STATUS_PREVIEW_SECONDS
                 )
@@ -9992,7 +10042,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.monitor_next_due[mode] = (
                         now_mono + self.monitor_controls[mode]["interval"].value()
                     )
-            if self.alert_item_drop.isChecked():
+            if drop_refresh_due:
                 self.drop_alert_next_due = (
                     now_mono + DROP_ALERT_REFRESH_SECONDS
                 )
@@ -10030,11 +10080,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     recovered_routes, self.preferences_path
                 )
             self.log.debug("monitor_metrics %s", metrics)
-            self._evaluate_live_drop_alerts()
-            if (
-                any(self.monitor_enabled.values())
-                or bool(self._licensed_status_modes())
-            ):
+            if drop_refresh_due:
+                self._evaluate_live_drop_alerts()
+            if combat_refresh_due:
                 self._load_combat_data()
         elif name == "pause":
             self.top_capture.setText("Captura — pausada")
@@ -10507,6 +10555,24 @@ class MainWindow(QtWidgets.QMainWindow):
         empty = widgets.get("nearby_empty")
         if layout is None or empty is None:
             return
+        shown_entities = entities[:20]
+        signature_fields = (
+            "uid", "npc_index", "name", "level", "current_hp", "max_hp",
+            "hp_percent", "biosuit_item_index", "guild_name", "classification",
+        )
+        signature = (
+            mode,
+            tuple((name, counts.get(name, 0)) for name in (
+                "allies", "enemies", "unknown",
+            )),
+            tuple(
+                tuple(entity.get(field) for field in signature_fields)
+                for entity in shown_entities
+            ),
+        )
+        if getattr(layout, "_rfqol_signature", None) == signature:
+            return
+        layout._rfqol_signature = signature
         while layout.count():
             item = layout.takeAt(0)
             if item.widget():
@@ -10519,7 +10585,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"Aliados {counts.get('allies', 0)} · Inimigos {counts.get('enemies', 0)} "
                 f"· Não classificados {counts.get('unknown', 0)}"
             )
-        for entity in entities[:20]:
+        for entity in shown_entities:
             row = QtWidgets.QFrame(objectName="secondaryMetricGroup")
             row.setMinimumHeight(64)
             horizontal = QtWidgets.QHBoxLayout(row)

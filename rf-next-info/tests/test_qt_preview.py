@@ -1475,6 +1475,35 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertIn("Alvo B", widgets["target"].text())
         window.close()
 
+    def test_identical_nearby_entities_reuse_existing_widgets(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["nearby-render-cache-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        widgets = window.combat_widgets["pvp"][0]
+        entities = [{
+            "uid": 30,
+            "npc_index": 600030,
+            "name": "Monstro",
+            "level": 100,
+            "current_hp": 900,
+            "max_hp": 1_000,
+            "hp_percent": 90.0,
+        }]
+
+        window._render_nearby(widgets, entities, "pvp", {})
+        layout = widgets["nearby_layout"]
+        first_row = layout.itemAt(0).widget()
+        window._render_nearby(widgets, [dict(entities[0])], "pvp", {})
+
+        self.assertIs(layout.itemAt(0).widget(), first_row)
+
+        changed = [dict(entities[0], current_hp=800, hp_percent=80.0)]
+        window._render_nearby(widgets, changed, "pvp", {})
+        self.assertIsNot(layout.itemAt(0).widget(), first_row)
+        window.close()
+
     def test_pvp_target_is_above_nearby_players(self):
         from app.ui_qt.main import MainWindow, create_application
 
@@ -2249,6 +2278,53 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertIn("preview", calls)
         self.assertNotIn("rotate", calls)
         self.assertIn("mapa:", window.top_next_read.text())
+        window.capture_engine = None
+        window.close()
+
+    def test_map_preview_does_not_reprocess_combat_before_its_own_deadline(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["map-preview-combat-throttle-test"])
+        window = MainWindow(load_data=False)
+        window.capture_timer.stop()
+        window.capture_engine = SimpleNamespace(
+            active=True, paused=False, current_session="session",
+        )
+        window.license_active = True
+        window.license_features = {"map", "monitor-pve"}
+        window.alert_item_drop.setChecked(False)
+        window.monitor_enabled = {"pve": False, "pvp": False, "boss": False}
+        window.program_status_preview_next_due = time.monotonic() + 30
+        original_due = window.program_status_preview_next_due
+        window._load_combat_data = mock.Mock()
+
+        window._capture_operation_finished(
+            "preview",
+            {
+                "available": True,
+                "events": [],
+                "client_ports": [],
+                "monitor_metrics": {},
+            },
+            None,
+        )
+
+        window._load_combat_data.assert_not_called()
+        self.assertEqual(window.program_status_preview_next_due, original_due)
+
+        window.program_status_preview_next_due = 0.0
+        window._capture_operation_finished(
+            "preview",
+            {
+                "available": True,
+                "events": [],
+                "client_ports": [],
+                "monitor_metrics": {},
+            },
+            None,
+        )
+        window._load_combat_data.assert_called_once_with()
+        self.assertGreater(window.program_status_preview_next_due, time.monotonic())
         window.capture_engine = None
         window.close()
 
@@ -3524,6 +3600,41 @@ class QtPreviewSmokeTest(unittest.TestCase):
             )
             self.assertEqual(active["started_ns"], started + interval)
             self.assertEqual(active["duration_minutes"], 10)
+            window.capture_engine = None
+            window.close()
+
+    def test_subsession_rotation_does_not_open_database_without_due_boundary(self):
+        from app.ui_qt.main import MainWindow, create_application
+
+        create_application(["subsession-no-periodic-write-test"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            window = MainWindow(
+                load_data=False,
+                database_path=database,
+                preferences_path=root / "preferences.json",
+            )
+            window.capture_timer.stop()
+            window.capture_engine = SimpleNamespace(current_session="session-1")
+            now = time.time_ns()
+            window.snapshot = {
+                "subsessions": [{
+                    "id": "sub-1",
+                    "session_id": "session-1",
+                    "client_key": "client:a",
+                    "started_ns": now,
+                    "ended_ns": None,
+                    "duration_minutes": 60,
+                }],
+                "combat_monitors": [],
+                "map": {"clients": []},
+            }
+
+            with mock.patch("app.ui_qt.main.CaptureStore") as capture_store:
+                window._rotate_auto_subsessions()
+
+            capture_store.assert_not_called()
             window.capture_engine = None
             window.close()
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0-beta.6 — 2026-08-21
+
+- Corrige os travamentos causados pela abertura do banco de captura em modo de
+  escrita a cada 250 ms durante a verificação de subsessões. O banco só é
+  aberto quando uma condição de encerramento realmente vence.
+- Separa a frequência do mapa da frequência dos monitores: uma atualização de
+  posição não recalcula combate, status ou drops antes do prazo próprio.
+- Reutiliza os componentes de jogadores próximos quando os dados não mudaram,
+  evitando destruir e recriar cartões e imagens a cada atualização.
+- Mantém intactos o banco existente, as capturas, sessões e configurações.
+
 ## 2.0.0-beta.2 — 2026-08-21
 
 - Move o status para o cartão **Sessão atual** e separa o início em **Começar

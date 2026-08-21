@@ -2584,8 +2584,9 @@ class AppLogicTest(unittest.TestCase):
                 lease.encode(), (Path(directory) / "license.dat").read_bytes()
             )
             protected = Path(directory) / "license.dat"
+            protected_bytes = protected.read_bytes()
             protected.write_bytes(
-                protected.read_bytes()[:-1] + b"\0"
+                protected_bytes[:-1] + bytes((protected_bytes[-1] ^ 1,))
             )
             recovered = LicenseClient(
                 Path(directory), trusted_public_keys=trusted
