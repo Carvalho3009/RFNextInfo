@@ -1,5 +1,155 @@
 # Changelog
 
+## 2.0.0-beta.2 — 2026-08-21
+
+- Move o status para o cartão **Sessão atual** e separa o início em **Começar
+  captura nova** e **Continuar captura anterior**, sem oferecer descarte da
+  sessão pendente na interface 2.0.
+- Adiciona **Resumo Geral**, com cartões compactos por cliente. O cabeçalho reúne
+  personagem, Classe/Biosuit, Rover, imagens e diamantes; o corpo mostra barra
+  de EXP, tempo, ganho de EXP, créditos atuais/da sessão e contribuição total/h.
+  O relógio individual começa no primeiro reconhecimento do cliente.
+- Separa anúncios de drops de outros jogadores em aba própria, com os mesmos
+  filtros e paginação de Drops, consolidando mensagens simultâneas capturadas
+  por mais de um cliente.
+- Mantém os cartões **Sessão atual** e **Subsessão ativa** independentes, combina
+  o valor bruto e percentual de XP/h e remove Drops recentes e Mobs próximos da
+  Visão geral.
+- Restaura **Criar a próxima automaticamente**, com intervalo configurável:
+  a expiração normal por duração abre a próxima subsessão; encerramentos por
+  teleporte, morte ou 30 segundos sem kill continuam sem iniciar outra.
+- Reúne Profile, API local e saúde do programa dentro de **Configurações** e
+  remove os itens laterais **Integrações** e **Tutorial**.
+- Usa identidades confirmadas do Top 100 para completar guildas no combate,
+  incluindo **Blood**, e volta a exibir as imagens de Classe e Rover.
+- Torna a planta da Visão geral uma miniatura quadrada de até 420 px, sem zoom,
+  arraste ou recentralização. Personagem, área de proximidade e jogadores ficam
+  ancorados às coordenadas da planta; a navegação permanece na aba **Mapa**.
+- Classifica drops épicos no cartão da sessão como arma, armadura, acessório,
+  expansão, Blueprint de MAU ou Blueprint de Launcher a partir do catálogo
+  oficial 1.28.5.
+- Prepara o envio idempotente e sanitizado do Banco de Leilão para
+  `/api/import/auction-bank`. A consolidação de guilda e o alerta de undercut
+  permanecem no site/2.1; o programa somente envia e apresenta avisos.
+- Torna regressão um gate obrigatório: toda adição exige teste específico e a
+  suíte automática completa antes de ser considerada concluída.
+- Corrige a regressão que desativava definitivamente o vínculo dos clientes
+  após a substituição dos processos/conexões. As novas rotas voltam a ser
+  acompanhadas e são realinhadas pelo UID canônico antes de atribuir EXP,
+  contribuição e recompensas.
+- Migra bancos afetados recuperando eventos sem personagem somente quando eles
+  compartilham o mesmo fluxo TCP de uma identidade canônica única; registros
+  ambíguos permanecem sem dono para impedir mistura entre clientes.
+- Corrige a atualização rápida que deixava os monitores e cartões sem dados por
+  referenciar o histórico do Ranking de EXP fora do contexto correto.
+- Corrige o placar do Boss para ordenar jogadores, grupos e guildas pelo dano
+  acumulado do encontro; a taxa exibida passa a ser a média desde o primeiro
+  golpe, separada do indicador instantâneo de queda de HP.
+- Normaliza fluxos TCP nos dois sentidos para preservar a identidade e o alvo
+  atual do Monitor PvP em rotas com ExitLag, sem misturar clientes.
+- Adiciona a vida própria acima do alvo atual no overlay PvP.
+- Acumula drops idênticos por cliente/personagem, com primeiro/último horário e
+  ocorrências, e permite selecionar múltiplas categorias de raridade para som.
+  A origem é exclusivamente o evento de recompensa confirmado pelo servidor,
+  sem leitura textual do chat.
+- Materializa o histórico do Top 100 com data/hora, nível, progresso, EXP ganha
+  e projeções por hora entre capturas, descartando resultados idênticos
+  observados dentro da mesma janela de uma hora.
+- Padroniza todas as tabelas para permitir redimensionamento e reordenação das
+  colunas, com ajuste automático ao dar duplo clique no cabeçalho.
+- Amplia o histórico próprio do leilão com compras confirmadas, vendas e tipos
+  brutos ainda não validados, sem expor IDs internos.
+- Adiciona os campos MAU, launcher e poção de EXP às subsessões em estado
+  explícito `Aguardando captura validada`; nenhum uso é inferido antes das séries
+  marcadas exigidas pelo protocolo de evidência.
+- Sob pressão do limite de RAM escolhido, compacta eventos efêmeros, entidades
+  antigas e buffers TCP, preservando o estado recente e o conteúdo persistido.
+
+- Prepara o perfil portátil `2.0.0-rc1 (Homologação)`, com estado DPAPI e
+  instância Windows isolados, emissor v3 somente em `127.0.0.1:8788`, chave
+  pública de staging incorporada e integração remota restrita à validação do
+  Profile e aos envios idempotentes do Mercado, Ranking de EXP e Banco de
+  Leilão. Cada Top
+  100 completo novo é enviado automaticamente; sessões, inventário e bancos
+  continuam sem permissão de envio. O perfil recusa instalador e release.
+- Adiciona catálogo versionado de 508 mapas da tabela 1.28.5, com 496 nomes
+  PT-BR, 504 nomes EN-US e fallback seguro por idioma/índice.
+- Embarca 49 plantas cartográficas para Novus, Albern Crater, Android Junkyard,
+  Secret Nemesis Base, campos de mineração e instalações orbitais. Novus é
+  dividido em 56 regiões oficiais, com centro, área dos spawns estáticos e
+  referência regional conforme a posição; layouts compartilhados entre andares
+  guardam a origem e a evidência da reutilização, enquanto a tela mostra a planta inteira.
+- Trata andares como regiões do mapa-base: por exemplo, o MapIndex 638 é
+  exibido como mapa **Ferro-Velho de Androides** e região **8F**. A regra também
+  alimenta o preenchimento automático de subsessões em Android, Nemesis e
+  campos de mineração.
+- Expõe a região resolvida e seu centro sanitizado no cartão de mapa e em
+  `/api/v1/map`, usando proximidade ao centro oficial sem inventar fronteiras.
+- Exibe a planta inteira por padrão e adiciona zoom, arraste livre e botão
+  **Focar personagem** ao cartão de mapa. A posição passa a usar prévia efêmera
+  a cada 1 segundo mesmo sem monitores ligados, sem persistir trilha de movimento.
+- Corrige o mapa manual para preservar também o índice da planta selecionada.
+  Preferências anteriores que guardavam apenas mapa e região são migradas em
+  memória, permitindo exibir imediatamente a planta do Android Junkyard 9F e
+  dos demais mapas preparados sem exigir nova seleção.
+- Troca a entrada livre do mapa manual por uma lista pesquisável do catálogo;
+  ela só identifica mapas não reconhecidos e nunca desativa a leitura automática.
+- Define Farm por dano local ou abate confirmado de mob nos últimos 30 segundos
+  e fixa a prioridade visual `Teleportando > PvP > Farm > Ocioso`; Boss permanece
+  como sinal independente de proximidade.
+- Mostra o ícone real de cada item nos drops recentes e aplica cores semânticas
+  de Comum, Incomum, Raro, Épico e Lendário conforme o catálogo.
+- Isola o cartão **Drops recentes** pelo cliente selecionado, sem misturar os
+  itens capturados pelos demais clientes.
+- Mantém os cartões **Sessão atual** e **Subsessão ativa** separados na Visão
+  geral; a subsessão informa claramente quando não há uma em andamento.
+- Acrescenta Nível e EXP % ao Top 100, calculados a partir da EXP total com a
+  curva oficial 1.28.5 já embarcada.
+- Adiciona protocolo dedicado do Banco PvE com lotes idempotentes de até 500
+  registros, localização múltipla, conflitos de HP e ack explícito por item;
+  o código do site está preparado, mas não foi implantado.
+- Integra o decoder de mapa atualizado: respostas de teleporte passam a fornecer
+  o `map_index` confirmado e `0x040A` permanece apenas como fonte de posição,
+  impedindo que o antigo valor bruto seja exibido como mapa.
+- Mantém no stream em memória as solicitações e respostas de teleporte já
+  decodificadas, permitindo que o módulo Mapa atualize automaticamente após a
+  troca de mapa.
+- Consolida PvE, PvP e Boss em uma única área de Monitoramento, preservando os
+  módulos e permissões independentes.
+- Remove **Mobs próximos** e **Drops recentes** da Visão geral para concentrar
+  esses dados nas respectivas áreas dedicadas.
+- Mostra no Monitor PvE uma barra com a última vida confirmada do personagem,
+  posicionada acima da barra de vida do alvo atual e isolada por cliente.
+- Corrige o Monitor Boss de um único cliente quando o jogo abre os fluxos
+  lógico e de combate em portas locais diferentes: os eventos continuam
+  isolados e passam a alcançar o cliente confirmado, sem relaxar o roteamento
+  quando existem dois ou mais clientes.
+- Consolida sessão atual/envios e histórico/subsessões na área **Sessões**;
+  Profile, API local e a saúde sanitizada de captura, memória, checkpoint e
+  stream ficam reunidos em **Configurações**.
+- Confirma automaticamente mapa, spot e mobs da subsessão somente após leituras
+  estáveis, ignora mobs transitórios e registra origem/confiança da inferência.
+- Mantém o Banco PvP compatível e congela novas alterações funcionais para a
+  versão 2.1.
+- Prepara no programa 2.0 o contrato de envio do Banco de Leilão; banco
+  consolidado do site, API de guilda e anti-undercut permanecem na versão 2.1.
+  O histórico local próprio de compras e vendas continua na 2.0.
+- Define que ensaios reais de memória/dois clientes e todas as validações
+  manuais ou visuais serão executados somente após gerar o executável candidato.
+- Mantém implementação, testes e documentação sem release ou deploy de
+  produção. Um instalador de homologação isolado pode ser
+  gerado explicitamente sem substituir a instalação RF QOL normal.
+
+## Em desenvolvimento — diagnóstico
+
+- Mantém o log técnico detalhado sempre ativo desde a abertura do RF QOL,
+  ignorando preferências antigas que o desativavam. A sanitização de chaves,
+  tokens, endereços e conteúdo bruto de pacotes permanece obrigatória.
+- Aceita rotas secundárias criadas pelo ExitLag quando pertencem ao mesmo
+  processo do ProjectRF e associa o fluxo do monitor PvP ao cliente pela UID
+  confirmada, sem capturar conexões do serviço do ExitLag nem registrar
+  endereços, portas ou pacotes no diagnóstico.
+
 ## 1.0.8 — instalação manual
 
 - Integra os layouts confirmados mais recentes para movimento, saída de sala,

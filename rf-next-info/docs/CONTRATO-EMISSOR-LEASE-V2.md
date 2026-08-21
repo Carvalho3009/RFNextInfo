@@ -1,7 +1,16 @@
 # Contrato do emissor de licença — RF QOL lease v2
 
-Estado: cliente, site e emissor implementados e integrados em staging isolado;
-chaves de produção, cutover e publicação continuam pendentes.
+Estado: cliente, emissor e consumidor dual do site implementados localmente; o
+emissor foi validado em staging isolado. Staging integrado do site, chaves de
+produção, cutover e publicação continuam pendentes.
+
+> **Compatibilidade:** este contrato permanece normativo para clientes 1.x.
+> Para o RF QOL 2.0, o owner decidiu em 2026-08-17 remover cotas de clientes,
+> usar tolerância offline de até 7 dias e tentar revalidar em toda abertura.
+> Essa política pertence à lease v3 implementada em staging em
+> `SPEC-LICENCA-RF-QOL-2.0.md`; os campos e limites v2 abaixo não foram
+> reinterpretados. O owner aprovou uma chave Ed25519 exclusiva para a v3; a
+> chave v2 e este contrato permanecem separados e normativos para clientes 1.x.
 
 Implementação do emissor: `K:\MCP\_worktrees\rf-licenca-security-r1`.
 Homologação: contêiner `rf-licenca-staging-api-1`, somente em

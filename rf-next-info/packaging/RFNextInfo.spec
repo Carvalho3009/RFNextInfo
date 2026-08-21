@@ -17,6 +17,8 @@ data_files = [
     (str(root / "core" / "catalogo.csv"), "core"),
     (str(root / "core" / "catalogo_en.csv"), "core"),
     (str(root / "core" / "boss_catalog.csv"), "core"),
+    (str(root / "core" / "map_catalog.json"), "core"),
+    (str(root / "core" / "map_previews.json"), "core"),
     (str(root / "core" / "rfnext_frame_decode.py"), "core"),
     (str(root / "core" / "collection_requirements.csv"), "core"),
     (str(root / "core" / "level_curve.json"), "core"),
@@ -24,11 +26,14 @@ data_files = [
     (str(root / "core" / "item_names_en.json"), "core"),
     (str(root / "core" / "item_grades.json"), "core"),
     (str(root / "core" / "item_categories.json"), "core"),
+    (str(root / "core" / "item_epic_categories.json"), "core"),
     (str(job1 / "job1_pending_layouts.json"), "core"),
     (str(job1 / "job1_all_opcodes.csv"), "core"),
 ]
 if (assets / "mob-icons").is_dir():
     data_files.append((str(assets / "mob-icons"), "assets/mob-icons"))
+if (assets / "maps").is_dir():
+    data_files.append((str(assets / "maps"), "assets/maps"))
 
 a = Analysis(
     [str(root / "app" / "ui_qt" / "main.py")],

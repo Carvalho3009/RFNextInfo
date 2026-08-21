@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import csv
 import os
 import sys
 import ctypes
+import gc
 import json
 import math
 import subprocess
 import threading
 import time
 import zipfile
+from collections import OrderedDict, deque
 from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
@@ -16,16 +19,26 @@ from typing import Any
 
 from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
 
+from app.build_profile import (
+    INSTANCE_SERVER_NAME,
+    LICENSE_SERVER,
+    PROFILE_LABEL,
+    SITE_FEATURES,
+    SITE_SERVER,
+)
 from app.ui_qt.data import (
     CLASS_ICON_FILES,
     DB_PATH,
     INVENTORY_CATEGORIES,
+    ITEM_GRADES,
     PREFERENCES_PATH,
     RARITY_COLORS,
     ReadOnlySnapshotReader,
     load_farm_catalog,
     load_license_status,
     load_preferences,
+    route_live_drop_events,
+    route_live_loot_announcements,
     save_preferences,
 )
 from app.license import LicenseClient
@@ -42,13 +55,27 @@ from app.main import (
     STATE_DIR,
     VERSION,
     _recycle,
+    DROP_ALERT_CATEGORY_LABELS,
+    drop_alert_category,
     game_catalog_name,
     game_data_language,
+    item_names_for_language,
 )
 from app.paths import (
     KNOWLEDGE_DB_PATH,
+    LOCAL_API_STATE_PATH,
     UPDATES_DIR,
     ensure_runtime_layout,
+)
+from app.local_api import (
+    LOCAL_API_DEFAULT_PORT,
+    LocalApiTokenStore,
+    LocalOutputApi,
+)
+from app.alert_sound import (
+    install_alert_sound,
+    play_alert_sound,
+    resolve_alert_sound,
 )
 from app.site_profile import SiteProfileClient
 from app.support_log import (
@@ -68,41 +95,85 @@ from app.updater import (
 )
 from app.ui_qt.operations import (
     CaptureEngine,
+    DEFAULT_MEMORY_BUDGET_MB,
     DEFAULT_GLOBAL_SHORTCUTS,
     ExportEngine,
     GlobalHotkeys,
+    MAX_MEMORY_BUDGET_MB,
+    MEMORY_BUDGET_STEP_MB,
+    MIN_MEMORY_BUDGET_MB,
     MonitorEngine,
     SiteUploadEngine,
+    memory_limits_for_budget,
 )
-from core.store import CaptureStore
+from core.store import CaptureStore, exp_rank_level_progress
 from core.combat_monitor import NEARBY_PLAYER_STALE_SECONDS
+from core.auction_sales import auction_sales_snapshot, auction_transaction_history
+from core.drop_alerts import (
+    aggregate_item_drops_by_client,
+    confirmed_item_drop_alerts,
+)
 from core.knowledge import KnowledgeStore
+from core.map_state import (
+    MAP_CATALOG,
+    MAP_PREVIEW_CATALOG,
+    apply_manual_map_fallbacks,
+    map_name,
+    map_region,
+)
+from core.program_status import build_program_status
+from core.subsession_context import (
+    SubsessionContextStabilizer,
+    automatic_subsession_end,
+    infer_subsession_context,
+)
 
 
 PAGES = (
     ("Visão geral", "Resumo dos clientes e da sessão atual."),
-    ("Envios", "Envios dos dados já lidos pela captura contínua."),
-    ("Monitor PvE", "Vida do último monstro atacado confirmado."),
-    ("Monitor PvP", "Vida e DPS HP do último jogador em combate confirmado."),
-    ("Banco PvP", "UIDs observados, guildas conhecidas e classificação manual."),
-    ("Boss", "Bosses próximos, vida, DPS estimado e tempo restante."),
+    ("Resumo Geral", "Um card consolidado para cada cliente adicionado."),
+    ("Sessões", "Sessão atual e envios de dados já lidos."),
+    ("Subsessões", "Histórico, criação e gerenciamento de subsessões."),
+    ("Monitoramento", "PvE, PvP e Boss em uma única área."),
+    ("Bancos", "PvP, PvE e vendas próprias capturadas do leilão."),
+    ("Ranking de EXP", "Top 100 oficial de EXP do servidor."),
+    ("Mapa", "Posição local e jogadores próximos de até dois clientes."),
+    ("Drops", "Itens recebidos durante a sessão atual."),
+    ("Drops de jogadores", "Itens anunciados de outros jogadores, sem duplicidade entre clientes."),
     ("Alertas", "Avisos visuais e sonoros configuráveis."),
-    ("Subsessões", "Histórico e criação de subsessões."),
-    ("Configurações", "Preferências do programa e do Profile."),
-    ("Tutorial", "Primeiros passos e atalhos."),
+    ("Configurações", "Preferências, Profile, API local e saúde do programa."),
     ("Inventário", "Itens e quantidades recebidos do personagem selecionado."),
 )
 PC_SLOT_COUNT = 2
 EMULATOR_SLOT_COUNT = 5
 CLIENT_SLOT_COUNT = PC_SLOT_COUNT + EMULATOR_SLOT_COUNT
-MONITOR_PAGES = {2: "pve", 3: "pvp", 5: "boss"}
+PAGE_INDEX_BY_TITLE = {title: index for index, (title, _description) in enumerate(PAGES)}
+SESSIONS_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Sessões"]
+SUBSESSIONS_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Subsessões"]
+MONITOR_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Monitoramento"]
+BANKS_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Bancos"]
+EXP_RANK_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Ranking de EXP"]
+MAP_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Mapa"]
+DROPS_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Drops"]
+LOOT_ANNOUNCEMENTS_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Drops de jogadores"]
+SETTINGS_PAGE_INDEX = PAGE_INDEX_BY_TITLE["Configurações"]
+MONITOR_TAB_INDEX = {"pve": 0, "pvp": 1, "boss": 2}
 MONITOR_FEATURES = {
     "pve": "monitor-pve",
     "pvp": "monitor-pvp",
     "boss": "monitor-boss",
 }
 FOCUS_READ_INTERVAL_SECONDS = 300
-PVP_NEARBY_REFRESH_SECONDS = 1.0
+PVP_NEARBY_REFRESH_SECONDS = 10.0
+DROP_ALERT_REFRESH_SECONDS = 1.0
+PROGRAM_STATUS_PREVIEW_SECONDS = 2.0
+MAP_PREVIEW_SECONDS = 1.0
+DEFAULT_MEMORY_LIMITS = memory_limits_for_budget(DEFAULT_MEMORY_BUDGET_MB)
+MAX_INVENTORY_ICON_CACHE = DEFAULT_MEMORY_LIMITS["inventory_icons"]
+INVENTORY_ICON_SIZE = 46
+PVP_DATABASE_ROW_LIMIT = DEFAULT_MEMORY_LIMITS["pvp_rows"]
+MEMORY_SAMPLE_SECONDS = 5.0
+MEMORY_PRESSURE_COOLDOWN_SECONDS = 60.0
 MONITOR_SHORTCUT_OPTIONS = tuple(
     f"{modifier}+F{number}"
     for modifier in ("Ctrl", "Alt", "Shift")
@@ -114,8 +185,26 @@ ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 ASSETS = ROOT / "assets"
 MOB_ICONS = ASSETS / "mob-icons"
 ITEM_ICON_ARCHIVE = ASSETS / "item-icons.zip"
-INSTANCE_SERVER_NAME = "RFQOL.App"
+MAP_PREVIEW_ASSETS = {
+    map_index: {
+        **dict(item.get("world_bounds") or {}),
+        "path": ASSETS / "maps" / str(item.get("asset") or f"{map_index}.webp"),
+        "regions": list(item.get("regions") or []),
+        "live_position_transform": item.get("live_position_transform"),
+    }
+    for map_index, item in MAP_PREVIEW_CATALOG.items()
+    if isinstance(item, dict) and isinstance(item.get("world_bounds"), dict)
+}
+DROP_RARITY_LABELS = {
+    1: "Comum",
+    2: "Incomum",
+    3: "Raro",
+    4: "Épico",
+    5: "Lendário",
+}
+DROP_DEFAULT_COLOR = "#AEB7C2"
 DISCORD_URL = "https://discord.gg/D3hhdMgkj"
+_FONTS_LOADED = False
 
 SUBSESSION_COLUMNS = (
     ("select", "", 28, True),
@@ -128,6 +217,10 @@ SUBSESSION_COLUMNS = (
     ("spot", "Spot", 150, False),
     ("mobs", "Mobs", 220, False),
     ("levels", "Níveis", 160, False),
+    ("context", "Contexto", 110, False),
+    ("mau", "MAU", 120, False),
+    ("launcher", "Launcher", 120, False),
+    ("exp_potion", "Poção de EXP", 130, False),
     ("kills", "Kills", 58, True),
     ("finalizations", "Finaliz.", 72, False),
     ("exp_total", "XP total", 90, True),
@@ -148,6 +241,16 @@ SUBSESSION_COLUMNS = (
 SUBSESSION_COLUMN_INDEX = {
     key: index for index, (key, _label, _width, _visible) in enumerate(SUBSESSION_COLUMNS)
 }
+SUBSESSION_CARD_DEFAULT_FIELDS = (
+    "name",
+    "time",
+    "map",
+    "mobs",
+    "levels",
+    "kills",
+    "exp_percent",
+    "exp_hour",
+)
 
 
 class _ProcessMemoryCounters(ctypes.Structure):
@@ -188,8 +291,12 @@ def _process_memory_bytes() -> int | None:
 
 
 def _load_fonts() -> None:
+    global _FONTS_LOADED
+    if _FONTS_LOADED:
+        return
     for name in ("Saira.ttf", "SairaSemiCondensed-Bold.ttf"):
         QtGui.QFontDatabase.addApplicationFont(str(ASSETS / name))
+    _FONTS_LOADED = True
 
 
 def _label(text: str, role: str = "") -> QtWidgets.QLabel:
@@ -199,16 +306,24 @@ def _label(text: str, role: str = "") -> QtWidgets.QLabel:
     return label
 
 
+def _display_text(value: object) -> str:
+    text = str(value or "")
+    if any(marker in text for marker in ("Ã", "Â", "â€")):
+        try:
+            repaired = text.encode("latin-1").decode("utf-8")
+            if repaired:
+                return repaired
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            pass
+    return text
+
+
 def _client_key(index: int) -> str:
     return f"client:{chr(97 + index)}"
 
 
 def _client_label(index: int) -> str:
-    return (
-        f"Cliente {chr(65 + index)}"
-        if index < PC_SLOT_COUNT
-        else f"Emulador {index - PC_SLOT_COUNT + 1}"
-    )
+    return f"Cliente {index + 1}"
 
 
 class _MovableOverlay(QtWidgets.QDialog):
@@ -259,6 +374,721 @@ class _ClientButton(QtWidgets.QPushButton):
         super().mouseDoubleClickEvent(event)
 
 
+class _MapSelectionDialog(QtWidgets.QDialog):
+    def __init__(
+        self,
+        options: list[tuple[str, str]],
+        current: str,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Selecionar mapa atual")
+        self.setMinimumSize(540, 500)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(10)
+        heading = _label("Mapa não reconhecido automaticamente", "sectionTitle")
+        layout.addWidget(heading)
+        help_text = _label(
+            "Selecione o mapa na lista. A identificação automática continuará ativa.",
+            "muted",
+        )
+        help_text.setWordWrap(True)
+        layout.addWidget(help_text)
+        self.search = QtWidgets.QLineEdit()
+        self.search.setPlaceholderText("Procurar mapa…")
+        self.search.setClearButtonEnabled(True)
+        layout.addWidget(self.search)
+        self.map_list = QtWidgets.QListWidget()
+        self.map_list.setAlternatingRowColors(False)
+        self.map_list.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
+        )
+        selected_item = None
+        for label, map_name_value in options:
+            item = QtWidgets.QListWidgetItem(label)
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, map_name_value)
+            self.map_list.addItem(item)
+            if map_name_value.casefold() == current.casefold():
+                selected_item = item
+        layout.addWidget(self.map_list, 1)
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText("Usar mapa")
+        buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.search.textChanged.connect(self._filter_maps)
+        self.map_list.itemDoubleClicked.connect(lambda _item: self.accept())
+        if selected_item is None and self.map_list.count():
+            selected_item = self.map_list.item(0)
+        if selected_item is not None:
+            self.map_list.setCurrentItem(selected_item)
+            self.map_list.scrollToItem(selected_item)
+        self.search.setFocus()
+
+    def _filter_maps(self, text: str) -> None:
+        query = text.strip().casefold()
+        first_visible = None
+        for index in range(self.map_list.count()):
+            item = self.map_list.item(index)
+            visible = not query or query in item.text().casefold()
+            item.setHidden(not visible)
+            if visible and first_visible is None:
+                first_visible = item
+        current = self.map_list.currentItem()
+        if current is None or current.isHidden():
+            self.map_list.setCurrentItem(first_visible)
+
+    def selected_map_name(self) -> str:
+        item = self.map_list.currentItem()
+        if item is None or item.isHidden():
+            return ""
+        return str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "").strip()
+
+
+def _navigation_icon(kind: str, size: int = 20) -> QtGui.QIcon:
+    """Ícones vetoriais leves para manter o shell independente de icon fonts."""
+    icon = QtGui.QIcon()
+    for mode, color in (
+        (QtGui.QIcon.Mode.Normal, "#AEB7C2"),
+        (QtGui.QIcon.Mode.Active, "#F4F2EB"),
+        (QtGui.QIcon.Mode.Selected, "#D4A64D"),
+        (QtGui.QIcon.Mode.Disabled, "#596269"),
+    ):
+        canvas = QtGui.QPixmap(size, size)
+        canvas.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(canvas)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pen = QtGui.QPen(QtGui.QColor(color), 1.6)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        if kind == "home":
+            painter.drawPolyline((QtCore.QPointF(3, 10), QtCore.QPointF(10, 4), QtCore.QPointF(17, 10)))
+            painter.drawRect(QtCore.QRectF(5.5, 9, 9, 8))
+        elif kind == "clock":
+            painter.drawEllipse(QtCore.QRectF(3, 3, 14, 14))
+            painter.drawLine(QtCore.QPointF(10, 6), QtCore.QPointF(10, 10))
+            painter.drawLine(QtCore.QPointF(10, 10), QtCore.QPointF(13, 12))
+        elif kind == "pulse":
+            painter.drawPolyline((QtCore.QPointF(2, 11), QtCore.QPointF(6, 11), QtCore.QPointF(8, 5), QtCore.QPointF(11, 16), QtCore.QPointF(13, 9), QtCore.QPointF(18, 9)))
+        elif kind == "bank":
+            painter.drawPolyline((QtCore.QPointF(3, 7), QtCore.QPointF(10, 3), QtCore.QPointF(17, 7), QtCore.QPointF(3, 7)))
+            for x in (5, 8.5, 12, 15):
+                painter.drawLine(QtCore.QPointF(x, 8), QtCore.QPointF(x, 15))
+            painter.drawLine(QtCore.QPointF(3, 16), QtCore.QPointF(17, 16))
+        elif kind == "trophy":
+            painter.drawRect(QtCore.QRectF(6, 3, 8, 8))
+            painter.drawArc(QtCore.QRectF(2, 4, 6, 6), 90 * 16, 180 * 16)
+            painter.drawArc(QtCore.QRectF(12, 4, 6, 6), -90 * 16, 180 * 16)
+            painter.drawLine(QtCore.QPointF(10, 11), QtCore.QPointF(10, 15))
+            painter.drawLine(QtCore.QPointF(6, 17), QtCore.QPointF(14, 17))
+        elif kind == "map":
+            painter.drawPolyline((QtCore.QPointF(3, 5), QtCore.QPointF(8, 3), QtCore.QPointF(13, 5), QtCore.QPointF(17, 3), QtCore.QPointF(17, 15), QtCore.QPointF(13, 17), QtCore.QPointF(8, 15), QtCore.QPointF(3, 17), QtCore.QPointF(3, 5)))
+            painter.drawLine(QtCore.QPointF(8, 3), QtCore.QPointF(8, 15))
+            painter.drawLine(QtCore.QPointF(13, 5), QtCore.QPointF(13, 17))
+        elif kind == "bell":
+            painter.drawArc(QtCore.QRectF(5, 3, 10, 12), 0, 180 * 16)
+            painter.drawLine(QtCore.QPointF(5, 8), QtCore.QPointF(4, 14))
+            painter.drawLine(QtCore.QPointF(15, 8), QtCore.QPointF(16, 14))
+            painter.drawLine(QtCore.QPointF(4, 14), QtCore.QPointF(16, 14))
+            painter.drawArc(QtCore.QRectF(8, 13, 4, 4), 180 * 16, 180 * 16)
+        elif kind == "link":
+            painter.drawArc(QtCore.QRectF(2, 5, 9, 10), 70 * 16, 220 * 16)
+            painter.drawArc(QtCore.QRectF(9, 5, 9, 10), -110 * 16, 220 * 16)
+            painter.drawLine(QtCore.QPointF(7, 10), QtCore.QPointF(13, 10))
+        elif kind == "settings":
+            painter.drawEllipse(QtCore.QRectF(7, 7, 6, 6))
+            painter.drawEllipse(QtCore.QRectF(3, 3, 14, 14))
+            for angle in range(0, 360, 45):
+                radians = math.radians(angle)
+                painter.drawLine(
+                    QtCore.QPointF(10 + math.cos(radians) * 7, 10 + math.sin(radians) * 7),
+                    QtCore.QPointF(10 + math.cos(radians) * 9, 10 + math.sin(radians) * 9),
+                )
+        elif kind == "book":
+            painter.drawRoundedRect(QtCore.QRectF(3, 3, 7, 14), 1, 1)
+            painter.drawRoundedRect(QtCore.QRectF(10, 3, 7, 14), 1, 1)
+            painter.drawLine(QtCore.QPointF(10, 4), QtCore.QPointF(10, 17))
+        else:  # caixa / inventário
+            painter.drawRect(QtCore.QRectF(4, 6, 12, 11))
+            painter.drawLine(QtCore.QPointF(4, 6), QtCore.QPointF(7, 3))
+            painter.drawLine(QtCore.QPointF(16, 6), QtCore.QPointF(13, 3))
+            painter.drawLine(QtCore.QPointF(7, 3), QtCore.QPointF(13, 3))
+        painter.end()
+        icon.addPixmap(canvas, mode)
+    return icon
+
+
+def _status_dot_icon(color: str = "#58C96B", size: int = 10) -> QtGui.QIcon:
+    canvas = QtGui.QPixmap(size, size)
+    canvas.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(canvas)
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+    painter.setPen(QtCore.Qt.PenStyle.NoPen)
+    painter.setBrush(QtGui.QColor(color))
+    painter.drawEllipse(QtCore.QRectF(1.5, 1.5, size - 3, size - 3))
+    painter.end()
+    return QtGui.QIcon(canvas)
+
+
+def _capture_action_icon(kind: str, color: str, size: int = 20) -> QtGui.QIcon:
+    """Ícones de captura próprios, com cor semântica e estado inativo neutro."""
+    icon = QtGui.QIcon()
+    for mode, current in (
+        (QtGui.QIcon.Mode.Normal, color),
+        (QtGui.QIcon.Mode.Active, color),
+        (QtGui.QIcon.Mode.Selected, color),
+        (QtGui.QIcon.Mode.Disabled, "#596269"),
+    ):
+        canvas = QtGui.QPixmap(size, size)
+        canvas.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(canvas)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pen = QtGui.QPen(QtGui.QColor(current), 2.0)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(QtGui.QColor(current))
+        if kind == "start":
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.drawPolygon(QtGui.QPolygonF((
+                QtCore.QPointF(6, 4),
+                QtCore.QPointF(16, 10),
+                QtCore.QPointF(6, 16),
+            )))
+        elif kind == "continue":
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.drawPolygon(QtGui.QPolygonF((
+                QtCore.QPointF(7, 4),
+                QtCore.QPointF(16, 10),
+                QtCore.QPointF(7, 16),
+            )))
+            painter.drawRoundedRect(QtCore.QRectF(3, 4, 2.5, 12), 1, 1)
+        elif kind == "pause":
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(QtCore.QRectF(5, 4, 3.5, 12), 1, 1)
+            painter.drawRoundedRect(QtCore.QRectF(11.5, 4, 3.5, 12), 1, 1)
+        elif kind == "stop":
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(QtCore.QRectF(5, 5, 10, 10), 1.5, 1.5)
+        else:  # encerrar sem ler
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(QtCore.QRectF(4, 4, 12, 12), 2, 2)
+            painter.drawLine(QtCore.QPointF(5, 15), QtCore.QPointF(15, 5))
+        painter.end()
+        icon.addPixmap(canvas, mode)
+    return icon
+
+
+class _MemorySparkline(QtWidgets.QWidget):
+    """Histórico curto e estritamente limitado do uso de memória."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.samples: deque[float] = deque(maxlen=60)
+        self.limit_mb = 768.0
+        self.setMinimumHeight(94)
+
+    def add_sample(self, value_mb: float | None, limit_mb: float) -> None:
+        self.limit_mb = max(1.0, float(limit_mb))
+        if isinstance(value_mb, (int, float)):
+            sample = max(0.0, float(value_mb))
+            if not self.samples:
+                self.samples.append(sample)
+            self.samples.append(sample)
+        self.update()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        area = self.rect().adjusted(8, 8, -8, -12)
+        painter.fillRect(area, QtGui.QColor("#0A0F13"))
+        grid = QtGui.QPen(QtGui.QColor("#26333A"), 1, QtCore.Qt.PenStyle.DashLine)
+        painter.setPen(grid)
+        for step in (0.0, 0.5, 1.0):
+            y = area.bottom() - area.height() * step
+            painter.drawLine(QtCore.QPointF(area.left(), y), QtCore.QPointF(area.right(), y))
+        if len(self.samples) > 1:
+            points = QtGui.QPolygonF()
+            count = max(1, len(self.samples) - 1)
+            for index, sample in enumerate(self.samples):
+                x = area.left() + area.width() * index / count
+                y = area.bottom() - area.height() * min(1.0, sample / self.limit_mb)
+                points.append(QtCore.QPointF(x, y))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#E5B35C"), 2.2))
+            painter.drawPolyline(points)
+        painter.end()
+
+
+class _MapPreview(QtWidgets.QWidget):
+    """Mapa completo com posição, zoom, arraste e foco no personagem."""
+
+    view_changed = QtCore.Signal(int, bool)
+    MIN_ZOOM = 1.0
+    MAX_ZOOM = 6.0
+    ZOOM_STEP = 1.25
+
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget | None = None,
+        *,
+        lock_character_position: bool = False,
+        show_player_labels: bool = True,
+        interactive: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self.lock_character_position = bool(lock_character_position)
+        self.show_player_labels = bool(show_player_labels)
+        self.interactive = bool(interactive)
+        self.map_index: int | None = None
+        self.local_position: dict[str, float] = {}
+        self.players: list[dict[str, object]] = []
+        self.player_count = 0
+        self._map_pixmaps: OrderedDict[int, QtGui.QPixmap] = OrderedDict()
+        self.zoom = self.MIN_ZOOM
+        self.pan_offset = QtCore.QPointF()
+        self.follow_character = self.interactive
+        self._drag_origin: QtCore.QPointF | None = None
+        self._drag_pan_origin = QtCore.QPointF()
+        self.setMinimumSize(220, 220)
+        self.setCursor(
+            QtCore.Qt.CursorShape.OpenHandCursor
+            if self.interactive else QtCore.Qt.CursorShape.ArrowCursor
+        )
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return max(220, int(width))
+
+    def sizeHint(self) -> QtCore.QSize:
+        return QtCore.QSize(560, 560)
+
+    def set_player_count(self, count: int) -> None:
+        """Compatibilidade com consumidores antigos da miniatura."""
+        self.player_count = max(0, int(count))
+        self.players = [{} for _index in range(self.player_count)]
+        self.update()
+
+    def set_snapshot(
+        self,
+        map_index: object,
+        local_position: object,
+        players: object,
+    ) -> None:
+        next_map_index = None
+        if isinstance(map_index, (int, float)) and not isinstance(map_index, bool):
+            next_map_index = int(map_index)
+        elif isinstance(map_index, str) and map_index.strip().isdigit():
+            next_map_index = int(map_index.strip())
+        if next_map_index != self.map_index:
+            self.zoom = self.MIN_ZOOM
+            self.pan_offset = QtCore.QPointF()
+            self.follow_character = self.interactive
+            self.view_changed.emit(self.zoom_percent(), self.follow_character)
+        self.map_index = next_map_index
+        self.local_position = (
+            {
+                axis: float(value)
+                for axis in ("x", "y", "z")
+                if isinstance((value := local_position.get(axis)), (int, float))
+            }
+            if isinstance(local_position, dict)
+            else {}
+        )
+        self.players = [
+            dict(item) for item in (players if isinstance(players, list) else [])
+            if isinstance(item, dict)
+        ]
+        self.player_count = len(self.players)
+        self.update()
+
+    def zoom_percent(self) -> int:
+        return int(round(self.zoom * 100))
+
+    def _area(self) -> QtCore.QRectF:
+        return QtCore.QRectF(self.rect().adjusted(1, 1, -1, -1))
+
+    def _base_target(self, area: QtCore.QRectF, pixmap: QtGui.QPixmap) -> QtCore.QRectF:
+        return self._fit_rect(area, pixmap.width(), pixmap.height())
+
+    @staticmethod
+    def _clamp_pan(
+        area: QtCore.QRectF,
+        base: QtCore.QRectF,
+        zoom: float,
+        offset: QtCore.QPointF,
+    ) -> QtCore.QPointF:
+        limit_x = max(0.0, (base.width() * zoom - area.width()) / 2)
+        limit_y = max(0.0, (base.height() * zoom - area.height()) / 2)
+        return QtCore.QPointF(
+            max(-limit_x, min(limit_x, offset.x())),
+            max(-limit_y, min(limit_y, offset.y())),
+        )
+
+    def _target_rect(
+        self,
+        area: QtCore.QRectF,
+        pixmap: QtGui.QPixmap,
+        metadata: dict[str, object],
+    ) -> QtCore.QRectF:
+        base = self._base_target(area, pixmap)
+        size = QtCore.QSizeF(base.width() * self.zoom, base.height() * self.zoom)
+        unpanned = QtCore.QRectF(
+            area.center().x() - size.width() / 2,
+            area.center().y() - size.height() / 2,
+            size.width(),
+            size.height(),
+        )
+        if not self.interactive:
+            self.pan_offset = QtCore.QPointF()
+            self.follow_character = False
+            return unpanned
+        if self.follow_character:
+            character = self._project(self.local_position, unpanned, metadata)
+            desired = (
+                area.center() - character
+                if character is not None else QtCore.QPointF()
+            )
+            self.pan_offset = (
+                desired
+                if self.lock_character_position
+                else self._clamp_pan(area, base, self.zoom, desired)
+            )
+        else:
+            self.pan_offset = self._clamp_pan(
+                area, base, self.zoom, self.pan_offset
+            )
+        return unpanned.translated(self.pan_offset)
+
+    def set_zoom(
+        self, value: float, anchor: QtCore.QPointF | None = None
+    ) -> None:
+        if not self.interactive:
+            return
+        next_zoom = max(self.MIN_ZOOM, min(self.MAX_ZOOM, float(value)))
+        if abs(next_zoom - self.zoom) < 0.001:
+            return
+        old_zoom = self.zoom
+        if not self.follow_character:
+            area = self._area()
+            anchor = anchor or area.center()
+            ratio = next_zoom / old_zoom
+            old_center = area.center() + self.pan_offset
+            new_center = anchor + (old_center - anchor) * ratio
+            self.pan_offset = new_center - area.center()
+        self.zoom = next_zoom
+        self.view_changed.emit(self.zoom_percent(), self.follow_character)
+        self.update()
+
+    def zoom_in(self) -> None:
+        self.set_zoom(self.zoom * self.ZOOM_STEP)
+
+    def zoom_out(self) -> None:
+        self.set_zoom(self.zoom / self.ZOOM_STEP)
+
+    def pan_by(self, delta: QtCore.QPointF) -> None:
+        if not self.interactive:
+            return
+        map_asset = self._map_pixmap()
+        self.follow_character = False
+        self.pan_offset += delta
+        if map_asset:
+            pixmap, _metadata = map_asset
+            area = self._area()
+            self.pan_offset = self._clamp_pan(
+                area, self._base_target(area, pixmap), self.zoom, self.pan_offset
+            )
+        self.view_changed.emit(self.zoom_percent(), self.follow_character)
+        self.update()
+
+    def focus_on_character(self) -> None:
+        if not self.interactive:
+            return
+        self.follow_character = True
+        self.view_changed.emit(self.zoom_percent(), self.follow_character)
+        self.update()
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        if not self.interactive:
+            event.ignore()
+            return
+        factor = self.ZOOM_STEP if event.angleDelta().y() > 0 else 1 / self.ZOOM_STEP
+        self.set_zoom(self.zoom * factor, event.position())
+        event.accept()
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if not self.interactive:
+            super().mousePressEvent(event)
+            return
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._drag_origin = event.position()
+            self._drag_pan_origin = QtCore.QPointF(self.pan_offset)
+            self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if not self.interactive:
+            super().mouseMoveEvent(event)
+            return
+        if self._drag_origin is not None:
+            self.follow_character = False
+            self.pan_offset = self._drag_pan_origin + event.position() - self._drag_origin
+            map_asset = self._map_pixmap()
+            if map_asset:
+                pixmap, _metadata = map_asset
+                area = self._area()
+                self.pan_offset = self._clamp_pan(
+                    area, self._base_target(area, pixmap), self.zoom, self.pan_offset
+                )
+            self.view_changed.emit(self.zoom_percent(), self.follow_character)
+            self.update()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+        if not self.interactive:
+            super().mouseReleaseEvent(event)
+            return
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._drag_origin = None
+            self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        if not self.interactive:
+            super().mouseDoubleClickEvent(event)
+            return
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.focus_on_character()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def _map_pixmap(self) -> tuple[QtGui.QPixmap, dict[str, object]] | None:
+        metadata = MAP_PREVIEW_ASSETS.get(self.map_index or -1)
+        if not metadata:
+            return None
+        index = int(self.map_index or 0)
+        if index not in self._map_pixmaps:
+            self._map_pixmaps[index] = QtGui.QPixmap(str(metadata["path"]))
+            while len(self._map_pixmaps) > 4:
+                self._map_pixmaps.popitem(last=False)
+        pixmap = self._map_pixmaps.pop(index)
+        self._map_pixmaps[index] = pixmap
+        return (pixmap, metadata) if not pixmap.isNull() else None
+
+    def _current_region(
+        self, metadata: dict[str, object]
+    ) -> dict[str, object] | None:
+        x, y = self.local_position.get("x"), self.local_position.get("y")
+        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+            return None
+        x, y = self._world_coordinates(float(x), float(y), metadata)
+        regions = [
+            item for item in metadata.get("regions") or []
+            if isinstance(item, dict) and isinstance(item.get("center"), dict)
+        ]
+        if not regions:
+            return None
+        return min(
+            regions,
+            key=lambda item: (
+                float(item["center"].get("x") or 0) - float(x)
+            ) ** 2 + (
+                float(item["center"].get("y") or 0) - float(y)
+            ) ** 2,
+        )
+
+    def current_region_name(self, language: str = "pt") -> str:
+        metadata = MAP_PREVIEW_ASSETS.get(self.map_index or -1)
+        region = self._current_region(metadata) if metadata else None
+        if not region:
+            return ""
+        primary, secondary = ("en", "pt") if language == "en" else ("pt", "en")
+        return str(region.get(primary) or region.get(secondary) or "")
+
+    @staticmethod
+    def _world_coordinates(
+        x: float,
+        y: float,
+        metadata: dict[str, object],
+    ) -> tuple[float, float]:
+        transform = metadata.get("live_position_transform")
+        if not isinstance(transform, dict):
+            return x, y
+        try:
+            return (
+                x * float(transform.get("scale_x", 1.0))
+                + float(transform.get("offset_x", 0.0)),
+                y * float(transform.get("scale_y", 1.0))
+                + float(transform.get("offset_y", 0.0)),
+            )
+        except (TypeError, ValueError):
+            return x, y
+
+    @staticmethod
+    def _region_projection(
+        pixmap: QtGui.QPixmap,
+        metadata: dict[str, object],
+        region: dict[str, object] | None,
+    ) -> tuple[QtCore.QRectF, dict[str, object]]:
+        source = QtCore.QRectF(pixmap.rect())
+        bounds = region.get("crop_bounds") if region else None
+        if not isinstance(bounds, dict):
+            return source, metadata
+        global_span_x = float(metadata["span_x"])
+        global_span_y = float(metadata["span_y"])
+        left = (
+            (float(bounds["min_x"]) - float(metadata["min_x"]))
+            / global_span_x * pixmap.width()
+        )
+        top = (
+            (float(bounds["min_y"]) - float(metadata["min_y"]))
+            / global_span_y * pixmap.height()
+        )
+        width = float(bounds["span_x"]) / global_span_x * pixmap.width()
+        height = float(bounds["span_y"]) / global_span_y * pixmap.height()
+        return QtCore.QRectF(left, top, width, height), bounds
+
+    @staticmethod
+    def _fit_rect(area: QtCore.QRectF, width: int, height: int) -> QtCore.QRectF:
+        if width <= 0 or height <= 0:
+            return area
+        scale = min(area.width() / width, area.height() / height)
+        size = QtCore.QSizeF(width * scale, height * scale)
+        return QtCore.QRectF(
+            area.center().x() - size.width() / 2,
+            area.center().y() - size.height() / 2,
+            size.width(),
+            size.height(),
+        )
+
+    @staticmethod
+    def _project(
+        position: object,
+        target: QtCore.QRectF,
+        metadata: dict[str, object],
+    ) -> QtCore.QPointF | None:
+        if not isinstance(position, dict):
+            return None
+        x, y = position.get("x"), position.get("y")
+        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+            return None
+        x, y = _MapPreview._world_coordinates(float(x), float(y), metadata)
+        span_x, span_y = float(metadata["span_x"]), float(metadata["span_y"])
+        normalized_x = (x - float(metadata["min_x"])) / span_x
+        normalized_y = (y - float(metadata["min_y"])) / span_y
+        if not (-0.05 <= normalized_x <= 1.05 and -0.05 <= normalized_y <= 1.05):
+            return None
+        return QtCore.QPointF(
+            target.left() + target.width() * min(1.0, max(0.0, normalized_x)),
+            target.top() + target.height() * min(1.0, max(0.0, normalized_y)),
+        )
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        area = self._area()
+        painter.fillRect(area, QtGui.QColor("#0A0F13"))
+        map_asset = self._map_pixmap()
+        metadata: dict[str, object] | None = None
+        target = area
+        if map_asset:
+            pixmap, metadata = map_asset
+            source = QtCore.QRectF(pixmap.rect())
+            target = self._target_rect(area, pixmap, metadata)
+            painter.setOpacity(0.82)
+            painter.drawPixmap(target, pixmap, source)
+            painter.setOpacity(1.0)
+        else:
+            painter.setPen(QtGui.QPen(QtGui.QColor("#202A30"), 1))
+            for division in range(1, 5):
+                x = area.left() + area.width() * division / 5
+                y = area.top() + area.height() * division / 5
+                painter.drawLine(
+                    QtCore.QPointF(x, area.top()), QtCore.QPointF(x, area.bottom())
+                )
+                painter.drawLine(
+                    QtCore.QPointF(area.left(), y), QtCore.QPointF(area.right(), y)
+                )
+        center = (
+            self._project(self.local_position, target, metadata)
+            if metadata else None
+        ) or QtCore.QPointF(area.center())
+        projected_players = [
+            self._project(player.get("position"), target, metadata)
+            for player in self.players
+        ] if metadata else []
+        projected_players = [point for point in projected_players if point is not None]
+        observed_radius = max(
+            [44.0, *(
+                math.hypot(point.x() - center.x(), point.y() - center.y()) + 14
+                for point in projected_players
+            )],
+        )
+        observed_radius = min(observed_radius, min(area.width(), area.height()) * 0.42)
+        painter.setPen(QtGui.QPen(
+            QtGui.QColor(99, 185, 243, 150),
+            1.5,
+            QtCore.Qt.PenStyle.DashLine,
+        ))
+        painter.setBrush(QtGui.QColor(99, 185, 243, 22))
+        painter.drawEllipse(center, observed_radius, observed_radius)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#D4A64D"), 2))
+        painter.setBrush(QtGui.QColor("#132028"))
+        painter.drawEllipse(center, 10, 10)
+        painter.drawLine(center + QtCore.QPointF(0, -6), center + QtCore.QPointF(-4, 5))
+        painter.drawLine(center + QtCore.QPointF(0, -6), center + QtCore.QPointF(4, 5))
+        painter.drawLine(center + QtCore.QPointF(-4, 5), center + QtCore.QPointF(4, 5))
+        painter.setPen(QtGui.QPen(QtGui.QColor("#63B9F3"), 1.5))
+        painter.setBrush(QtGui.QColor("#63B9F3"))
+        offsets = ((32, -22), (48, 10), (-34, -34), (-46, 21), (10, 42))
+        font = painter.font()
+        font.setPointSizeF(max(7.0, min(9.0, area.width() / 48)))
+        painter.setFont(font)
+        for index, player in enumerate(self.players[:12]):
+            point = (
+                self._project(player.get("position"), target, metadata)
+                if metadata else None
+            )
+            if point is None:
+                dx, dy = offsets[index % len(offsets)]
+                ring = 1 + index // len(offsets)
+                point = center + QtCore.QPointF(dx * ring, dy * ring)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#63B9F3"), 1.5))
+            painter.setBrush(QtGui.QColor("#63B9F3"))
+            painter.drawEllipse(point, 3.5, 3.5)
+            name = str(player.get("name") or "").strip()
+            if not name or not self.show_player_labels:
+                continue
+            label = name if len(name) <= 18 else name[:17] + "…"
+            label_rect = QtCore.QRectF(
+                min(area.right() - 112, point.x() + 6),
+                max(area.top(), point.y() - 10 + (index % 2) * 10),
+                108,
+                20,
+            )
+            painter.setPen(QtGui.QColor("#071014"))
+            painter.drawText(label_rect.translated(1, 1), label)
+            painter.setPen(QtGui.QColor("#DDE9F2"))
+            painter.drawText(label_rect, label)
+        painter.end()
+
+
 class MainWindow(QtWidgets.QMainWindow):
     data_loaded = QtCore.Signal(object)
     data_failed = QtCore.Signal(str)
@@ -277,6 +1107,7 @@ class MainWindow(QtWidgets.QMainWindow):
         preferences_path: Path = PREFERENCES_PATH,
     ) -> None:
         super().__init__()
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         ensure_runtime_layout()
         self.database_path = Path(database_path)
         database = CaptureStore(self.database_path)
@@ -291,11 +1122,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.active_category = "pc"
         self.snapshot: dict[str, object] = {}
         self.preferences: dict[str, object] = load_preferences(self.preferences_path)
+        legacy_client_count = self._bounded(
+            self.preferences.get("visible_client_count"), 1, CLIENT_SLOT_COUNT, 1
+        )
+        self.visible_client_slots = self._normalize_visible_client_slots(
+            self.preferences.get("visible_client_slots"), legacy_client_count
+        )
+        self.visible_client_count = len(self.visible_client_slots)
+        self.memory_limits = memory_limits_for_budget(
+            self.preferences.get("memory_limit_mb")
+        )
+        self.farm_catalog: dict[str, dict[str, dict[str, tuple[int, ...]]]] = {}
         self.selected_subsessions: set[str] = set()
         self.subsession_page = 1
+        self.drops_page = 1
+        self.loot_announcements_page = 1
         self.editing_subsession_id: str | None = None
         self.capture_engine: CaptureEngine | None = None
         self.monitor_engine: MonitorEngine | None = None
+        self.local_api: LocalOutputApi | None = None
+        self.local_api_token = ""
+        self.auction_projection_secret = os.urandom(32)
+        self.program_status_snapshot: dict[str, object] = {}
+        self.previous_program_status: dict[str, dict[str, object]] = {}
+        self.program_status_next_refresh = 0.0
+        self.program_status_preview_next_due = 0.0
+        self.map_preview_next_due = 0.0
+        self.latest_monitor_metrics: dict[str, object] = {}
+        self.local_api_state_path = (
+            LOCAL_API_STATE_PATH
+            if self.preferences_path == PREFERENCES_PATH
+            else self.preferences_path.with_name("local-api.bin")
+        )
         self.monitor_enabled = {"pve": False, "pvp": False, "boss": False}
         self.monitor_client_enabled = {
             "pve": [False] * CLIENT_SLOT_COUNT,
@@ -303,11 +1161,15 @@ class MainWindow(QtWidgets.QMainWindow):
         }
         self.monitor_next_due = {"pve": 0.0, "pvp": 0.0, "boss": 0.0}
         self.pvp_nearby_next_due = 0.0
+        self.drop_alert_next_due = 0.0
         self.monitor_controls: dict[str, dict[str, Any]] = {}
         self.boss_overlay: QtWidgets.QDialog | None = None
         self.boss_dps_overlay: QtWidgets.QDialog | None = None
         self.pvp_overlays: dict[str, QtWidgets.QDialog] = {}
-        self.alert_last_fired: dict[str, float] = {}
+        self.alert_last_fired: OrderedDict[str, float] = OrderedDict()
+        self.drop_alert_session: str | None = None
+        self.loot_announcement_session: str | None = None
+        self.seen_drop_alerts: dict[str, None] = {}
         self.capture_busy = False
         self.site_busy = False
         self.pending_capture_action: str | None = None
@@ -333,23 +1195,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.auto_market_retry_after = 0.0
         self.pending_auto_exp_rank: tuple[str, str] | None = None
         self.auto_exp_rank_retry_after = 0.0
-        self.inventory_icon_cache: dict[int, QtGui.QIcon] = {}
+        self.inventory_icon_cache: OrderedDict[int, QtGui.QIcon] = OrderedDict()
+        self.memory_next_sample = 0.0
+        self.memory_pressure_last_at = -MEMORY_PRESSURE_COOLDOWN_SECONDS
         self.item_icon_zip: zipfile.ZipFile | None = None
         try:
             self.log_path = LOG_PATH
-            self.log = configure_log(self.log_path, VERSION)
+            self.log = configure_log(self.log_path, VERSION, detailed=True)
         except OSError as error:
             raise OSError(f"Não foi possível gravar o log em {LOG_PATH}") from error
         install_exception_hooks(self.log)
         self.license_client = LicenseClient(
-            MACHINE_STATE_DIR, version=VERSION
+            MACHINE_STATE_DIR, server=LICENSE_SERVER, version=VERSION
         )
         self.license_client.record_release_sequence(RELEASE_SEQUENCE)
         self.snapshot_reader = ReadOnlySnapshotReader(
-            self.database_path, self.license_client
+            self.database_path,
+            self.license_client,
+            character_history_limit=self.memory_limits["character_history"],
         )
         self.site_profile = SiteProfileClient(
-            STATE_DIR, version=VERSION
+            STATE_DIR,
+            server=SITE_SERVER,
+            version=VERSION,
+            features=SITE_FEATURES,
         )
         self.site_uploader = SiteUploadEngine(
             self.database_path, self.site_profile, self.license_client
@@ -359,9 +1228,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data_load_pending = False
         self.combat_load_running = False
         self.combat_load_pending = False
+        self.subsession_context_session = ""
+        self.subsession_context_stabilizer = SubsessionContextStabilizer()
         self.controls_initialized = False
         self.setObjectName("mainWindow")
-        self.setWindowTitle(f"RF QOL — {VERSION}")
+        self.setWindowTitle(f"RF QOL — {VERSION} ({PROFILE_LABEL})")
         self.setMinimumSize(1180, 664)
         self.resize(1440, 810)
 
@@ -370,13 +1241,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tray = self._build_tray(icon)
 
         root = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(root)
+        layout = QtWidgets.QHBoxLayout(root)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._build_topbar())
-        layout.addWidget(self._build_body(), 1)
-        layout.addWidget(self._build_footer())
+        layout.addWidget(self._build_sidebar())
+        main_surface = QtWidgets.QWidget(objectName="mainSurface")
+        main_layout = QtWidgets.QVBoxLayout(main_surface)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(self._build_topbar())
+        main_layout.addWidget(self._build_body(), 1)
+        main_layout.addWidget(self._build_footer())
+        layout.addWidget(main_surface, 1)
         self.setCentralWidget(root)
+        self._sync_client_collection()
         self.data_loaded.connect(self._apply_readonly_data)
         self.data_failed.connect(self._show_read_error)
         self.combat_loaded.connect(self._apply_combat_data)
@@ -426,31 +1304,34 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_combat_layout()
 
     def _sync_overview_layout(self) -> None:
-        if hasattr(self, "overview_secondary"):
-            expanded = self.isMaximized() or self.isFullScreen()
-            self.overview_secondary.setVisible(expanded)
-            if hasattr(self, "primary_metric_groups"):
-                for index, group in enumerate(self.primary_metric_groups):
-                    self.primary_metric_grid.addWidget(group, index, 0, 1, 2)
-                if expanded:
-                    heights = []
-                    for primary, secondary in zip(
-                        self.primary_metric_groups, self.secondary_metric_groups
-                    ):
-                        height = max(primary.sizeHint().height(), secondary.sizeHint().height())
-                        primary.setMinimumHeight(height)
-                        secondary.setMinimumHeight(height)
-                        heights.append(height)
-                else:
-                    heights = [group.sizeHint().height() for group in self.primary_metric_groups]
-                    for group, height in zip(self.primary_metric_groups, heights):
-                        group.setMinimumHeight(height)
-                    for group in self.secondary_metric_groups:
-                        group.setMinimumHeight(0)
-                self.primary_metrics.setMinimumHeight(
-                    sum(heights)
-                    + self.primary_metric_grid.verticalSpacing() * (len(heights) - 1)
-                )
+        if not hasattr(self, "overview_grid"):
+            return
+        for card in (
+            *self.overview_cards,
+            self.program_status_card,
+            self.nearby_mobs_card,
+            self.drops_card,
+        ):
+            self.overview_grid.removeWidget(card)
+        self.session_card.show()
+        self.subsession_card.show()
+        self.overview_grid.addWidget(self.session_card, 0, 0)
+        self.overview_grid.addWidget(self.subsession_card, 0, 1)
+        self.overview_grid.addWidget(self.map_card, 1, 0, 1, 2)
+        self.overview_grid.addWidget(self.health_card, 2, 0, 1, 2)
+        for column in range(2):
+            self.overview_grid.setColumnStretch(column, 1)
+        for row in range(3):
+            self.overview_grid.setRowStretch(row, 1 if row < 2 else 0)
+
+    def _open_active_subsession(self) -> None:
+        self.page_stack.setCurrentIndex(SUBSESSIONS_PAGE_INDEX)
+
+    def _open_session_details(self) -> None:
+        self.page_stack.setCurrentIndex(SESSIONS_PAGE_INDEX)
+
+    def _open_drops_page(self) -> None:
+        self.page_stack.setCurrentIndex(DROPS_PAGE_INDEX)
 
     def _sync_combat_layout(self) -> None:
         expanded = self.isMaximized() or self.isFullScreen()
@@ -484,14 +1365,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
             return None
         tray = QtWidgets.QSystemTrayIcon(icon, self)
-        tray.setToolTip(f"RF QOL — {VERSION}")
+        tray.setToolTip(f"RF QOL — {VERSION} ({PROFILE_LABEL})")
         menu = QtWidgets.QMenu(self)
         self.tray_menu = menu
         show_action = menu.addAction("Abrir RF QOL")
         show_action.triggered.connect(self._show_from_tray)
         menu.addSeparator()
-        self.tray_start_action = menu.addAction("Iniciar / continuar")
-        self.tray_start_action.triggered.connect(self._start_capture)
+        self.tray_start_action = menu.addAction("Começar captura nova")
+        self.tray_start_action.triggered.connect(self._start_new_capture)
         self.tray_pause_action = menu.addAction("Pausar")
         self.tray_pause_action.triggered.connect(self._pause_capture)
         self.tray_stop_action = menu.addAction("Encerrar")
@@ -522,45 +1403,67 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_topbar(self) -> QtWidgets.QWidget:
         bar = QtWidgets.QWidget(objectName="topbar")
-        bar.setFixedHeight(60)
+        bar.setFixedHeight(64)
         row = QtWidgets.QHBoxLayout(bar)
-        row.setContentsMargins(18, 0, 18, 0)
-        row.setSpacing(18)
-        for text, tone in (
-            ("Licença — carregando", "muted"),
-            ("Captura — não conectada", "info"),
-            ("Última leitura: —", "muted"),
-            ("Próx. atualização: —", "muted"),
-            ("Armazenado: —", "muted"),
-            ("RAM: —", "muted"),
+        row.setContentsMargins(26, 0, 18, 0)
+        row.setSpacing(10)
+        row.addStretch(1)
+        self.top_program_status = _label("Ocioso", "warning")
+        self.top_program_status.setObjectName("statusChip")
+        self.top_capture = _label("Captura inativa", "muted")
+        self.top_capture.setObjectName("statusChip")
+        self.top_location = _label("Mapa —", "muted")
+        self.top_location.setObjectName("statusChip")
+        self.top_memory = _label("RAM —", "muted")
+        self.top_memory.setObjectName("statusChip")
+        for label in (
+            self.top_program_status,
+            self.top_capture,
+            self.top_location,
+            self.top_memory,
         ):
-            label = _label(text, tone)
-            if text.startswith("Licença"):
-                self.top_license = label
-            elif text.startswith("Captura"):
-                self.top_capture = label
-            elif text.startswith("Última"):
-                self.top_last_read = label
-            elif text.startswith("Próx"):
-                self.top_next_read = label
-            elif text.startswith("Armazenado"):
-                self.top_storage = label
-            elif text.startswith("RAM"):
-                self.top_memory = label
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             row.addWidget(label)
         row.addStretch(1)
-        for index, text in enumerate(
-            ("Iniciar  Ctrl+F8", "Pausar", "Encerrar  Ctrl+F9", "Encerrar sem ler")
-        ):
-            button = QtWidgets.QPushButton(text)
+
+        hidden_statuses = (
+            ("top_license", "Licença — carregando"),
+            ("top_last_read", "Última leitura: —"),
+            ("top_next_read", "Próx. atualização: —"),
+            ("top_storage", "Armazenado: —"),
+        )
+        for attribute, text in hidden_statuses:
+            label = _label(text, "muted")
+            label.setParent(bar)
+            label.hide()
+            setattr(self, attribute, label)
+
+        action_specs = (
+            ("Start", "start", "Começar captura nova", "#58C96B"),
+            ("Continue", "continue", "Continuar captura anterior", "#4EA7D8"),
+            ("Pause", "pause", "Pausar captura", "#D4A64D"),
+            ("Stop", "stop", "Encerrar captura", "#FF6547"),
+            ("StopRaw", "stop_raw", "Encerrar sem ler", "#FF6547"),
+        )
+        for index, (object_suffix, kind, tooltip, color) in enumerate(action_specs):
+            button = QtWidgets.QToolButton(objectName=f"capture{object_suffix}")
+            button.setProperty("captureAction", True)
+            button.setIcon(_capture_action_icon(kind, color))
+            button.setIconSize(QtCore.QSize(20, 20))
+            button.setFixedSize(36, 36)
+            button.setToolTip(tooltip)
+            button.setAccessibleName(tooltip)
             button.setEnabled(False)
             if index == 0:
                 self.start_button = button
-                button.clicked.connect(self._start_capture)
+                button.clicked.connect(self._start_new_capture)
             elif index == 1:
+                self.continue_button = button
+                button.clicked.connect(self._continue_capture)
+            elif index == 2:
                 self.pause_button = button
                 button.clicked.connect(self._pause_capture)
-            elif index == 2:
+            elif index == 3:
                 self.stop_button = button
                 button.clicked.connect(self._stop_capture)
             else:
@@ -570,80 +1473,116 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 button.clicked.connect(self._stop_capture_without_reading)
             row.addWidget(button)
-        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+F8"), self, activated=self._start_capture)
+        QtGui.QShortcut(QtGui.QKeySequence("Ctrl+F8"), self, activated=self._start_new_capture)
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+F9"), self, activated=self._stop_capture)
         return bar
 
     def _build_body(self) -> QtWidgets.QWidget:
-        body = QtWidgets.QWidget(objectName="body")
-        row = QtWidgets.QHBoxLayout(body)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
-        row.addWidget(self._build_sidebar())
-
         workspace = QtWidgets.QWidget(objectName="workspace")
         column = QtWidgets.QVBoxLayout(workspace)
-        column.setContentsMargins(24, 14, 24, 18)
-        column.setSpacing(14)
+        column.setContentsMargins(32, 22, 32, 18)
+        column.setSpacing(12)
+        heading = QtWidgets.QHBoxLayout()
+        self.page_title = _label(PAGES[0][0], "workspaceTitle")
+        heading.addWidget(self.page_title)
+        self.version_badge = _label(f"{VERSION} · {PROFILE_LABEL}", "versionBadge")
+        heading.addWidget(self.version_badge)
+        heading.addStretch(1)
+        column.addLayout(heading)
         column.addWidget(self._build_clients())
         self.page_stack = QtWidgets.QStackedWidget(objectName="pageStack")
         for index, (title, description) in enumerate(PAGES):
             if title == "Visão geral":
                 page = self._build_overview_page()
-            elif title == "Envios":
-                page = self._build_sends_page()
-            elif title == "Monitor PvE":
-                page = self._build_combat_page("pve")
-            elif title == "Monitor PvP":
-                page = self._build_combat_page("pvp")
-            elif title == "Banco PvP":
-                page = self._build_pvp_database_page()
-            elif title == "Boss":
-                page = self._build_combat_page("boss")
-            elif title == "Alertas":
-                page = self._build_alerts_page()
+            elif title == "Resumo Geral":
+                page = self._build_general_summary_page()
+            elif title == "Sessões":
+                page = self._build_sessions_page()
             elif title == "Subsessões":
                 page = self._build_subsessions_page()
+            elif title == "Monitoramento":
+                page = self._build_monitoring_page()
+            elif title == "Bancos":
+                page = self._build_banks_page()
+            elif title == "Ranking de EXP":
+                page = self._build_exp_rank_page()
+            elif title == "Mapa":
+                page = self._build_map_page()
+            elif title == "Drops":
+                page = self._build_drops_page()
+            elif title == "Drops de jogadores":
+                page = self._build_loot_announcements_page()
+            elif title == "Alertas":
+                page = self._build_alerts_page()
             elif title == "Configurações":
                 page = self._build_settings_page()
-            elif title == "Tutorial":
-                page = self._build_tutorial_page()
             elif title == "Inventário":
                 page = self._build_inventory_page()
             else:
                 page = self._build_page(title, description)
+            for label in page.findChildren(QtWidgets.QLabel):
+                if label.property("role") == "title":
+                    label.hide()
+                    break
             self.page_stack.addWidget(page)
+        self._apply_table_column_policy(self.page_stack)
         column.addWidget(self.page_stack, 1)
-        row.addWidget(workspace, 1)
-        return body
+        return workspace
+
+    @staticmethod
+    def _apply_table_column_policy(root: QtWidgets.QWidget) -> None:
+        """Permite ordenar, redimensionar e autofitar todas as colunas."""
+        for table in root.findChildren(QtWidgets.QTableWidget):
+            header = table.horizontalHeader()
+            header.setSectionsMovable(True)
+            if hasattr(header, "setFirstSectionMovable"):
+                header.setFirstSectionMovable(True)
+            header.setStretchLastSection(False)
+            header.setSectionResizeMode(
+                QtWidgets.QHeaderView.ResizeMode.Interactive
+            )
+            if not bool(table.property("standardColumnPolicy")):
+                header.sectionDoubleClicked.connect(
+                    table.resizeColumnToContents
+                )
+                table.setProperty("standardColumnPolicy", True)
 
     def _build_sidebar(self) -> QtWidgets.QWidget:
         sidebar = QtWidgets.QWidget(objectName="sidebar")
-        sidebar.setFixedWidth(210)
+        sidebar.setFixedWidth(248)
         column = QtWidgets.QVBoxLayout(sidebar)
-        column.setContentsMargins(14, 22, 14, 18)
-        column.setSpacing(8)
+        column.setContentsMargins(0, 34, 0, 18)
+        column.setSpacing(4)
 
         logo = QtWidgets.QLabel(objectName="brandLogo")
-        pixmap = QtGui.QPixmap(str(ASSETS / "karvalho-symbol-gold.png"))
-        logo.setPixmap(pixmap.scaled(72, 72, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+        pixmap = QtGui.QPixmap(str(ASSETS / "karvalho-primary-gold.png"))
+        if pixmap.width() > 1000 and pixmap.height() > 500:
+            pixmap = pixmap.copy(QtCore.QRect(
+                int(pixmap.width() * 0.035),
+                int(pixmap.height() * 0.20),
+                int(pixmap.width() * 0.90),
+                int(pixmap.height() * 0.44),
+            ))
+        logo.setPixmap(pixmap.scaled(216, 54, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                                      QtCore.Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        logo.setFixedHeight(62)
         column.addWidget(logo)
-        brand = _label("KARVALHO", "brand")
-        brand.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        column.addWidget(brand)
-        column.addSpacing(20)
+        product = _label("RF QOL", "product")
+        product.setContentsMargins(18, 4, 18, 14)
+        column.addWidget(product)
 
         self.nav_group = QtWidgets.QButtonGroup(self)
         self.nav_group.setExclusive(True)
         self.nav_buttons: list[QtWidgets.QPushButton] = []
-        category_row = QtWidgets.QHBoxLayout()
+        category_container = QtWidgets.QWidget(sidebar)
+        category_container.hide()
+        category_row = QtWidgets.QHBoxLayout(category_container)
         self.category_group = QtWidgets.QButtonGroup(self)
         self.category_group.setExclusive(True)
         self.category_buttons: dict[str, QtWidgets.QPushButton] = {}
         for category, title in (("pc", "PC"), ("emulator", "Emuladores")):
-            button = QtWidgets.QPushButton(title)
+            button = QtWidgets.QPushButton(title, category_container)
             button.setCheckable(True)
             button.setChecked(category == "pc")
             button.clicked.connect(
@@ -652,32 +1591,63 @@ class MainWindow(QtWidgets.QMainWindow):
             self.category_group.addButton(button)
             self.category_buttons[category] = button
             category_row.addWidget(button)
-        column.addLayout(category_row)
-        column.addSpacing(6)
+            button.hide()
+
+        nav_scroll = QtWidgets.QScrollArea(sidebar)
+        nav_scroll.setObjectName("sidebarNavScroll")
+        nav_scroll.setWidgetResizable(True)
+        nav_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        nav_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        nav_content = QtWidgets.QWidget(objectName="sidebarNavContent")
+        nav_scroll.viewport().setAutoFillBackground(False)
+        nav_content.setAutoFillBackground(False)
+        self.sidebar_nav_scroll = nav_scroll
+        self.sidebar_nav_content = nav_content
+        nav_column = QtWidgets.QVBoxLayout(nav_content)
+        nav_column.setContentsMargins(0, 0, 0, 0)
+        nav_column.setSpacing(4)
+        nav_icons = (
+            "home", "home", "clock", "clock", "pulse", "bank", "trophy", "map",
+            "box", "box", "bell", "settings", "box",
+        )
 
         for index, (title, _) in enumerate(PAGES):
+            if title == "Configurações":
+                separator = QtWidgets.QFrame(objectName="navSeparator")
+                separator.setFixedHeight(1)
+                nav_column.addSpacing(8)
+                nav_column.addWidget(separator)
+                nav_column.addSpacing(8)
             button = QtWidgets.QPushButton(title)
             button.setObjectName(f"nav{index}")
             button.setCheckable(True)
-            button.setMinimumHeight(38)
+            button.setIcon(_navigation_icon(nav_icons[index]))
+            button.setIconSize(QtCore.QSize(20, 20))
+            button.setMinimumHeight(46)
             button.clicked.connect(lambda checked=False, page=index: self.page_stack.setCurrentIndex(page))
             self.nav_group.addButton(button, index)
             self.nav_buttons.append(button)
-            column.addWidget(button)
+            nav_column.addWidget(button)
         self.nav_buttons[0].setChecked(True)
-        column.addStretch(1)
+        nav_column.addStretch(1)
+        nav_scroll.setWidget(nav_content)
+        column.addWidget(nav_scroll, 1)
         return sidebar
 
     def _build_clients(self) -> QtWidgets.QWidget:
         bar = QtWidgets.QWidget(objectName="clientBar")
         row = QtWidgets.QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(4)
+        row.setSpacing(10)
         self.client_group = QtWidgets.QButtonGroup(bar)
         self.client_group.setExclusive(True)
         self.client_buttons: list[QtWidgets.QPushButton] = []
         for index in range(CLIENT_SLOT_COUNT):
             button = _ClientButton(_client_label(index))
+            button.setIcon(_status_dot_icon())
+            button.setIconSize(QtCore.QSize(10, 10))
             button.setProperty("client", True)
             button.setCheckable(True)
             button.setChecked(index == 0)
@@ -689,8 +1659,22 @@ class MainWindow(QtWidgets.QMainWindow):
             self.client_group.addButton(button, index)
             self.client_buttons.append(button)
             row.addWidget(button)
-            visible = index < PC_SLOT_COUNT
-            button.setVisible(visible)
+            button.setVisible(index in self.visible_client_slots)
+        self.add_client_button = QtWidgets.QPushButton("+  Adicionar cliente")
+        self.add_client_button.setObjectName("addClient")
+        self.add_client_button.clicked.connect(
+            lambda checked=False: self._add_client_slot()
+        )
+        row.addWidget(self.add_client_button)
+        self.client_source = _label("PC local", "clientSource")
+        row.addWidget(self.client_source)
+        self.remove_client_button = QtWidgets.QPushButton("Excluir cliente")
+        self.remove_client_button.setObjectName("removeClient")
+        self.remove_client_button.setToolTip(
+            "Remove o cliente da interface sem apagar sessões ou dados capturados."
+        )
+        self.remove_client_button.clicked.connect(self._remove_selected_client)
+        row.addWidget(self.remove_client_button)
         row.addStretch(1)
         return bar
 
@@ -711,16 +1695,34 @@ class MainWindow(QtWidgets.QMainWindow):
         column.addWidget(card, 1)
         return page
 
-    def _build_combat_page(self, mode: str) -> QtWidgets.QWidget:
+    def _build_monitoring_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageMonitoramento")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        column.addWidget(_label("Monitoramento", "title"))
+        self.monitor_tabs = QtWidgets.QTabWidget(objectName="monitorTabs")
+        for mode, title in (("pve", "PvE"), ("pvp", "PvP"), ("boss", "Boss")):
+            self.monitor_tabs.addTab(
+                self._build_combat_page(mode, embedded=True), title
+            )
+        self.monitor_tabs.currentChanged.connect(self._monitoring_tab_changed)
+        column.addWidget(self.monitor_tabs, 1)
+        return page
+
+    def _build_combat_page(
+        self, mode: str, *, embedded: bool = False
+    ) -> QtWidgets.QWidget:
         if not hasattr(self, "combat_widgets"):
             self.combat_widgets: dict[str, list[dict[str, Any]]] = {}
             self.combat_page_layouts: dict[str, dict[str, Any]] = {}
         title = {"pve": "Monitor PvE", "pvp": "Monitor PvP", "boss": "Boss"}[mode]
         page = QtWidgets.QWidget(objectName=f"pageCombat{mode.upper()}")
         column = QtWidgets.QVBoxLayout(page)
-        column.setContentsMargins(0, 0, 0, 0)
+        column.setContentsMargins(8 if embedded else 0, 8 if embedded else 0, 8 if embedded else 0, 8 if embedded else 0)
         column.setSpacing(12)
-        column.addWidget(_label(title, "title"))
+        if not embedded:
+            column.addWidget(_label(title, "title"))
         client_tabs = None
         if mode in {"pve", "pvp"}:
             client_tabs = QtWidgets.QTabBar()
@@ -858,6 +1860,17 @@ class MainWindow(QtWidgets.QMainWindow):
             progress.setRange(0, 1000)
             progress.setValue(0)
             progress.setTextVisible(False)
+            self_health = None
+            self_progress = None
+            if mode == "pve":
+                self_health = _label("Sua vida: —", "muted")
+                self_progress = QtWidgets.QProgressBar(objectName="playerHealthProgress")
+                self_progress.setRange(0, 1000)
+                self_progress.setValue(0)
+                self_progress.setTextVisible(False)
+                self_progress.setToolTip(
+                    "Última vida do personagem confirmada pelo monitor PvE."
+                )
             stats = QtWidgets.QHBoxLayout()
             values: dict[str, QtWidgets.QLabel] = {}
             labels = [("current_hp", "Vida atual"), ("max_hp", "Vida máxima"), ("hp_percent", "Vida")]
@@ -894,7 +1907,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 layout.addLayout(stats)
             nearby_layout = None
             nearby_empty = None
-            if mode in {"pve", "pvp"}:
+            if mode == "pvp":
                 nearby_panel = QtWidgets.QFrame(objectName="secondaryMetricGroup")
                 nearby_column = QtWidgets.QVBoxLayout(nearby_panel)
                 nearby_column.setContentsMargins(14, 12, 14, 12)
@@ -912,6 +1925,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 nearby_column.addLayout(nearby_layout)
                 layout.addWidget(nearby_panel)
             if mode == "pve":
+                layout.addWidget(self_health)
+                layout.addWidget(self_progress)
                 layout.addWidget(target)
                 layout.addWidget(progress)
                 layout.addLayout(stats)
@@ -926,6 +1941,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     "target": target,
                     "status": status,
                     "progress": progress,
+                    "self_health": self_health,
+                    "self_progress": self_progress,
                     "boss_layout": boss_layout,
                     "boss_empty": boss_empty,
                     "nearby_layout": nearby_layout,
@@ -981,6 +1998,40 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow("Combate", self.alert_pvp_hit)
         self.alert_boss = QtWidgets.QCheckBox("Avisar ao detectar boss próximo")
         form.addRow("Boss", self.alert_boss)
+        self.alert_item_drop = QtWidgets.QCheckBox(
+            "Avisar ao receber drop de item confirmado"
+        )
+        self.alert_item_drop.setToolTip(
+            "Durante uma captura ativa, ignora recompensas de EXP, créditos "
+            "e contribuição."
+        )
+        form.addRow("Drops", self.alert_item_drop)
+        drop_categories = QtWidgets.QWidget()
+        drop_categories_layout = QtWidgets.QHBoxLayout(drop_categories)
+        drop_categories_layout.setContentsMargins(0, 0, 0, 0)
+        drop_categories_layout.setSpacing(8)
+        self.alert_drop_rarities: dict[int, QtWidgets.QCheckBox] = {}
+        for grade, label in ((0, "Sem categoria"), *DROP_RARITY_LABELS.items()):
+            option = QtWidgets.QCheckBox(label)
+            option.setChecked(True)
+            self.alert_drop_rarities[int(grade)] = option
+            drop_categories_layout.addWidget(option)
+        drop_categories_layout.addStretch(1)
+        form.addRow("Raridades", drop_categories)
+        drop_types = QtWidgets.QWidget()
+        drop_types_layout = QtWidgets.QGridLayout(drop_types)
+        drop_types_layout.setContentsMargins(0, 0, 0, 0)
+        drop_types_layout.setHorizontalSpacing(12)
+        drop_types_layout.setVerticalSpacing(4)
+        self.alert_drop_types: dict[str, QtWidgets.QCheckBox] = {}
+        for index, (category, label) in enumerate(
+            DROP_ALERT_CATEGORY_LABELS.items()
+        ):
+            option = QtWidgets.QCheckBox(label)
+            option.setChecked(True)
+            self.alert_drop_types[category] = option
+            drop_types_layout.addWidget(option, index // 4, index % 4)
+        form.addRow("Tipos de item", drop_types)
         self.alert_low_hp = QtWidgets.QCheckBox("Avisar abaixo de")
         self.alert_low_hp_percent = QtWidgets.QSpinBox()
         self.alert_low_hp_percent.setRange(1, 99)
@@ -991,9 +2042,42 @@ class MainWindow(QtWidgets.QMainWindow):
         hp_row.addWidget(self.alert_low_hp_percent)
         hp_row.addStretch(1)
         form.addRow("Vida", hp_row)
+        self.alert_threat = QtWidgets.QCheckBox(
+            "Avisar enquanto houver inimigo confirmado próximo"
+        )
+        form.addRow("Ameaça", self.alert_threat)
+        self.alert_farm_started = QtWidgets.QCheckBox(
+            "Avisar ao entrar no estado Farm"
+        )
+        form.addRow("Farm", self.alert_farm_started)
+        self.alert_teleporting = QtWidgets.QCheckBox(
+            "Avisar ao iniciar um teleporte confirmado"
+        )
+        form.addRow("Teleporte", self.alert_teleporting)
+        self.alert_cooldown_seconds = QtWidgets.QSpinBox()
+        self.alert_cooldown_seconds.setRange(5, 300)
+        self.alert_cooldown_seconds.setValue(10)
+        self.alert_cooldown_seconds.setSuffix(" s")
+        form.addRow("Intervalo mínimo", self.alert_cooldown_seconds)
         self.alert_sound = QtWidgets.QCheckBox("Som do sistema")
         self.alert_sound.setChecked(True)
         form.addRow("Aviso sonoro", self.alert_sound)
+        self.alert_sound_file = ""
+        self.alert_sound_name = QtWidgets.QLineEdit()
+        self.alert_sound_name.setReadOnly(True)
+        self.alert_sound_name.setPlaceholderText("Som padrão do sistema")
+        choose_sound = QtWidgets.QPushButton("Escolher WAV")
+        choose_sound.clicked.connect(self._choose_alert_sound)
+        test_sound = QtWidgets.QPushButton("Testar")
+        test_sound.clicked.connect(self._test_alert_sound)
+        remove_sound = QtWidgets.QPushButton("Usar padrão")
+        remove_sound.clicked.connect(self._clear_alert_sound)
+        sound_row = QtWidgets.QHBoxLayout()
+        sound_row.addWidget(self.alert_sound_name, 1)
+        sound_row.addWidget(choose_sound)
+        sound_row.addWidget(test_sound)
+        sound_row.addWidget(remove_sound)
+        form.addRow("Som personalizado", sound_row)
         save = QtWidgets.QPushButton("Salvar alertas")
         save.clicked.connect(self._save_alert_settings)
         form.addRow("", save)
@@ -1011,221 +2095,610 @@ class MainWindow(QtWidgets.QMainWindow):
         page = QtWidgets.QWidget(objectName="pageVisãogeral")
         column = QtWidgets.QVBoxLayout(page)
         column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(10)
-        column.addWidget(_label("Visão geral", "title"))
+        column.setSpacing(8)
         self.overview_status = _label("Lendo a sessão mais recente…", "muted")
+        self.overview_status.hide()
         column.addWidget(self.overview_status)
 
         scroll = QtWidgets.QScrollArea(objectName="pageScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         content = QtWidgets.QWidget(objectName="scrollContent")
-        content_layout = QtWidgets.QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 8, 0)
-        content_layout.setSpacing(10)
-        self.overview_split = QtWidgets.QWidget()
-        split_layout = QtWidgets.QHBoxLayout(self.overview_split)
-        split_layout.setContentsMargins(0, 0, 0, 0)
-        split_layout.setSpacing(10)
-        primary = QtWidgets.QWidget()
-        primary_layout = QtWidgets.QVBoxLayout(primary)
-        primary_layout.setContentsMargins(0, 0, 0, 0)
-        primary_layout.setSpacing(10)
+        self.overview_grid = QtWidgets.QGridLayout(content)
+        self.overview_grid.setContentsMargins(0, 0, 8, 0)
+        self.overview_grid.setHorizontalSpacing(12)
+        self.overview_grid.setVerticalSpacing(12)
 
-        hero = QtWidgets.QFrame(objectName="panel")
-        hero_row = QtWidgets.QHBoxLayout(hero)
-        hero_row.setContentsMargins(18, 16, 18, 16)
-        self.rover_icon = QtWidgets.QLabel("—", objectName="roverIcon")
-        self.rover_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.rover_icon.setFixedSize(96, 96)
-        hero_row.addWidget(self.rover_icon)
-        self.character_icon = QtWidgets.QLabel("—", objectName="characterIcon")
-        self.character_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.character_icon.setFixedSize(72, 72)
-        hero_row.addWidget(self.character_icon)
-        identity = QtWidgets.QVBoxLayout()
-        self.character_name = _label("Aguardando personagem", "hero")
-        self.character_details = _label("Nível — · Classe — · Biosuit —", "muted")
-        self.rover_name = _label("Rover —", "muted")
-        identity.addWidget(self.character_name)
-        identity.addWidget(self.character_details)
-        identity.addWidget(self.rover_name)
-        hero_row.addLayout(identity, 1)
-        primary_layout.addWidget(hero)
+        def card(title: str, icon: str) -> tuple[QtWidgets.QFrame, QtWidgets.QVBoxLayout]:
+            frame = QtWidgets.QFrame(objectName="dashboardCard")
+            layout = QtWidgets.QVBoxLayout(frame)
+            layout.setContentsMargins(18, 16, 18, 16)
+            layout.setSpacing(9)
+            header = QtWidgets.QHBoxLayout()
+            icon_label = QtWidgets.QLabel()
+            icon_label.setPixmap(_navigation_icon(icon, 19).pixmap(19, 19))
+            icon_label.setFixedSize(22, 22)
+            header.addWidget(icon_label)
+            header.addWidget(_label(title, "cardTitle"))
+            header.addStretch(1)
+            layout.addLayout(header)
+            return frame, layout
 
-        metrics = QtWidgets.QWidget()
-        self.primary_metrics = metrics
-        grid = QtWidgets.QGridLayout(metrics)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(8)
+        self.session_card, session = card("Sessão atual", "clock")
+        self.character_name = _label("Aguardando personagem", "cardIdentity")
+        self.character_details = _label("Nível —", "muted")
+        session.addWidget(self.character_name)
+        session.addWidget(self.character_details)
+        self.session_duration = _label("00:00:00", "sessionTime")
+        session.addWidget(self.session_duration)
+        exp_row = QtWidgets.QHBoxLayout()
+        exp_row.addWidget(_label("EXP", "muted"))
+        exp_row.addStretch(1)
         self.metric_labels: dict[str, QtWidgets.QLabel] = {}
+        self.exp_percent = _label("—", "metricCompact")
+        self.metric_labels["exp_percent"] = self.exp_percent
+        exp_row.addWidget(self.exp_percent)
+        session.addLayout(exp_row)
+        self.exp_progress = QtWidgets.QProgressBar(objectName="goldProgress")
+        self.exp_progress.setRange(0, 10000)
+        self.exp_progress.setTextVisible(False)
+        session.addWidget(self.exp_progress)
+        session_stats = QtWidgets.QHBoxLayout()
+        session_stats.setSpacing(0)
+        for index, (key, caption) in enumerate((
+            ("exp_hour_percent", "EXP/h"),
+            ("credits", "Créditos"),
+            ("kills", "Mobs"),
+        )):
+            if index:
+                divider = QtWidgets.QFrame(objectName="metricDivider")
+                divider.setFixedWidth(1)
+                session_stats.addWidget(divider)
+            cell = QtWidgets.QVBoxLayout()
+            label = _label(caption, "muted")
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            value = _label("—", "metricValue")
+            value.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.metric_labels[key] = value
+            cell.addWidget(label)
+            cell.addWidget(value)
+            session_stats.addLayout(cell, 1)
+        session.addLayout(session_stats)
+        self.session_epic_breakdown = _label("Épicos  —", "metricCompact")
+        self.session_epic_breakdown.setWordWrap(True)
+        session.addWidget(self.session_epic_breakdown)
 
-        def metric_group(
-            title: str,
-            definitions: tuple[tuple[str, str], ...],
-            *,
-            show_progress: bool = False,
-        ) -> QtWidgets.QFrame:
-            group = QtWidgets.QFrame(objectName="metricGroup")
-            group_layout = QtWidgets.QVBoxLayout(group)
-            group_layout.setContentsMargins(14, 11, 14, 11)
-            group_layout.setSpacing(8)
-            group_layout.addWidget(_label(title, "subtitle"))
-            values = QtWidgets.QHBoxLayout()
-            values.setSpacing(10)
-            for index, (key, label_text) in enumerate(definitions):
-                if index:
-                    divider = QtWidgets.QWidget(objectName="metricDivider")
-                    divider.setFixedWidth(1)
-                    values.addWidget(divider)
-                cell = QtWidgets.QVBoxLayout()
-                caption = _label(label_text, "muted")
-                caption.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                value = _label("—", "data")
-                value.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                cell.addWidget(caption)
-                cell.addWidget(value)
-                values.addLayout(cell, 1)
-                self.metric_labels[key] = value
-            group_layout.addLayout(values)
-            if show_progress:
-                self.exp_progress = QtWidgets.QProgressBar()
-                self.exp_progress.setRange(0, 10000)
-                self.exp_progress.setTextVisible(False)
-                group_layout.addWidget(self.exp_progress)
-            return group
-
-        character_exp = metric_group(
-            "Experiência do personagem",
-            (("exp", "Atual"), ("exp_missing", "Restante"), ("exp_percent", "Nível")),
-            show_progress=True,
-        )
-        session_exp = metric_group(
-            "Experiência da sessão",
-            (("exp_gained", "Total"), ("exp_hour", "Por hora"), ("exp_hour_percent", "Por hora (%)")),
-        )
-        resources = metric_group(
-            "Recursos da sessão",
-            (("credits", "Créditos total"), ("credits_hour", "Créditos/h"),
-             ("contribution", "Contribuição total"),
-             ("contribution_hour", "Contribuição/h"), ("diamonds", "Diamantes")),
-        )
-        combat = metric_group(
-            "Combate",
-            (("kills", "Abates estimados"), ("finalizations", "Finalizações")),
-        )
-        loot = metric_group(
-            "Loot da sessão",
-            (("loot", "Total"), ("common", "Comum"), ("uncommon", "Incomum"),
-             ("rare", "Raro"), ("epic", "Épico")),
-        )
-        self.primary_metric_grid = grid
-        self.primary_metric_groups = (
-            character_exp, session_exp, resources, combat, loot,
-        )
-        for group, position in zip(
-            self.primary_metric_groups,
-            ((0, 0, 1, 1), (0, 1, 1, 1), (1, 0, 1, 2),
-             (2, 0, 1, 1), (2, 1, 1, 1)),
+        for key in (
+            "exp", "exp_missing", "exp_gained", "exp_hour", "credits_hour",
+            "contribution", "contribution_hour", "diamonds", "finalizations",
+            "loot", "common", "uncommon", "rare", "epic",
         ):
-            grid.addWidget(group, *position)
-        self.exp_percent = self.metric_labels["exp_percent"]
-        primary_layout.addWidget(metrics)
+            hidden = _label("—", "data")
+            hidden.setParent(page)
+            hidden.hide()
+            self.metric_labels[key] = hidden
+        self.character_icon = QtWidgets.QLabel("—", objectName="characterIcon", parent=page)
+        self.rover_icon = QtWidgets.QLabel("—", objectName="roverIcon", parent=page)
+        self.rover_name = _label("Rover —", "muted")
+        self.character_icon.setFixedSize(72, 72)
+        self.rover_icon.setFixedSize(96, 72)
+        equipment_row = QtWidgets.QHBoxLayout()
+        equipment_row.addWidget(self.character_icon)
+        equipment_row.addWidget(self.rover_icon)
+        equipment_row.addWidget(self.rover_name, 1)
+        session.addLayout(equipment_row)
 
-        subsession = QtWidgets.QFrame(objectName="accentPanel")
-        subsession_layout = QtWidgets.QVBoxLayout(subsession)
-        subsession_layout.setContentsMargins(16, 12, 16, 12)
-        subsession_layout.addWidget(_label("Subsessão ativa", "subtitle"))
-        self.active_subsession = _label("Nenhuma subsessão em andamento.", "muted")
-        subsession_layout.addWidget(self.active_subsession)
-        primary_layout.addWidget(subsession)
-        primary_layout.addStretch(1)
-        split_layout.addWidget(primary, 1)
-        self.overview_secondary = self._build_secondary_overview()
-        self.overview_secondary.setVisible(False)
-        split_layout.addWidget(self.overview_secondary, 1)
-        content_layout.addWidget(self.overview_split)
-        content_layout.addStretch(1)
+        self.program_status_card = QtWidgets.QFrame(parent=page)
+        self.program_status_card.hide()
+        status_heading = QtWidgets.QHBoxLayout()
+        status_heading.addWidget(_label("Status", "muted"))
+        status_heading.addStretch(1)
+        self.dashboard_status = _label("Ocioso  •", "statusHero")
+        self.dashboard_status.setObjectName("dashboardStatus")
+        status_heading.addWidget(self.dashboard_status)
+        session.addLayout(status_heading)
+        self.dashboard_activity = _label("Monitor aguardando", "statusLine")
+        self.dashboard_threat = _label("Sem ameaça", "statusLine")
+        self.dashboard_attack = _label("Não sendo atacado", "statusLine")
+        status_details = QtWidgets.QHBoxLayout()
+        status_details.addWidget(self.dashboard_activity)
+        status_details.addWidget(self.dashboard_threat)
+        status_details.addWidget(self.dashboard_attack)
+        session.addLayout(status_details)
+
+        self.nearby_mobs_card, nearby_mobs = card("Mobs próximos", "pulse")
+        self.overview_mobs_status = _label(
+            "Nenhum mob próximo confirmado.", "muted"
+        )
+        nearby_mobs.addWidget(self.overview_mobs_status)
+        self.overview_mobs_table = QtWidgets.QTableWidget(0, 3)
+        self.overview_mobs_table.setObjectName("overviewMobsTable")
+        self.overview_mobs_table.setHorizontalHeaderLabels(
+            ("Mob", "Nível", "Vida máxima")
+        )
+        self.overview_mobs_table.verticalHeader().hide()
+        self.overview_mobs_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.overview_mobs_table.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.NoSelection
+        )
+        self.overview_mobs_table.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.overview_mobs_table.setMinimumHeight(135)
+        self.overview_mobs_table.setMaximumHeight(175)
+        mobs_header = self.overview_mobs_table.horizontalHeader()
+        mobs_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        mobs_header.setSectionResizeMode(
+            1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        mobs_header.setSectionResizeMode(
+            2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        nearby_mobs.addWidget(self.overview_mobs_table, 1)
+        self.overview_mobs_table.hide()
+
+        self.subsession_card, subsession = card("Subsessão ativa", "clock")
+        self.subsession_card.setParent(content)
+        self._overview_has_subsession = False
+        self.subsession_badge = _label("Inativa", "muted")
+        subsession_header = subsession.itemAt(0).layout()
+        subsession_header.addWidget(self.subsession_badge)
+        self.subsession_card_fields_button = QtWidgets.QToolButton()
+        self.subsession_card_fields_button.setText("Informações")
+        self.subsession_card_fields_button.setToolTip(
+            "Escolha no card as mesmas informações disponíveis nas colunas."
+        )
+        self.subsession_card_fields_button.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        subsession_fields_menu = QtWidgets.QMenu(self.subsession_card_fields_button)
+        configured_card_fields = self.preferences.get("subsession_card_fields")
+        selected_card_fields = (
+            {
+                str(key) for key in configured_card_fields
+                if str(key) in SUBSESSION_COLUMN_INDEX and str(key) != "select"
+            }
+            if isinstance(configured_card_fields, list)
+            else set(SUBSESSION_CARD_DEFAULT_FIELDS)
+        )
+        self.subsession_card_field_actions: dict[str, QtGui.QAction] = {}
+        for key, label_text, _width, _visible in SUBSESSION_COLUMNS[1:]:
+            action = subsession_fields_menu.addAction(label_text)
+            action.setCheckable(True)
+            action.setChecked(key in selected_card_fields)
+            if key == "exp_hour_percent":
+                action.setVisible(False)
+            action.toggled.connect(
+                lambda checked, field=key: self._set_subsession_card_field_visible(
+                    field, checked
+                )
+            )
+            self.subsession_card_field_actions[key] = action
+        subsession_fields_menu.addSeparator()
+        subsession_fields_menu.addAction(
+            "Restaurar padrão", self._reset_subsession_card_fields
+        )
+        self.subsession_card_fields_button.setMenu(subsession_fields_menu)
+        subsession_header.addWidget(self.subsession_card_fields_button)
+        self.subsession_empty = _label(
+            "Inicie uma subsessão para acompanhar este cliente.", "muted"
+        )
+        self.subsession_empty.setWordWrap(True)
+        subsession.addWidget(self.subsession_empty)
+        self.subsession_card_fields = QtWidgets.QGridLayout()
+        self.subsession_card_fields.setHorizontalSpacing(12)
+        self.subsession_card_fields.setVerticalSpacing(8)
+        self.subsession_card_field_widgets: dict[str, QtWidgets.QWidget] = {}
+        self.subsession_card_values: dict[str, QtWidgets.QLabel] = {}
+        for index, (key, label_text, _width, _visible) in enumerate(
+            SUBSESSION_COLUMNS[1:]
+        ):
+            field = QtWidgets.QWidget()
+            field_layout = QtWidgets.QVBoxLayout(field)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(1)
+            caption = _label(
+                "XP/h (bruto e %)" if key == "exp_hour" else label_text,
+                "muted",
+            )
+            value = _label("—", "metricValue")
+            value.setWordWrap(key in {"name", "map", "spot", "mobs", "levels", "context"})
+            field_layout.addWidget(caption)
+            field_layout.addWidget(value)
+            self.subsession_card_fields.addWidget(field, index // 2, index % 2)
+            self.subsession_card_field_widgets[key] = field
+            self.subsession_card_values[key] = value
+        subsession.addLayout(self.subsession_card_fields)
+        self.active_subsession = self.subsession_card_values["name"]
+        self.active_subsession_duration = self.subsession_card_values["time"]
+        self.subsession_map_line = self.subsession_card_values["map"]
+        self.subsession_mobs_line = self.subsession_card_values["mobs"]
+        self.subsession_levels_line = self.subsession_card_values["levels"]
+        self.subsession_metrics = {
+            key: self.subsession_card_values[key]
+            for key in ("kills", "exp_percent", "exp_hour_percent")
+        }
+        self._apply_subsession_card_fields(selected_card_fields)
+        self.view_subsession_button = QtWidgets.QPushButton(
+            "Abrir subsessões  →", objectName="linkButton"
+        )
+        self.view_subsession_button.clicked.connect(self._open_active_subsession)
+        subsession.addWidget(self.view_subsession_button)
+
+        self.map_card, map_layout = card("Mapa e proximidade", "map")
+        map_toolbar = QtWidgets.QHBoxLayout()
+        map_toolbar.setSpacing(6)
+        map_toolbar.addStretch(1)
+        self.overview_map_zoom_out = QtWidgets.QPushButton("−")
+        self.overview_map_zoom_out.setObjectName("mapToolButton")
+        self.overview_map_zoom_out.setToolTip("Diminuir zoom")
+        self.overview_map_zoom_out.setAccessibleName("Diminuir zoom do mapa")
+        self.overview_map_zoom_out.setFixedWidth(38)
+        self.overview_map_zoom = _label("100%", "muted")
+        self.overview_map_zoom.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignCenter
+        )
+        self.overview_map_zoom.setMinimumWidth(48)
+        self.overview_map_zoom_in = QtWidgets.QPushButton("+")
+        self.overview_map_zoom_in.setObjectName("mapToolButton")
+        self.overview_map_zoom_in.setToolTip("Aumentar zoom")
+        self.overview_map_zoom_in.setAccessibleName("Aumentar zoom do mapa")
+        self.overview_map_zoom_in.setFixedWidth(38)
+        self.overview_map_focus = QtWidgets.QPushButton("Focar personagem")
+        self.overview_map_focus.setObjectName("mapFocusButton")
+        self.overview_map_focus.setToolTip(
+            "Centralizar o mapa novamente na posição atual do personagem"
+        )
+        map_toolbar.addWidget(self.overview_map_zoom_out)
+        map_toolbar.addWidget(self.overview_map_zoom)
+        map_toolbar.addWidget(self.overview_map_zoom_in)
+        map_toolbar.addWidget(self.overview_map_focus)
+        map_layout.addLayout(map_toolbar)
+        for control in (
+            self.overview_map_zoom_out,
+            self.overview_map_zoom,
+            self.overview_map_zoom_in,
+            self.overview_map_focus,
+        ):
+            control.hide()
+        map_identity = QtWidgets.QHBoxLayout()
+        map_identity_text = QtWidgets.QVBoxLayout()
+        self.overview_map_name = _label("Mapa não identificado", "cardIdentity")
+        self.overview_map_region = _label("Região —", "muted")
+        map_identity_text.addWidget(self.overview_map_name)
+        map_identity_text.addWidget(self.overview_map_region)
+        map_identity.addLayout(map_identity_text, 1)
+        self.overview_coordinates = _label("—, —", "mapCoordinates")
+        map_identity.addWidget(self.overview_coordinates)
+        map_layout.addLayout(map_identity)
+        self.overview_map_preview = _MapPreview(
+            show_player_labels=False,
+            interactive=False,
+        )
+        self.overview_map_preview.setMaximumSize(420, 420)
+        self.overview_map_preview.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        self.overview_map_zoom_out.clicked.connect(
+            self.overview_map_preview.zoom_out
+        )
+        self.overview_map_zoom_in.clicked.connect(
+            self.overview_map_preview.zoom_in
+        )
+        self.overview_map_focus.clicked.connect(
+            self.overview_map_preview.focus_on_character
+        )
+        self.overview_map_preview.view_changed.connect(
+            lambda zoom, focused: self.overview_map_zoom.setText(
+                f"{zoom}%" + (" · foco" if focused else "")
+            )
+        )
+        self.overview_map_preview.view_changed.emit(100, False)
+        map_layout.addWidget(
+            self.overview_map_preview,
+            0,
+            QtCore.Qt.AlignmentFlag.AlignHCenter,
+        )
+        map_details = QtWidgets.QVBoxLayout()
+        self.overview_map_state = _label("Aguardando coordenadas", "muted")
+        self.overview_nearby_players = _label("Outros jogadores  —", "detailLine")
+        self.overview_nearby_names = _label("Nomes: —", "muted")
+        self.overview_nearby_names.setWordWrap(True)
+        map_details.addWidget(self.overview_map_state)
+        map_details.addWidget(self.overview_nearby_players)
+        map_details.addWidget(self.overview_nearby_names)
+        map_layout.addLayout(map_details)
+
+        self.drops_card, drops = card("Drops recentes", "box")
+        self.overview_drop_rows: list[tuple[QtWidgets.QLabel, QtWidgets.QLabel, QtWidgets.QLabel]] = []
+        for _ in range(3):
+            row_widget = QtWidgets.QFrame(objectName="dropRow")
+            row = QtWidgets.QHBoxLayout(row_widget)
+            row.setContentsMargins(8, 6, 8, 6)
+            marker = QtWidgets.QLabel("", objectName="dropIcon")
+            marker.setFixedSize(32, 32)
+            marker.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            marker.setPixmap(_navigation_icon("box", 22).pixmap(22, 22))
+            name = _label("Aguardando drop", "dropName")
+            age = _label("—", "muted")
+            row.addWidget(marker)
+            row.addWidget(name, 1)
+            row.addWidget(age)
+            drops.addWidget(row_widget)
+            self.overview_drop_rows.append((marker, name, age))
+        drops.addStretch(1)
+        self.view_drops_button = QtWidgets.QPushButton(
+            "Ver todos os drops  →", objectName="linkButton"
+        )
+        self.view_drops_button.clicked.connect(self._open_drops_page)
+        drops.addWidget(self.view_drops_button)
+
+        self.health_card, health = card("Saúde e memória", "pulse")
+        health_body = QtWidgets.QHBoxLayout()
+        health_stats = QtWidgets.QVBoxLayout()
+        self.overview_memory_limit = _label("Limite  —", "healthLine")
+        self.overview_memory_use = _label("Em uso  —", "healthLineOk")
+        self.overview_queue = _label("Fila  —", "healthLineInfo")
+        self.overview_checkpoint = _label("Checkpoint  —", "healthLineOk")
+        for widget in (
+            self.overview_memory_limit,
+            self.overview_memory_use,
+            self.overview_queue,
+            self.overview_checkpoint,
+        ):
+            health_stats.addWidget(widget)
+        health_stats.addStretch(1)
+        health_body.addLayout(health_stats, 1)
+        self.memory_sparkline = _MemorySparkline()
+        health_body.addWidget(self.memory_sparkline, 2)
+        health.addLayout(health_body)
+
+        self.overview_cards = (
+            self.session_card,
+            self.subsession_card,
+            self.map_card,
+            self.health_card,
+        )
+        self.nearby_mobs_card.hide()
+        self.drops_card.hide()
+        self._sync_overview_layout()
         scroll.setWidget(content)
         column.addWidget(scroll, 1)
         return page
 
-    def _build_secondary_overview(self) -> QtWidgets.QWidget:
-        panel = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        hero_card = QtWidgets.QFrame(objectName="panel")
-        hero = QtWidgets.QHBoxLayout(hero_card)
-        hero.setContentsMargins(18, 16, 18, 16)
-        self.secondary_rover_icon = QtWidgets.QLabel("—", objectName="roverIcon")
-        self.secondary_character_icon = QtWidgets.QLabel("—", objectName="characterIcon")
-        self.secondary_rover_icon.setFixedSize(96, 96)
-        self.secondary_character_icon.setFixedSize(72, 72)
-        for icon in (self.secondary_rover_icon, self.secondary_character_icon):
-            icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            hero.addWidget(icon)
-        identity = QtWidgets.QVBoxLayout()
-        self.secondary_character_name = _label("Aguardando personagem", "hero")
-        self.secondary_character_details = _label("Nível — · Classe — · Biosuit —", "muted")
-        self.secondary_rover_name = _label("Rover —", "muted")
-        identity.addWidget(self.secondary_character_name)
-        identity.addWidget(self.secondary_character_details)
-        identity.addWidget(self.secondary_rover_name)
-        hero.addLayout(identity, 1)
-        layout.addWidget(hero_card)
-        self.secondary_metric_labels: dict[str, QtWidgets.QLabel] = {}
-        groups = (
-            ("Experiência do personagem", (("exp", "Atual"), ("exp_missing", "Restante"), ("exp_percent", "Nível"))),
-            ("Experiência da sessão", (("exp_gained", "Total"), ("exp_hour", "Por hora"), ("exp_hour_percent", "Por hora (%)"))),
-            ("Recursos da sessão", (("credits", "Créditos total"), ("credits_hour", "Créditos/h"), ("contribution", "Contribuição total"), ("contribution_hour", "Contribuição/h"), ("diamonds", "Diamantes"))),
-            ("Combate", (("kills", "Abates estimados"), ("finalizations", "Finalizações"))),
-            ("Loot da sessão", (("loot", "Total"), ("common", "Comum"), ("uncommon", "Incomum"), ("rare", "Raro"), ("epic", "Épico"))),
-        )
-        self.secondary_metric_groups = []
-        for title, definitions in groups:
-            group = QtWidgets.QFrame(objectName="secondaryMetricGroup")
-            group_layout = QtWidgets.QVBoxLayout(group)
-            group_layout.setContentsMargins(14, 11, 14, 11)
-            group_layout.setSpacing(8)
-            group_layout.addWidget(_label(title, "subtitle"))
-            values = QtWidgets.QHBoxLayout()
-            values.setSpacing(10)
-            for index, (key, caption) in enumerate(definitions):
-                if index:
-                    divider = QtWidgets.QWidget(objectName="metricDivider")
-                    divider.setFixedWidth(1)
-                    values.addWidget(divider)
-                cell = QtWidgets.QVBoxLayout()
-                label = _label(caption, "muted"); label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                value = _label("—", "data"); value.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                cell.addWidget(label); cell.addWidget(value)
-                values.addLayout(cell, 1)
-                self.secondary_metric_labels[key] = value
-            group_layout.addLayout(values)
-            if title == "Experiência do personagem":
-                self.secondary_exp_progress = QtWidgets.QProgressBar()
-                self.secondary_exp_progress.setRange(0, 10000)
-                self.secondary_exp_progress.setTextVisible(False)
-                group_layout.addWidget(self.secondary_exp_progress)
-            layout.addWidget(group)
-            self.secondary_metric_groups.append(group)
-        active = QtWidgets.QFrame(objectName="accentPanel")
-        active_layout = QtWidgets.QVBoxLayout(active)
-        active_layout.addWidget(_label("Subsessão ativa", "subtitle"))
-        self.secondary_active_subsession = _label("Nenhuma subsessão em andamento.", "muted")
-        active_layout.addWidget(self.secondary_active_subsession)
-        layout.addWidget(active)
-        layout.addStretch(1)
-        return panel
-
-    def _build_sends_page(self) -> QtWidgets.QWidget:
-        page = QtWidgets.QWidget(objectName="pageEnvios")
+    def _build_sessions_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageSessoes")
         column = QtWidgets.QVBoxLayout(page)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(10)
-        column.addWidget(_label("Envios", "title"))
-        column.addWidget(_label("Dados já lidos pela captura contínua.", "muted"))
+        column.addWidget(_label("Sessões", "title"))
+        column.addWidget(_label(
+            "Acompanhe a sessão atual e envie dados já lidos.", "muted"
+        ))
+        column.addWidget(self._build_sends_page(embedded=True), 1)
+        return page
+
+    def _build_general_summary_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageResumoGeral")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        column.addWidget(_label("Resumo Geral", "title"))
+        column.addWidget(_label(
+            "Visão consolidada de todos os clientes adicionados.", "muted"
+        ))
+        scroll = QtWidgets.QScrollArea(objectName="pageScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        content = QtWidgets.QWidget(objectName="scrollContent")
+        grid = QtWidgets.QGridLayout(content)
+        grid.setContentsMargins(0, 0, 8, 0)
+        grid.setSpacing(12)
+        grid.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignTop
+            | QtCore.Qt.AlignmentFlag.AlignLeft
+        )
+        self.general_summary_cards: list[dict[str, Any]] = []
+        for index in range(CLIENT_SLOT_COUNT):
+            frame = QtWidgets.QFrame(objectName="dashboardCard")
+            frame.setMinimumWidth(420)
+            frame.setMaximumWidth(560)
+            frame.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Maximum,
+            )
+            layout = QtWidgets.QVBoxLayout(frame)
+            layout.setContentsMargins(14, 12, 14, 12)
+            layout.setSpacing(8)
+            header = QtWidgets.QHBoxLayout()
+            identity = QtWidgets.QVBoxLayout()
+            client = _label(self._client_name(index), "muted")
+            character = _label("Aguardando personagem", "cardIdentity")
+            identity.addWidget(client)
+            identity.addWidget(character)
+            header.addLayout(identity, 1)
+            diamonds_box = QtWidgets.QVBoxLayout()
+            diamonds_box.addWidget(_label("Diamantes", "muted"))
+            diamonds = _label("—", "metricCompact")
+            diamonds.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+            diamonds_box.addWidget(diamonds)
+            header.addLayout(diamonds_box)
+            layout.addLayout(header)
+
+            equipment = QtWidgets.QHBoxLayout()
+            equipment.setSpacing(10)
+            class_icon = QtWidgets.QLabel("—", objectName="characterIcon")
+            class_icon.setFixedSize(46, 46)
+            class_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            equipment.addWidget(class_icon)
+            class_text = QtWidgets.QVBoxLayout()
+            class_text.setSpacing(0)
+            class_name = _label("Classe —", "metricCompact")
+            biosuit_name = _label("Biosuit —", "muted")
+            class_text.addWidget(class_name)
+            class_text.addWidget(biosuit_name)
+            equipment.addLayout(class_text, 1)
+            rover_icon = QtWidgets.QLabel("—", objectName="roverIcon")
+            rover_icon.setFixedSize(52, 46)
+            rover_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            equipment.addWidget(rover_icon)
+            rover_name = _label("Rover —", "metricCompact")
+            rover_name.setMinimumWidth(90)
+            equipment.addWidget(rover_name)
+            layout.addLayout(equipment)
+
+            exp_row = QtWidgets.QHBoxLayout()
+            exp_row.setSpacing(8)
+            exp_row.addWidget(_label("EXP atual", "muted"))
+            exp_progress = QtWidgets.QProgressBar(objectName="summaryExpBar")
+            exp_progress.setRange(0, 10_000)
+            exp_progress.setValue(0)
+            exp_progress.setTextVisible(False)
+            exp_progress.setFixedHeight(9)
+            exp_row.addWidget(exp_progress, 1)
+            exp_percent = _label("—", "metricCompact")
+            exp_percent.setMinimumWidth(54)
+            exp_percent.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+            exp_row.addWidget(exp_percent)
+            layout.addLayout(exp_row)
+
+            values: dict[str, QtWidgets.QLabel] = {}
+            metrics = QtWidgets.QGridLayout()
+            metrics.setHorizontalSpacing(12)
+            metrics.setVerticalSpacing(6)
+            for field_index, (key, caption) in enumerate((
+                ("duration", "Tempo de sessão"),
+                ("session_exp", "EXP da sessão"),
+                ("credits", "Créditos"),
+                ("contribution", "Contribuição"),
+            )):
+                cell = QtWidgets.QWidget()
+                cell_layout = QtWidgets.QVBoxLayout(cell)
+                cell_layout.setContentsMargins(0, 0, 0, 0)
+                cell_layout.setSpacing(1)
+                cell_layout.addWidget(_label(caption, "muted"))
+                value = _label("—", "metricCompact")
+                value.setWordWrap(True)
+                cell_layout.addWidget(value)
+                metrics.addWidget(cell, field_index // 2, field_index % 2)
+                values[key] = value
+            layout.addLayout(metrics)
+            grid.addWidget(frame, index // 2, index % 2)
+            self.general_summary_cards.append({
+                "frame": frame,
+                "client": client,
+                "character": character,
+                "class_icon": class_icon,
+                "class_name": class_name,
+                "biosuit_name": biosuit_name,
+                "rover_icon": rover_icon,
+                "rover_name": rover_name,
+                "diamonds": diamonds,
+                "exp_progress": exp_progress,
+                "exp_percent": exp_percent,
+                "values": values,
+            })
+        scroll.setWidget(content)
+        column.addWidget(scroll, 1)
+        return page
+
+    def _render_general_summary(self) -> None:
+        if not hasattr(self, "general_summary_cards"):
+            return
+        now_ns = time.time_ns()
+        session_ended_ns = (self.snapshot.get("stats") or {}).get("ended_ns")
+        session_live = bool(
+            self.capture_engine
+            and self.capture_engine.active
+            and self.capture_engine.current_session == self.snapshot.get("session_id")
+        )
+        for index, card in enumerate(self.general_summary_cards):
+            card["frame"].setVisible(index in self.visible_client_slots)
+            if index not in self.visible_client_slots:
+                continue
+            character, summary, historical = self._overview_character(index)
+            character = character or {}
+            name = str(character.get("name") or "").strip()
+            card["client"].setText(self._client_name(index))
+            card["character"].setText(name or "Aguardando personagem")
+            if historical and name:
+                card["character"].setToolTip("Último estado conhecido")
+            self._set_character_icon(
+                str(summary.get("character_class") or ""),
+                int(summary.get("biosuit_grade") or 0),
+                card["class_icon"],
+            )
+            self._set_rover_icon(
+                int(summary.get("rover_item_index") or 0),
+                int(summary.get("rover_grade") or 0),
+                str(summary.get("rover_name") or ""),
+                card["rover_icon"],
+            )
+            started_ns = summary.get("recognized_at_ns")
+            duration = (
+                max(0, int((
+                    (now_ns if session_live else int(session_ended_ns or now_ns))
+                    - started_ns
+                ) / 1_000_000_000))
+                if isinstance(started_ns, int) else 0
+            )
+            percent = summary.get("exp_percent")
+            gained = summary.get("exp_gained")
+            gained_percent = summary.get("exp_gained_percent")
+            credits_total = summary.get("credits_total")
+            credits_gained = summary.get("credits")
+            contribution = summary.get("contribution")
+            hours = duration / 3600 if duration else 0
+            contribution_hour = (
+                float(contribution) / hours
+                if hours and isinstance(contribution, (int, float))
+                else None
+            )
+            values = card["values"]
+            card["diamonds"].setText(self._format_value(summary.get("diamonds")))
+            card["class_name"].setText(
+                str(summary.get("character_class") or "Classe —")
+            )
+            card["biosuit_name"].setText(
+                str(summary.get("biosuit_name") or "Biosuit —")
+            )
+            card["rover_name"].setText(
+                str(summary.get("rover_name") or "Rover —")
+            )
+            card["exp_percent"].setText(self._format_value(percent, "%"))
+            card["exp_progress"].setValue(
+                max(0, min(10_000, round(float(percent) * 100)))
+                if isinstance(percent, (int, float)) else 0
+            )
+            values["duration"].setText(
+                f"{duration // 3600:02d}:{duration // 60 % 60:02d}:{duration % 60:02d}"
+            )
+            values["session_exp"].setText(
+                f"{self._format_value(gained)} ({self._format_value(gained_percent, '%')})"
+            )
+            values["credits"].setText(
+                f"Total {self._format_value(credits_total)} · "
+                f"Sessão +{self._format_value(credits_gained)}"
+            )
+            values["contribution"].setText(
+                f"+{self._format_value(contribution)} · "
+                f"{self._format_value(contribution_hour)}/h"
+            )
+
+    def _build_sends_page(self, *, embedded: bool = False) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageEnvios")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(
+            8 if embedded else 0,
+            8 if embedded else 0,
+            8 if embedded else 0,
+            8 if embedded else 0,
+        )
+        column.setSpacing(10)
+        if not embedded:
+            column.addWidget(_label("Envios", "title"))
+            column.addWidget(_label("Dados já lidos pela captura contínua.", "muted"))
 
         scroll = QtWidgets.QScrollArea(objectName="pageScroll")
         scroll.setWidgetResizable(True)
@@ -1246,14 +2719,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.send_session_details = _label("Sessão —", "muted")
         continuous_layout.addWidget(self.send_session_details)
         content_layout.addWidget(continuous)
-        self.discard_previous = QtWidgets.QCheckBox(
-            "Descartar a sessão anterior ao iniciar"
-        )
-        self.discard_previous.setToolTip(
-            "Move os segmentos anteriores para a Lixeira e remove somente aquela sessão."
-        )
-        content_layout.addWidget(self.discard_previous)
-
         grid = QtWidgets.QGridLayout()
         grid.setSpacing(8)
         self.send_status_labels: dict[str, QtWidgets.QLabel] = {}
@@ -1322,12 +2787,18 @@ class MainWindow(QtWidgets.QMainWindow):
         column.addWidget(scroll, 1)
         return page
 
-    def _build_subsessions_page(self) -> QtWidgets.QWidget:
+    def _build_subsessions_page(self, *, embedded: bool = False) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget(objectName="pageSubsessões")
         column = QtWidgets.QVBoxLayout(page)
-        column.setContentsMargins(0, 0, 0, 0)
+        column.setContentsMargins(
+            8 if embedded else 0,
+            8 if embedded else 0,
+            8 if embedded else 0,
+            8 if embedded else 0,
+        )
         column.setSpacing(10)
-        column.addWidget(_label("Subsessões", "title"))
+        if not embedded:
+            column.addWidget(_label("Subsessões", "title"))
 
         selector = QtWidgets.QWidget()
         selector_layout = QtWidgets.QHBoxLayout(selector)
@@ -1524,12 +2995,69 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_level_to.setRange(0, 999)
         self.subsession_level_to.hide()
         self.subsession_duration = QtWidgets.QSpinBox(); self.subsession_duration.setRange(0, 1440); self.subsession_duration.setSuffix(" min")
+        self.subsession_auto_next = QtWidgets.QCheckBox(
+            "Criar a próxima automaticamente"
+        )
+        self.subsession_auto_minutes = QtWidgets.QSpinBox(content)
+        self.subsession_auto_minutes.setRange(5, 240)
+        self.subsession_auto_minutes.setSingleStep(5)
+        self.subsession_auto_minutes.setSuffix(" min")
+        automatic_next = QtWidgets.QWidget()
+        automatic_next_layout = QtWidgets.QHBoxLayout(automatic_next)
+        automatic_next_layout.setContentsMargins(0, 0, 0, 0)
+        automatic_next_layout.addWidget(self.subsession_auto_next)
+        automatic_next_layout.addWidget(_label("a cada", "muted"))
+        automatic_next_layout.addWidget(self.subsession_auto_minutes)
+        automatic_next_layout.addStretch(1)
         self.subsession_name = QtWidgets.QLineEdit(); self.subsession_name.setPlaceholderText("Observação ou nome")
-        self.auto_subsession = QtWidgets.QCheckBox("Criar a próxima automaticamente")
-        self.auto_subsession_minutes = QtWidgets.QSpinBox(); self.auto_subsession_minutes.setRange(5, 240); self.auto_subsession_minutes.setSuffix(" min")
-        automatic = QtWidgets.QWidget(); automatic_layout = QtWidgets.QHBoxLayout(automatic); automatic_layout.setContentsMargins(0,0,0,0); automatic_layout.addWidget(self.auto_subsession); automatic_layout.addWidget(self.auto_subsession_minutes); automatic_layout.addStretch(1)
+        self.subsession_end_on_teleport = QtWidgets.QCheckBox("Teleporte")
+        self.subsession_end_on_death = QtWidgets.QCheckBox("Morte")
+        self.subsession_end_after_no_kill = QtWidgets.QCheckBox("30 s sem kill")
+        auto_end = QtWidgets.QWidget()
+        auto_end_layout = QtWidgets.QHBoxLayout(auto_end)
+        auto_end_layout.setContentsMargins(0, 0, 0, 0)
+        for control in (
+            self.subsession_end_on_teleport,
+            self.subsession_end_on_death,
+            self.subsession_end_after_no_kill,
+        ):
+            auto_end_layout.addWidget(control)
+        auto_end_layout.addStretch(1)
+        self.subsession_auto_context = QtWidgets.QCheckBox(
+            "Preencher mapa, spot e mobs por proximidade"
+        )
+        self.subsession_auto_context.setToolTip(
+            "Usa dados confirmados, exige três leituras estáveis por pelo menos "
+            "cinco segundos e só define o spot quando houver uma correspondência única."
+        )
+        self.subsession_auto_context.toggled.connect(self._toggle_auto_context)
+        context_controls = QtWidgets.QWidget()
+        context_layout = QtWidgets.QHBoxLayout(context_controls)
+        context_layout.setContentsMargins(0, 0, 0, 0)
+        context_layout.setSpacing(8)
+        context_layout.addWidget(self.subsession_auto_context)
+        self.subsession_fill_context = QtWidgets.QPushButton(
+            "Buscar localização e mobs agora"
+        )
+        self.subsession_fill_context.setObjectName("subsessionFillContext")
+        self.subsession_fill_context.setToolTip(
+            "Preenche este rascunho com o mapa e os mobs próximos confirmados "
+            "do cliente selecionado. Não inicia a subsessão."
+        )
+        self.subsession_fill_context.clicked.connect(
+            self._fill_subsession_from_current_context
+        )
+        context_layout.addWidget(self.subsession_fill_context)
+        context_layout.addStretch(1)
+        self.subsession_context_status = _label(
+            "Use o botão para consultar o contexto atual sem iniciar a subsessão.",
+            "muted",
+        )
+        self.subsession_context_status.setWordWrap(True)
         for label_text, widget in (
             ("Favorito", favorites), ("Cliente", self.subsession_client),
+            ("Contexto", context_controls),
+            ("", self.subsession_context_status),
             ("Observação", self.subsession_name),
             ("Mapa", self.subsession_map),
             ("Spot", self.subsession_spot),
@@ -1538,7 +3066,8 @@ class MainWindow(QtWidgets.QMainWindow):
             ("", self.subsession_select_all),
             ("Mob extra", self.subsession_other_mob),
             ("Duração (0 = manual)", self.subsession_duration),
-            ("Automática", automatic),
+            ("Próxima subsessão", automatic_next),
+            ("Encerrar automaticamente", auto_end),
         ):
             layout.addRow(label_text, widget)
         self.subsession_form_layout = layout
@@ -1549,6 +3078,190 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addRow("", buttons)
         scroll.setWidget(content)
         return scroll
+
+    def _build_drops_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageDrops")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+
+        heading = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QVBoxLayout()
+        title.setSpacing(2)
+        title.addWidget(_label("Drops", "title"))
+        title.addWidget(
+            _label("Itens confirmados da sessão atual · até 1.000 eventos", "muted")
+        )
+        heading.addLayout(title)
+        heading.addStretch(1)
+        self.drops_search = QtWidgets.QLineEdit()
+        self.drops_search.setPlaceholderText("Buscar item ou personagem")
+        self.drops_search.setClearButtonEnabled(True)
+        self.drops_search.setMaximumWidth(300)
+        self.drops_search.textChanged.connect(self._reset_drops_page)
+        heading.addWidget(self.drops_search)
+        self.drops_client_filter = QtWidgets.QComboBox()
+        self.drops_client_filter.addItem("Todos os clientes", "")
+        for index in range(CLIENT_SLOT_COUNT):
+            self.drops_client_filter.addItem(_client_label(index), _client_key(index))
+        self.drops_client_filter.currentIndexChanged.connect(
+            self._reset_drops_page
+        )
+        heading.addWidget(self.drops_client_filter)
+        self.drops_rarity_filter = QtWidgets.QComboBox()
+        self.drops_rarity_filter.addItem("Todas as raridades", -1)
+        self.drops_rarity_filter.addItem("Sem raridade identificada", 0)
+        for grade, rarity in DROP_RARITY_LABELS.items():
+            self.drops_rarity_filter.addItem(rarity, grade)
+        self.drops_rarity_filter.currentIndexChanged.connect(
+            self._reset_drops_page
+        )
+        heading.addWidget(self.drops_rarity_filter)
+        column.addLayout(heading)
+
+        summary = QtWidgets.QFrame(objectName="accentPanel")
+        summary_layout = QtWidgets.QHBoxLayout(summary)
+        summary_layout.setContentsMargins(16, 12, 16, 12)
+        self.drops_summary = _label("Nenhum drop confirmado", "info")
+        summary_layout.addWidget(self.drops_summary, 1)
+        self.drops_last_seen = _label("Último drop  —", "muted")
+        summary_layout.addWidget(self.drops_last_seen)
+        column.addWidget(summary)
+
+        self.drops_table = QtWidgets.QTableWidget(0, 8)
+        self.drops_table.setHorizontalHeaderLabels((
+            "Primeiro", "Último", "Cliente", "Personagem", "Item", "Qtd.",
+            "Raridade", "Ocorrências",
+        ))
+        self.drops_table.setIconSize(QtCore.QSize(30, 30))
+        self.drops_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.drops_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.drops_table.setAlternatingRowColors(False)
+        self.drops_table.verticalHeader().setVisible(False)
+        drops_header = self.drops_table.horizontalHeader()
+        for index in (0, 1, 2, 5, 6, 7):
+            drops_header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        for index in (3, 4):
+            drops_header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.Stretch
+            )
+        column.addWidget(self.drops_table, 1)
+
+        pagination = QtWidgets.QHBoxLayout()
+        self.drops_page_status = _label("Nenhum registro", "muted")
+        pagination.addWidget(self.drops_page_status)
+        pagination.addStretch(1)
+        self.drops_page_size = QtWidgets.QComboBox()
+        self.drops_page_size.addItems(("25", "50", "100"))
+        self.drops_page_size.currentTextChanged.connect(self._reset_drops_page)
+        pagination.addWidget(_label("Linhas", "muted"))
+        pagination.addWidget(self.drops_page_size)
+        previous = QtWidgets.QPushButton("Anterior")
+        previous.clicked.connect(lambda: self._change_drops_page(-1))
+        next_page = QtWidgets.QPushButton("Próxima")
+        next_page.clicked.connect(lambda: self._change_drops_page(1))
+        pagination.addWidget(previous)
+        pagination.addWidget(next_page)
+        column.addLayout(pagination)
+
+        return page
+
+    def _build_loot_announcements_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageDropsJogadores")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        heading = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QVBoxLayout()
+        title.addWidget(_label("Drops de jogadores", "title"))
+        title.addWidget(_label(
+            "Anúncios do chat consolidados entre todos os clientes.", "muted"
+        ))
+        heading.addLayout(title)
+        heading.addStretch(1)
+        self.loot_announcements_search = QtWidgets.QLineEdit()
+        self.loot_announcements_search.setPlaceholderText("Buscar item ou jogador")
+        self.loot_announcements_search.setClearButtonEnabled(True)
+        self.loot_announcements_search.setMaximumWidth(300)
+        self.loot_announcements_search.textChanged.connect(
+            self._reset_loot_announcements_page
+        )
+        heading.addWidget(self.loot_announcements_search)
+        self.loot_announcements_client_filter = QtWidgets.QComboBox()
+        self.loot_announcements_client_filter.addItem("Todos os clientes", "")
+        for index in range(CLIENT_SLOT_COUNT):
+            self.loot_announcements_client_filter.addItem(
+                _client_label(index), _client_key(index)
+            )
+        self.loot_announcements_client_filter.currentIndexChanged.connect(
+            self._reset_loot_announcements_page
+        )
+        heading.addWidget(self.loot_announcements_client_filter)
+        self.loot_announcements_rarity_filter = QtWidgets.QComboBox()
+        self.loot_announcements_rarity_filter.addItem("Todas as raridades", -1)
+        self.loot_announcements_rarity_filter.addItem(
+            "Sem raridade identificada", 0
+        )
+        for grade, rarity in DROP_RARITY_LABELS.items():
+            self.loot_announcements_rarity_filter.addItem(rarity, grade)
+        self.loot_announcements_rarity_filter.currentIndexChanged.connect(
+            self._reset_loot_announcements_page
+        )
+        heading.addWidget(self.loot_announcements_rarity_filter)
+        column.addLayout(heading)
+        summary = QtWidgets.QFrame(objectName="accentPanel")
+        summary_layout = QtWidgets.QHBoxLayout(summary)
+        summary_layout.setContentsMargins(16, 12, 16, 12)
+        self.loot_announcements_summary = _label("Nenhum aviso capturado", "info")
+        summary_layout.addWidget(self.loot_announcements_summary)
+        column.addWidget(summary)
+        self.loot_announcements_table = QtWidgets.QTableWidget(0, 6)
+        self.loot_announcements_table.setHorizontalHeaderLabels((
+            "Horário", "Cliente", "Jogador", "Item", "Qtd.", "Raridade",
+        ))
+        self.loot_announcements_table.setIconSize(QtCore.QSize(30, 30))
+        self.loot_announcements_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.loot_announcements_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.loot_announcements_table.verticalHeader().setVisible(False)
+        announcements_header = self.loot_announcements_table.horizontalHeader()
+        for index in (0, 1, 4, 5):
+            announcements_header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        for index in (2, 3):
+            announcements_header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.Stretch
+            )
+        column.addWidget(self.loot_announcements_table, 1)
+        pagination = QtWidgets.QHBoxLayout()
+        self.loot_announcements_page_status = _label("Nenhum registro", "muted")
+        pagination.addWidget(self.loot_announcements_page_status)
+        pagination.addStretch(1)
+        self.loot_announcements_page_size = QtWidgets.QComboBox()
+        self.loot_announcements_page_size.addItems(("25", "50", "100"))
+        self.loot_announcements_page_size.currentTextChanged.connect(
+            self._reset_loot_announcements_page
+        )
+        pagination.addWidget(_label("Linhas", "muted"))
+        pagination.addWidget(self.loot_announcements_page_size)
+        previous = QtWidgets.QPushButton("Anterior")
+        previous.clicked.connect(lambda: self._change_loot_announcements_page(-1))
+        following = QtWidgets.QPushButton("Próxima")
+        following.clicked.connect(lambda: self._change_loot_announcements_page(1))
+        pagination.addWidget(previous)
+        pagination.addWidget(following)
+        column.addLayout(pagination)
+        return page
 
     def _build_inventory_page(self) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget(objectName="pageInventario")
@@ -1611,13 +3324,425 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         return page
 
-    def _build_pvp_database_page(self) -> QtWidgets.QWidget:
-        page = QtWidgets.QWidget(objectName="pageBancoPvP")
+    def _build_exp_rank_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageRankingEXP")
         column = QtWidgets.QVBoxLayout(page)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(10)
+
         heading = QtWidgets.QHBoxLayout()
-        heading.addWidget(_label("Banco PvP", "title"))
+        title = QtWidgets.QVBoxLayout()
+        title.setSpacing(2)
+        title.addWidget(_label("Ranking de EXP", "title"))
+        title.addWidget(_label("Top 100 oficial do servidor", "muted"))
+        heading.addLayout(title)
+        heading.addStretch(1)
+        self.exp_rank_search = QtWidgets.QLineEdit()
+        self.exp_rank_search.setPlaceholderText("Buscar personagem ou guilda")
+        self.exp_rank_search.setClearButtonEnabled(True)
+        self.exp_rank_search.setMaximumWidth(340)
+        self.exp_rank_search.textChanged.connect(self._render_exp_rank)
+        heading.addWidget(self.exp_rank_search)
+        self.exp_rank_export = QtWidgets.QPushButton("Exportar CSV")
+        self.exp_rank_export.setEnabled(False)
+        self.exp_rank_export.clicked.connect(
+            lambda _checked=False: self._export_exp_rank_csv()
+        )
+        heading.addWidget(self.exp_rank_export)
+        column.addLayout(heading)
+
+        summary = QtWidgets.QFrame(objectName="accentPanel")
+        summary_row = QtWidgets.QHBoxLayout(summary)
+        summary_row.setContentsMargins(16, 12, 16, 12)
+        summary_row.setSpacing(18)
+        self.exp_rank_state = _label("Aguardando captura", "muted")
+        self.exp_rank_state.setMinimumWidth(150)
+        summary_row.addWidget(self.exp_rank_state)
+        self.exp_rank_status = _label(
+            "Abra o ranking no jogo para iniciar a leitura passiva.", "muted"
+        )
+        self.exp_rank_status.setWordWrap(True)
+        summary_row.addWidget(self.exp_rank_status, 1)
+        column.addWidget(summary)
+
+        self.exp_rank_table = QtWidgets.QTableWidget(0, 7)
+        self.exp_rank_table.setHorizontalHeaderLabels(
+            (
+                "Posição", "Variação", "Personagem", "Guilda",
+                "Nível", "EXP %", "EXP total",
+            )
+        )
+        self.exp_rank_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.exp_rank_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.exp_rank_table.setAlternatingRowColors(False)
+        self.exp_rank_table.verticalHeader().setVisible(False)
+        header = self.exp_rank_table.horizontalHeader()
+        for index in (0, 1, 4, 5, 6):
+            header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        for index in (2, 3):
+            header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.Stretch
+            )
+        self.exp_rank_history_table = QtWidgets.QTableWidget(0, 10)
+        self.exp_rank_history_table.setHorizontalHeaderLabels((
+            "Captura", "Posição", "Personagem", "Nível", "EXP %",
+            "EXP total", "Ganho", "Ganho %", "EXP/h", "%/h",
+        ))
+        self.exp_rank_history_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.exp_rank_history_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.exp_rank_history_table.setAlternatingRowColors(False)
+        self.exp_rank_history_table.verticalHeader().setVisible(False)
+        history_header = self.exp_rank_history_table.horizontalHeader()
+        for index in (0, 1, 3, 4, 6, 7, 8, 9):
+            history_header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        history_header.setSectionResizeMode(
+            2, QtWidgets.QHeaderView.ResizeMode.Stretch
+        )
+        history_header.setSectionResizeMode(
+            5, QtWidgets.QHeaderView.ResizeMode.Stretch
+        )
+        self.exp_rank_tabs = QtWidgets.QTabWidget()
+        self.exp_rank_tabs.addTab(self.exp_rank_table, "Ranking atual")
+        self.exp_rank_tabs.addTab(self.exp_rank_history_table, "Histórico")
+        self.exp_rank_tabs.currentChanged.connect(
+            self._set_exp_rank_export_available
+        )
+        column.addWidget(self.exp_rank_tabs, 1)
+        note = _label(
+            "Leitura passiva. Nível e EXP % usam a curva 1.28.5; ganho % representa "
+            "pontos de progresso de nível entre capturas.",
+            "muted",
+        )
+        note.setWordWrap(True)
+        column.addWidget(note)
+        return page
+
+    def _build_map_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageMapa")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+
+        heading = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QVBoxLayout()
+        title.setSpacing(2)
+        title.addWidget(_label("Mapa", "title"))
+        title.addWidget(_label("Estado espacial passivo · limite de dois clientes", "muted"))
+        heading.addLayout(title)
+        heading.addStretch(1)
+        self.map_manual_button = QtWidgets.QPushButton("Selecionar mapa atual")
+        self.map_manual_button.setToolTip(
+            "Usa o nome informado somente enquanto o reconhecimento automático "
+            "não identificar este mapa."
+        )
+        self.map_manual_button.clicked.connect(self._set_manual_map_fallback)
+        heading.addWidget(self.map_manual_button)
+        self.map_manual_clear = QtWidgets.QPushButton("Remover mapa manual")
+        self.map_manual_clear.setToolTip(
+            "Remove apenas o fallback; o reconhecimento automático permanece ativo."
+        )
+        self.map_manual_clear.clicked.connect(self._clear_manual_map_fallback)
+        heading.addWidget(self.map_manual_clear)
+        self.map_capacity = _label("0/2 vagas em uso", "muted")
+        heading.addWidget(self.map_capacity)
+        column.addLayout(heading)
+
+        summary = QtWidgets.QFrame(objectName="accentPanel")
+        summary_row = QtWidgets.QHBoxLayout(summary)
+        summary_row.setContentsMargins(16, 12, 16, 12)
+        summary_row.setSpacing(18)
+        self.map_state = _label("Aguardando rota", "muted")
+        self.map_state.setMinimumWidth(170)
+        summary_row.addWidget(self.map_state)
+        self.map_status = _label(
+            "Inicie a captura ou um monitor para receber coordenadas.", "muted"
+        )
+        self.map_status.setWordWrap(True)
+        summary_row.addWidget(self.map_status, 1)
+        column.addWidget(summary)
+
+        metrics = QtWidgets.QHBoxLayout()
+        self.map_metric_labels: dict[str, QtWidgets.QLabel] = {}
+        for key, title_text in (
+            ("map", "Mapa"),
+            ("x", "Coordenada X"),
+            ("y", "Coordenada Y"),
+            ("z", "Coordenada Z"),
+            ("players", "Jogadores próximos"),
+        ):
+            card = QtWidgets.QFrame(objectName="mapMetricGroup")
+            card_layout = QtWidgets.QVBoxLayout(card)
+            card_layout.setContentsMargins(12, 8, 12, 8)
+            card_layout.setSpacing(2)
+            card_layout.addWidget(_label(title_text, "muted"))
+            value = _label("—", "data")
+            card_layout.addWidget(value)
+            self.map_metric_labels[key] = value
+            metrics.addWidget(card, 1)
+        column.addLayout(metrics)
+
+        viewer = QtWidgets.QFrame(objectName="mapViewerPanel")
+        viewer_layout = QtWidgets.QVBoxLayout(viewer)
+        viewer_layout.setContentsMargins(12, 10, 12, 12)
+        viewer_layout.setSpacing(8)
+        viewer_toolbar = QtWidgets.QHBoxLayout()
+        viewer_toolbar.addWidget(_label("Mapa completo", "subtitle"))
+        viewer_toolbar.addStretch(1)
+        self.map_page_zoom_out = QtWidgets.QPushButton("−")
+        self.map_page_zoom_out.setObjectName("mapToolButton")
+        self.map_page_zoom_out.setAccessibleName("Diminuir zoom do mapa")
+        self.map_page_zoom_out.setToolTip("Diminuir zoom")
+        self.map_page_zoom_out.setFixedWidth(38)
+        self.map_page_zoom = _label("100% · foco", "muted")
+        self.map_page_zoom.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.map_page_zoom.setMinimumWidth(78)
+        self.map_page_zoom_in = QtWidgets.QPushButton("+")
+        self.map_page_zoom_in.setObjectName("mapToolButton")
+        self.map_page_zoom_in.setAccessibleName("Aumentar zoom do mapa")
+        self.map_page_zoom_in.setToolTip("Aumentar zoom")
+        self.map_page_zoom_in.setFixedWidth(38)
+        self.map_page_focus = QtWidgets.QPushButton("Focar personagem")
+        self.map_page_focus.setObjectName("mapFocusButton")
+        self.map_page_focus.setToolTip(
+            "Centralizar o mapa novamente na posição atual do personagem"
+        )
+        viewer_toolbar.addWidget(self.map_page_zoom_out)
+        viewer_toolbar.addWidget(self.map_page_zoom)
+        viewer_toolbar.addWidget(self.map_page_zoom_in)
+        viewer_toolbar.addWidget(self.map_page_focus)
+        viewer_layout.addLayout(viewer_toolbar)
+        self.map_page_preview = _MapPreview()
+        self.map_page_preview.setMinimumHeight(360)
+        self.map_page_zoom_out.clicked.connect(self.map_page_preview.zoom_out)
+        self.map_page_zoom_in.clicked.connect(self.map_page_preview.zoom_in)
+        self.map_page_focus.clicked.connect(
+            self.map_page_preview.focus_on_character
+        )
+        self.map_page_preview.view_changed.connect(
+            lambda zoom, focused: self.map_page_zoom.setText(
+                f"{zoom}%" + (" · foco" if focused else "")
+            )
+        )
+        viewer_layout.addWidget(self.map_page_preview, 1)
+        hint = _label(
+            "Use a roda do mouse ou os botões para zoom. Arraste o mapa para navegar.",
+            "muted",
+        )
+        hint.setWordWrap(True)
+        viewer_layout.addWidget(hint)
+        column.addWidget(viewer, 2)
+
+        column.addWidget(_label("Jogadores próximos", "subtitle"))
+        self.map_players_table = QtWidgets.QTableWidget(0, 6)
+        self.map_players_table.setHorizontalHeaderLabels(
+            ("Personagem", "Guilda", "X", "Y", "Z", "Distância")
+        )
+        self.map_players_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.map_players_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.map_players_table.setAlternatingRowColors(False)
+        self.map_players_table.verticalHeader().setVisible(False)
+        header = self.map_players_table.horizontalHeader()
+        for index in (0, 1):
+            header.setSectionResizeMode(index, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for index in range(2, 6):
+            header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        column.addWidget(self.map_players_table, 1)
+        note = _label(
+            "O terceiro cliente continua capturando normalmente, mas não mantém estado de mapa.",
+            "muted",
+        )
+        note.setWordWrap(True)
+        column.addWidget(note)
+        return page
+
+    def _build_banks_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageBancos")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        column.addWidget(_label("Bancos", "title"))
+        description = _label(
+            "Consulte as identidades PvP, o conhecimento de monstros e suas vendas "
+            "próprias capturadas no leilão.",
+            "muted",
+        )
+        description.setWordWrap(True)
+        column.addWidget(description)
+        self.banks_tabs = QtWidgets.QTabWidget(objectName="banksTabs")
+        self.banks_tabs.addTab(self._build_pvp_database_page(embedded=True), "PvP")
+        self.banks_tabs.addTab(self._build_pve_database_page(), "PvE")
+        self.banks_tabs.addTab(self._build_auction_database_page(), "Leilão")
+        self.banks_tabs.currentChanged.connect(self._render_selected_bank)
+        column.addWidget(self.banks_tabs, 1)
+        return page
+
+    def _render_selected_bank(self, index: int | None = None) -> None:
+        current = self.banks_tabs.currentIndex() if index is None else index
+        if current == 0:
+            self._render_pvp_database()
+        elif current == 1:
+            self._render_pve_database()
+        elif current == 2:
+            self._render_auction_database()
+
+    def _bank_is_visible(self, index: int) -> bool:
+        return (
+            hasattr(self, "banks_tabs")
+            and self.page_stack.currentIndex() == BANKS_PAGE_INDEX
+            and self.banks_tabs.currentIndex() == index
+        )
+
+    def _build_pve_database_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageBancoPvE")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(8, 10, 8, 8)
+        column.setSpacing(10)
+        heading = QtWidgets.QHBoxLayout()
+        heading.addWidget(_label("Monstros conhecidos", "subtitle"))
+        heading.addStretch(1)
+        refresh = QtWidgets.QPushButton("Atualizar")
+        refresh.clicked.connect(self._render_pve_database)
+        heading.addWidget(refresh)
+        column.addLayout(heading)
+        note = _label(
+            "Uma observação idêntica não volta à fila. Novos locais são preservados e "
+            "HP divergente fica em revisão, sem substituir o valor confirmado.",
+            "muted",
+        )
+        note.setWordWrap(True)
+        column.addWidget(note)
+        self.pve_database_filter = QtWidgets.QLineEdit()
+        self.pve_database_filter.setPlaceholderText(
+            "Filtrar monstro, NPC, mapa ou coordenada"
+        )
+        self.pve_database_filter.textChanged.connect(self._filter_pve_database)
+        column.addWidget(self.pve_database_filter)
+        self.pve_database_table = QtWidgets.QTableWidget(0, 7)
+        self.pve_database_table.setHorizontalHeaderLabels((
+            "Monstro", "NPC", "Nível", "HP máximo", "Localizações",
+            "Revisão de HP", "Sincronização",
+        ))
+        self.pve_database_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.pve_database_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.pve_database_table.verticalHeader().setVisible(False)
+        header = self.pve_database_table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for index in (1, 2, 3, 5, 6):
+            header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        column.addWidget(self.pve_database_table, 1)
+        self.pve_database_status = _label("Nenhum monstro observado.", "muted")
+        column.addWidget(self.pve_database_status)
+        return page
+
+    def _build_auction_database_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageBancoLeilao")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(8, 10, 8, 8)
+        column.setSpacing(10)
+        heading = QtWidgets.QHBoxLayout()
+        heading.addWidget(_label("Histórico do leilão", "subtitle"))
+        heading.addStretch(1)
+        self.auction_database_send = QtWidgets.QPushButton("Enviar banco ao site")
+        self.auction_database_send.setToolTip(
+            "Envia somente registros confirmados e sanitizados, sem IDs de conta ou personagem."
+        )
+        self.auction_database_send.clicked.connect(self._send_auction_bank)
+        heading.addWidget(self.auction_database_send)
+        refresh = QtWidgets.QPushButton("Atualizar")
+        refresh.clicked.connect(self._render_auction_database)
+        heading.addWidget(refresh)
+        column.addLayout(heading)
+        note = _label(
+            "Mostra compras confirmadas, vendas próprias e registros históricos ainda "
+            "sem tipo validado, sempre sem IDs de conta ou personagem.",
+            "muted",
+        )
+        note.setWordWrap(True)
+        column.addWidget(note)
+        filters = QtWidgets.QHBoxLayout()
+        self.auction_database_filter = QtWidgets.QLineEdit()
+        self.auction_database_filter.setPlaceholderText("Filtrar item ou servidor")
+        self.auction_database_filter.textChanged.connect(
+            self._filter_auction_database
+        )
+        filters.addWidget(self.auction_database_filter, 1)
+        self.auction_database_status_filter = QtWidgets.QComboBox()
+        for label, value in (
+            ("Todos os estados", ""),
+            ("Ativos", "active"),
+            ("Vendidos", "sold"),
+            ("Cancelados", "cancelled"),
+            ("Liquidados", "settled"),
+            ("Comprados", "bought"),
+            ("Tipo não validado", "unclassified"),
+        ):
+            self.auction_database_status_filter.addItem(label, value)
+        self.auction_database_status_filter.currentIndexChanged.connect(
+            self._filter_auction_database
+        )
+        filters.addWidget(self.auction_database_status_filter)
+        column.addLayout(filters)
+        self.auction_database_table = QtWidgets.QTableWidget(0, 7)
+        self.auction_database_table.setHorizontalHeaderLabels((
+            "Item", "Refino", "Quantidade", "Preço/un.", "Estado",
+            "Servidor", "Observado",
+        ))
+        self.auction_database_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.auction_database_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.auction_database_table.verticalHeader().setVisible(False)
+        header = self.auction_database_table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for index in range(1, 7):
+            header.setSectionResizeMode(
+                index, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
+        column.addWidget(self.auction_database_table, 1)
+        self.auction_database_status = _label(
+            "Selecione um personagem para consultar suas vendas.", "muted"
+        )
+        column.addWidget(self.auction_database_status)
+        return page
+
+    def _build_pvp_database_page(self, *, embedded: bool = False) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageBancoPvP")
+        column = QtWidgets.QVBoxLayout(page)
+        if embedded:
+            column.setContentsMargins(8, 10, 8, 8)
+        else:
+            column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        heading = QtWidgets.QHBoxLayout()
+        if not embedded:
+            heading.addWidget(_label("Banco PvP", "title"))
         heading.addStretch(1)
         heading.addWidget(_label("Enviar a cada", "muted"))
         self.pvp_sync_interval = QtWidgets.QSpinBox()
@@ -1641,8 +3766,9 @@ class MainWindow(QtWidgets.QMainWindow):
         heading.addWidget(refresh)
         column.addLayout(heading)
         note = _label(
-            "A guilda e o status podem ser alterados manualmente. Alterações ficam "
-            "pendentes até o próximo intervalo ou até Enviar ao site.",
+            "UIDs neutros vistos em uma única sessão ficam em quarentena. Uma "
+            "segunda sessão ou uma confirmação de guilda/status promove ao Banco "
+            "Final; nenhum registro é excluído automaticamente.",
             "muted",
         )
         note.setWordWrap(True)
@@ -1651,7 +3777,7 @@ class MainWindow(QtWidgets.QMainWindow):
         filters = QtWidgets.QHBoxLayout()
         self.pvp_database_filter = QtWidgets.QLineEdit()
         self.pvp_database_filter.setPlaceholderText(
-            "Filtrar UID, personagem, classe, rover ou guilda"
+            "Filtrar UID, personagem ou guilda"
         )
         self.pvp_database_filter.textChanged.connect(self._filter_pvp_database)
         filters.addWidget(self.pvp_database_filter, 1)
@@ -1667,6 +3793,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self._filter_pvp_database
         )
         filters.addWidget(self.pvp_database_status_filter)
+        self.pvp_database_curation_filter = QtWidgets.QComboBox()
+        for label, value in (
+            ("Banco final", "final"),
+            ("Quarentena", "quarantine"),
+            ("Todos os registros", ""),
+        ):
+            self.pvp_database_curation_filter.addItem(label, value)
+        self.pvp_database_curation_filter.currentIndexChanged.connect(
+            self._filter_pvp_database
+        )
+        filters.addWidget(self.pvp_database_curation_filter)
         column.addLayout(filters)
 
         batch = QtWidgets.QHBoxLayout()
@@ -1697,9 +3834,12 @@ class MainWindow(QtWidgets.QMainWindow):
         batch.addWidget(apply_batch)
         column.addLayout(batch)
 
-        self.pvp_database_table = QtWidgets.QTableWidget(0, 7)
+        self.pvp_database_table = QtWidgets.QTableWidget(0, 8)
         self.pvp_database_table.setHorizontalHeaderLabels(
-            ("", "UID", "Personagem", "Classe", "Rover", "Guilda", "Status")
+            (
+                "", "UID", "Personagem", "Classe", "Rover",
+                "Evidência", "Guilda", "Status",
+            )
         )
         self.pvp_database_table.verticalHeader().setVisible(False)
         self.pvp_database_table.setSelectionBehavior(
@@ -1712,12 +3852,16 @@ class MainWindow(QtWidgets.QMainWindow):
         header.setSectionsMovable(True)
         header.setStretchLastSection(False)
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
-        saved_header = str(self.preferences.get("pvp_database_header_state") or "")
+        saved_header = str(
+            self.preferences.get("pvp_database_header_state_v2") or ""
+        )
         restored = bool(saved_header) and header.restoreState(
                 QtCore.QByteArray.fromBase64(saved_header.encode("ascii"))
             )
         if not restored:
-            for index, width in enumerate((42, 170, 220, 120, 140, 220, 120)):
+            for index, width in enumerate(
+                (42, 170, 220, 120, 140, 160, 220, 120)
+            ):
                 header.resizeSection(index, width)
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.pvp_header_save_timer = QtCore.QTimer(self)
@@ -1740,14 +3884,33 @@ class MainWindow(QtWidgets.QMainWindow):
         if not hasattr(self, "pvp_database_table"):
             return
         checked_uids = self._checked_pvp_uids()
+        query = self.pvp_database_filter.text().strip()
+        wanted_status = str(
+            self.pvp_database_status_filter.currentData() or ""
+        )
+        wanted_curation = str(
+            self.pvp_database_curation_filter.currentData() or ""
+        )
         knowledge = KnowledgeStore(self.knowledge_path)
         try:
-            rows = knowledge.characters()
+            rows = knowledge.characters(
+                query=query,
+                status=wanted_status,
+                curation_state=wanted_curation,
+                limit=self.memory_limits["pvp_rows"],
+            )
+            total = knowledge.character_count(
+                query=query,
+                status=wanted_status,
+                curation_state=wanted_curation,
+            )
+            curation = knowledge.curation_summary()
         finally:
             knowledge.close()
         self.pvp_database_rows = {
             str(row["character_uid"]): row for row in rows
         }
+        self.pvp_database_table.setRowCount(0)
         self.pvp_database_table.setRowCount(len(rows))
         labels = {
             "ally": "Aliado",
@@ -1789,6 +3952,18 @@ class MainWindow(QtWidgets.QMainWindow):
             rover_cell.setToolTip(
                 f"Rover #{rover_index}" if rover_index else "Rover não identificado"
             )
+            sightings = int(row.get("observation_count") or 0)
+            sessions = int(row.get("session_count") or 0)
+            evidence_cell = QtWidgets.QTableWidgetItem(
+                f"{sessions} sessão(ões) · {sightings} aparição(ões)"
+            )
+            evidence_cell.setFlags(
+                evidence_cell.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable
+            )
+            evidence_cell.setToolTip(
+                "O Banco Final exige confirmação manual, identidade de guilda/status "
+                "ou observação em pelo menos duas sessões."
+            )
             guild = QtWidgets.QLineEdit(str(row.get("guild_name") or ""))
             guild.setPlaceholderText("Guilda não identificada")
             guild.editingFinished.connect(
@@ -1810,42 +3985,282 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pvp_database_table.setItem(row_index, 2, name_cell)
             self.pvp_database_table.setItem(row_index, 3, class_cell)
             self.pvp_database_table.setItem(row_index, 4, rover_cell)
-            self.pvp_database_table.setCellWidget(row_index, 5, guild)
-            self.pvp_database_table.setCellWidget(row_index, 6, status)
-        self._filter_pvp_database()
+            self.pvp_database_table.setItem(row_index, 5, evidence_cell)
+            self.pvp_database_table.setCellWidget(row_index, 6, guild)
+            self.pvp_database_table.setCellWidget(row_index, 7, status)
+        pending = sum(row.get("upload_state") == "pending" for row in rows)
+        suffix = (
+            f"Banco final: {curation['final']} · "
+            f"quarentena: {curation['quarantine']}"
+        )
+        if not total:
+            text = f"Nenhum UID neste filtro · {suffix}"
+        elif total > len(rows):
+            text = (
+                f"Mostrando {len(rows)} de {total} UID(s) · "
+                f"{pending} pendente(s) nesta lista · refine a busca · {suffix}"
+            )
+        else:
+            text = f"{total} UID(s) · {pending} aguardando envio · {suffix}"
+        self.pvp_database_status.setText(text)
+
+    def _render_pve_database(self) -> None:
+        if not hasattr(self, "pve_database_table"):
+            return
+        if "monitor-pve" not in self.license_features:
+            self.pve_database_table.setRowCount(0)
+            self.pve_database_status.setText(
+                "Banco PvE não incluído nesta licença."
+            )
+            return
+        knowledge = KnowledgeStore(self.knowledge_path)
+        try:
+            rows = knowledge.mobs()
+            locations = knowledge.mob_locations()
+            candidates = knowledge.mob_hp_candidates()
+        finally:
+            knowledge.close()
+        locations_by_mob: dict[tuple[int, str], list[dict[str, Any]]] = {}
+        for location in locations:
+            key = (
+                int(location.get("npc_index") or 0),
+                str(location.get("protocol_version") or ""),
+            )
+            locations_by_mob.setdefault(key, []).append(location)
+        candidates_by_mob: dict[tuple[int, str], list[dict[str, Any]]] = {}
+        for candidate in candidates:
+            key = (
+                int(candidate.get("npc_index") or 0),
+                str(candidate.get("protocol_version") or ""),
+            )
+            candidates_by_mob.setdefault(key, []).append(candidate)
+
+        self.pve_database_rows = rows
+        self.pve_database_table.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            npc_index = int(row.get("npc_index") or 0)
+            protocol = str(row.get("protocol_version") or "")
+            key = (npc_index, protocol)
+            location_labels = []
+            for location in locations_by_mob.get(key, []):
+                label = str(location.get("label") or "").strip()
+                map_index = location.get("map_index")
+                if not label and map_index is not None:
+                    label = f"Mapa #{map_index}"
+                coordinates = [
+                    location.get("position_x"),
+                    location.get("position_y"),
+                    location.get("position_z"),
+                ]
+                if all(isinstance(value, (int, float)) for value in coordinates):
+                    position = ", ".join(f"{float(value):.1f}" for value in coordinates)
+                    label = f"{label or 'Coordenada'} ({position})"
+                if label:
+                    location_labels.append(label)
+            location_text = "; ".join(location_labels)
+            visible_locations = "; ".join(location_labels[:2])
+            if len(location_labels) > 2:
+                visible_locations += f"; +{len(location_labels) - 2}"
+            pending_candidates = [
+                item for item in candidates_by_mob.get(key, [])
+                if item.get("review_state") == "pending"
+            ]
+            candidate_values = ", ".join(
+                self._format_count(item.get("max_hp"))
+                for item in pending_candidates
+            )
+            values = (
+                str(row.get("name") or f"Monstro #{npc_index}"),
+                str(npc_index),
+                self._format_count(row.get("level")),
+                self._format_count(row.get("max_hp")),
+                visible_locations or "—",
+                f"Revisar {len(pending_candidates)}" if pending_candidates else "Sem conflito",
+                "Pendente" if row.get("upload_state") == "pending" else "Enviado",
+            )
+            for column, value in enumerate(values):
+                cell = QtWidgets.QTableWidgetItem(value)
+                cell.setData(QtCore.Qt.ItemDataRole.UserRole, value)
+                self.pve_database_table.setItem(row_index, column, cell)
+            name_cell = self.pve_database_table.item(row_index, 0)
+            name_cell.setToolTip(f"Protocolo {protocol or 'não identificado'}")
+            location_cell = self.pve_database_table.item(row_index, 4)
+            location_cell.setData(
+                QtCore.Qt.ItemDataRole.UserRole, location_text or "sem localização"
+            )
+            location_cell.setToolTip(location_text or "Nenhuma localização confirmada")
+            candidate_cell = self.pve_database_table.item(row_index, 5)
+            candidate_cell.setToolTip(
+                f"Valores divergentes: {candidate_values}"
+                if candidate_values else "Nenhuma divergência de HP"
+            )
+        self._filter_pve_database()
+
+    def _filter_pve_database(self, *_args) -> None:
+        if not hasattr(self, "pve_database_table"):
+            return
+        query = self.pve_database_filter.text().strip().casefold()
+        visible = 0
+        for row in range(self.pve_database_table.rowCount()):
+            values = [
+                str(
+                    self.pve_database_table.item(row, column).data(
+                        QtCore.Qt.ItemDataRole.UserRole
+                    ) or self.pve_database_table.item(row, column).text()
+                )
+                for column in range(self.pve_database_table.columnCount())
+            ]
+            matches = not query or query in " ".join(values).casefold()
+            self.pve_database_table.setRowHidden(row, not matches)
+            visible += int(matches)
+        rows = list(getattr(self, "pve_database_rows", []))
+        known_hp = sum(row.get("max_hp") is not None for row in rows)
+        known_locations = sum(int(row.get("location_count") or 0) > 0 for row in rows)
+        conflicts = sum(int(row.get("hp_candidate_count") or 0) for row in rows)
+        self.pve_database_status.setText(
+            f"{visible} de {len(rows)} monstro(s) · {known_hp} com HP · "
+            f"{known_locations} com localização · {conflicts} divergência(s) em revisão"
+            if rows else "Nenhum monstro observado."
+        )
+
+    def _render_auction_database(self) -> None:
+        if not hasattr(self, "auction_database_table"):
+            return
+        session_id = str(self.snapshot.get("session_id") or "")
+        character_uid = self._client_uid_for(self.active_client)
+        self.auction_database_context = ""
+        rows: list[dict[str, Any]] = []
+        if not session_id:
+            self.auction_database_context = "Nenhuma sessão disponível."
+        elif not character_uid:
+            self.auction_database_context = (
+                f"Aguardando o personagem de {self._client_name(self.active_client)}."
+            )
+        else:
+            store = CaptureStore(self.database_path, readonly=True)
+            try:
+                events = store.auction_sale_events(session_id, character_uid)
+            finally:
+                store.close()
+            catalog = item_names_for_language(
+                self.preferences.get("item_name_language")
+            )
+            rows = auction_sales_snapshot(
+                events,
+                secret=self.auction_projection_secret,
+            )
+            transactions = auction_transaction_history(
+                events,
+                secret=self.auction_projection_secret,
+            )
+            transaction_keys = {
+                (str(row.get("listing_id") or ""), row.get("transaction_type"))
+                for row in transactions
+            }
+            rows = [
+                row for row in rows
+                if not (
+                    row.get("status") in {"sold", "settled"}
+                    and (str(row.get("listing_id") or ""), "sold")
+                    in transaction_keys
+                )
+            ] + [
+                {**row, "status": row.get("transaction_type")}
+                for row in transactions
+            ]
+            rows.sort(
+                key=lambda item: int(item.get("observed_at_ns") or 0),
+                reverse=True,
+            )
+            self.auction_database_context = (
+                f"{self._client_name(self.active_client)} · histórico próprio capturado"
+            )
+        self.auction_database_rows = rows
+        self.auction_database_table.setRowCount(len(rows))
+        status_labels = {
+            "active": "Ativo",
+            "sold": "Vendido",
+            "cancelled": "Cancelado",
+            "settled": "Liquidado",
+            "bought": "Comprado",
+            "unclassified": "Tipo não validado",
+        }
+        for row_index, row in enumerate(rows):
+            item_index = int(row.get("item_index") or 0)
+            enchant = row.get("enchant_level")
+            observed_at = self._format_observed_at(row.get("observed_at_ns"))
+            status = str(row.get("status") or "")
+            values = (
+                str(catalog.get(str(item_index)) or f"Item {item_index}"),
+                f"+{int(enchant)}" if isinstance(enchant, int) else "—",
+                self._format_count(row.get("quantity")),
+                self._format_count(row.get("price_per_unit")),
+                status_labels.get(status, status or "—"),
+                f"Servidor {row.get('server_type')}",
+                observed_at,
+            )
+            for column, value in enumerate(values):
+                cell = QtWidgets.QTableWidgetItem(value)
+                self.auction_database_table.setItem(row_index, column, cell)
+            self.auction_database_table.item(row_index, 0).setToolTip(
+                f"Item #{item_index}"
+            )
+            self.auction_database_table.item(row_index, 4).setData(
+                QtCore.Qt.ItemDataRole.UserRole, status
+            )
+            raw_type = row.get("exchange_type_raw")
+            if status == "unclassified" and isinstance(raw_type, int):
+                self.auction_database_table.item(row_index, 4).setToolTip(
+                    f"Tipo bruto confirmado: {raw_type}. Compra/venda ainda não validada."
+                )
+        self._filter_auction_database()
+
+    @staticmethod
+    def _format_observed_at(value: object) -> str:
+        try:
+            timestamp = int(value) / 1_000_000_000
+            if timestamp <= 0:
+                return "—"
+            return datetime.fromtimestamp(timestamp).strftime("%d/%m %H:%M:%S")
+        except (OSError, OverflowError, TypeError, ValueError):
+            return "—"
+
+    def _filter_auction_database(self, *_args) -> None:
+        if not hasattr(self, "auction_database_table"):
+            return
+        query = self.auction_database_filter.text().strip().casefold()
+        wanted_status = str(
+            self.auction_database_status_filter.currentData() or ""
+        )
+        visible = 0
+        for row in range(self.auction_database_table.rowCount()):
+            values = [
+                self.auction_database_table.item(row, column).text()
+                for column in range(self.auction_database_table.columnCount())
+            ]
+            status = str(
+                self.auction_database_table.item(row, 4).data(
+                    QtCore.Qt.ItemDataRole.UserRole
+                ) or ""
+            )
+            matches = (
+                (not query or query in " ".join(values).casefold())
+                and (not wanted_status or status == wanted_status)
+            )
+            self.auction_database_table.setRowHidden(row, not matches)
+            visible += int(matches)
+        rows = list(getattr(self, "auction_database_rows", []))
+        active = sum(row.get("status") == "active" for row in rows)
+        context = str(getattr(self, "auction_database_context", ""))
+        self.auction_database_status.setText(
+            f"{context} · {visible} de {len(rows)} registro(s) · {active} ativo(s)"
+            if rows else context or "Nenhum histórico próprio capturado."
+        )
 
     def _filter_pvp_database(self, *_args) -> None:
         if not hasattr(self, "pvp_database_table"):
             return
-        query = (
-            self.pvp_database_filter.text().strip().casefold()
-            if hasattr(self, "pvp_database_filter") else ""
-        )
-        wanted_status = (
-            str(self.pvp_database_status_filter.currentData() or "")
-            if hasattr(self, "pvp_database_status_filter") else ""
-        )
-        visible = 0
-        for row in range(self.pvp_database_table.rowCount()):
-            values = [
-                self.pvp_database_table.item(row, column).text()
-                for column in range(1, 5)
-            ]
-            guild = self.pvp_database_table.cellWidget(row, 5)
-            status = self.pvp_database_table.cellWidget(row, 6)
-            values.append(guild.text() if guild else "")
-            matches = (
-                (not query or query in " ".join(values).casefold())
-                and (not wanted_status or (status and status.currentData() == wanted_status))
-            )
-            self.pvp_database_table.setRowHidden(row, not matches)
-            visible += int(matches)
-        rows = list(getattr(self, "pvp_database_rows", {}).values())
-        pending = sum(row.get("upload_state") == "pending" for row in rows)
-        self.pvp_database_status.setText(
-            f"{visible} de {len(rows)} UID(s) · {pending} aguardando envio"
-            if rows else "Nenhum UID observado."
-        )
+        self._render_pvp_database()
 
     def _checked_pvp_uids(self) -> set[str]:
         if not hasattr(self, "pvp_database_table"):
@@ -1884,12 +4299,8 @@ class MainWindow(QtWidgets.QMainWindow):
         knowledge = KnowledgeStore(self.knowledge_path)
         changed = 0
         try:
-            current = {
-                str(item["character_uid"]): item
-                for item in knowledge.characters(include_ignored=True)
-            }
             for uid in uids:
-                row = current.get(uid)
+                row = knowledge.character(uid)
                 if row is None:
                     continue
                 knowledge.update_pvp_identity(
@@ -1916,7 +4327,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pvp_database_table.horizontalHeader().saveState().toBase64()
         ).decode("ascii")
         self.preferences = save_preferences(
-            {"pvp_database_header_state": state}, self.preferences_path
+            {"pvp_database_header_state_v2": state}, self.preferences_path
         )
 
     def _save_pvp_identity(
@@ -1927,10 +4338,7 @@ class MainWindow(QtWidgets.QMainWindow):
     ) -> None:
         knowledge = KnowledgeStore(self.knowledge_path)
         try:
-            current = next(
-                (item for item in knowledge.characters() if item["character_uid"] == uid),
-                None,
-            )
+            current = knowledge.character(uid, include_ignored=False)
             if current is None:
                 return
             saved = knowledge.update_pvp_identity(
@@ -1977,7 +4385,155 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda: self.site_uploader.receive_observations(self.knowledge_path),
         )
 
+    def _build_integrations_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageIntegracoes")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        column.addWidget(_label("Integrações", "title"))
+        column.addWidget(_label(
+            "Conecte o Profile, controle a API local e acompanhe a saúde das saídas.",
+            "muted",
+        ))
+
+        scroll = QtWidgets.QScrollArea(objectName="pageScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        content = QtWidgets.QWidget(objectName="scrollContent")
+        grid = QtWidgets.QGridLayout(content)
+        self.integrations_grid = grid
+        grid.setContentsMargins(0, 0, 8, 0)
+        grid.setSpacing(8)
+        grid.addWidget(self._build_profile_integration_panel(), 0, 0)
+        grid.addWidget(self._build_local_api_panel(), 0, 1)
+        grid.addWidget(self._build_integration_health_panel(), 1, 0, 1, 2)
+
+        actions = QtWidgets.QHBoxLayout()
+        actions.addStretch(1)
+        restore = QtWidgets.QPushButton("Restaurar valores salvos")
+        restore.clicked.connect(self._load_settings_fields)
+        save = QtWidgets.QPushButton("Salvar integrações")
+        save.clicked.connect(self._save_settings)
+        actions.addWidget(restore)
+        actions.addWidget(save)
+        grid.addLayout(actions, 2, 0, 1, 2)
+        grid.setRowStretch(3, 1)
+        scroll.setWidget(content)
+        column.addWidget(scroll, 1)
+        return page
+
+    def _build_profile_integration_panel(self) -> QtWidgets.QWidget:
+        profile = QtWidgets.QFrame(objectName="panel")
+        profile_form = QtWidgets.QFormLayout(profile)
+        profile_form.addRow(_label("Integração com o Profile", "subtitle"))
+        self.setting_profile = QtWidgets.QLineEdit()
+        profile_form.addRow("Nome do Profile", self.setting_profile)
+        self.setting_site_token = QtWidgets.QLineEdit()
+        self.setting_site_token.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self.setting_site_token.setPlaceholderText("Token gerado no site")
+        profile_form.addRow("Token", self.setting_site_token)
+        profile_actions = QtWidgets.QWidget()
+        profile_actions_layout = QtWidgets.QHBoxLayout(profile_actions)
+        profile_actions_layout.setContentsMargins(0, 0, 0, 0)
+        self.connect_site_button = QtWidgets.QPushButton("Validar token")
+        self.connect_site_button.clicked.connect(self._connect_site_profile)
+        self.disconnect_site_button = QtWidgets.QPushButton("Revogar localmente")
+        self.disconnect_site_button.clicked.connect(self._disconnect_site_profile)
+        self.export_upload_button = QtWidgets.QPushButton("Exportar e enviar agora")
+        self.export_upload_button.clicked.connect(self._export_and_upload)
+        profile_actions_layout.addWidget(self.connect_site_button)
+        profile_actions_layout.addWidget(self.disconnect_site_button)
+        profile_actions_layout.addWidget(self.export_upload_button)
+        profile_form.addRow(profile_actions)
+        site_enabled = bool(SITE_SERVER)
+        for widget in (
+            self.setting_profile,
+            self.setting_site_token,
+            self.connect_site_button,
+            self.disconnect_site_button,
+        ):
+            widget.setEnabled(site_enabled)
+        self.export_upload_button.setEnabled(
+            site_enabled and self._site_allows("export")
+        )
+        if not self._site_allows("export"):
+            self.export_upload_button.setToolTip(
+                "Nesta versão, a integração está liberada para Mercado e "
+                "Ranking de EXP."
+            )
+        self.site_profile_status = _label(
+            "Verificando token salvo para Mercado e Ranking de EXP…"
+            if site_enabled
+            else "Integração com o site desativada neste perfil de homologação.",
+            "muted",
+        )
+        self.site_profile_status.setWordWrap(True)
+        profile_form.addRow(self.site_profile_status)
+        return profile
+
+    def _build_local_api_panel(self) -> QtWidgets.QWidget:
+        local_api = QtWidgets.QFrame(objectName="panel")
+        local_api_layout = QtWidgets.QVBoxLayout(local_api)
+        local_api_layout.addWidget(_label("API local", "subtitle"))
+        self.setting_local_api = QtWidgets.QCheckBox(
+            "Ativar saída somente neste computador"
+        )
+        local_api_layout.addWidget(self.setting_local_api)
+        port_row = QtWidgets.QHBoxLayout()
+        port_row.addWidget(_label("Porta", "muted"))
+        self.setting_local_api_port = QtWidgets.QSpinBox()
+        self.setting_local_api_port.setRange(1024, 65535)
+        self.setting_local_api_port.setValue(LOCAL_API_DEFAULT_PORT)
+        port_row.addWidget(self.setting_local_api_port)
+        self.local_api_copy_token = QtWidgets.QPushButton("Copiar token")
+        self.local_api_copy_token.setEnabled(False)
+        self.local_api_copy_token.clicked.connect(self._copy_local_api_token)
+        port_row.addWidget(self.local_api_copy_token)
+        port_row.addStretch(1)
+        local_api_layout.addLayout(port_row)
+        self.local_api_status = _label(
+            "Desativada. O token permanece protegido localmente.", "muted"
+        )
+        self.local_api_status.setWordWrap(True)
+        local_api_layout.addWidget(self.local_api_status)
+        local_api_layout.addStretch(1)
+        return local_api
+
+    def _build_integration_health_panel(self) -> QtWidgets.QWidget:
+        health = QtWidgets.QFrame(objectName="accentPanel")
+        layout = QtWidgets.QGridLayout(health)
+        layout.addWidget(_label("Saúde do programa", "subtitle"), 0, 0, 1, 4)
+        self.integration_health_labels: dict[str, QtWidgets.QLabel] = {}
+        for column, (key, title) in enumerate((
+            ("capture", "Captura"),
+            ("memory", "Memória"),
+            ("checkpoint", "Checkpoint"),
+            ("stream", "Stream"),
+        )):
+            layout.addWidget(_label(title, "muted"), 1, column)
+            value = _label("—", "info")
+            value.setWordWrap(True)
+            layout.addWidget(value, 2, column)
+            self.integration_health_labels[key] = value
+        return health
+
     def _build_settings_page(self) -> QtWidgets.QWidget:
+        page = QtWidgets.QWidget(objectName="pageConfigurações")
+        column = QtWidgets.QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        self.settings_sections = QtWidgets.QTabWidget(objectName="settingsSections")
+        self.settings_sections.addTab(self._build_settings_general_page(), "Geral")
+        self.settings_sections.addTab(
+            self._build_integrations_page(), "Integrações e API"
+        )
+        self.settings_sections.currentChanged.connect(
+            lambda _index: self._render_integration_health()
+        )
+        column.addWidget(self.settings_sections, 1)
+        return page
+
+    def _build_settings_general_page(self) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget(objectName="pageConfigurações")
         column = QtWidgets.QVBoxLayout(page)
         column.setContentsMargins(0, 0, 0, 0)
@@ -2002,23 +4558,29 @@ class MainWindow(QtWidgets.QMainWindow):
         capture_form.addRow("Pasta", directory)
         self.setting_decode_interval = QtWidgets.QSpinBox(); self.setting_decode_interval.setRange(15, 300); self.setting_decode_interval.setSingleStep(5); self.setting_decode_interval.setSuffix(" s")
         capture_form.addRow("Intervalo de leitura", self.setting_decode_interval)
+        self.setting_memory_limit = QtWidgets.QSpinBox()
+        self.setting_memory_limit.setRange(
+            MIN_MEMORY_BUDGET_MB, MAX_MEMORY_BUDGET_MB
+        )
+        self.setting_memory_limit.setSingleStep(MEMORY_BUDGET_STEP_MB)
+        self.setting_memory_limit.setSuffix(" MiB")
+        self.setting_memory_limit.setToolTip(
+            "Orçamento de memória do RF QOL. Limites menores reduzem filas, "
+            "eventos recentes, históricos e caches. Filas em uso mudam na "
+            "próxima ativação da captura ou dos monitores."
+        )
+        self.setting_memory_limit.valueChanged.connect(
+            self._update_memory_limit_summary
+        )
+        capture_form.addRow("Limite de RAM", self.setting_memory_limit)
+        self.setting_memory_summary = _label("", "muted")
+        self.setting_memory_summary.setWordWrap(True)
+        capture_form.addRow("", self.setting_memory_summary)
+        self.setting_memory_limit.setValue(self.memory_limits["budget_mb"])
+        self._update_memory_limit_summary(self.setting_memory_limit.value())
         self.setting_language = QtWidgets.QComboBox(); self.setting_language.addItem("Português", "pt"); self.setting_language.addItem("English", "en")
         capture_form.addRow("Idioma dos dados do jogo", self.setting_language)
         grid.addWidget(capture, 1, 0)
-
-        profile = QtWidgets.QFrame(objectName="panel")
-        profile_form = QtWidgets.QFormLayout(profile)
-        profile_form.addRow(_label("Integração com o Profile", "subtitle"))
-        self.setting_profile = QtWidgets.QLineEdit(); profile_form.addRow("Nome do Profile", self.setting_profile)
-        self.setting_site_token = QtWidgets.QLineEdit(); self.setting_site_token.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password); self.setting_site_token.setPlaceholderText("Token gerado no site"); profile_form.addRow("Token", self.setting_site_token)
-        profile_actions = QtWidgets.QWidget(); profile_actions_layout = QtWidgets.QHBoxLayout(profile_actions); profile_actions_layout.setContentsMargins(0,0,0,0)
-        connect_token = QtWidgets.QPushButton("Validar token"); connect_token.clicked.connect(self._connect_site_profile)
-        disconnect_token = QtWidgets.QPushButton("Revogar localmente"); disconnect_token.clicked.connect(self._disconnect_site_profile)
-        self.export_upload_button = QtWidgets.QPushButton("Exportar e enviar agora"); self.export_upload_button.clicked.connect(self._export_and_upload)
-        profile_actions_layout.addWidget(connect_token); profile_actions_layout.addWidget(disconnect_token); profile_actions_layout.addWidget(self.export_upload_button)
-        profile_form.addRow(profile_actions)
-        self.site_profile_status = _label("Verificando token salvo…", "muted"); self.site_profile_status.setWordWrap(True); profile_form.addRow(self.site_profile_status)
-        grid.addWidget(profile, 1, 1)
 
         shortcuts = QtWidgets.QFrame(objectName="panel")
         shortcuts_form = QtWidgets.QFormLayout(shortcuts)
@@ -2045,9 +4607,11 @@ class MainWindow(QtWidgets.QMainWindow):
             "Enviar Leilão/Mercado automaticamente ao concluir a lista"
         )
         self.setting_delete_export = QtWidgets.QCheckBox("Excluir após exportar")
-        self.setting_detailed_log = QtWidgets.QCheckBox("Ativar log completo (detalhado)")
+        self.setting_detailed_log = QtWidgets.QCheckBox("Log completo (sempre ativo)")
+        self.setting_detailed_log.setChecked(True)
+        self.setting_detailed_log.setEnabled(False)
         self.setting_detailed_log.setToolTip(
-            "Registra ações e etapas internas. Pode aumentar o tamanho do arquivo; "
+            "Registra sempre ações e etapas internas. Pode aumentar o tamanho do arquivo; "
             "chaves, tokens e conteúdo bruto de pacotes continuam removidos."
         )
         behavior_layout.addWidget(self.setting_minimize); behavior_layout.addWidget(self.setting_auto_export); behavior_layout.addWidget(self.setting_auto_market); behavior_layout.addWidget(self.setting_delete_export); behavior_layout.addWidget(self.setting_detailed_log); behavior_layout.addStretch(1)
@@ -2069,6 +4633,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.activate_license_button = QtWidgets.QPushButton("Ativar licença")
         self.activate_license_button.clicked.connect(self._activate_license)
         license_layout.addWidget(self.activate_license_button)
+        self.retry_license_button = QtWidgets.QPushButton("Tentar validar agora")
+        self.retry_license_button.clicked.connect(
+            lambda: self._refresh_license_online(force=True)
+        )
+        license_layout.addWidget(self.retry_license_button)
         license_layout.addStretch(1)
         grid.addWidget(license_panel, 0, 0)
 
@@ -2115,16 +4684,26 @@ class MainWindow(QtWidgets.QMainWindow):
         export_row = QtWidgets.QHBoxLayout()
         export_button = QtWidgets.QPushButton("Exportar sessão"); export_button.clicked.connect(self._export_session)
         export_row.addWidget(export_button); export_row.addStretch(1); storage_layout.addLayout(export_row); storage_layout.addStretch(1)
-        grid.addWidget(storage, 3, 0, 1, 2)
+        grid.addWidget(storage, 1, 1)
 
         actions = QtWidgets.QHBoxLayout(); actions.addStretch(1)
         cancel_settings = QtWidgets.QPushButton("Cancelar"); cancel_settings.clicked.connect(self._load_settings_fields)
         save_settings = QtWidgets.QPushButton("Salvar configurações"); save_settings.clicked.connect(self._save_settings)
         actions.addWidget(cancel_settings); actions.addWidget(save_settings)
-        grid.addLayout(actions, 4, 0, 1, 2)
+        grid.addLayout(actions, 3, 0, 1, 2)
         scroll.setWidget(content)
         column.addWidget(scroll, 1)
         return page
+
+    def _update_memory_limit_summary(self, value: int) -> None:
+        limits = memory_limits_for_budget(value)
+        summary = (
+            f"Até {limits['pending_packets']:,} pacotes e "
+            f"{limits['pending_packet_bytes'] // 1024**2} MiB por fila · "
+            f"{limits['events']:,} eventos recentes · "
+            f"{limits['pvp_rows']} linhas do Banco PvP."
+        ).replace(",", ".")
+        self.setting_memory_summary.setText(summary)
 
     def _load_settings_fields(self) -> None:
         preferences = self.preferences
@@ -2136,15 +4715,20 @@ class MainWindow(QtWidgets.QMainWindow):
             preferences.get("capture_directory") or CAPTURE_DIR
         ))
         self.setting_decode_interval.setValue(self._bounded(preferences.get("decode_interval_seconds"), 15, 300, 30))
+        self.setting_memory_limit.setValue(
+            memory_limits_for_budget(preferences.get("memory_limit_mb"))["budget_mb"]
+        )
         language = "en" if preferences.get("item_name_language") == "en" else "pt"
         self.setting_language.setCurrentIndex(self.setting_language.findData(language))
         self.setting_profile.setText(
             self.site_profile.profile or str(preferences.get("profile") or "")
         )
         self.site_profile_status.setText(
-            f"Conectado ao Profile {self.site_profile.profile}"
+            "Integração com o site desativada neste perfil de homologação."
+            if not SITE_SERVER
+            else f"Conectado ao Profile {self.site_profile.profile} para Mercado e Ranking de EXP."
             if self.site_profile.connected
-            else "Token do Profile ainda não validado."
+            else "Token do Profile ainda não validado. Integração disponível para Mercado e Ranking de EXP."
         )
         shortcuts = dict(preferences.get("shortcuts") or {})
         for mode, combo in self.setting_shortcuts.items():
@@ -2154,7 +4738,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_auto_export.setChecked(bool(preferences.get("auto_export", False)))
         self.setting_auto_market.setChecked(bool(preferences.get("auto_market_upload", True)))
         self.setting_delete_export.setChecked(bool(preferences.get("delete_after_export", False)))
-        self.setting_detailed_log.setChecked(bool(preferences.get("detailed_logging", False)))
+        self.setting_detailed_log.setChecked(True)
+        self.setting_local_api.setChecked(bool(preferences.get("local_api_enabled", False)))
+        self.setting_local_api_port.setValue(
+            self._bounded(
+                preferences.get("local_api_port"),
+                1024,
+                65535,
+                LOCAL_API_DEFAULT_PORT,
+            )
+        )
         monitor_intervals = dict(preferences.get("monitor_intervals") or {})
         monitor_focus = dict(preferences.get("monitor_focus") or {})
         for mode, controls in self.monitor_controls.items():
@@ -2178,14 +4771,62 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alert_guild_names.setText(str(alerts.get("guilds") or ""))
         self.alert_pvp_hit.setChecked(bool(alerts.get("pvp_hit")))
         self.alert_boss.setChecked(bool(alerts.get("boss_detected")))
+        self.alert_item_drop.setChecked(bool(alerts.get("item_drop")))
+        raw_drop_rarities = alerts.get("drop_rarities")
+        selected_drop_rarities = (
+            {
+                int(value)
+                for value in raw_drop_rarities
+                if isinstance(value, (int, float, str))
+                and str(value).lstrip("-").isdigit()
+            }
+            if isinstance(raw_drop_rarities, list)
+            else set(self.alert_drop_rarities)
+        )
+        for grade, option in self.alert_drop_rarities.items():
+            option.setChecked(grade in selected_drop_rarities)
+        raw_drop_types = alerts.get("drop_types")
+        selected_drop_types = (
+            {str(value) for value in raw_drop_types}
+            if isinstance(raw_drop_types, list)
+            else set(self.alert_drop_types)
+        )
+        for category, option in self.alert_drop_types.items():
+            option.setChecked(category in selected_drop_types)
         self.alert_low_hp.setChecked(bool(alerts.get("low_hp")))
         self.alert_low_hp_percent.setValue(
             self._bounded(alerts.get("low_hp_percent"), 1, 99, 30)
         )
+        self.alert_threat.setChecked(bool(alerts.get("threat")))
+        self.alert_farm_started.setChecked(bool(alerts.get("farm_started")))
+        self.alert_teleporting.setChecked(bool(alerts.get("teleporting")))
+        self.alert_cooldown_seconds.setValue(
+            self._bounded(alerts.get("cooldown_seconds"), 5, 300, 10)
+        )
         self.alert_sound.setChecked(bool(alerts.get("sound", True)))
+        self.alert_sound_file = str(alerts.get("sound_file") or "")
+        self.alert_sound_name.setText(
+            "Som WAV personalizado" if self._resolved_alert_sound() else ""
+        )
         self.subsession_duration.setValue(self._bounded(preferences.get("subsession_duration_minutes"), 0, 1440, 30))
-        self.auto_subsession.setChecked(bool(preferences.get("auto_subsession", False)))
-        self.auto_subsession_minutes.setValue(self._bounded(preferences.get("auto_subsession_minutes"), 5, 240, 30))
+        self.subsession_auto_next.setChecked(
+            bool(preferences.get("auto_subsession", False))
+        )
+        self.subsession_auto_minutes.setValue(
+            self._bounded(preferences.get("auto_subsession_minutes"), 5, 240, 30)
+        )
+        self.subsession_auto_context.setChecked(
+            bool(preferences.get("auto_subsession_context", False))
+        )
+        self.subsession_end_on_teleport.setChecked(
+            bool(preferences.get("subsession_end_on_teleport", False))
+        )
+        self.subsession_end_on_death.setChecked(
+            bool(preferences.get("subsession_end_on_death", False))
+        )
+        self.subsession_end_after_no_kill.setChecked(
+            bool(preferences.get("subsession_end_after_no_kill", False))
+        )
         self._refresh_subsession_favorites()
         channel = str(preferences.get("channel") or "stable")
         index = self.update_channel.findData(channel)
@@ -2199,6 +4840,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.preferences.get("item_name_language")
         )
         new_language = game_data_language(self.setting_language.currentData())
+        old_memory_budget = self.memory_limits["budget_mb"]
+        new_memory_limits = memory_limits_for_budget(
+            self.setting_memory_limit.value()
+        )
         selected_farm = (
             self.subsession_map.currentText(),
             self.subsession_spot.currentText(),
@@ -2216,6 +4861,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.preferences = save_preferences({
             "capture_directory": str(capture_directory),
             "decode_interval_seconds": self.setting_decode_interval.value(),
+            "memory_limit_mb": new_memory_limits["budget_mb"],
             "item_name_language": new_language,
             "subsession_map": selected_farm[0],
             "subsession_spot": selected_farm[1],
@@ -2225,7 +4871,9 @@ class MainWindow(QtWidgets.QMainWindow):
             "auto_export": self.setting_auto_export.isChecked(),
             "auto_market_upload": self.setting_auto_market.isChecked(),
             "delete_after_export": self.setting_delete_export.isChecked(),
-            "detailed_logging": self.setting_detailed_log.isChecked(),
+            "detailed_logging": True,
+            "local_api_enabled": self.setting_local_api.isChecked(),
+            "local_api_port": self.setting_local_api_port.value(),
             "channel": self.update_channel.currentData(),
             "monitor_intervals": {
                 mode: controls["interval"].value()
@@ -2238,7 +4886,22 @@ class MainWindow(QtWidgets.QMainWindow):
             },
             "alerts": self._alert_preferences(),
         }, self.preferences_path)
-        set_detailed(self.log, self.setting_detailed_log.isChecked())
+        for engine in (self.capture_engine, self.monitor_engine):
+            map_module = getattr(engine, "map_module", None)
+            if map_module is not None:
+                map_module.set_language(new_language)
+        self.memory_limits = new_memory_limits
+        self.snapshot_reader.character_history_limit = self.memory_limits[
+            "character_history"
+        ]
+        while len(self.inventory_icon_cache) > self.memory_limits["inventory_icons"]:
+            self.inventory_icon_cache.popitem(last=False)
+        while len(self.alert_last_fired) > self.memory_limits["alert_cooldowns"]:
+            self.alert_last_fired.popitem(last=False)
+        while len(self.seen_drop_alerts) > self.memory_limits["seen_drop_events"]:
+            self.seen_drop_alerts.pop(next(iter(self.seen_drop_alerts)))
+        self.memory_next_sample = 0.0
+        set_detailed(self.log, True)
         self.log.debug(
             "settings_saved decode_interval=%s language=%s minimize=%s auto_export=%s "
             "delete_after_export=%s",
@@ -2248,17 +4911,367 @@ class MainWindow(QtWidgets.QMainWindow):
             self.setting_auto_export.isChecked(),
             self.setting_delete_export.isChecked(),
         )
+        memory_restart_pending = False
         if not self.capture_engine or not self.capture_engine.current_session:
             self.capture_engine = None
             self._ensure_capture_engine()
+        elif old_memory_budget != self.memory_limits["budget_mb"]:
+            configure = getattr(
+                self.capture_engine, "configure_memory_budget", None
+            )
+            memory_restart_pending = not bool(
+                callable(configure)
+                and configure(self.memory_limits["budget_mb"])
+            )
+        if self.monitor_engine and not self.monitor_engine.active:
+            self.monitor_engine = None
+        elif (
+            self.monitor_engine
+            and old_memory_budget != self.memory_limits["budget_mb"]
+        ):
+            configure = getattr(
+                self.monitor_engine, "configure_memory_budget", None
+            )
+            memory_restart_pending = memory_restart_pending or not bool(
+                callable(configure)
+                and configure(self.memory_limits["budget_mb"])
+            )
+        if self._bank_is_visible(0):
+            self._render_pvp_database()
+        elif self.pvp_database_table.rowCount() > self.memory_limits["pvp_rows"]:
+            self.pvp_database_table.setRowCount(0)
+            self.pvp_database_rows = {}
         self._refresh_farm_catalog()
         self._render_overview()
         if old_language != new_language:
             self._load_readonly_data()
         self._apply_monitor_shortcut_labels(shortcuts)
         self._sync_global_hotkeys(shortcuts)
+        self._sync_local_api()
         self.setting_storage.setText(f"Capturas: {capture_directory}\nPreferências salvas para a interface estável e para o preview.")
-        QtWidgets.QMessageBox.information(self, "Configurações", "Configurações salvas.")
+        QtWidgets.QMessageBox.information(
+            self,
+            "Configurações",
+            "Configurações salvas."
+            + (
+                " O novo limite completo será usado na próxima ativação "
+                "da captura ou dos monitores."
+                if memory_restart_pending else ""
+            ),
+        )
+
+    def _map_api_snapshot(self) -> dict[str, object]:
+        if not self.license_active or "map" not in self.license_features:
+            return {
+                "available": False,
+                "reason": (
+                    "feature_required" if self.license_active else "license_required"
+                ),
+                "capacity": 2,
+                "clients": [],
+            }
+        return dict(self.snapshot.get("map") or {})
+
+    def _status_api_snapshot(self) -> dict[str, object]:
+        if not self.license_active:
+            return {"schema_version": 1, "enabled_modes": [], "clients": []}
+        return dict(self.program_status_snapshot)
+
+    def _health_api_snapshot(self) -> dict[str, object]:
+        now_ns = time.time_ns()
+        engine = self.capture_engine
+        if engine and getattr(engine, "active", False):
+            capture_state = "active"
+        elif engine and getattr(engine, "paused", False):
+            capture_state = "paused"
+        elif engine and getattr(engine, "current_session", None):
+            capture_state = "pending"
+        else:
+            capture_state = "idle"
+
+        checkpoints = self.snapshot.get("session_checkpoints")
+        latest_checkpoint = (
+            dict(checkpoints[0])
+            if isinstance(checkpoints, list)
+            and checkpoints
+            and isinstance(checkpoints[0], dict)
+            else {}
+        )
+        checkpoint_ns = int(latest_checkpoint.get("checkpoint_ns") or 0)
+        checkpoint_age = (
+            max(0.0, (now_ns - checkpoint_ns) / 1_000_000_000)
+            if checkpoint_ns > 0 else None
+        )
+
+        stream_available = False
+        stream_metrics: dict[str, object] = {}
+        stream_candidates = (
+            (self.monitor_engine, "events"),
+            (engine, "live_events"),
+        )
+        for stream_engine, attribute in stream_candidates:
+            if not stream_engine or not getattr(stream_engine, "active", False):
+                continue
+            stream_available = True
+            reporter = getattr(getattr(stream_engine, attribute, None), "metrics", None)
+            if callable(reporter):
+                try:
+                    stream_metrics = dict(reporter())
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    stream_metrics = {}
+            break
+        if stream_available and not stream_metrics:
+            stream_metrics = dict(self.latest_monitor_metrics)
+
+        memory_bytes = _process_memory_bytes()
+        memory_budget_bytes = int(self.memory_limits["pressure_bytes"])
+        return {
+            "generated_at_ns": now_ns,
+            "process": {
+                "version": VERSION,
+                "memory_bytes": memory_bytes,
+                "memory_budget_bytes": memory_budget_bytes,
+                "memory_pressure": (
+                    memory_bytes >= memory_budget_bytes
+                    if memory_bytes is not None else None
+                ),
+            },
+            "capture": {
+                "state": capture_state,
+                "session_available": bool(
+                    (engine and getattr(engine, "current_session", None))
+                    or self.snapshot.get("session_id")
+                ),
+            },
+            "checkpoint": {
+                "available": bool(latest_checkpoint),
+                "reason": latest_checkpoint.get("reason"),
+                "age_seconds": checkpoint_age,
+            },
+            "stream": {
+                **stream_metrics,
+                "available": stream_available,
+            },
+        }
+
+    def _render_integration_health(self) -> None:
+        if not hasattr(self, "integration_health_labels"):
+            return
+        health = self._health_api_snapshot()
+        process = dict(health.get("process") or {})
+        capture = dict(health.get("capture") or {})
+        checkpoint = dict(health.get("checkpoint") or {})
+        stream = dict(health.get("stream") or {})
+        capture_labels = {
+            "active": "Ativa",
+            "paused": "Pausada",
+            "pending": "Aguardando leitura",
+            "idle": "Ociosa",
+        }
+        self.integration_health_labels["capture"].setText(
+            capture_labels.get(str(capture.get("state") or ""), "Indisponível")
+        )
+        memory = process.get("memory_bytes")
+        budget = process.get("memory_budget_bytes")
+        self.integration_health_labels["memory"].setText(
+            f"{self._format_bytes(int(memory))} / {self._format_bytes(int(budget))}"
+            if isinstance(memory, int) and isinstance(budget, int)
+            else "Indisponível"
+        )
+        if checkpoint.get("available"):
+            age = checkpoint.get("age_seconds")
+            reason = {
+                "interval": "Salvamento periódico",
+                "paused": "Pausa salva",
+                "finalized": "Sessão finalizada",
+            }.get(str(checkpoint.get("reason") or ""), "Sessão salva")
+            self.integration_health_labels["checkpoint"].setText(
+                f"{reason} · há {int(age)} s"
+                if isinstance(age, (int, float)) else reason
+            )
+        else:
+            self.integration_health_labels["checkpoint"].setText("Ainda não criado")
+        if stream.get("available"):
+            dropped = int(stream.get("dropped_packets") or 0) + int(
+                stream.get("dropped_events") or 0
+            )
+            self.integration_health_labels["stream"].setText(
+                f"Fila {int(stream.get('queue_depth') or 0)} · descartes {dropped}"
+            )
+        else:
+            self.integration_health_labels["stream"].setText("Inativo")
+        if hasattr(self, "overview_memory_limit"):
+            memory_mb = (
+                float(memory) / (1024 * 1024)
+                if isinstance(memory, int) else None
+            )
+            budget_mb = (
+                float(budget) / (1024 * 1024)
+                if isinstance(budget, int) else float(self.memory_limits["budget_mb"])
+            )
+            self.overview_memory_limit.setText(f"Limite  {budget_mb:.0f} MiB")
+            self.overview_memory_use.setText(
+                f"Em uso  {memory_mb:.0f} MiB"
+                if memory_mb is not None else "Em uso  —"
+            )
+            self.overview_queue.setText(
+                f"Fila  {int(stream.get('queue_depth') or 0)} / "
+                f"{int(stream.get('event_limit') or 0):,}".replace(",", ".")
+                if stream.get("available") else "Fila  inativa"
+            )
+            if checkpoint.get("available"):
+                age = checkpoint.get("age_seconds")
+                self.overview_checkpoint.setText(
+                    f"Checkpoint  {int(age)}s"
+                    if isinstance(age, (int, float)) else "Checkpoint  salvo"
+                )
+            else:
+                self.overview_checkpoint.setText("Checkpoint  —")
+            self.memory_sparkline.add_sample(memory_mb, budget_mb)
+
+    def _build_program_status_snapshot(self) -> dict[str, object]:
+        alerts = self._alert_preferences()
+        return build_program_status(
+            self.snapshot.get("combat_monitors") or [],
+            self.snapshot.get("map") or {}
+            if "map" in self.license_features
+            else {},
+            self._combat_decode_modes(),
+            low_hp_percent=int(alerts.get("low_hp_percent") or 30),
+            client_keys=(_client_key(index) for index in self.visible_client_slots),
+        )
+
+    def _render_program_status(self) -> None:
+        if not hasattr(self, "top_program_status"):
+            return
+        snapshot = self._build_program_status_snapshot()
+        self.program_status_snapshot = snapshot
+        self._evaluate_status_alerts(snapshot)
+        key = _client_key(self.active_client)
+        client = next(
+            (item for item in snapshot.get("clients") or [] if item.get("client_key") == key),
+            None,
+        )
+        labels = {
+            "teleporting": "Teleportando",
+            "pvp": "PvP",
+            "boss": "Boss",
+            "farm": "Farm",
+            "idle": "Ocioso",
+        }
+        status = str((client or {}).get("display_status") or "idle")
+        display = labels.get(status, "Ocioso")
+        self.top_program_status.setText(display.upper())
+        self.top_program_status.setProperty(
+            "role",
+            "info" if status == "teleporting"
+            else "warning" if status in {"pvp", "boss"}
+            else "ok" if status == "farm"
+            else "muted",
+        )
+        self.top_program_status.style().unpolish(self.top_program_status)
+        self.top_program_status.style().polish(self.top_program_status)
+        if hasattr(self, "dashboard_status"):
+            signals = dict((client or {}).get("signals") or {})
+            activity = str((client or {}).get("activity") or "unknown")
+            activity_labels = {
+                "farm": "Dano ou abate de mob nos últimos 30 segundos",
+                "pvp": "Dano PvP causado ou recebido",
+                "boss": "Boss reconhecido próximo",
+                "idle": "Nenhuma atividade detectada",
+                "unknown": "Monitor aguardando",
+            }
+            self.dashboard_status.setText(f"{display}  •")
+            self.dashboard_status.setProperty(
+                "role",
+                "info" if status == "teleporting"
+                else "warning" if status in {"pvp", "boss"}
+                else "ok" if status == "farm"
+                else "muted",
+            )
+            self.dashboard_status.style().unpolish(self.dashboard_status)
+            self.dashboard_status.style().polish(self.dashboard_status)
+            self.dashboard_activity.setText(
+                "Teleporte confirmado em andamento"
+                if status == "teleporting"
+                else activity_labels.get(activity, "Monitor aguardando")
+            )
+            threat = signals.get("threat")
+            attacked = signals.get("under_attack")
+            self.dashboard_threat.setText(
+                "Ameaça próxima" if threat is True
+                else "Sem ameaça" if threat is False
+                else "Ameaça não monitorada"
+            )
+            self.dashboard_attack.setText(
+                "Sendo atacado" if attacked is True
+                else "Não sendo atacado" if attacked is False
+                else "Ataque não monitorado"
+            )
+        self._render_general_summary()
+
+    def _sync_local_api(self) -> None:
+        if not hasattr(self, "setting_local_api"):
+            return
+        enabled = self.setting_local_api.isChecked()
+        if not enabled or not self.license_active:
+            if self.local_api:
+                self.local_api.stop()
+                self.local_api = None
+            self.local_api_token = ""
+            self.local_api_copy_token.setEnabled(False)
+            self.local_api_status.setText(
+                "Desativada. Ative uma licença válida primeiro."
+                if enabled
+                else "Desativada. O token permanece protegido localmente."
+            )
+            return
+        port = self.setting_local_api_port.value()
+        if self.local_api and self.local_api.active and self.local_api.port == port:
+            self.local_api_copy_token.setEnabled(bool(self.local_api_token))
+            self.local_api_status.setText(
+                f"Ativa em http://127.0.0.1:{port} · somente leitura."
+            )
+            return
+        if self.local_api:
+            self.local_api.stop()
+            self.local_api = None
+        try:
+            self.local_api_token = LocalApiTokenStore(
+                self.local_api_state_path
+            ).load_or_create()
+            api = LocalOutputApi(
+                self._map_api_snapshot,
+                self.local_api_token,
+                status_provider=self._status_api_snapshot,
+                health_provider=self._health_api_snapshot,
+                port=port,
+            )
+            actual_port = api.start()
+            self.local_api = api
+        except (OSError, ValueError) as error:
+            self.local_api_token = ""
+            self.local_api_copy_token.setEnabled(False)
+            self.local_api_status.setText(
+                f"Não foi possível iniciar a API local: {error}"
+            )
+            self.log.warning(
+                "local_api_start_failed error_type=%s", type(error).__name__
+            )
+            return
+        self.local_api_copy_token.setEnabled(True)
+        self.local_api_status.setText(
+            f"Ativa em http://127.0.0.1:{actual_port} · somente leitura."
+        )
+        self.log.info("local_api_started port=%s", actual_port)
+
+    def _copy_local_api_token(self) -> None:
+        if not self.local_api_token:
+            return
+        QtWidgets.QApplication.clipboard().setText(self.local_api_token)
+        self.local_api_status.setText(
+            "Token copiado. Compartilhe somente com integrações locais confiáveis."
+        )
 
     def _alert_preferences(self) -> dict[str, object]:
         return {
@@ -2268,15 +5281,118 @@ class MainWindow(QtWidgets.QMainWindow):
             "guilds": self.alert_guild_names.text().strip(),
             "pvp_hit": self.alert_pvp_hit.isChecked(),
             "boss_detected": self.alert_boss.isChecked(),
+            "item_drop": self.alert_item_drop.isChecked(),
+            "drop_rarities": [
+                grade
+                for grade, option in self.alert_drop_rarities.items()
+                if option.isChecked()
+            ],
+            "drop_types": [
+                category
+                for category, option in self.alert_drop_types.items()
+                if option.isChecked()
+            ],
             "low_hp": self.alert_low_hp.isChecked(),
             "low_hp_percent": self.alert_low_hp_percent.value(),
+            "threat": self.alert_threat.isChecked(),
+            "farm_started": self.alert_farm_started.isChecked(),
+            "teleporting": self.alert_teleporting.isChecked(),
+            "cooldown_seconds": self.alert_cooldown_seconds.value(),
             "sound": self.alert_sound.isChecked(),
+            "sound_file": self.alert_sound_file,
         }
+
+    def _evaluate_status_alerts(self, snapshot: dict[str, object]) -> None:
+        clients = {
+            str(item.get("client_key") or ""): item
+            for item in snapshot.get("clients") or []
+            if isinstance(item, dict) and item.get("client_key")
+        }
+        if not self.previous_program_status:
+            self.previous_program_status = clients
+            return
+        for client_key, current in clients.items():
+            previous = self.previous_program_status.get(client_key, {})
+            signals = dict(current.get("signals") or {})
+            previous_signals = dict(previous.get("signals") or {})
+            try:
+                client_index = ord(client_key.rsplit(":", 1)[-1]) - ord("a")
+            except (TypeError, ValueError):
+                client_index = -1
+            client_name = (
+                self._client_title(client_index)
+                if 0 <= client_index < CLIENT_SLOT_COUNT
+                else client_key
+            )
+            if self.alert_threat.isChecked() and signals.get("threat") is True:
+                self._fire_alert(
+                    f"status-threat:{client_key}",
+                    f"Ameaça em {client_name}: inimigo confirmado próximo.",
+                )
+            if (
+                self.alert_farm_started.isChecked()
+                and current.get("activity") == "farm"
+                and previous.get("activity") != "farm"
+            ):
+                self._fire_alert(
+                    f"status-farm:{client_key}",
+                    f"{client_name} entrou no estado Farm.",
+                )
+            if (
+                self.alert_teleporting.isChecked()
+                and signals.get("teleporting") is True
+                and previous_signals.get("teleporting") is not True
+            ):
+                self._fire_alert(
+                    f"status-teleport:{client_key}",
+                    f"Teleporte confirmado em {client_name}.",
+                )
+        self.previous_program_status = clients
+
+    @property
+    def _alert_sounds_directory(self) -> Path:
+        return (
+            MACHINE_STATE_DIR / "sounds"
+            if self.preferences_path == PREFERENCES_PATH
+            else self.preferences_path.parent / "sounds"
+        )
+
+    def _resolved_alert_sound(self) -> Path | None:
+        return resolve_alert_sound(
+            self._alert_sounds_directory, self.alert_sound_file
+        )
+
+    def _choose_alert_sound(self) -> None:
+        selected, _filter = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Escolher som do alerta", "", "Áudio WAV (*.wav)"
+        )
+        if not selected:
+            return
+        try:
+            self.alert_sound_file = install_alert_sound(
+                Path(selected), self._alert_sounds_directory
+            )
+        except (OSError, ValueError) as error:
+            QtWidgets.QMessageBox.warning(self, "Som personalizado", str(error))
+            return
+        self.alert_sound_name.setText("Som WAV personalizado")
+        self.alert_status.setText("Som validado. Salve os alertas para manter a escolha.")
+
+    def _clear_alert_sound(self) -> None:
+        self.alert_sound_file = ""
+        self.alert_sound_name.clear()
+        self.alert_status.setText("Som padrão selecionado. Salve os alertas.")
+
+    def _test_alert_sound(self) -> None:
+        play_alert_sound(
+            self._resolved_alert_sound(), QtWidgets.QApplication.beep
+        )
 
     def _save_alert_settings(self) -> None:
         self.preferences = save_preferences(
             {"alerts": self._alert_preferences()}, self.preferences_path
         )
+        self.drop_alert_next_due = 0.0
         self.alert_status.setText("Configurações de alerta salvas.")
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
@@ -2290,6 +5406,9 @@ class MainWindow(QtWidgets.QMainWindow):
             event.ignore()
             return
         self.global_hotkeys.stop()
+        if self.local_api:
+            self.local_api.stop()
+            self.local_api = None
         if self.monitor_engine:
             try:
                 self.monitor_engine.stop()
@@ -2367,8 +5486,38 @@ class MainWindow(QtWidgets.QMainWindow):
             profile = profiles[index] if index < len(profiles) else None
         return str((profile or {}).get("name") or "").strip()
 
+    @staticmethod
+    def _normalize_visible_client_slots(
+        value: object, legacy_count: int
+    ) -> list[int]:
+        slots: list[int] = []
+        if isinstance(value, list):
+            for raw in value:
+                try:
+                    index = int(raw)
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= index < CLIENT_SLOT_COUNT and index not in slots:
+                    slots.append(index)
+        if not slots:
+            slots = list(range(max(1, min(CLIENT_SLOT_COUNT, legacy_count))))
+        if 0 not in slots:
+            slots.insert(0, 0)
+        return slots
+
     def _client_name(self, index: int) -> str:
-        return _client_label(index)
+        try:
+            display_index = self.visible_client_slots.index(index)
+        except ValueError:
+            display_index = index
+        return _client_label(display_index)
+
+    @staticmethod
+    def _client_source_key(index: int) -> str:
+        return "pc" if index < PC_SLOT_COUNT else "emulator"
+
+    def _client_source_label(self, index: int) -> str:
+        return "PC local" if self._client_source_key(index) == "pc" else "Emulador local"
 
     def _client_title(self, index: int, captured: str = "") -> str:
         name = self._client_name(index)
@@ -2379,7 +5528,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _refresh_client_labels(self) -> None:
         for index, button in enumerate(self.client_buttons):
-            button.setText(self._client_title(index))
+            captured = self._captured_client_name(index)
+            suffix = f" · {captured}" if captured else ""
+            button.setText(f"{self._client_name(index)}{suffix}")
         for mode, controls in self.monitor_controls.items():
             tabs = controls.get("tabs")
             if tabs is not None:
@@ -2392,9 +5543,135 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, "subsession_filter"):
             for index in range(CLIENT_SLOT_COUNT):
                 self.subsession_filter.setItemText(index + 1, self._client_name(index))
+        if hasattr(self, "drops_client_filter"):
+            for index in range(CLIENT_SLOT_COUNT):
+                self.drops_client_filter.setItemText(
+                    index + 1, self._client_name(index)
+                )
         for (_mode, index), button in self.send_buttons.items():
             if index >= 0:
                 button.setText(f"Enviar {self._client_title(index)}")
+
+    def _persist_client_collection(self) -> None:
+        self.visible_client_count = len(self.visible_client_slots)
+        self.preferences = save_preferences(
+            {
+                "visible_client_count": self.visible_client_count,
+                "visible_client_slots": list(self.visible_client_slots),
+            },
+            self.preferences_path,
+        )
+
+    def _sync_client_collection(self) -> None:
+        visible = set(self.visible_client_slots)
+        self.visible_client_count = len(self.visible_client_slots)
+        if self.active_client not in visible:
+            self.active_client = self.visible_client_slots[0]
+        for index, button in enumerate(self.client_buttons):
+            button.setVisible(index in visible)
+            button.setChecked(index == self.active_client)
+        self.add_client_button.setEnabled(len(visible) < CLIENT_SLOT_COUNT)
+        self.add_client_button.setToolTip(
+            "Escolha entre PC local, Emulador local ou Externo via API."
+            if len(visible) < CLIENT_SLOT_COUNT
+            else f"Limite técnico atual: {CLIENT_SLOT_COUNT} clientes locais."
+        )
+        self.remove_client_button.setVisible(len(visible) > 1)
+        self.remove_client_button.setEnabled(self.active_client != 0)
+        self.client_source.setText(self._client_source_label(self.active_client))
+        self._refresh_client_labels()
+        for mode, controls in self.monitor_controls.items():
+            tabs = controls.get("tabs")
+            if tabs is not None:
+                for index in range(CLIENT_SLOT_COUNT):
+                    tabs.setTabVisible(index, index in visible)
+                tabs.setCurrentIndex(self.active_client)
+            elif mode == "boss":
+                for index, card in enumerate(
+                    self.combat_page_layouts[mode]["cards"]
+                ):
+                    card.setVisible(index in visible)
+        for (_mode, index), button in self.send_buttons.items():
+            if index >= 0:
+                button.setVisible(index in visible)
+        self._sync_combat_layout()
+
+    def _add_client_slot(self, source: str | None = None) -> None:
+        source_labels = {
+            "PC local": "pc",
+            "Emulador local": "emulator",
+            "Externo via API": "remote_api",
+        }
+        if source is None:
+            selected, accepted = QtWidgets.QInputDialog.getItem(
+                self,
+                "Adicionar cliente",
+                "Qual é a fonte do cliente?",
+                tuple(source_labels),
+                0,
+                False,
+            )
+            if not accepted:
+                return
+            source = source_labels.get(str(selected))
+        if source == "remote_api":
+            QtWidgets.QMessageBox.information(
+                self,
+                "Externo via API",
+                "A origem externa já faz parte do fluxo planejado, mas a consulta "
+                "LAN e o pareamento ainda não estão disponíveis neste candidato. "
+                "Nenhum cliente foi adicionado.",
+            )
+            return
+        ranges = {
+            "pc": range(PC_SLOT_COUNT),
+            "emulator": range(PC_SLOT_COUNT, CLIENT_SLOT_COUNT),
+        }
+        slots = ranges.get(str(source))
+        if slots is None:
+            return
+        index = next(
+            (candidate for candidate in slots if candidate not in self.visible_client_slots),
+            None,
+        )
+        if index is None:
+            label = "PC local" if source == "pc" else "Emulador local"
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Adicionar cliente",
+                f"Todas as vagas de {label} já estão em uso.",
+            )
+            return
+        self.visible_client_slots.append(index)
+        self.active_client = index
+        self._persist_client_collection()
+        self._sync_client_collection()
+        if self._client_allowed(index):
+            self.client_buttons[index].click()
+
+    def _remove_selected_client(self) -> None:
+        index = self.active_client
+        if index == 0 or index not in self.visible_client_slots:
+            return
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Excluir cliente",
+            f"Excluir {self._client_name(index)} da interface?\n\n"
+            "Sessões, capturas e dados armazenados não serão apagados.",
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.Cancel,
+            QtWidgets.QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        self.monitor_client_enabled["pve"][index] = False
+        self.monitor_client_enabled["pvp"][index] = False
+        self.visible_client_slots.remove(index)
+        self.active_client = self.visible_client_slots[0]
+        self._persist_client_collection()
+        self._sync_client_collection()
+        if self._client_allowed(self.active_client):
+            self.client_buttons[self.active_client].click()
 
     def _disconnect_site_profile(self) -> None:
         self.site_profile.disconnect()
@@ -2427,6 +5704,8 @@ class MainWindow(QtWidgets.QMainWindow):
         preferred = str(self.preferences.get("subsession_map") or current_map)
         if preferred in self.farm_catalog:
             self.subsession_map.setCurrentText(preferred)
+        elif self.subsession_auto_context.isChecked():
+            self.subsession_map.setCurrentIndex(-1)
         self.subsession_map.blockSignals(False)
         self._subsession_map_changed(self.subsession_map.currentText())
 
@@ -2533,8 +5812,10 @@ class MainWindow(QtWidgets.QMainWindow):
             "level_to": self.subsession_level_to.value(),
             "duration": self.subsession_duration.value(),
             "name": self.subsession_name.text(),
-            "automatic": self.auto_subsession.isChecked(),
-            "automatic_minutes": self.auto_subsession_minutes.value(),
+            "auto_context": self.subsession_auto_context.isChecked(),
+            "end_on_teleport": self.subsession_end_on_teleport.isChecked(),
+            "end_on_death": self.subsession_end_on_death.isChecked(),
+            "end_after_no_kill": self.subsession_end_after_no_kill.isChecked(),
         }
 
     def _save_subsession_favorite(self) -> None:
@@ -2595,9 +5876,127 @@ class MainWindow(QtWidgets.QMainWindow):
             self._bounded(values.get("duration"), 0, 1440, 0)
         )
         self.subsession_name.setText(str(values.get("name") or ""))
-        self.auto_subsession.setChecked(bool(values.get("automatic")))
-        self.auto_subsession_minutes.setValue(
-            self._bounded(values.get("automatic_minutes"), 5, 240, 30)
+        self.subsession_auto_context.blockSignals(True)
+        self.subsession_end_on_teleport.setChecked(
+            bool(values.get("end_on_teleport"))
+        )
+        self.subsession_end_on_death.setChecked(bool(values.get("end_on_death")))
+        self.subsession_end_after_no_kill.setChecked(
+            bool(values.get("end_after_no_kill"))
+        )
+        self.subsession_auto_context.setChecked(bool(values.get("auto_context")))
+        self.subsession_auto_context.blockSignals(False)
+
+    def _toggle_auto_context(self, enabled: bool) -> None:
+        if enabled:
+            self.subsession_map.setCurrentIndex(-1)
+            self.subsession_spot.setCurrentIndex(-1)
+            self.subsession_mobs.clear()
+
+    def _fill_subsession_from_current_context(self) -> None:
+        index = self.subsession_client.currentIndex()
+        client_key = _client_key(index)
+        self._apply_manual_map_fallbacks()
+        map_snapshot = self.snapshot.get("map")
+        map_clients = (
+            map_snapshot.get("clients") or []
+            if isinstance(map_snapshot, dict)
+            else []
+        )
+        spatial = next(
+            (
+                dict(item)
+                for item in map_clients
+                if isinstance(item, dict) and item.get("client_key") == client_key
+            ),
+            {},
+        )
+        location = (
+            spatial
+            if spatial.get("map_enabled") is True
+            and (
+                not spatial.get("stale")
+                or spatial.get("map_source") == "manual_fallback"
+            )
+            else {}
+        )
+        monitors = [
+            dict(item)
+            for item in self.snapshot.get("combat_monitors") or []
+            if isinstance(item, dict)
+        ]
+        monitor = next(
+            (
+                item for item in monitors
+                if item.get("client_key") == client_key
+            ),
+            {},
+        )
+        if not monitor and not any(item.get("client_key") for item in monitors):
+            monitor = monitors[index] if index < len(monitors) else {}
+        context = infer_subsession_context(monitor, location, self.farm_catalog)
+        map_name = str(context.get("map_name") or "").strip()
+        spot_name = str(context.get("spot_name") or "").strip()
+        mobs = list(dict.fromkeys(
+            str(value).strip()
+            for value in context.get("mobs") or []
+            if str(value).strip()
+        ))
+
+        if map_name:
+            map_index = self.subsession_map.findText(map_name)
+            if map_index < 0:
+                self.subsession_map.addItem(map_name)
+                map_index = self.subsession_map.findText(map_name)
+            self.subsession_map.setCurrentIndex(map_index)
+            spot_index = self.subsession_spot.findText(spot_name) if spot_name else -1
+            if spot_name and spot_index < 0:
+                self.subsession_spot.addItem(spot_name)
+                spot_index = self.subsession_spot.findText(spot_name)
+            self.subsession_spot.setCurrentIndex(spot_index)
+
+        if mobs:
+            self._populate_subsession_mobs(spot_name, set(mobs))
+            listed = {
+                str(
+                    self.subsession_mobs.item(row).data(
+                        QtCore.Qt.ItemDataRole.UserRole
+                    )
+                    or self.subsession_mobs.item(row).text()
+                )
+                for row in range(self.subsession_mobs.count())
+            }
+            self.subsession_other_mob.setText(
+                ", ".join(value for value in mobs if value not in listed)
+            )
+
+        found = []
+        if map_name:
+            found.append("mapa")
+        if spot_name:
+            found.append("spot")
+        if mobs:
+            found.append(f"{len(mobs)} mob(s)")
+        if not found:
+            message = (
+                f"Nenhuma localização ou mob próximo recente foi encontrado para "
+                f"{self._client_name(index)}."
+            )
+            role = "warning"
+        else:
+            message = (
+                f"Preenchido com {', '.join(found)} de {self._client_name(index)}."
+            )
+            if map_name and mobs and not spot_name:
+                message += " O spot ficou vazio porque não houve correspondência única."
+            role = "ok" if spot_name or not map_name else "warning"
+        self.subsession_context_status.setText(message)
+        self.subsession_context_status.setProperty("role", role)
+        self.subsession_context_status.style().unpolish(
+            self.subsession_context_status
+        )
+        self.subsession_context_status.style().polish(
+            self.subsession_context_status
         )
 
     def _delete_subsession_favorite(self) -> None:
@@ -2825,7 +6224,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.log.warning("uid_history_selection_reconciled clients=%s", corrected)
 
     def _save_subsession(self) -> None:
-        session_id = str(self.snapshot.get("session_id") or "")
+        session_id = str(
+            (self.capture_engine.current_session if self.capture_engine else None)
+            or self.snapshot.get("session_id")
+            or ""
+        )
         if not session_id:
             QtWidgets.QMessageBox.warning(self, "Subsessão", "Nenhuma sessão está disponível.")
             return
@@ -2834,7 +6237,8 @@ class MainWindow(QtWidgets.QMainWindow):
         extra = self.subsession_other_mob.text().strip()
         if extra:
             mobs.extend(value.strip() for value in extra.split(",") if value.strip())
-        if not map_name or not spot_name or not mobs:
+        auto_context = self.subsession_auto_context.isChecked()
+        if not auto_context and (not map_name or not spot_name or not mobs):
             QtWidgets.QMessageBox.warning(self, "Subsessão", "Escolha mapa, spot e ao menos um mob.")
             return
         first, last = self.subsession_level_from.value(), self.subsession_level_to.value()
@@ -2851,7 +6255,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 levels[mob] = first if first == last else f"{first}-{last}"
         index = self.subsession_client.currentIndex()
         values = dict(
-            name=self.subsession_name.text().strip() or spot_name,
+            name=self.subsession_name.text().strip() or spot_name or "Subsessão automática",
             character_uid=self._client_uid_for(index),
             client_key=f"client:{chr(97 + index)}",
             location=" > ".join(value for value in (map_name, spot_name) if value),
@@ -2859,7 +6263,11 @@ class MainWindow(QtWidgets.QMainWindow):
             spot_name=spot_name,
             mobs=list(dict.fromkeys(mobs)),
             mob_levels=levels,
+            auto_context=auto_context,
             duration_minutes=self.subsession_duration.value(),
+            end_on_teleport=self.subsession_end_on_teleport.isChecked(),
+            end_on_death=self.subsession_end_on_death.isChecked(),
+            end_after_no_kill=self.subsession_end_after_no_kill.isChecked(),
         )
         store = CaptureStore(self.database_path)
         try:
@@ -2877,10 +6285,14 @@ class MainWindow(QtWidgets.QMainWindow):
             store.close()
         self.preferences = save_preferences({
             "subsession_duration_minutes": self.subsession_duration.value(),
+            "auto_subsession": self.subsession_auto_next.isChecked(),
+            "auto_subsession_minutes": self.subsession_auto_minutes.value(),
             "subsession_map": map_name,
             "subsession_spot": spot_name,
-            "auto_subsession": self.auto_subsession.isChecked(),
-            "auto_subsession_minutes": self.auto_subsession_minutes.value(),
+            "auto_subsession_context": auto_context,
+            "subsession_end_on_teleport": self.subsession_end_on_teleport.isChecked(),
+            "subsession_end_on_death": self.subsession_end_on_death.isChecked(),
+            "subsession_end_after_no_kill": self.subsession_end_after_no_kill.isChecked(),
         }, self.preferences_path)
         self._cancel_subsession_form()
         self._reload_snapshot()
@@ -2942,6 +6354,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_other_mob.setText(", ".join(sorted(extras)))
         self.subsession_name.setText(str(item.get("name") or ""))
         self.subsession_duration.setValue(int(item.get("duration_minutes") or 0))
+        self.subsession_auto_context.blockSignals(True)
+        self.subsession_auto_context.setChecked(bool(item.get("auto_context")))
+        self.subsession_auto_context.blockSignals(False)
+        self.subsession_end_on_teleport.setChecked(bool(item.get("end_on_teleport")))
+        self.subsession_end_on_death.setChecked(bool(item.get("end_on_death")))
+        self.subsession_end_after_no_kill.setChecked(bool(item.get("end_after_no_kill")))
         self.subsession_save.setText("Salvar alterações")
         self.subsession_mode_group.button(1).setChecked(True)
         self.subsession_stack.setCurrentIndex(1)
@@ -2982,45 +6400,59 @@ class MainWindow(QtWidgets.QMainWindow):
         if not session_id:
             return
         now = time.time_ns()
-        automatic = self.auto_subsession.isChecked()
-        automatic_minutes = self.auto_subsession_minutes.value() if automatic else 0
+        create_next = self.subsession_auto_next.isChecked()
+        next_duration = self.subsession_auto_minutes.value()
         store = CaptureStore(self.database_path)
         changed = False
+        monitors = {
+            str(item.get("client_key") or ""): item
+            for item in self.snapshot.get("combat_monitors") or []
+            if isinstance(item, dict)
+        }
+        spatial_clients = {
+            str(item.get("client_key") or ""): item
+            for item in (self.snapshot.get("map") or {}).get("clients") or []
+            if isinstance(item, dict)
+        }
         try:
             for active in store.subsessions(session_id):
                 if active.get("ended_ns") is not None:
                     continue
                 duration = int(active.get("duration_minutes") or 0)
-                if duration == 0:
-                    continue
-                limit = min(duration, automatic_minutes or duration)
-                boundary_ns = (
+                timed_boundary = (
                     int(active["started_ns"])
-                    + limit * 60 * 1_000_000_000
+                    + duration * 60 * 1_000_000_000
+                    if duration > 0 else None
                 )
+                signal = automatic_subsession_end(
+                    active,
+                    monitors.get(str(active.get("client_key") or "")),
+                    spatial_clients.get(str(active.get("client_key") or "")),
+                    now_ns=now,
+                )
+                boundaries = [
+                    (timed_boundary, "duração") if timed_boundary else None,
+                    signal,
+                ]
+                boundaries = [item for item in boundaries if item is not None]
+                if not boundaries:
+                    continue
+                boundary_ns, end_reason = min(boundaries)
                 if now < boundary_ns:
                     continue
-                while now >= boundary_ns:
-                    store.end_subsession(str(active["id"]), boundary_ns)
-                    self.log.info(
-                        "subsession_auto_ended id=%s boundary_ns=%s delay_ms=%s",
-                        active["id"],
-                        boundary_ns,
-                        max(0, (now - boundary_ns) // 1_000_000),
-                    )
-                    changed = True
-                    if not automatic:
-                        break
-                    owner = str(
-                        active.get("client_key")
-                        or active.get("character_uid")
-                        or "geral"
-                    ).replace(":", "-")
-                    next_id = f"{session_id}-sub-{boundary_ns}-{owner}"
+                store.end_subsession(str(active["id"]), boundary_ns)
+                self.log.info(
+                    "subsession_auto_ended id=%s reason=%s boundary_ns=%s delay_ms=%s",
+                    active["id"],
+                    end_reason,
+                    boundary_ns,
+                    max(0, (now - boundary_ns) // 1_000_000),
+                )
+                if create_next and end_reason == "duração":
                     store.start_subsession(
-                        next_id,
+                        f"{session_id}-sub-{boundary_ns}-{active.get('client_key') or 'geral'}",
                         session_id,
-                        str(active.get("name") or active.get("spot_name") or "Subsessão"),
+                        str(active.get("name") or "Subsessão automática"),
                         character_uid=active.get("character_uid"),
                         client_key=str(active.get("client_key") or ""),
                         location=str(active.get("location") or ""),
@@ -3028,17 +6460,27 @@ class MainWindow(QtWidgets.QMainWindow):
                         spot_name=str(active.get("spot_name") or ""),
                         mobs=list(active.get("mobs") or []),
                         mob_levels=dict(active.get("mob_levels") or {}),
-                        duration_minutes=automatic_minutes,
+                        auto_context=bool(active.get("auto_context")),
+                        context_source=active.get("context_source"),
+                        context_confidence=active.get("context_confidence"),
+                        context_observation_count=int(
+                            active.get("context_observation_count") or 0
+                        ),
+                        context_first_seen_ns=active.get("context_first_seen_ns"),
+                        context_updated_ns=active.get("context_updated_ns"),
+                        duration_minutes=next_duration,
+                        end_on_teleport=bool(active.get("end_on_teleport")),
+                        end_on_death=bool(active.get("end_on_death")),
+                        end_after_no_kill=bool(active.get("end_after_no_kill")),
                         started_ns=boundary_ns,
                     )
-                    active = {
-                        **active,
-                        "id": next_id,
-                        "duration_minutes": automatic_minutes,
-                        "started_ns": boundary_ns,
-                        "ended_ns": None,
-                    }
-                    boundary_ns += automatic_minutes * 60 * 1_000_000_000
+                    self.log.info(
+                        "subsession_auto_started previous_id=%s boundary_ns=%s duration_minutes=%s",
+                        active["id"],
+                        boundary_ns,
+                        next_duration,
+                    )
+                changed = True
         finally:
             store.close()
         if changed:
@@ -3172,6 +6614,161 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_subsession_columns({})
         self._save_subsession_columns()
 
+    def _selected_subsession_card_fields(self) -> list[str]:
+        return [
+            key for key, _label_text, _width, _visible in SUBSESSION_COLUMNS[1:]
+            if key != "exp_hour_percent"
+            and self.subsession_card_field_actions[key].isChecked()
+        ]
+
+    def _apply_subsession_card_fields(self, fields: object) -> None:
+        selected = {
+            str(key) for key in (fields if isinstance(fields, (list, tuple, set)) else [])
+            if str(key) in self.subsession_card_field_widgets
+        }
+        active = bool(getattr(self, "_overview_has_subsession", False))
+        for key, widget in self.subsession_card_field_widgets.items():
+            widget.setVisible(
+                active and key in selected and key != "exp_hour_percent"
+            )
+
+    def _set_subsession_card_field_visible(self, key: str, visible: bool) -> None:
+        if key not in self.subsession_card_field_actions:
+            return
+        action = self.subsession_card_field_actions[key]
+        if action.isChecked() != visible:
+            action.blockSignals(True)
+            action.setChecked(visible)
+            action.blockSignals(False)
+        selected = self._selected_subsession_card_fields()
+        self._apply_subsession_card_fields(selected)
+        self.preferences = save_preferences(
+            {"subsession_card_fields": selected}, self.preferences_path
+        )
+
+    def _reset_subsession_card_fields(self) -> None:
+        selected = set(SUBSESSION_CARD_DEFAULT_FIELDS)
+        for key, action in self.subsession_card_field_actions.items():
+            action.blockSignals(True)
+            action.setChecked(key in selected)
+            action.blockSignals(False)
+        self._apply_subsession_card_fields(selected)
+        self.preferences = save_preferences(
+            {"subsession_card_fields": list(SUBSESSION_CARD_DEFAULT_FIELDS)},
+            self.preferences_path,
+        )
+
+    def _subsession_display_values(
+        self,
+        item: dict[str, object],
+        summary: dict[str, object],
+        duration: int,
+    ) -> dict[str, str]:
+        profiles = list(self.snapshot.get("profiles") or [])
+        profiles_by_client = {
+            profile.get("client_key"): str(profile.get("name") or "")
+            for profile in profiles if isinstance(profile, dict) and profile.get("client_key")
+        }
+        profiles_by_uid = {
+            profile.get("uid"): str(profile.get("name") or "")
+            for profile in profiles if isinstance(profile, dict) and profile.get("uid")
+        }
+        exp_total = int(summary.get("exp_gained") or 0)
+        hours = duration / 3600 if duration else 0
+        exp_percent = summary.get("exp_gained_percent")
+        exp_hour = round(exp_total / hours) if hours else 0
+        exp_hour_percent = (
+            float(exp_percent) / hours
+            if hours and isinstance(exp_percent, (int, float)) else None
+        )
+        credits = int(summary.get("credits") or 0)
+        contribution = summary.get("contribution")
+        rarity = dict(summary.get("loot_by_rarity") or {})
+        contribution_hour = (
+            round(float(contribution) / hours)
+            if hours and isinstance(contribution, (int, float)) else None
+        )
+        character = (
+            profiles_by_client.get(item.get("client_key"))
+            or profiles_by_uid.get(item.get("character_uid"))
+            or str(summary.get("character") or "")
+            or "Aguardando UID"
+        )
+        location = str(item.get("location") or "").strip()
+        levels = " · ".join(
+            f"{mob}: {level}"
+            for mob, level in dict(item.get("mob_levels") or {}).items()
+        )
+        client_key = str(item.get("client_key") or "client:a")
+        try:
+            client_index = max(
+                0, min(CLIENT_SLOT_COUNT - 1, ord(client_key[-1]) - 97)
+            )
+        except (IndexError, TypeError):
+            client_index = 0
+        return {
+            "select": "",
+            "name": str(item.get("name") or "—")
+            + (f"\n{location}" if location else ""),
+            "character": character,
+            "client": self._client_name(client_index),
+            "status": "Em andamento" if item.get("ended_ns") is None else "Encerrada",
+            "time": (
+                f"{duration // 3600:02d}:"
+                f"{duration // 60 % 60:02d}:{duration % 60:02d}"
+            ),
+            "map": str(item.get("map_name") or "—"),
+            "spot": str(item.get("spot_name") or "—"),
+            "mobs": ", ".join(str(value) for value in item.get("mobs") or []) or "—",
+            "levels": levels or "—",
+            "context": (
+                f"Automático · {int(item.get('context_observation_count') or 0)} leituras"
+                if item.get("context_confidence") == "stable"
+                else "Manual" if item.get("context_source") == "manual"
+                else "Automático · aguardando" if item.get("auto_context")
+                else "Manual"
+            ),
+            "mau": self._subsession_usage_state(item.get("mau_state")),
+            "launcher": self._subsession_usage_state(item.get("launcher_state")),
+            "exp_potion": self._subsession_usage_state(
+                item.get("exp_potion_state")
+            ),
+            "kills": self._format_value(int(summary.get("kills") or 0)),
+            "finalizations": self._format_value(int(summary.get("finalizations") or 0)),
+            "exp_total": self._format_value(exp_total),
+            "exp_percent": self._format_value(exp_percent, "%"),
+            "exp_hour": (
+                f"{self._format_value(exp_hour)} "
+                f"({self._format_value(exp_hour_percent, '%')})"
+            ),
+            "exp_hour_percent": self._format_value(exp_hour_percent, "%"),
+            "credits": self._format_value(credits),
+            "credits_hour": self._format_value(round(credits / hours) if hours else 0),
+            "contribution": self._format_value(contribution),
+            "contribution_hour": self._format_value(contribution_hour),
+            "loot_total": self._format_value(sum(
+                int(rarity.get(key) or 0)
+                for key in ("common", "uncommon", "rare", "epic")
+            )),
+            "loot_common": self._format_value(int(rarity.get("common") or 0)),
+            "loot_uncommon": self._format_value(int(rarity.get("uncommon") or 0)),
+            "loot_rare": self._format_value(int(rarity.get("rare") or 0)),
+            "loot_epic": self._format_value(int(rarity.get("epic") or 0)),
+            "upload": {
+                "sent": "Enviada",
+                "pending": "Pendente",
+                "failed": "Falhou",
+            }.get(str(item.get("upload_state") or ""), "Não enviada"),
+        }
+
+    @staticmethod
+    def _subsession_usage_state(value: object) -> str:
+        return {
+            "detected": "Uso detectado",
+            "not_detected": "Não detectado",
+            "pending_evidence": "Aguardando captura validada",
+        }.get(str(value or ""), "Aguardando captura validada")
+
     def _filtered_subsessions(self) -> list[dict[str, object]]:
         items = list(self.snapshot.get("subsessions") or [])
         view = self.subsession_filter.currentText()
@@ -3199,92 +6796,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.subsession_page = min(self.subsession_page, pages)
         visible = items[(self.subsession_page - 1) * size:self.subsession_page * size]
         summaries = dict(self.snapshot.get("subsession_summaries") or {})
-        profiles = list(self.snapshot.get("profiles") or [])
-        profiles_by_client = {
-            item.get("client_key"): str(item.get("name") or "")
-            for item in profiles if item.get("client_key")
-        }
-        profiles_by_uid = {
-            item.get("uid"): str(item.get("name") or "")
-            for item in profiles if item.get("uid")
-        }
         self.subsession_table.blockSignals(True)
         self.subsession_table.setRowCount(len(visible))
         for row, item in enumerate(visible):
             summary = dict(summaries.get(item["id"]) or {})
             ended = item.get("ended_ns") or time.time_ns()
             duration = max(0, int((ended - item["started_ns"]) / 1_000_000_000))
-            exp_total = int(summary.get("exp_gained") or 0)
-            hours = duration / 3600 if duration else 0
-            exp_percent = summary.get("exp_gained_percent")
-            exp_hour = round(exp_total / hours) if hours else 0
-            exp_hour_percent = (
-                exp_percent / hours
-                if hours and isinstance(exp_percent, (int, float)) else None
-            )
-            credits = int(summary.get("credits") or 0)
-            contribution = summary.get("contribution")
-            rarity = dict(summary.get("loot_by_rarity") or {})
-            contribution_hour = (
-                round(contribution / hours)
-                if hours and isinstance(contribution, (int, float)) else None
-            )
-            character = (
-                profiles_by_client.get(item.get("client_key"))
-                or profiles_by_uid.get(item.get("character_uid"))
-                or str(summary.get("character") or "")
-                or "Aguardando UID"
-            )
             location = str(item.get("location") or "").strip()
-            levels = " · ".join(
-                f"{mob}: {level}"
-                for mob, level in dict(item.get("mob_levels") or {}).items()
-            )
-            values = {
-                "select": "",
-                "name": str(item.get("name") or "—")
-                + (f"\n{location}" if location else ""),
-                "character": character,
-                "client": self._client_name(
-                    max(0, min(
-                        CLIENT_SLOT_COUNT - 1,
-                        ord(str(item.get("client_key") or "client:a")[-1]) - 97,
-                    ))
-                ),
-                "status": "Em andamento" if item.get("ended_ns") is None else "Encerrada",
-                "time": f"{duration // 3600:02d}:{duration // 60 % 60:02d}:{duration % 60:02d}",
-                "map": str(item.get("map_name") or "—"),
-                "spot": str(item.get("spot_name") or "—"),
-                "mobs": ", ".join(item.get("mobs") or []) or "—",
-                "levels": levels or "—",
-                "kills": self._format_value(int(summary.get("kills") or 0)),
-                "finalizations": self._format_value(
-                    int(summary.get("finalizations") or 0)
-                ),
-                "exp_total": self._format_value(exp_total),
-                "exp_percent": self._format_value(exp_percent, "%"),
-                "exp_hour": self._format_value(exp_hour),
-                "exp_hour_percent": self._format_value(exp_hour_percent, "%"),
-                "credits": self._format_value(credits),
-                "credits_hour": self._format_value(
-                    round(credits / hours) if hours else 0
-                ),
-                "contribution": self._format_value(contribution),
-                "contribution_hour": self._format_value(contribution_hour),
-                "loot_total": self._format_value(sum(
-                    int(rarity.get(key) or 0)
-                    for key in ("common", "uncommon", "rare", "epic")
-                )),
-                "loot_common": self._format_value(int(rarity.get("common") or 0)),
-                "loot_uncommon": self._format_value(int(rarity.get("uncommon") or 0)),
-                "loot_rare": self._format_value(int(rarity.get("rare") or 0)),
-                "loot_epic": self._format_value(int(rarity.get("epic") or 0)),
-                "upload": {
-                    "sent": "Enviada",
-                    "pending": "Pendente",
-                    "failed": "Falhou",
-                }.get(str(item.get("upload_state") or ""), "Não enviada"),
-            }
+            values = self._subsession_display_values(item, summary, duration)
             for column, (key, _label, _width, _visible) in enumerate(
                 SUBSESSION_COLUMNS
             ):
@@ -3294,7 +6813,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     cell.setFlags(cell.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
                     cell.setCheckState(QtCore.Qt.CheckState.Checked if item["id"] in self.selected_subsessions else QtCore.Qt.CheckState.Unchecked)
                     cell.setData(QtCore.Qt.ItemDataRole.UserRole, item["id"])
-                elif key in {"name", "mobs", "levels"}:
+                elif key in {"name", "mobs", "levels", "context"}:
                     cell.setToolTip(text)
                 cell.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
                 self.subsession_table.setItem(row, column, cell)
@@ -3362,6 +6881,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _inventory_icon(self, item_index: int) -> QtGui.QIcon:
         cached = self.inventory_icon_cache.get(item_index)
         if cached is not None:
+            self.inventory_icon_cache.move_to_end(item_index)
             return cached
         icon = QtGui.QIcon()
         try:
@@ -3373,7 +6893,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.item_icon_zip.read(f"{item_index}.webp"), "WEBP"
                 )
                 if not pixmap.isNull():
-                    icon = QtGui.QIcon(pixmap)
+                    icon = QtGui.QIcon(pixmap.scaled(
+                        INVENTORY_ICON_SIZE,
+                        INVENTORY_ICON_SIZE,
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        QtCore.Qt.TransformationMode.SmoothTransformation,
+                    ))
         except (KeyError, OSError, zipfile.BadZipFile):
             pass
         if icon.isNull():
@@ -3381,6 +6906,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtWidgets.QStyle.StandardPixmap.SP_FileIcon
             )
         self.inventory_icon_cache[item_index] = icon
+        while len(self.inventory_icon_cache) > self.memory_limits["inventory_icons"]:
+            self.inventory_icon_cache.popitem(last=False)
         return icon
 
     def _render_inventory(self, _filter: str = "") -> None:
@@ -3454,6 +6981,533 @@ class MainWindow(QtWidgets.QMainWindow):
             else "Aguardando o personagem deste cliente ser identificado."
         )
 
+    def _render_exp_rank(self, _filter: str = "") -> None:
+        if not hasattr(self, "exp_rank_table"):
+            return
+        if "exp-ranking" not in self.license_features:
+            self.exp_rank_table.setRowCount(0)
+            self.exp_rank_history_table.setRowCount(0)
+            self.exp_rank_state.setText("Módulo não licenciado")
+            self.exp_rank_status.setText(
+                "Ranking de EXP não incluído nesta licença."
+            )
+            self._set_exp_rank_export_available()
+            return
+        ranking = dict(self.snapshot.get("exp_rank") or {})
+        records = [
+            dict(record)
+            for record in (ranking.get("records") or [])
+            if isinstance(record, dict)
+            and 1 <= int(record.get("rank") or 0) <= 100
+        ]
+        query = self.exp_rank_search.text().strip().casefold()
+        if query:
+            records = [
+                record
+                for record in records
+                if query in str(record.get("character_name") or "").casefold()
+                or query in str(record.get("guild_name") or "").casefold()
+            ]
+        records.sort(key=lambda record: int(record.get("rank") or 0))
+
+        self.exp_rank_table.setRowCount(len(records))
+        for row, record in enumerate(records):
+            rank = int(record.get("rank") or 0)
+            previous_rank = int(record.get("previous_rank") or 0)
+            change = previous_rank - rank if previous_rank > 0 else None
+            change_text = (
+                "—"
+                if change is None
+                else f"+{change}"
+                if change > 0
+                else str(change)
+            )
+            level, level_percent = exp_rank_level_progress(record.get("total_exp"))
+            cells = (
+                QtWidgets.QTableWidgetItem(str(rank)),
+                QtWidgets.QTableWidgetItem(change_text),
+                QtWidgets.QTableWidgetItem(
+                    str(record.get("character_name") or "Não identificado")
+                ),
+                QtWidgets.QTableWidgetItem(str(record.get("guild_name") or "—")),
+                QtWidgets.QTableWidgetItem(str(level) if level is not None else "—"),
+                QtWidgets.QTableWidgetItem(
+                    f"{level_percent:.2f}%".replace(".", ",")
+                    if level_percent is not None else "—"
+                ),
+                QtWidgets.QTableWidgetItem(
+                    self._format_count(record.get("total_exp"))
+                ),
+            )
+            for column, cell in enumerate(cells):
+                if column in (0, 1, 4, 5):
+                    cell.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                elif column == 6:
+                    cell.setTextAlignment(
+                        QtCore.Qt.AlignmentFlag.AlignRight
+                        | QtCore.Qt.AlignmentFlag.AlignVCenter
+                    )
+                if column in (4, 5):
+                    cell.setToolTip(
+                        "Calculado pela EXP total com a curva oficial 1.28.5."
+                    )
+                self.exp_rank_table.setItem(row, column, cell)
+
+        history_rows = []
+        for capture in self.snapshot.get("exp_rank_history") or []:
+            if not isinstance(capture, dict):
+                continue
+            captured_at_ns = int(capture.get("captured_at_ns") or 0)
+            for raw in capture.get("records") or []:
+                if not isinstance(raw, dict):
+                    continue
+                if query and query not in " ".join((
+                    str(raw.get("character_name") or ""),
+                    str(raw.get("guild_name") or ""),
+                )).casefold():
+                    continue
+                history_rows.append((captured_at_ns, raw))
+        self.exp_rank_history_table.setRowCount(len(history_rows))
+        for row, (captured_at_ns, record) in enumerate(history_rows):
+            captured = (
+                datetime.fromtimestamp(captured_at_ns / 1_000_000_000)
+                .astimezone().strftime("%d/%m/%Y %H:%M:%S")
+                if captured_at_ns > 0 else "—"
+            )
+            values = (
+                captured,
+                str(record.get("rank") or "—"),
+                str(record.get("character_name") or "Não identificado"),
+                str(record.get("level") or "—"),
+                self._format_percent(record.get("level_percent")),
+                self._format_count(record.get("total_exp")),
+                self._format_signed_count(record.get("gained_exp")),
+                self._format_signed_percent(record.get("gained_percent")),
+                self._format_count(record.get("exp_per_hour")),
+                self._format_signed_percent(record.get("exp_percent_per_hour")),
+            )
+            for column, value in enumerate(values):
+                cell = QtWidgets.QTableWidgetItem(value)
+                if column != 2:
+                    cell.setTextAlignment(
+                        QtCore.Qt.AlignmentFlag.AlignRight
+                        | QtCore.Qt.AlignmentFlag.AlignVCenter
+                    )
+                self.exp_rank_history_table.setItem(row, column, cell)
+
+        completeness = str(ranking.get("completeness") or "")
+        count = int(ranking.get("record_count") or len(ranking.get("records") or []))
+        if not ranking or count <= 0:
+            state_text, state_role = "Aguardando captura", "muted"
+            status = (
+                "Abra e percorra o Top 100 no jogo. O RF QOL observa a consulta "
+                "sem controlar a tela."
+            )
+        else:
+            complete = completeness == "complete"
+            state_text = "Top 100 completo" if complete else "Captura parcial"
+            state_role = "ok" if complete else "warning"
+            details = [f"{count}/100 posições capturadas"]
+            captured_at_ns = int(ranking.get("captured_at_ns") or 0)
+            if captured_at_ns > 0:
+                captured_at = datetime.fromtimestamp(
+                    captured_at_ns / 1_000_000_000
+                ).astimezone()
+                details.append(captured_at.strftime("atualizado em %d/%m/%Y às %H:%M:%S"))
+            conflicts = int(ranking.get("conflict_count") or 0)
+            if conflicts:
+                details.append(f"{conflicts} conflito(s) detectado(s)")
+            missing = list(ranking.get("missing_positions") or [])
+            if missing:
+                preview = ", ".join(str(position) for position in missing[:10])
+                suffix = f" e mais {len(missing) - 10}" if len(missing) > 10 else ""
+                details.append(f"faltam {preview}{suffix}")
+            if query:
+                details.append(f"{len(records)} resultado(s) no filtro")
+            status = " · ".join(details) + "."
+        self.exp_rank_state.setText(state_text)
+        self.exp_rank_state.setProperty("role", state_role)
+        self.exp_rank_state.style().unpolish(self.exp_rank_state)
+        self.exp_rank_state.style().polish(self.exp_rank_state)
+        self.exp_rank_status.setText(status)
+        self._set_exp_rank_export_available()
+
+    def _set_exp_rank_export_available(self, _index: int = -1) -> None:
+        if not hasattr(self, "exp_rank_export"):
+            return
+        table = (
+            self.exp_rank_history_table
+            if self.exp_rank_tabs.currentIndex() == 1
+            else self.exp_rank_table
+        )
+        self.exp_rank_export.setEnabled(
+            "exp-ranking" in self.license_features and table.rowCount() > 0
+        )
+
+    def _export_exp_rank_csv(self, path: Path | None = None) -> Path | None:
+        explicit_path = path is not None
+        table = (
+            self.exp_rank_history_table
+            if self.exp_rank_tabs.currentIndex() == 1
+            else self.exp_rank_table
+        )
+        if "exp-ranking" not in self.license_features or table.rowCount() <= 0:
+            if not explicit_path:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Ranking de EXP",
+                    "Não existem registros disponíveis para exportar.",
+                )
+            return None
+        if path is None:
+            kind = "historico" if table is self.exp_rank_history_table else "atual"
+            suggested = (
+                Path.home()
+                / f"ranking-exp-{kind}-{datetime.now():%Y%m%d-%H%M%S}.csv"
+            )
+            selected, _selected_filter = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Exportar Ranking de EXP",
+                str(suggested),
+                "Arquivo CSV (*.csv)",
+            )
+            if not selected:
+                return None
+            path = Path(selected)
+        if path.suffix.casefold() != ".csv":
+            path = path.with_suffix(".csv")
+        headers = [
+            str(table.horizontalHeaderItem(column).text())
+            for column in range(table.columnCount())
+        ]
+        rows = [
+            [
+                str(table.item(row, column).text())
+                if table.item(row, column) is not None else ""
+                for column in range(table.columnCount())
+            ]
+            for row in range(table.rowCount())
+        ]
+        try:
+            with path.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.writer(handle, delimiter=";", lineterminator="\n")
+                writer.writerow(headers)
+                writer.writerows(rows)
+        except OSError as error:
+            if not explicit_path:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Ranking de EXP",
+                    f"Não foi possível salvar o CSV: {error}",
+                )
+            return None
+        if not explicit_path:
+            self.exp_rank_status.setText(
+                f"CSV exportado com {len(rows)} registro(s): {path}"
+            )
+        return path
+
+    def _manual_map_fallbacks(self) -> dict[str, dict[str, object]]:
+        raw = self.preferences.get("manual_map_fallbacks")
+        if not isinstance(raw, dict):
+            return {}
+        result: dict[str, dict[str, object]] = {}
+        for client_key, value in raw.items():
+            if (
+                not str(client_key).startswith("client:")
+                or not isinstance(value, dict)
+            ):
+                continue
+            name = str(value.get("map_name") or "").strip()[:160]
+            region = str(value.get("region_name") or "").strip()[:160]
+            if not name:
+                continue
+            try:
+                index = int(value.get("map_index") or 0)
+            except (TypeError, ValueError):
+                index = 0
+            if index not in MAP_PREVIEW_ASSETS:
+                index = next((
+                    candidate
+                    for candidate in sorted(MAP_PREVIEW_ASSETS)
+                    if any(
+                        map_name(candidate, language).casefold() == name.casefold()
+                        and str(
+                            (map_region(candidate, None, language) or {}).get(
+                                "region_name"
+                            ) or ""
+                        ).casefold() == region.casefold()
+                        for language in ("pt", "en")
+                    )
+                ), 0)
+            result[str(client_key)] = {
+                "map_name": name,
+                "region_name": region,
+                "map_index": index or None,
+            }
+        return result
+
+    def _apply_manual_map_fallbacks(self) -> None:
+        self.snapshot["map"] = apply_manual_map_fallbacks(
+            self.snapshot.get("map") or {}, self._manual_map_fallbacks()
+        )
+
+    def _set_manual_map_fallback(self) -> None:
+        key = _client_key(self.active_client)
+        language = str(self.preferences.get("item_name_language") or "pt")
+        grouped_options: dict[str, dict[str, object]] = {}
+        for index in sorted(MAP_CATALOG):
+            resolved = map_name(index, language)
+            fixed = map_region(index, None, language) or {}
+            region = str(fixed.get("region_name") or "")
+            display_value = f"{resolved} · {region}" if region else resolved
+            group = grouped_options.setdefault(
+                display_value.casefold(), {
+                    "name": resolved,
+                    "region": region,
+                    "value": display_value,
+                    "indices": [],
+                }
+            )
+            group["indices"].append(index)
+        options = [
+            (
+                f"{group['value']} · "
+                + "/".join(f"#{index}" for index in group["indices"]),
+                str(group["value"]),
+            )
+            for group in grouped_options.values()
+        ]
+        configured = self._manual_map_fallbacks().get(key, {})
+        current_name = str(configured.get("map_name") or "")
+        current_region = str(configured.get("region_name") or "")
+        current = (
+            f"{current_name} · {current_region}" if current_region else current_name
+        )
+        selected = self._choose_manual_map_name(options, current)
+        if selected is None:
+            return
+        selected = str(selected).strip()[:320]
+        selected_group = grouped_options.get(selected.casefold())
+        manual_name = str(
+            (selected_group or {}).get("name") or selected
+        ).strip()[:160]
+        manual_region = str(
+            (selected_group or {}).get("region") or ""
+        ).strip()[:160]
+        selected_indices = list((selected_group or {}).get("indices") or [])
+        manual_map_index = next(
+            (index for index in selected_indices if index in MAP_PREVIEW_ASSETS),
+            selected_indices[0] if selected_indices else 0,
+        )
+        if not manual_name:
+            QtWidgets.QMessageBox.warning(
+                self, "Mapa atual", "Informe um nome de mapa válido."
+            )
+            return
+        fallbacks = self._manual_map_fallbacks()
+        fallbacks[key] = {
+            "map_name": manual_name,
+            "region_name": manual_region,
+            "map_index": manual_map_index or None,
+        }
+        self.preferences = save_preferences(
+            {"manual_map_fallbacks": fallbacks}, self.preferences_path
+        )
+        self._apply_manual_map_fallbacks()
+        self._render_map()
+
+    def _choose_manual_map_name(
+        self,
+        options: list[tuple[str, str]],
+        current: str,
+    ) -> str | None:
+        dialog = _MapSelectionDialog(options, current, self)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return None
+        return dialog.selected_map_name()
+
+    def _clear_manual_map_fallback(self) -> None:
+        key = _client_key(self.active_client)
+        fallbacks = self._manual_map_fallbacks()
+        if key not in fallbacks:
+            return
+        fallbacks.pop(key, None)
+        self.preferences = save_preferences(
+            {"manual_map_fallbacks": fallbacks}, self.preferences_path
+        )
+        self._apply_manual_map_fallbacks()
+        self._render_map()
+
+    def _render_map(self) -> None:
+        if not hasattr(self, "map_players_table"):
+            return
+        self._apply_manual_map_fallbacks()
+        snapshot = dict(self.snapshot.get("map") or {})
+        capacity = int(snapshot.get("capacity") or 2)
+        active = int(snapshot.get("active_count") or 0)
+        limited = int(snapshot.get("limited_count") or 0)
+        self.map_capacity.setText(
+            f"{active}/{capacity} vagas em uso"
+            + (f" · {limited} limitado(s)" if limited else "")
+        )
+        key = _client_key(self.active_client)
+        client = next(
+            (
+                dict(item)
+                for item in (snapshot.get("clients") or [])
+                if isinstance(item, dict) and item.get("client_key") == key
+            ),
+            {},
+        )
+        enabled = client.get("map_enabled") is True
+        manual_fallback = client.get("map_source") == "manual_fallback"
+        configured_fallback = key in self._manual_map_fallbacks()
+        self.map_manual_clear.setEnabled(configured_fallback)
+        self.map_manual_button.setText(
+            "Alterar mapa manual" if configured_fallback else "Informar mapa atual"
+        )
+        position = dict(client.get("position") or {})
+        players = [
+            dict(item)
+            for item in (client.get("nearby_players") or [])
+            if isinstance(item, dict)
+        ] if enabled else []
+
+        if not client:
+            state, role = "Aguardando rota", "muted"
+            status = "Este cliente ainda não possui uma rota de rede identificada."
+        elif not enabled:
+            state, role = "Limite do Mapa", "warning"
+            status = (
+                "As duas vagas estão ocupadas. Este cliente continua disponível "
+                "para captura e monitores independentes."
+            )
+        elif client.get("reason") == "awaiting_data":
+            if manual_fallback:
+                state, role = "Mapa informado manualmente", "warning"
+                status = (
+                    "O nome manual está sendo usado como fallback; o reconhecimento "
+                    "automático continua ativo e assumirá assim que identificar o mapa."
+                )
+            else:
+                state, role = "Aguardando coordenadas", "muted"
+                status = "A rota está admitida; mova o personagem para confirmar a posição."
+        else:
+            state = "Posição antiga" if client.get("stale") else "Posição atual"
+            role = "warning" if client.get("stale") else "ok"
+            details = [str(client.get("character_name") or self._client_name(self.active_client))]
+            age = client.get("age_seconds")
+            if isinstance(age, (int, float)):
+                details.append(f"observada há {float(age):.1f} s".replace(".", ","))
+            if client.get("teleporting") is True:
+                details.append("warp em andamento")
+            if manual_fallback:
+                details.append("nome manual temporário; automático ainda ativo")
+            status = " · ".join(details) + "."
+        self.map_state.setText(state)
+        self.map_state.setProperty("role", role)
+        self.map_state.style().unpolish(self.map_state)
+        self.map_state.style().polish(self.map_state)
+        self.map_status.setText(status)
+
+        map_name = str(client.get("map_name") or "").strip()
+        map_index = client.get("map_index")
+        self.map_metric_labels["map"].setText(
+            map_name
+            or (
+                f"Mapa #{int(map_index)}"
+                if isinstance(map_index, (int, float))
+                else "—"
+            )
+        )
+        for coordinate in ("x", "y", "z"):
+            value = position.get(coordinate)
+            self.map_metric_labels[coordinate].setText(
+                f"{float(value):.3f}".replace(".", ",")
+                if isinstance(value, (int, float))
+                else "—"
+            )
+        self.map_metric_labels["players"].setText(str(len(players)))
+        if hasattr(self, "overview_map_name"):
+            x_value, y_value = position.get("x"), position.get("y")
+            coordinate_text = (
+                f"{float(x_value):.0f}, {float(y_value):.0f}"
+                if isinstance(x_value, (int, float))
+                and isinstance(y_value, (int, float))
+                else "—, —"
+            )
+            shown_map = map_name or (
+                f"Mapa #{int(map_index)}"
+                if isinstance(map_index, (int, float)) else "Mapa não identificado"
+            )
+            self.overview_coordinates.setText(coordinate_text)
+            self.overview_map_name.setText(shown_map)
+            region_name = str(client.get("region_name") or "").strip()
+            region_center = dict(client.get("region_center") or {})
+            center_x, center_y = region_center.get("x"), region_center.get("y")
+            self.overview_map_region.setText(
+                (
+                    f"Região {region_name} · centro {float(center_x):.0f}, {float(center_y):.0f}"
+                    if region_name
+                    and isinstance(center_x, (int, float))
+                    and isinstance(center_y, (int, float))
+                    else f"Região {region_name}" if region_name else "Região —"
+                )
+            )
+            self.overview_map_state.setText(state)
+            self.overview_nearby_players.setText(
+                f"Outros jogadores  {len(players)}"
+            )
+            player_names = list(dict.fromkeys(
+                str(player.get("name") or "Não identificado").strip()
+                or "Não identificado"
+                for player in players
+            ))
+            shown_names = ", ".join(player_names[:6]) or "—"
+            if len(player_names) > 6:
+                shown_names += f" e mais {len(player_names) - 6}"
+            self.overview_nearby_names.setText(f"Nomes: {shown_names}")
+            self.overview_nearby_names.setToolTip(", ".join(player_names))
+            self.overview_map_preview.set_snapshot(map_index, position, players)
+            self.top_location.setText(
+                f"{shown_map} · {region_name} · {coordinate_text}"
+                if region_name and coordinate_text != "—, —"
+                else f"{shown_map} · {coordinate_text}"
+                if coordinate_text != "—, —" else shown_map
+            )
+            self.top_location.setProperty("role", "ok" if enabled else "muted")
+            self.top_location.style().unpolish(self.top_location)
+            self.top_location.style().polish(self.top_location)
+        if hasattr(self, "map_page_preview"):
+            self.map_page_preview.set_snapshot(map_index, position, players)
+
+        self.map_players_table.setRowCount(len(players))
+        for row, player in enumerate(players):
+            player_position = dict(player.get("position") or {})
+            distance = player.get("distance")
+            values = (
+                str(player.get("name") or "Não identificado"),
+                str(player.get("guild_name") or "—"),
+                *(
+                    f"{float(player_position.get(axis)):.3f}".replace(".", ",")
+                    if isinstance(player_position.get(axis), (int, float))
+                    else "—"
+                    for axis in ("x", "y", "z")
+                ),
+                f"{float(distance):.2f}".replace(".", ",")
+                if isinstance(distance, (int, float))
+                else "—",
+            )
+            for column, value in enumerate(values):
+                cell = QtWidgets.QTableWidgetItem(value)
+                if column >= 2:
+                    cell.setTextAlignment(
+                        QtCore.Qt.AlignmentFlag.AlignRight
+                        | QtCore.Qt.AlignmentFlag.AlignVCenter
+                    )
+                self.map_players_table.setItem(row, column, cell)
+
     def _inventory_category(self, item: dict[str, object]) -> str:
         overrides = dict(self.preferences.get("inventory_category_overrides") or {})
         item_index = str(int(item.get("item_index") or 0))
@@ -3520,6 +7574,10 @@ class MainWindow(QtWidgets.QMainWindow):
             f"Categoria do item {item_index} atualizada manualmente."
         )
 
+    def _site_allows(self, feature: str) -> bool:
+        allows = getattr(self.site_profile, "allows", None)
+        return bool(allows(feature)) if callable(allows) else True
+
     def _set_send_controls(self) -> None:
         enabled = bool(
             self.site_profile.connected
@@ -3563,6 +7621,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     )
             available = (
                 enabled
+                and self._site_allows(mode)
                 and mode_available
                 and (_client < 0 or self._client_allowed(_client))
             )
@@ -3570,17 +7629,31 @@ class MainWindow(QtWidgets.QMainWindow):
             button.setToolTip(
                 ""
                 if available
+                else "Integração não liberada para este tipo de dado."
+                if not self._site_allows(mode)
                 else "Slot não incluído nesta licença."
                 if _client >= 0 and not self._client_allowed(_client)
                 else "Ainda não existem dados deste tipo disponíveis para envio."
             )
-        selected_enabled = enabled and bool(self.selected_subsessions)
+        selected_enabled = (
+            enabled
+            and self._site_allows("subsession")
+            and bool(self.selected_subsessions)
+        )
         for button in (self.send_selected_button, self.subsession_upload_button):
             button.setEnabled(selected_enabled)
             button.setToolTip(
                 ""
                 if selected_enabled
                 else "Selecione uma subsessão encerrada e valide o token do Profile."
+            )
+        if hasattr(self, "auction_database_send"):
+            auction_enabled = enabled and self._site_allows("auction-bank")
+            self.auction_database_send.setEnabled(auction_enabled)
+            self.auction_database_send.setToolTip(
+                "Envia somente registros confirmados e sanitizados."
+                if auction_enabled
+                else "Valide o token do Profile para enviar o Banco de Leilão."
             )
 
     def _run_site_operation(self, name: str, callback) -> None:
@@ -3617,7 +7690,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "license:activate", lambda: self.license_client.activate(key, VERSION)
         )
 
-    def _refresh_license_online(self) -> None:
+    def _refresh_license_online(self, *, force: bool = False) -> None:
         now = time.monotonic()
         if (
             self.site_busy
@@ -3628,7 +7701,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.license_refresh_running = True
         self.last_license_refresh_at = now
         self._run_site_operation(
-            "license:refresh", lambda: self.license_client.refresh_if_due(VERSION)
+            "license:refresh",
+            lambda: self.license_client.refresh_if_due(VERSION, force=force),
         )
 
     def _current_session_id(self) -> str:
@@ -4098,6 +8172,27 @@ class MainWindow(QtWidgets.QMainWindow):
             ),
         )
 
+    def _send_auction_bank(self) -> None:
+        session_id = str(
+            (self.capture_engine and self.capture_engine.current_session)
+            or self.snapshot.get("session_id")
+            or self.last_capture_session
+            or ""
+        )
+        if not session_id:
+            self.auction_database_status.setText(
+                "Nenhuma sessão disponível para envio."
+            )
+            return
+        self.auction_database_status.setText("Enviando Banco de Leilão…")
+        self._run_site_operation(
+            "auction_bank",
+            lambda: self.site_uploader.send_auction_bank(
+                session_id,
+                str(self.preferences.get("item_name_language") or "pt"),
+            ),
+        )
+
     @QtCore.Slot(str, object, object)
     def _site_operation_finished(
         self, name: str, result: object, error: object
@@ -4119,7 +8214,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     {"profile": data.get("profile")}, self.preferences_path
                 )
                 self.site_profile_status.setText(
-                    f"Conectado ao Profile {data.get('profile')}"
+                    f"Conectado ao Profile {data.get('profile')} para envio do Mercado."
                 )
             else:
                 self.site_profile_status.setText(
@@ -4130,12 +8225,12 @@ class MainWindow(QtWidgets.QMainWindow):
             if error is not None:
                 self.license_title.setText(f"Não foi possível ativar: {error}")
             else:
-                self._apply_license(load_license_status())
+                self._apply_license(self.license_client.local_status())
                 self.license_title.setText("Licença ativada e salva")
         elif name == "license:refresh":
             if error is not None:
                 self.log.warning("license_refresh_failed error=%s", type(error).__name__)
-            self._apply_license(load_license_status())
+            self._apply_license(self.license_client.local_status())
         elif name.startswith("send:"):
             mode = name.split(":", 2)[1]
             if error is None:
@@ -4171,6 +8266,18 @@ class MainWindow(QtWidgets.QMainWindow):
                         f"{data.get('sent', 0)} enviada(s); "
                         f"{len(failures)} falharam.\n\n" + "\n".join(failures),
                     )
+        elif name == "auction_bank":
+            if error is not None:
+                self.auction_database_status.setText(f"Falha no envio: {error}")
+                QtWidgets.QMessageBox.warning(
+                    self, "Banco de Leilão", str(error)
+                )
+            else:
+                data = dict(result or {})
+                self.auction_database_status.setText(
+                    f"Enviado · {data.get('listings', 0)} anúncio(s) · "
+                    f"{data.get('transactions', 0)} transação(ões)."
+                )
         elif name in {"export", "auto_export", "export_upload"}:
             if error is not None:
                 self.update_status.setText(f"Exportação falhou: {error}")
@@ -4186,23 +8293,42 @@ class MainWindow(QtWidgets.QMainWindow):
                     "observation_upload_failed error_type=%s",
                     type(error).__name__,
                 )
-                self._render_pvp_database()
+                if self._bank_is_visible(0):
+                    self._render_pvp_database()
+                elif self._bank_is_visible(1):
+                    self._render_pve_database()
                 self.pvp_database_status.setText(f"Falha no envio: {error}")
             else:
                 data = dict(result or {})
                 self.log.info(
-                    "observation_upload_completed characters=%s mobs=%s skipped=%s",
+                    "observation_upload_completed characters=%s pve_records=%s "
+                    "pve_conflicts=%s skipped=%s",
                     data.get("sent_characters", 0),
                     data.get("sent_mobs", 0),
+                    data.get("pve_conflicts", 0),
                     bool(data.get("skipped")),
                 )
-                self._render_pvp_database()
+                if self._bank_is_visible(0):
+                    self._render_pvp_database()
+                elif self._bank_is_visible(1):
+                    self._render_pve_database()
+                characters = int(data.get("sent_characters") or 0)
+                pve_records = int(data.get("sent_mobs") or 0)
+                conflicts = int(data.get("pve_conflicts") or 0)
+                parts = []
+                if characters:
+                    parts.append(f"{characters} UID(s) ao Banco Temporário")
+                if pve_records:
+                    parts.append(f"{pve_records} registro(s) do Banco PvE confirmado(s)")
+                if conflicts:
+                    parts.append(f"{conflicts} conflito(s) de HP em revisão")
                 self.pvp_database_status.setText(
-                    f"{data.get('sent_characters', 0)} UID(s) enviado(s) ao Banco Temporário."
+                    " · ".join(parts) + "." if parts else "Nenhuma mudança pendente."
                 )
             QtCore.QTimer.singleShot(0, self._maybe_auto_exp_rank_upload)
         elif name == "observations:receive":
-            self._render_pvp_database()
+            if self._bank_is_visible(0):
+                self._render_pvp_database()
             if error is not None:
                 self.log.error(
                     "observation_download_failed error_type=%s",
@@ -4321,55 +8447,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 store.close()
         self._load_readonly_data()
 
-    def _build_tutorial_page(self) -> QtWidgets.QWidget:
-        page = QtWidgets.QWidget(objectName="pageTutorial")
-        column = QtWidgets.QVBoxLayout(page)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(10)
-        column.addWidget(_label("Tutorial", "title"))
-        column.addWidget(_label("Comece em seis passos", "subtitle"))
-        scroll = QtWidgets.QScrollArea(objectName="pageScroll")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        content = QtWidgets.QWidget(objectName="scrollContent")
-        content_layout = QtWidgets.QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 8, 0)
-        steps = (
-            "Ative esta instalação em Configurações, na área Licença. A ativação será lembrada nas próximas aberturas.",
-            "Abra o RF NEXT. O programa detecta automaticamente até dois clientes e separa as conexões de cada um.",
-            "Use PC ou Emuladores no menu lateral e escolha o cliente desejado. Dê duplo clique no cliente para definir manualmente o UID.",
-            "Em Envios, Personagem, Mercado, Codex e Memory Chips enviam dados já lidos; eles não iniciam outra captura.",
-            "Em Configurações, informe o Profile e o token do site. Subsessões encerradas podem ser selecionadas e enviadas sem duplicidade.",
-            "Cada parada encerra uma sessão independente. Confira o tamanho antes de exportar e mova os segmentos à Lixeira somente após validar a exportação.",
-        )
-        for number, text in enumerate(steps, 1):
-            card = QtWidgets.QFrame(objectName="panel")
-            row = QtWidgets.QHBoxLayout(card)
-            row.setContentsMargins(16, 12, 16, 12)
-            badge = _label(str(number), "step")
-            badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            badge.setFixedSize(34, 34)
-            body = _label(text, "muted")
-            body.setWordWrap(True)
-            row.addWidget(badge)
-            row.addWidget(body, 1)
-            content_layout.addWidget(card)
-        privacy = QtWidgets.QFrame(objectName="accentPanel")
-        privacy_layout = QtWidgets.QVBoxLayout(privacy)
-        privacy_layout.setContentsMargins(16, 12, 16, 12)
-        privacy_layout.addWidget(_label("Privacidade", "subtitle"))
-        privacy_text = _label(
-            "Captura passiva limitada às conexões detectadas do RF NEXT, sem captura geral da rede, injeção, token de sessão, atualização silenciosa ou telemetria.",
-            "muted",
-        )
-        privacy_text.setWordWrap(True)
-        privacy_layout.addWidget(privacy_text)
-        content_layout.addWidget(privacy)
-        content_layout.addStretch(1)
-        scroll.setWidget(content)
-        column.addWidget(scroll, 1)
-        return page
-
     def _load_readonly_data(self) -> None:
         if self.data_load_running:
             self.data_load_pending = True
@@ -4407,8 +8484,18 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.Slot(object)
     def _apply_readonly_data(self, payload: dict[str, object]) -> None:
         self.preferences = dict(payload.get("preferences") or {})
-        set_detailed(self.log, bool(self.preferences.get("detailed_logging", False)))
+        self.memory_limits = memory_limits_for_budget(
+            self.preferences.get("memory_limit_mb")
+        )
+        self.snapshot_reader.character_history_limit = self.memory_limits[
+            "character_history"
+        ]
+        set_detailed(self.log, True)
+        live_map = dict(self.snapshot.get("map") or {})
         self.snapshot = dict(payload.get("snapshot") or {})
+        if live_map.get("clients") and not dict(self.snapshot.get("map") or {}).get("clients"):
+            self.snapshot["map"] = live_map
+        self._apply_manual_map_fallbacks()
         self._apply_inventory_category_overrides()
         if hasattr(self, "pvp_sync_interval"):
             self.pvp_sync_interval.blockSignals(True)
@@ -4441,12 +8528,25 @@ class MainWindow(QtWidgets.QMainWindow):
             self._sync_global_hotkeys()
             self._refresh_farm_catalog()
             self.controls_initialized = True
+            self._sync_local_api()
         self._render_overview()
         self._render_combat()
         self._render_subsessions()
         self._render_sends()
         self._render_inventory()
-        self._render_pvp_database()
+        self._render_exp_rank()
+        self._render_map()
+        self._render_drops()
+        self._render_loot_announcements()
+        self._render_program_status()
+        self._render_general_summary()
+        self._render_integration_health()
+        if self.page_stack.currentIndex() == BANKS_PAGE_INDEX:
+            self._render_selected_bank()
+        self._evaluate_drop_alerts(
+            str(self.snapshot.get("session_id") or ""),
+            list(self.snapshot.get("drop_events") or []),
+        )
         engine = self._ensure_capture_engine()
         if engine.current_session:
             self.top_capture.setText(
@@ -4467,6 +8567,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _show_read_error(self, message: str) -> None:
         self.log.error("data_load_failed error_type=%s", message.split(":", 1)[0])
         self.overview_status.setText(f"Não foi possível ler a sessão: {message}")
+        self.overview_status.show()
         self.license_title.setText("Não foi possível ler a licença local")
         self._finish_data_load()
 
@@ -4481,10 +8582,25 @@ class MainWindow(QtWidgets.QMainWindow):
             self.combat_load_pending = True
             return
         self.combat_load_running = True
-        active_modes = tuple(
-            mode for mode, enabled in self.monitor_enabled.items() if enabled
-        )
-        active_locations: dict[str, str] = {}
+        active_modes = self._combat_decode_modes()
+        active_locations: dict[str, object] = {}
+        for client in (self.snapshot.get("map") or {}).get("clients") or []:
+            if not client.get("map_enabled") or client.get("stale"):
+                continue
+            client_key = str(client.get("client_key") or "")
+            map_index = client.get("map_index")
+            map_name = str(client.get("map_name") or "").strip()
+            if not map_name and isinstance(map_index, int):
+                map_name = f"Mapa #{map_index}"
+            if client_key and (map_name or isinstance(map_index, int)):
+                region_name = str(client.get("region_name") or "").strip()
+                active_locations[client_key] = {
+                    "map_index": map_index,
+                    "map_name": map_name,
+                    "label": map_name,
+                    "region_name": region_name,
+                    "spot_name": region_name,
+                }
         for subsession in list(self.snapshot.get("subsessions") or []):
             if subsession.get("ended_ns") is not None:
                 continue
@@ -4497,8 +8613,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 if value
             ) or str(subsession.get("location") or "").strip()
-            if client_key and location:
+            if client_key and location and client_key not in active_locations:
                 active_locations[client_key] = location
+        session_id = str(self.snapshot.get("session_id") or "")
+        exp_rank_records = list(
+            (self.snapshot.get("exp_rank") or {}).get("records") or []
+        )
+        active_auto_clients = {
+            str(subsession.get("client_key") or "")
+            for subsession in (self.snapshot.get("subsessions") or [])
+            if subsession.get("ended_ns") is None
+            and subsession.get("auto_context")
+        }
+        if self.subsession_context_session != session_id:
+            self.subsession_context_stabilizer.clear()
+            self.subsession_context_session = session_id
+        farm_catalog = self.farm_catalog
 
         def worker() -> None:
             try:
@@ -4518,6 +8648,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 knowledge = KnowledgeStore(self.knowledge_path)
                 try:
+                    knowledge.observe_exp_rank_records(
+                        exp_rank_records, session_id=session_id
+                    )
                     knowledge.enrich_combat_monitors(
                         payload.get("combat_monitors") or []
                     )
@@ -4527,9 +8660,35 @@ class MainWindow(QtWidgets.QMainWindow):
                             location=active_locations.get(
                                 str(monitor.get("client_key") or ""), ""
                             ),
+                            session_id=session_id or "",
                         )
                 finally:
                     knowledge.close()
+                if session_id:
+                    store = CaptureStore(self.database_path)
+                    context_changed = False
+                    try:
+                        for monitor in payload.get("combat_monitors") or []:
+                            client_key = str(monitor.get("client_key") or "")
+                            if client_key not in active_auto_clients:
+                                self.subsession_context_stabilizer.discard(client_key)
+                                continue
+                            context = infer_subsession_context(
+                                monitor,
+                                active_locations.get(client_key, ""),
+                                farm_catalog,
+                            )
+                            context = self.subsession_context_stabilizer.observe(
+                                client_key, context, now_ns=time.time_ns()
+                            )
+                            if context is None:
+                                continue
+                            context_changed = store.update_auto_subsession_context(
+                                session_id, client_key, **context
+                            ) or context_changed
+                    finally:
+                        store.close()
+                    payload["subsession_context_changed"] = context_changed
                 self.combat_loaded.emit(payload)
             except Exception as error:
                 self.log.exception("combat_load_failed")
@@ -4539,6 +8698,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _flush_observation_upload(self) -> None:
         session = self.pending_observation_session
+        if not self._site_allows("observations"):
+            self.pending_observation_session = ""
+            return
         if not session or not self.site_profile.connected:
             return
         if self.site_busy:
@@ -4602,7 +8764,9 @@ class MainWindow(QtWidgets.QMainWindow):
             or ""
         )
         if (
-            not session
+            not self._site_allows("exp-ranking")
+            or "exp-ranking" not in self.license_features
+            or not session
             or not self.site_profile.connected
             or self.site_busy
             or time.monotonic() < self.auto_exp_rank_retry_after
@@ -4613,6 +8777,8 @@ class MainWindow(QtWidgets.QMainWindow):
             ranking = store.exp_rank_snapshot(session)
         finally:
             store.close()
+        if ranking.get("completeness") != "complete":
+            return
         signature = str(ranking.get("signature") or "")
         snapshot_key = str(ranking.get("snapshot_key") or "")
         sent = dict(self.preferences.get("auto_exp_rank_signatures") or {})
@@ -4638,7 +8804,11 @@ class MainWindow(QtWidgets.QMainWindow):
         session = str(
             self.snapshot.get("session_id") or self.last_capture_session or ""
         )
-        if not session or not self.site_profile.connected:
+        if (
+            not self._site_allows("observations")
+            or not session
+            or not self.site_profile.connected
+        ):
             if force and hasattr(self, "pvp_database_status"):
                 self.pvp_database_status.setText(
                     "Valide o token do Profile e carregue uma sessão antes de sincronizar."
@@ -4654,13 +8824,54 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.Slot(object)
     def _apply_combat_data(self, payload: dict[str, object]) -> None:
+        routing = payload.get("routing_metrics")
+        if isinstance(routing, dict):
+            self.log.debug(
+                "combat_routing total=%s associated=%s identity_associated=%s "
+                "identity_flows=%s single_client_fallback=%s unmatched=%s",
+                routing.get("total_events", 0),
+                routing.get("associated_events", 0),
+                routing.get("identity_associated_events", 0),
+                routing.get("identity_bound_flows", 0),
+                routing.get("single_client_fallback_events", 0),
+                routing.get("unmatched_events", 0),
+            )
         if payload.get("session_id") == self.snapshot.get("session_id"):
             self.snapshot["combat_monitors"] = list(
                 payload.get("combat_monitors") or []
             )
             self._render_combat()
+            self._render_overview_nearby_mobs()
+            if (
+                self.page_stack.currentIndex() == BANKS_PAGE_INDEX
+                and self.banks_tabs.currentIndex() == 1
+            ):
+                self._render_pve_database()
             self._evaluate_alerts(self.snapshot["combat_monitors"])
+            if payload.get("subsession_context_changed"):
+                QtCore.QTimer.singleShot(0, self._load_readonly_data)
         self._finish_combat_load()
+
+    def _combat_decode_modes(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                (
+                    *self._licensed_status_modes(),
+                    *(
+                        mode
+                        for mode, enabled in self.monitor_enabled.items()
+                        if enabled
+                    ),
+                )
+            )
+        )
+
+    def _licensed_status_modes(self) -> tuple[str, ...]:
+        return tuple(
+            mode
+            for mode, feature in MONITOR_FEATURES.items()
+            if feature in self.license_features
+        )
 
     def _evaluate_alerts(self, monitors: list[dict[str, Any]]) -> None:
         alerts = self._alert_preferences()
@@ -4701,15 +8912,127 @@ class MainWindow(QtWidgets.QMainWindow):
             ):
                 self._fire_alert("low_hp", f"Vida baixa: {float(percent):.1f}%".replace(".", ","))
 
+    def _evaluate_live_drop_alerts(self) -> None:
+        names = {
+            _client_key(index): self._captured_client_name(index)
+            for index in range(CLIENT_SLOT_COUNT)
+        }
+        events = route_live_drop_events(
+            self.live_combat_events,
+            self.live_combat_ports,
+            names,
+        )
+        session_id = str(
+            (self.capture_engine and self.capture_engine.current_session)
+            or self.snapshot.get("session_id")
+            or ""
+        )
+        self._evaluate_drop_alerts(session_id, events)
+        self._merge_live_loot_announcements(session_id)
+
+    def _merge_live_loot_announcements(self, session_id: str) -> None:
+        if session_id != self.loot_announcement_session:
+            self.loot_announcement_session = session_id
+            if str(self.snapshot.get("session_id") or "") != session_id:
+                self.snapshot["loot_announcements"] = []
+        incoming = route_live_loot_announcements(
+            self.live_combat_events, self.live_combat_ports
+        )
+        merged: dict[tuple[object, ...], dict[str, Any]] = {}
+        for event in [
+            *(self.snapshot.get("loot_announcements") or []), *incoming
+        ]:
+            announcements = tuple(
+                (
+                    row.get("player_name"), row.get("item_index"), row.get("count")
+                )
+                for row in (event.get("data") or {}).get("announcements") or []
+                if isinstance(row, dict)
+            )
+            key = (
+                event.get("ts_ns"), event.get("stream_offset"),
+                event.get("bundle_seq"), event.get("client_key"), announcements,
+            )
+            merged[key] = dict(event)
+        limit = min(1000, int(self.memory_limits["seen_drop_events"]))
+        self.snapshot["loot_announcements"] = sorted(
+            merged.values(), key=lambda event: int(event.get("ts_ns") or 0)
+        )[-limit:]
+        if self.page_stack.currentIndex() == LOOT_ANNOUNCEMENTS_PAGE_INDEX:
+            self._render_loot_announcements()
+
+    def _evaluate_drop_alerts(
+        self, session_id: str, events: list[dict[str, Any]]
+    ) -> None:
+        language = str(self.preferences.get("item_name_language") or "pt")
+        candidates = confirmed_item_drop_alerts(
+            events, item_names_for_language(language)
+        )
+        baseline = session_id != self.drop_alert_session
+        if baseline:
+            self.drop_alert_session = session_id
+            self.seen_drop_alerts.clear()
+        pending = []
+        for candidate in candidates:
+            key = str(candidate["event_key"])
+            is_new = key not in self.seen_drop_alerts
+            self.seen_drop_alerts.pop(key, None)
+            self.seen_drop_alerts[key] = None
+            if is_new and not baseline:
+                pending.append(candidate)
+        while len(self.seen_drop_alerts) > self.memory_limits["seen_drop_events"]:
+            self.seen_drop_alerts.pop(next(iter(self.seen_drop_alerts)))
+        if baseline or not self.alert_item_drop.isChecked():
+            return
+        for candidate in pending:
+            selected_rarities = {
+                grade
+                for grade, option in self.alert_drop_rarities.items()
+                if option.isChecked()
+            }
+            selected_types = {
+                category
+                for category, option in self.alert_drop_types.items()
+                if option.isChecked()
+            }
+            items = [
+                item
+                for item in candidate.get("items") or []
+                if int(
+                    ITEM_GRADES.get(str(item.get("item_index") or 0), 0) or 0
+                ) in selected_rarities
+                and drop_alert_category(item.get("item_index")) in selected_types
+            ]
+            if not items:
+                continue
+            shown = ", ".join(
+                f"{item.get('name')} x{int(item.get('count') or 0)}"
+                for item in items[:3]
+            )
+            if len(items) > 3:
+                shown += f" e mais {len(items) - 3}"
+            character = str(candidate.get("character_name") or "").strip()
+            prefix = f"Drop de {character}" if character else "Drop de item"
+            self._fire_alert(
+                f"drop:{candidate['event_key']}", f"{prefix}: {shown}"
+            )
+
     def _fire_alert(self, key: str, message: str) -> None:
         now = time.monotonic()
-        if now - self.alert_last_fired.get(key, 0.0) < 10:
+        cooldown = max(5, min(300, self.alert_cooldown_seconds.value()))
+        if now - self.alert_last_fired.get(key, 0.0) < cooldown:
+            self.alert_last_fired.move_to_end(key)
             return
+        self.alert_last_fired.pop(key, None)
         self.alert_last_fired[key] = now
+        while len(self.alert_last_fired) > self.memory_limits["alert_cooldowns"]:
+            self.alert_last_fired.popitem(last=False)
         self.alert_status.setText(message)
         self.log.info("monitor_alert key=%s", key.split(":", 1)[0])
         if self.alert_sound.isChecked():
-            QtWidgets.QApplication.beep()
+            play_alert_sound(
+                self._resolved_alert_sound(), QtWidgets.QApplication.beep
+            )
         QtWidgets.QApplication.alert(self, 3000)
 
     @QtCore.Slot(str)
@@ -4728,21 +9051,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _apply_license(self, status: dict[str, object]) -> None:
         previous_active = self.license_active
-        previous_limits = dict(self.connection_limits)
         active = bool(status.get("active"))
         self.license_active = active
         self.license_features = {
             str(feature) for feature in (status.get("features") or [])
         }
-        limits = status.get("connection_limits")
-        self.connection_limits = (
-            {
-                "pc": int(limits.get("pc", 0)),
-                "emulators": int(limits.get("emulators", 0)),
-            }
-            if active and isinstance(limits, dict)
-            else {"pc": 0, "emulators": 0}
-        )
+        self.connection_limits = {}
         message = str(status.get("message") or "Licença indisponível")
         self.top_license.setText(f"Licença — {message.lower()}")
         self.top_license.setProperty("role", "ok" if active else "muted")
@@ -4753,40 +9067,32 @@ class MainWindow(QtWidgets.QMainWindow):
         details = [f"Fonte local: {status.get('source') or 'nenhuma'}"]
         if status.get("valid_until"):
             details.append(f"Prazo offline: {status['valid_until']}")
-        if status.get("next_check_at"):
-            details.append(f"Próxima validação: {status['next_check_at']}")
         labels = {
             "base": "Base",
             "monitor-pve": "Monitor PvE",
             "monitor-pvp": "Monitor PvP",
             "monitor-boss": "Monitor Boss",
+            "map": "Mapa",
+            "sessions-lan": "Sessões LAN",
+            "exp-ranking": "Ranking de EXP",
         }
         enabled_labels = [labels[feature] for feature in labels if feature in self.license_features]
         details.append(
             "Módulos: " + (", ".join(enabled_labels) if enabled_labels else "nenhum")
         )
-        details.append(
-            "Conexões: "
-            f"{self.connection_limits['pc']} clientes PC e "
-            f"{self.connection_limits['emulators']} emuladores"
-        )
-        details.append("Comprovante local protegido; renovação online feita quando devida.")
+        details.append("Sem cota de clientes por licença; permanecem apenas limites técnicos.")
+        details.append("Comprovante local protegido; nova tentativa online em cada abertura.")
         self.license_details.setText("\n".join(details))
         self._apply_module_access()
         self._refresh_connection_access(
-            reset_tabs=(
-                previous_active != self.license_active
-                or previous_limits != self.connection_limits
-            )
+            reset_tabs=previous_active != self.license_active
         )
         self._set_capture_controls()
+        if self.controls_initialized:
+            self._sync_local_api()
 
     def _client_allowed(self, index: int) -> bool:
-        if not self.license_active or not 0 <= index < CLIENT_SLOT_COUNT:
-            return False
-        if index < PC_SLOT_COUNT:
-            return index < self.connection_limits["pc"]
-        return index - PC_SLOT_COUNT < self.connection_limits["emulators"]
+        return self.license_active and 0 <= index < CLIENT_SLOT_COUNT
 
     def _refresh_connection_access(self, *, reset_tabs: bool = False) -> None:
         for index in range(CLIENT_SLOT_COUNT):
@@ -4808,14 +9114,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_send_controls()
 
     def _apply_module_access(self) -> None:
-        for index, mode in MONITOR_PAGES.items():
+        allowed_modes = []
+        for mode, tab_index in MONITOR_TAB_INDEX.items():
             allowed = MONITOR_FEATURES[mode] in self.license_features
-            button = self.nav_buttons[index]
-            button.setVisible(allowed if mode == "boss" else True)
-            button.setEnabled(allowed)
-            button.setToolTip(
-                "" if allowed else "Módulo não incluído nesta licença."
+            if allowed:
+                allowed_modes.append(mode)
+            self.monitor_tabs.setTabVisible(
+                tab_index, allowed if mode == "boss" else True
             )
+            self.monitor_tabs.setTabEnabled(tab_index, allowed)
             controls = self.monitor_controls[mode]
             for name in (
                 "enabled", "interval", "focus", "overlay", "hostile_overlay",
@@ -4843,8 +9150,47 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._toggle_boss_overlay(False)
                     if self.boss_dps_overlay:
                         self._toggle_boss_dps_overlay(False)
+        button = self.nav_buttons[MONITOR_PAGE_INDEX]
+        button.setEnabled(bool(allowed_modes))
+        button.setToolTip(
+            "" if allowed_modes else "Nenhum módulo de monitor incluído nesta licença."
+        )
+        page_features = {
+            EXP_RANK_PAGE_INDEX: ("exp-ranking", "Ranking de EXP"),
+            MAP_PAGE_INDEX: ("map", "Mapa"),
+        }
+        for page_index, (feature, label) in page_features.items():
+            page_button = self.nav_buttons[page_index]
+            page_allowed = feature in self.license_features
+            page_button.setEnabled(page_allowed)
+            page_button.setToolTip(
+                "" if page_allowed else f"{label} não incluído nesta licença."
+            )
+        if hasattr(self, "banks_tabs"):
+            self.banks_tabs.setTabEnabled(
+                0, "monitor-pvp" in self.license_features
+            )
+            self.banks_tabs.setTabEnabled(
+                1, "monitor-pve" in self.license_features
+            )
+            if not self.banks_tabs.isTabEnabled(self.banks_tabs.currentIndex()):
+                self.banks_tabs.setCurrentIndex(2)
+        current_tab = self.monitor_tabs.currentIndex()
+        if (
+            current_tab < 0
+            or not self.monitor_tabs.isTabEnabled(current_tab)
+            or not self.monitor_tabs.isTabVisible(current_tab)
+        ):
+            for mode in allowed_modes:
+                tab_index = MONITOR_TAB_INDEX[mode]
+                if self.monitor_tabs.isTabVisible(tab_index):
+                    self.monitor_tabs.setCurrentIndex(tab_index)
+                    break
         current = self.page_stack.currentIndex()
-        if current in MONITOR_PAGES and not self.nav_buttons[current].isEnabled():
+        if current == MONITOR_PAGE_INDEX and not button.isEnabled():
+            self.page_stack.setCurrentIndex(0)
+            self.nav_buttons[0].setChecked(True)
+        elif current in page_features and not self.nav_buttons[current].isEnabled():
             self.page_stack.setCurrentIndex(0)
             self.nav_buttons[0].setChecked(True)
         if (
@@ -4893,6 +9239,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 session_counter=self._bounded(
                     self.preferences.get("session_counter"), 0, 999999, 0
                 ),
+                memory_budget_mb=self.memory_limits["budget_mb"],
+                game_language=game_data_language(
+                    self.preferences.get("item_name_language")
+                ),
             )
             if not self.capture_recovery_attempted:
                 self.capture_recovery_attempted = True
@@ -4910,7 +9260,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _ensure_monitor_engine(self) -> MonitorEngine:
         if self.monitor_engine is None:
-            self.monitor_engine = MonitorEngine(self.license_client)
+            self.monitor_engine = MonitorEngine(
+                self.license_client,
+                memory_budget_mb=self.memory_limits["budget_mb"],
+                game_language=game_data_language(
+                    self.preferences.get("item_name_language")
+                ),
+            )
         return self.monitor_engine
 
     def _monitor_interval_changed(self, mode: str) -> None:
@@ -5107,7 +9463,9 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(overlay)
         layout.setContentsMargins(12, 10, 12, 10)
         self.boss_dps_overlay_name = _label("Aguardando boss próximo", "subtitle")
-        self.boss_dps_overlay_rate = _label("DPS — · Tempo restante —", "data")
+        self.boss_dps_overlay_rate = _label(
+            "DPS — · Dano acumulado — · Tempo restante —", "data"
+        )
         layout.addWidget(self.boss_dps_overlay_name)
         layout.addWidget(self.boss_dps_overlay_rate)
         overlay.resize(340, 95)
@@ -5172,6 +9530,26 @@ class MainWindow(QtWidgets.QMainWindow):
         rows = QtWidgets.QVBoxLayout()
         rows.setSpacing(4)
         layout.addWidget(summary)
+        if kind == "target":
+            local_health = QtWidgets.QFrame(objectName="secondaryMetricGroup")
+            local_layout = QtWidgets.QVBoxLayout(local_health)
+            local_layout.setContentsMargins(8, 5, 8, 5)
+            local_layout.setSpacing(3)
+            local_heading = QtWidgets.QHBoxLayout()
+            local_heading.addWidget(_label("Sua vida", "muted"), 1)
+            local_value = _label("HP —", "data")
+            local_heading.addWidget(local_value)
+            local_progress = QtWidgets.QProgressBar()
+            local_progress.setRange(0, 1000)
+            local_progress.setValue(0)
+            local_progress.setTextVisible(False)
+            local_progress.setFixedHeight(8)
+            local_layout.addLayout(local_heading)
+            local_layout.addWidget(local_progress)
+            layout.addWidget(local_health)
+            overlay.local_health = local_health
+            overlay.local_health_value = local_value
+            overlay.local_health_progress = local_progress
         layout.addLayout(rows)
         overlay.summary = summary
         overlay.rows = rows
@@ -5236,11 +9614,17 @@ class MainWindow(QtWidgets.QMainWindow):
         engine = self.capture_engine
         active = bool(engine and engine.active)
         paused = bool(engine and engine.paused)
-        self.start_button.setText(
-            "Continuar  Ctrl+F8" if paused else "Iniciar  Ctrl+F8"
-        )
+        self.start_button.setToolTip("Começar captura nova · Ctrl+F8")
+        self.start_button.setAccessibleName(self.start_button.toolTip())
         self.start_button.setEnabled(
             self.license_active and not self.capture_busy and not active
+        )
+        self.continue_button.setEnabled(
+            self.license_active
+            and not self.capture_busy
+            and not active
+            and paused
+            and bool(engine and engine.current_session)
         )
         self.pause_button.setEnabled(active and not self.capture_busy)
         self.stop_button.setEnabled(
@@ -5249,6 +9633,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stop_without_reading_button.setEnabled(
             bool(engine and engine.current_session) and not self.capture_busy
         )
+        if not self.license_active and not active:
+            self.top_capture.setText("Licença necessária")
+            self.top_capture.setProperty("role", "warning")
+        elif paused:
+            self.top_capture.setText("Captura pausada")
+            self.top_capture.setProperty("role", "warning")
+        elif active:
+            self.top_capture.setText("Captura ativa")
+            self.top_capture.setProperty("role", "ok")
+        elif not self.capture_busy:
+            self.top_capture.setText("Captura inativa")
+            self.top_capture.setProperty("role", "muted")
+        self.top_capture.style().unpolish(self.top_capture)
+        self.top_capture.style().polish(self.top_capture)
         if self._tray:
             self.tray_start_action.setEnabled(self.start_button.isEnabled())
             self.tray_pause_action.setEnabled(self.pause_button.isEnabled())
@@ -5283,88 +9681,39 @@ class MainWindow(QtWidgets.QMainWindow):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _discard_previous_capture(self) -> bool:
-        engine = self._ensure_capture_engine()
-        session_id = str(
-            engine.current_session
-            or self.preferences.get("last_session")
-            or self.snapshot.get("session_id")
-            or ""
-        )
-        store = CaptureStore(self.database_path)
-        try:
-            files = list(store.session_sources(session_id)) if session_id else []
-        finally:
-            store.close()
-        prefix = str(self.preferences.get("capture_prefix") or "")
-        capture_directory = Path(
-            self.preferences.get("capture_directory")
-            or CAPTURE_DIR
-        )
-        if prefix:
-            files.extend(capture_directory.glob(f"{prefix}*.etl"))
-        files = list(dict.fromkeys(path for path in files if path.exists()))
-        if not session_id and not files:
-            self.discard_previous.setChecked(False)
-            return True
-        total = sum(path.stat().st_size for path in files)
-        if not QtWidgets.QMessageBox.question(
-            self,
-            "Descartar sessão anterior",
-            f"Mover {self._format_bytes(total)} para a Lixeira e remover somente "
-            "a sessão anterior?",
-        ) == QtWidgets.QMessageBox.StandardButton.Yes:
-            return False
-        try:
-            files.extend(engine.abandon())
-            files = list(dict.fromkeys(path for path in files if path.exists()))
-            if files and not _recycle(files):
-                raise OSError("Alguns segmentos não puderam ser movidos para a Lixeira")
-            store = CaptureStore(self.database_path)
-            try:
-                if session_id:
-                    store.clear_exported(session_id)
-            finally:
-                store.close()
-            self.preferences = save_preferences({
-                "capture_pending": False,
-                "last_session": "",
-                "capture_prefix": "",
-                "capture_ports": [],
-                "capture_client_ports": [],
-                "capture_client_pids": [],
-                "capture_pc_client_pids": [],
-                "capture_emulator_client_pids": [],
-            }, self.preferences_path)
-            self.capture_engine = None
-            self.capture_recovery_attempted = True
-            self.discard_previous.setChecked(False)
-            self.snapshot = {}
-            self.log.info("previous_session_discarded")
-            return True
-        except Exception as error:
-            self.log.exception("previous_session_discard_failed")
-            QtWidgets.QMessageBox.warning(self, "Descartar sessão", str(error))
-            return False
-
-    def _start_capture(self) -> None:
+    def _prepare_capture_start(self) -> CaptureEngine | None:
         if not self.license_active:
             self.top_capture.setText("Captura — licença necessária")
-            return
-        if self.discard_previous.isChecked() and not self._discard_previous_capture():
-            return
+            return None
         if self.monitor_engine and self.monitor_engine.active:
             try:
                 self.monitor_engine.stop()
             except Exception as error:
                 self.log.exception("monitor_handover_stop_failed")
                 self.top_capture.setText(f"Captura — monitor não encerrou: {error}")
-                return
-        engine = self._ensure_capture_engine()
-        self.top_capture.setText(
-            "Captura — continuando…" if engine.paused else "Captura — iniciando…"
-        )
-        self._run_capture_operation("start", engine.start)
+                return None
+        return self._ensure_capture_engine()
+
+    def _start_new_capture(self) -> None:
+        engine = self._prepare_capture_start()
+        if engine is None:
+            return
+        self.top_capture.setText("Captura — iniciando nova sessão…")
+        self._run_capture_operation("start_new", engine.start_new)
+
+    def _continue_capture(self) -> None:
+        engine = self._prepare_capture_start()
+        if engine is None:
+            return
+        if not engine.paused or not engine.current_session:
+            self.top_capture.setText("Captura — não há sessão anterior para continuar")
+            return
+        self.top_capture.setText("Captura — continuando sessão anterior…")
+        self._run_capture_operation("continue", engine.start)
+
+    def _start_capture(self) -> None:
+        """Compatibilidade interna: o atalho de início sempre cria uma sessão nova."""
+        self._start_new_capture()
 
     def _pause_capture(self) -> None:
         engine = self._ensure_capture_engine()
@@ -5419,7 +9768,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._disable_monitor_mode(mode)
                 return
             detail = str(error)
-            if name == "start" and "Outra captura PktMon" in detail:
+            if name in {"start", "start_new", "continue"} and "Outra captura PktMon" in detail:
                 self.top_capture.setText("Captura — outra sessão já está ativa")
                 self.top_capture.setToolTip(detail)
                 QtWidgets.QMessageBox.warning(
@@ -5434,12 +9783,24 @@ class MainWindow(QtWidgets.QMainWindow):
             if name in {"read", "preview"}:
                 if name == "preview":
                     now_mono = time.monotonic()
+                    if self.license_active and "map" in self.license_features:
+                        self.map_preview_next_due = (
+                            now_mono + MAP_PREVIEW_SECONDS
+                        )
+                    if self._licensed_status_modes():
+                        self.program_status_preview_next_due = (
+                            now_mono + PROGRAM_STATUS_PREVIEW_SECONDS
+                        )
                     for mode, enabled in self.monitor_enabled.items():
                         if enabled:
                             self.monitor_next_due[mode] = (
                                 now_mono
                                 + self.monitor_controls[mode]["interval"].value()
                             )
+                    if self.alert_item_drop.isChecked():
+                        self.drop_alert_next_due = (
+                            now_mono + DROP_ALERT_REFRESH_SECONDS
+                        )
                 else:
                     self.next_read_at = (
                         time.monotonic() + self._general_read_interval_seconds()
@@ -5456,6 +9817,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 QtCore.QTimer.singleShot(0, self._stop_capture)
             return
         data = dict(result or {})
+        if isinstance(data.get("monitor_metrics"), dict):
+            self.latest_monitor_metrics = dict(data["monitor_metrics"])
+        if isinstance(data.get("map"), dict):
+            self.snapshot["map"] = dict(data["map"])
+            self._apply_manual_map_fallbacks()
+            self._render_map()
         files = data.get("files") or 0
         file_count = files if isinstance(files, int) else len(files)
         self.log.debug(
@@ -5489,22 +9856,35 @@ class MainWindow(QtWidgets.QMainWindow):
                     for group in data.get("client_ports") or []
                 )
                 metrics = dict(data.get("monitor_metrics") or {})
+                discarded = int(metrics.get("dropped_packets") or 0) + int(
+                    metrics.get("dropped_write_packets") or 0
+                )
                 self.top_last_read.setText(
                     f"Monitores: {len(self.live_combat_events)} evento(s) prioritários"
                     f" · fila {metrics.get('queue_depth', 0)}"
                     f" · atraso {float(metrics.get('lag_seconds') or 0):.1f} s"
+                    + (f" · descartados {discarded}" if discarded else "")
+                )
+                self.top_last_read.setToolTip(
+                    "Sobrecarga controlada: pacotes foram descartados para proteger a RAM."
+                    if discarded else ""
                 )
                 self.log.debug("monitor_metrics %s", metrics)
+                self._evaluate_live_drop_alerts()
                 self._load_combat_data()
             for mode, enabled in self.monitor_enabled.items():
                 if enabled and self.monitor_next_due[mode] <= now_mono:
                     self.monitor_next_due[mode] = (
                         now_mono + self.monitor_controls[mode]["interval"].value()
                     )
+            if self.alert_item_drop.isChecked():
+                self.drop_alert_next_due = (
+                    now_mono + DROP_ALERT_REFRESH_SECONDS
+                )
             self._set_capture_controls()
             return
         engine = self._ensure_capture_engine()
-        if name == "start":
+        if name in {"start", "start_new", "continue"}:
             self.last_capture_session = str(data.get("session_id") or "")
             self._apply_uid_selections(self.last_capture_session)
             self.preferences = save_preferences({
@@ -5520,6 +9900,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     "capture_emulator_client_pids"
                 ),
             }, self.preferences_path)
+            self.program_status_preview_next_due = 0.0
+            self.map_preview_next_due = 0.0
             self.next_read_at = time.monotonic() + 3
             self.top_capture.setText(
                 f"Captura — ativa · {data.get('pc_clients', 0)} PC · "
@@ -5565,18 +9947,36 @@ class MainWindow(QtWidgets.QMainWindow):
         elif name == "preview":
             now = datetime.now().strftime("%H:%M:%S")
             now_mono = time.monotonic()
+            if self._licensed_status_modes():
+                self.program_status_preview_next_due = (
+                    now_mono + PROGRAM_STATUS_PREVIEW_SECONDS
+                )
+            if self.license_active and "map" in self.license_features:
+                self.map_preview_next_due = now_mono + MAP_PREVIEW_SECONDS
             metrics = dict(data.get("monitor_metrics") or {})
+            discarded = int(metrics.get("dropped_packets") or 0) + int(
+                metrics.get("dropped_write_packets") or 0
+            )
             for mode, enabled in self.monitor_enabled.items():
                 if enabled and self.monitor_next_due[mode] <= now_mono:
                     self.monitor_next_due[mode] = (
                         now_mono + self.monitor_controls[mode]["interval"].value()
                     )
+            if self.alert_item_drop.isChecked():
+                self.drop_alert_next_due = (
+                    now_mono + DROP_ALERT_REFRESH_SECONDS
+                )
             self.top_last_read.setText(
                 f"Última leitura rápida: {now} · {data.get('added', 0)} evento(s)"
                 f" · fila {metrics.get('queue_depth', 0)}"
                 f" · atraso {float(metrics.get('lag_seconds') or 0):.1f} s"
+                + (f" · descartados {discarded}" if discarded else "")
                 if data.get("available")
                 else "Última leitura rápida: indisponível neste modo de captura"
+            )
+            self.top_last_read.setToolTip(
+                "Sobrecarga controlada: pacotes foram descartados para proteger a RAM."
+                if discarded else self.live_preview_error
             )
             self.live_combat_events = list(data.get("events") or [])
             self.live_combat_ports = tuple(
@@ -5584,7 +9984,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 for group in data.get("client_ports") or []
             )
             self.log.debug("monitor_metrics %s", metrics)
-            self._load_combat_data()
+            self._evaluate_live_drop_alerts()
+            if (
+                any(self.monitor_enabled.values())
+                or bool(self._licensed_status_modes())
+            ):
+                self._load_combat_data()
         elif name == "pause":
             self.top_capture.setText("Captura — pausada")
             self._load_readonly_data()
@@ -5646,13 +10051,13 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(0, self._stop_capture)
 
     def _capture_tick(self) -> None:
-        memory = _process_memory_bytes()
-        self.top_memory.setText(
-            f"RAM: {self._format_bytes(memory)}" if memory is not None else "RAM: —"
-        )
+        now = time.monotonic()
+        self._sample_process_memory(now)
+        if now >= self.program_status_next_refresh:
+            self.program_status_next_refresh = now + 1.0
+            self._render_program_status()
         engine = self.capture_engine
         monitor = self.monitor_engine
-        now = time.monotonic()
         self._maybe_sync_observations(now)
         if (
             self.monitor_enabled.get("pvp")
@@ -5684,27 +10089,53 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
             self._rotate_auto_subsessions()
             remaining = max(0, math.ceil(self.next_read_at - now))
+            drop_alert_active = self.alert_item_drop.isChecked()
             monitor_active = any(self.monitor_enabled.values())
-            next_due = min(
-                (
-                    self.monitor_next_due[mode]
-                    for mode, enabled in self.monitor_enabled.items()
-                    if enabled
-                ),
-                default=0.0,
+            status_preview_active = bool(
+                self._licensed_status_modes()
+            ) and not (monitor_active or drop_alert_active)
+            map_preview_active = (
+                self.license_active and "map" in self.license_features
             )
+            realtime_active = (
+                monitor_active
+                or drop_alert_active
+                or status_preview_active
+                or map_preview_active
+            )
+            due_times = [
+                self.monitor_next_due[mode]
+                for mode, enabled in self.monitor_enabled.items()
+                if enabled
+            ]
+            if drop_alert_active:
+                due_times.append(self.drop_alert_next_due)
+            if status_preview_active:
+                due_times.append(self.program_status_preview_next_due)
+            if map_preview_active:
+                due_times.append(self.map_preview_next_due)
+            next_due = min(due_times, default=0.0)
             monitor_remaining = max(0, math.ceil(next_due - now))
+            realtime_label = (
+                "monitor" if monitor_active
+                else "alerta" if drop_alert_active
+                else "status" if status_preview_active
+                else "mapa"
+            )
             self.top_next_read.setText(
                 f"Próx. leitura: {remaining} s"
-                + (f" · monitor: {monitor_remaining} s" if monitor_active else "")
+                + (
+                    f" · {realtime_label}: {monitor_remaining} s"
+                    if realtime_active else ""
+                )
             )
             if not self.capture_busy and now >= self.next_read_at:
                 self.top_last_read.setText("Última leitura: atualizando…")
                 self._run_capture_operation("read", engine.read_live)
             elif (
-                monitor_active
+                realtime_active
                 and not self.capture_busy
-                and not self.combat_load_running
+                and (not self.combat_load_running or map_preview_active)
                 and now >= next_due
             ):
                 self.top_last_read.setText("Última leitura rápida: atualizando…")
@@ -5736,11 +10167,97 @@ class MainWindow(QtWidgets.QMainWindow):
         elif engine and engine.current_session and not self.capture_busy:
             self.top_capture.setText("Captura — interrompida; encerre para analisar")
 
+    def _sample_process_memory(self, now: float) -> None:
+        if now < self.memory_next_sample:
+            return
+        self.memory_next_sample = now + MEMORY_SAMPLE_SECONDS
+        memory = _process_memory_bytes()
+        self.top_memory.setText(
+            f"RAM  {self._format_bytes(memory)} / "
+            f"{self.memory_limits['budget_mb']} MiB"
+            if memory is not None else "RAM —"
+        )
+        if self.page_stack.currentIndex() in {0, SETTINGS_PAGE_INDEX}:
+            self._render_integration_health()
+        budget_bytes = self.memory_limits["pressure_bytes"]
+        if memory is None or memory < budget_bytes:
+            self.top_memory.setToolTip(
+                f"Orçamento escolhido: {self.memory_limits['budget_mb']} MiB."
+            )
+            return
+        self.top_memory.setToolTip(
+            "Uso de memória acima do limite de atenção; caches dispensáveis foram reduzidos."
+        )
+        if now - self.memory_pressure_last_at < MEMORY_PRESSURE_COOLDOWN_SECONDS:
+            return
+        self.memory_pressure_last_at = now
+        pressure_icon_limit = max(
+            16, self.memory_limits["inventory_icons"] // 4
+        )
+        while len(self.inventory_icon_cache) > pressure_icon_limit:
+            self.inventory_icon_cache.popitem(last=False)
+        if hasattr(self, "pvp_database_table") and not self._bank_is_visible(0):
+            self.pvp_database_table.setRowCount(0)
+            self.pvp_database_rows = {}
+        compacted: dict[str, object] = {}
+        for name, engine in (
+            ("capture", self.capture_engine),
+            ("monitor", self.monitor_engine),
+        ):
+            relieve = getattr(engine, "relieve_memory_pressure", None)
+            if callable(relieve):
+                try:
+                    compacted[name] = relieve()
+                except (RuntimeError, TypeError, ValueError):
+                    self.log.exception("memory_pressure_compaction_failed engine=%s", name)
+        collected = gc.collect()
+        self.log.warning(
+            "memory_pressure working_set_bytes=%s icon_cache=%s "
+            "pvp_rows=%s collected=%s compacted=%s",
+            memory,
+            len(self.inventory_icon_cache),
+            self.pvp_database_table.rowCount()
+            if hasattr(self, "pvp_database_table") else 0,
+            collected,
+            compacted,
+        )
+
     def _page_changed(self, index: int) -> None:
         self.log.debug("ui_page_changed index=%s", index)
-        if index in MONITOR_PAGES:
-            mode = MONITOR_PAGES[index]
-            self.monitor_next_due[mode] = 0.0
+        if hasattr(self, "page_title") and 0 <= index < len(PAGES):
+            self.page_title.setText(PAGES[index][0])
+        if index == MONITOR_PAGE_INDEX:
+            tab_index = self.monitor_tabs.currentIndex()
+            mode = next(
+                (
+                    mode for mode, candidate in MONITOR_TAB_INDEX.items()
+                    if candidate == tab_index
+                ),
+                None,
+            )
+            if mode is not None:
+                self.monitor_next_due[mode] = 0.0
+                self._capture_tick()
+        elif index == BANKS_PAGE_INDEX:
+            self._render_selected_bank()
+        elif index == DROPS_PAGE_INDEX:
+            self._render_drops()
+        elif index == LOOT_ANNOUNCEMENTS_PAGE_INDEX:
+            self._render_loot_announcements()
+        elif index == PAGE_INDEX_BY_TITLE["Resumo Geral"]:
+            self._render_general_summary()
+        elif index == SETTINGS_PAGE_INDEX:
+            self._render_integration_health()
+
+    def _monitoring_tab_changed(self, index: int) -> None:
+        mode = next(
+            (mode for mode, tab_index in MONITOR_TAB_INDEX.items() if tab_index == index),
+            None,
+        )
+        if mode is None:
+            return
+        self.monitor_next_due[mode] = 0.0
+        if self.controls_initialized:
             self._capture_tick()
 
     def _category_slots(self) -> range:
@@ -5791,12 +10308,23 @@ class MainWindow(QtWidgets.QMainWindow):
         return "0 B"
 
     def _select_client(self, index: int) -> None:
-        if not self._client_allowed(index):
+        if index not in self.visible_client_slots or not self._client_allowed(index):
             return
         self.active_client = index
+        if hasattr(self, "client_source"):
+            self.client_source.setText(self._client_source_label(index))
+        if hasattr(self, "remove_client_button"):
+            self.remove_client_button.setEnabled(index != 0)
         self.log.debug("ui_client_selected index=%s", index)
         self._render_overview()
         self._render_inventory()
+        self._render_map()
+        self._render_program_status()
+        if (
+            self.page_stack.currentIndex() == BANKS_PAGE_INDEX
+            and self.banks_tabs.currentIndex() == 2
+        ):
+            self._render_auction_database()
 
     def _render_combat(self) -> None:
         monitors = list(self.snapshot.get("combat_monitors") or [])
@@ -5818,6 +10346,27 @@ class MainWindow(QtWidgets.QMainWindow):
                 widgets["heading"].setText(
                     self._client_title(index, character or "aguardando personagem")
                 )
+                if mode == "pve":
+                    local = dict((monitor or {}).get("local") or {})
+                    local_current = local.get("current_hp")
+                    local_maximum = local.get("max_hp")
+                    local_percent = local.get("hp_percent")
+                    widgets["self_progress"].setValue(
+                        max(0, min(1000, round(float(local_percent) * 10)))
+                        if isinstance(local_percent, (int, float)) else 0
+                    )
+                    widgets["self_health"].setText(
+                        (
+                            "Sua vida: "
+                            f"{self._format_count(local_current)} / "
+                            f"{self._format_count(local_maximum)} · "
+                            f"{float(local_percent):.2f}%".replace(".", ",")
+                        )
+                        if isinstance(local_current, (int, float))
+                        and isinstance(local_maximum, (int, float))
+                        and isinstance(local_percent, (int, float))
+                        else "Sua vida: —"
+                    )
                 if (
                     mode in self.monitor_client_enabled
                     and not self.monitor_client_enabled[mode][index]
@@ -5897,6 +10446,7 @@ class MainWindow(QtWidgets.QMainWindow):
             has_boss = any(not card.isHidden() for card in boss_page["cards"])
             boss_page["empty"].setVisible(not has_boss)
         self._sync_combat_layout()
+        self._render_program_status()
         self._update_boss_overlay(monitors)
         self._update_pvp_overlay(monitors, refresh_pvp_nearby)
 
@@ -6040,6 +10590,7 @@ class MainWindow(QtWidgets.QMainWindow):
             and self.monitor_client_enabled["pvp"][selected_index]
         )
         target = dict(monitor.get("pvp") or {}) if monitor_enabled else {}
+        local = dict(monitor.get("local") or {}) if monitor_enabled else {}
         target_valid = not (
             not target
             or target.get("stale")
@@ -6077,6 +10628,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             summary = overlay.summary
             rows = overlay.rows
+            if key == "target" and hasattr(overlay, "local_health"):
+                current = local.get("current_hp")
+                maximum = local.get("max_hp")
+                percent = local.get("hp_percent")
+                overlay.local_health.setVisible(bool(local))
+                overlay.local_health_value.setText(
+                    f"{self._format_count(current)} / {self._format_count(maximum)}"
+                    if isinstance(current, int) and isinstance(maximum, int)
+                    else "HP —"
+                )
+                overlay.local_health_progress.setValue(
+                    max(0, min(1000, round(float(percent) * 10)))
+                    if isinstance(percent, (int, float)) else 0
+                )
             while rows.count():
                 item = rows.takeAt(0)
                 if item.widget():
@@ -6131,7 +10696,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.boss_overlay_progress.setValue(0)
             if self.boss_dps_overlay:
                 self.boss_dps_overlay_name.setText("Aguardando boss próximo")
-                self.boss_dps_overlay_rate.setText("DPS — · Tempo restante —")
+                self.boss_dps_overlay_rate.setText(
+                    "DPS — · Dano acumulado — · Tempo restante —"
+                )
             return
         current, maximum, percent = (
             boss.get("current_hp"),
@@ -6162,6 +10729,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.boss_dps_overlay_name.setText(boss_title)
             self.boss_dps_overlay_rate.setText(
                 f"DPS {self._format_count(boss.get('dps_hp'))} "
+                f"· Dano acumulado {self._format_count(boss.get('total_damage'))} "
                 f"· Tempo restante {eta_text}"
             )
 
@@ -6251,13 +10819,16 @@ class MainWindow(QtWidgets.QMainWindow):
                             ),
                         },
                     )
-                column.addWidget(_label("Dano por guilda · 10 s", "subtitle"))
+                column.addWidget(
+                    _label("Dano por guilda acumulado · encontro", "subtitle")
+                )
                 guild_columns = QtWidgets.QHBoxLayout()
                 guild_columns.setSpacing(10)
                 ordered_guilds = sorted(
                     players_by_guild,
-                    key=lambda name: -float(
-                        (guild_totals.get(name) or {}).get("dps_hp") or 0
+                    key=lambda name: (
+                        -int((guild_totals.get(name) or {}).get("damage") or 0),
+                        -float((guild_totals.get(name) or {}).get("dps_hp") or 0),
                     ),
                 )
                 for guild in ordered_guilds:
@@ -6297,7 +10868,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 column.addLayout(guild_columns)
             groups = list(boss.get("top_damage_groups") or [])
             if groups:
-                column.addWidget(_label("DPS por grupo · 10 s", "subtitle"))
+                column.addWidget(
+                    _label("Dano acumulado por grupo · encontro", "subtitle")
+                )
                 for position, item in enumerate(groups[:10], 1):
                     ranking_row = QtWidgets.QHBoxLayout()
                     ranking_row.addWidget(
@@ -6329,6 +10902,126 @@ class MainWindow(QtWidgets.QMainWindow):
         return f"{value:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") \
             if isinstance(value, float) and not value.is_integer() else f"{int(value):,}".replace(",", ".")
 
+    @staticmethod
+    def _format_percent(value: object) -> str:
+        return (
+            f"{float(value):.4f}%".replace(".", ",")
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+            else "—"
+        )
+
+    @classmethod
+    def _format_signed_count(cls, value: object) -> str:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return "—"
+        prefix = "+" if float(value) > 0 else ""
+        return prefix + cls._format_count(value)
+
+    @staticmethod
+    def _format_signed_percent(value: object) -> str:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return "—"
+        prefix = "+" if float(value) > 0 else ""
+        return (prefix + f"{float(value):.4f}%").replace(".", ",")
+
+    def _render_overview_nearby_mobs(self) -> None:
+        if not hasattr(self, "overview_mobs_table"):
+            return
+        monitors = [
+            item for item in self.snapshot.get("combat_monitors") or []
+            if isinstance(item, dict)
+        ]
+        client_key = _client_key(self.active_client)
+        routed = any(item.get("client_key") for item in monitors)
+        monitor = next(
+            (item for item in monitors if item.get("client_key") == client_key),
+            None,
+        )
+        if monitor is None and not routed and self.active_client < len(monitors):
+            monitor = monitors[self.active_client]
+
+        grouped: dict[str, dict[str, object]] = {}
+        for item in (monitor or {}).get("nearby_monsters") or []:
+            if not isinstance(item, dict) or item.get("dead") or item.get("stale"):
+                continue
+            npc_index = item.get("npc_index")
+            name = str(item.get("name") or "").strip()
+            if not name:
+                name = (
+                    f"Monstro #{npc_index}"
+                    if isinstance(npc_index, (int, float))
+                    else "Monstro não identificado"
+                )
+            identity = name.casefold()
+            row = grouped.setdefault(
+                identity,
+                {"name": name, "levels": set(), "max_hp": set(), "npc": set()},
+            )
+            if isinstance(npc_index, (int, float)) and not isinstance(npc_index, bool):
+                row["npc"].add(int(npc_index))
+            level = item.get("level")
+            if isinstance(level, (int, float)) and not isinstance(level, bool) and level > 0:
+                row["levels"].add(int(level))
+            maximum = item.get("max_hp")
+            if (
+                isinstance(maximum, (int, float))
+                and not isinstance(maximum, bool)
+                and maximum > 0
+            ):
+                row["max_hp"].add(int(maximum))
+
+        rows = sorted(grouped.values(), key=lambda item: str(item["name"]).casefold())
+        self.overview_mobs_table.setRowCount(len(rows))
+
+        def range_text(values: set[int]) -> str:
+            if not values:
+                return "—"
+            ordered = sorted(values)
+            if len(ordered) == 1:
+                return self._format_count(ordered[0])
+            return f"{self._format_count(ordered[0])}–{self._format_count(ordered[-1])}"
+
+        numeric_alignment = (
+            QtCore.Qt.AlignmentFlag.AlignRight
+            | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        for row_index, row in enumerate(rows):
+            values = (
+                str(row["name"]),
+                range_text(row["levels"]),
+                range_text(row["max_hp"]),
+            )
+            for column, value in enumerate(values):
+                cell = QtWidgets.QTableWidgetItem(value)
+                cell.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
+                if column:
+                    cell.setTextAlignment(numeric_alignment)
+                self.overview_mobs_table.setItem(row_index, column, cell)
+            npc_indexes = sorted(row["npc"])
+            if npc_indexes:
+                self.overview_mobs_table.item(row_index, 0).setToolTip(
+                    "NPC " + ", ".join(str(value) for value in npc_indexes)
+                )
+
+        has_rows = bool(rows)
+        self.overview_mobs_table.setVisible(has_rows)
+        client = self._client_name(self.active_client)
+        if has_rows:
+            self.overview_mobs_status.setText(
+                f"{len(rows)} tipo(s) confirmado(s) · {client}"
+            )
+        elif (
+            self.active_client < len(self.monitor_client_enabled.get("pve", []))
+            and not self.monitor_client_enabled["pve"][self.active_client]
+        ):
+            self.overview_mobs_status.setText(
+                f"Monitor PvE desligado para {client}."
+            )
+        else:
+            self.overview_mobs_status.setText(
+                f"Nenhum mob próximo confirmado para {client}."
+            )
+
     def _render_overview(self) -> None:
         snapshot = self.snapshot
         self._refresh_client_labels()
@@ -6341,7 +11034,8 @@ class MainWindow(QtWidgets.QMainWindow):
         captured_name = str(character.get("name") or "").strip() if character else ""
         name = captured_name or "Aguardando personagem"
         stats = dict(snapshot.get("stats") or {})
-        started, ended = stats.get("started_ns"), stats.get("ended_ns")
+        started = summary.get("recognized_at_ns") or stats.get("started_ns")
+        ended = stats.get("ended_ns")
         if (
             isinstance(started, int)
             and self.capture_engine
@@ -6354,11 +11048,30 @@ class MainWindow(QtWidgets.QMainWindow):
         credits = float(summary.get("credits") or 0)
         contribution = summary.get("contribution")
         rarity = dict(summary.get("loot_by_rarity") or {})
+        epic_categories = dict(summary.get("epic_by_category") or {})
 
+        checkpoints = list(snapshot.get("session_checkpoints") or [])
+        checkpoint_labels = {
+            "interval": "salvamento periódico",
+            "paused": "pausa salva",
+            "finalized": "sessão finalizada",
+        }
+        checkpoint_text = ""
+        if checkpoints:
+            latest_checkpoint = dict(checkpoints[0])
+            checkpoint_text = (
+                " · "
+                + checkpoint_labels.get(
+                    str(latest_checkpoint.get("reason") or ""),
+                    "sessão salva",
+                )
+            )
         self.overview_status.setText(
-            f"Sessão {snapshot.get('session_id')} · {duration // 60} min · {stats.get('recognized', 0)} eventos reconhecidos"
+            f"Sessão {snapshot.get('session_id')} · {duration // 60} min · "
+            f"{stats.get('recognized', 0)} eventos reconhecidos{checkpoint_text}"
             if snapshot.get("session_id") else "Nenhuma sessão disponível."
         )
+        self.overview_status.setVisible(False)
         self.character_name.setText(name)
         details = [
             f"Nível {summary['level']}" if summary.get("level") is not None else "Nível —",
@@ -6369,6 +11082,9 @@ class MainWindow(QtWidgets.QMainWindow):
             details.append("Último estado conhecido")
         self.character_details.setText(" · ".join(details))
         self.rover_name.setText(str(summary.get("rover_name") or "Rover —"))
+        self.session_duration.setText(
+            f"{duration // 3600:02d}:{(duration % 3600) // 60:02d}:{duration % 60:02d}"
+        )
         percent = summary.get("exp_percent")
         self.exp_percent.setText(f"{percent:.2f}%".replace(".", ",") if isinstance(percent, (int, float)) else "—")
         self.exp_progress.setValue(round(float(percent) * 100) if isinstance(percent, (int, float)) else 0)
@@ -6396,91 +11112,436 @@ class MainWindow(QtWidgets.QMainWindow):
         for metric, label in self.metric_labels.items():
             suffix = "%" if metric in {"exp_percent", "exp_hour_percent"} else ""
             label.setText(self._format_value(values.get(metric), suffix))
+        epic_labels = (
+            ("weapon", "Arma"),
+            ("armor", "Armadura"),
+            ("accessory", "Acessório"),
+            ("expansion", "Expansão"),
+            ("blueprint_mau", "Blueprint de MAU"),
+            ("blueprint_launcher", "Blueprint de Launcher"),
+        )
+        breakdown = [
+            f"{label} {self._format_count(epic_categories.get(key) or 0)}"
+            for key, label in epic_labels
+            if int(epic_categories.get(key) or 0) > 0
+        ]
+        self.session_epic_breakdown.setText(
+            "Épicos  " + (" · ".join(breakdown) if breakdown else "—")
+        )
 
         subsessions = list(snapshot.get("subsessions") or [])
         active = next((item for item in subsessions if item.get("ended_ns") is None and item.get("client_key") == key), None)
-        self.active_subsession.setText(
-            f"{active.get('name')} · {active.get('map_name') or active.get('location') or 'local não informado'}"
-            if active else "Nenhuma subsessão em andamento."
+        if active:
+            summary_active = dict(
+                (snapshot.get("subsession_summaries") or {}).get(active.get("id"))
+                or {}
+            )
+            started_ns = active.get("started_ns")
+            active_duration = (
+                max(0, int((time.time_ns() - int(started_ns)) / 1_000_000_000))
+                if isinstance(started_ns, int) else 0
+            )
+            display_values = self._subsession_display_values(
+                active, summary_active, active_duration
+            )
+            for field, label in self.subsession_card_values.items():
+                label.setText(display_values.get(field, "—"))
+            self.subsession_empty.hide()
+            self._overview_has_subsession = True
+        else:
+            for label in self.subsession_card_values.values():
+                label.setText("—")
+            self.subsession_empty.show()
+            self._overview_has_subsession = False
+        self._apply_subsession_card_fields(
+            self._selected_subsession_card_fields()
         )
-        other = next(
-            (index for index in self._category_slots() if index != self.active_client),
-            self.active_client,
+        self.subsession_badge.setText(
+            "Ativa" if self._overview_has_subsession else "Inativa"
         )
-        self._render_secondary_overview(other, duration)
+        self.subsession_badge.setProperty(
+            "role", "activeBadge" if self._overview_has_subsession else "muted"
+        )
+        self.subsession_badge.style().unpolish(self.subsession_badge)
+        self.subsession_badge.style().polish(self.subsession_badge)
+        self.view_subsession_button.setText(
+            "Ver subsessão  →"
+            if self._overview_has_subsession
+            else "Abrir subsessões  →"
+        )
+        self._sync_overview_layout()
 
     def _render_secondary_overview(self, index: int, duration: int) -> None:
-        if not hasattr(self, "overview_secondary"):
-            return
-        key = _client_key(index)
-        character, summary, historical_identity = self._overview_character(index)
-        captured = str(character.get("name") or "").strip() if character else ""
-        name = captured or "Aguardando personagem"
-        self.secondary_character_name.setText(
-            self._client_title(index, name)
+        return
+
+    def _drop_history_rows(self) -> list[dict[str, object]]:
+        language = str(self.preferences.get("item_name_language") or "pt")
+        candidates = confirmed_item_drop_alerts(
+            list(self.snapshot.get("drop_events") or []),
+            item_names_for_language(language),
         )
-        details = [
-            f"Nível {summary['level']}" if summary.get("level") is not None else "Nível —",
-            str(summary.get("character_class") or "Classe —"),
-            str(summary.get("biosuit_name") or "Biosuit —"),
+        rows: list[dict[str, object]] = []
+        for candidate in aggregate_item_drops_by_client(candidates):
+            first_observed_at_ns = int(
+                candidate.get("first_observed_at_ns") or 0
+            )
+            observed_at_ns = int(candidate.get("last_observed_at_ns") or 0)
+            client_key = str(candidate.get("client_key") or "")
+            client_index = (
+                ord(client_key[-1]) - ord("a")
+                if client_key.startswith("client:") and client_key[-1:].isalpha()
+                else -1
+            )
+            client_name = (
+                self._client_name(client_index)
+                if 0 <= client_index < CLIENT_SLOT_COUNT
+                else "Cliente não identificado"
+            )
+            character_name = str(
+                candidate.get("character_name") or "Não identificado"
+            )
+            item_index = int(candidate.get("item_index") or 0)
+            grade = int(ITEM_GRADES.get(str(item_index), 0) or 0)
+            rows.append({
+                    "first_observed_at_ns": first_observed_at_ns,
+                    "observed_at_ns": observed_at_ns,
+                    "client_key": client_key,
+                    "client": client_name,
+                    "character": character_name,
+                    "item_index": item_index,
+                    "item": _display_text(
+                        candidate.get("name") or "Item não identificado"
+                    ),
+                    "count": int(candidate.get("count") or 0),
+                    "occurrences": int(candidate.get("occurrences") or 0),
+                    "grade": grade,
+                    "rarity": DROP_RARITY_LABELS.get(
+                        grade, "Sem raridade identificada"
+                    ),
+                })
+        return rows
+
+    def _filtered_drop_history_rows(self) -> list[dict[str, object]]:
+        rows = self._drop_history_rows()
+        query = self.drops_search.text().strip().casefold()
+        selected_client = str(self.drops_client_filter.currentData() or "")
+        selected_grade = self.drops_rarity_filter.currentData()
+        try:
+            grade_filter = int(selected_grade)
+        except (TypeError, ValueError):
+            grade_filter = -1
+        return [
+            row for row in rows
+            if (not selected_client or row["client_key"] == selected_client)
+            and (grade_filter < 0 or row["grade"] == grade_filter)
+            and (
+                not query
+                or query in " ".join((
+                    str(row["item"]),
+                    str(row["character"]),
+                    str(row["client"]),
+                    str(row["rarity"]),
+                )).casefold()
+            )
         ]
-        if historical_identity:
-            details.append("Último estado conhecido")
-        self.secondary_character_details.setText(" · ".join(details))
-        self.secondary_rover_name.setText(str(summary.get("rover_name") or "Rover —"))
-        percent = summary.get("exp_percent")
-        self.secondary_exp_progress.setValue(
-            round(float(percent) * 100)
-            if isinstance(percent, (int, float)) else 0
+
+    def _reset_drops_page(self, _value: object = None) -> None:
+        self.drops_page = 1
+        self._render_drops()
+
+    def _change_drops_page(self, delta: int) -> None:
+        self.drops_page = max(1, self.drops_page + delta)
+        self._render_drops()
+
+    @staticmethod
+    def _drop_age_text(observed_at_ns: int, now_ns: int) -> str:
+        if observed_at_ns <= 0:
+            return "—"
+        seconds = max(0, int((now_ns - observed_at_ns) / 1_000_000_000))
+        if seconds < 60:
+            return f"{seconds}s"
+        if seconds < 3600:
+            return f"{seconds // 60}m"
+        return f"{seconds // 3600}h {seconds // 60 % 60:02d}m"
+
+    def _render_drops(self) -> None:
+        if not hasattr(self, "drops_table"):
+            return
+        rows = self._filtered_drop_history_rows()
+        page_size = int(self.drops_page_size.currentText())
+        pages = max(1, math.ceil(len(rows) / page_size))
+        self.drops_page = min(self.drops_page, pages)
+        visible = rows[
+            (self.drops_page - 1) * page_size:self.drops_page * page_size
+        ]
+        now_ns = time.time_ns()
+        self.drops_table.setRowCount(len(visible))
+        for table_row, row in enumerate(visible):
+            first_observed_at_ns = int(row["first_observed_at_ns"] or 0)
+            observed_at_ns = int(row["observed_at_ns"] or 0)
+            first_timestamp = (
+                datetime.fromtimestamp(first_observed_at_ns / 1_000_000_000)
+                .strftime("%d/%m %H:%M:%S")
+                if first_observed_at_ns > 0 else "—"
+            )
+            timestamp = (
+                datetime.fromtimestamp(observed_at_ns / 1_000_000_000)
+                .strftime("%d/%m %H:%M:%S")
+                if observed_at_ns > 0 else "—"
+            )
+            grade = int(row["grade"] or 0)
+            color = QtGui.QColor(
+                RARITY_COLORS.get(grade, DROP_DEFAULT_COLOR)
+            )
+            values = (
+                first_timestamp,
+                timestamp,
+                str(row["client"]),
+                str(row["character"]),
+                str(row["item"]),
+                self._format_count(row["count"]),
+                str(row["rarity"]),
+                self._format_count(row["occurrences"]),
+            )
+            for column, value in enumerate(values):
+                if column == 4:
+                    cell = QtWidgets.QTableWidgetItem(
+                        self._inventory_icon(int(row["item_index"])), value
+                    )
+                    cell.setData(
+                        QtCore.Qt.ItemDataRole.UserRole, int(row["item_index"])
+                    )
+                    cell.setForeground(color)
+                else:
+                    cell = QtWidgets.QTableWidgetItem(value)
+                    if column == 6:
+                        cell.setForeground(color)
+                if column in (0, 1, 5, 6, 7):
+                    cell.setTextAlignment(
+                        QtCore.Qt.AlignmentFlag.AlignCenter
+                    )
+                self.drops_table.setItem(table_row, column, cell)
+            self.drops_table.setRowHeight(table_row, 38)
+        quantity = sum(int(row["count"] or 0) for row in rows)
+        unique_items = len({int(row["item_index"] or 0) for row in rows})
+        self.drops_summary.setText(
+            f"{len(rows)} registro(s) · {quantity} item(ns) · "
+            f"{unique_items} tipo(s)"
+            if rows else "Nenhum drop confirmado para estes filtros"
         )
-        self._set_character_icon(
-            str(summary.get("character_class") or ""),
-            int(summary.get("biosuit_grade") or 0),
-            self.secondary_character_icon,
+        last_seen = int(rows[0]["observed_at_ns"] or 0) if rows else 0
+        self.drops_last_seen.setText(
+            f"Último drop  {self._drop_age_text(last_seen, now_ns)}"
+            if last_seen else "Último drop  —"
         )
-        self._set_rover_icon(
-            int(summary.get("rover_item_index") or 0),
-            int(summary.get("rover_grade") or 0),
-            str(summary.get("rover_name") or ""),
-            self.secondary_rover_icon,
+        self.drops_page_status.setText(
+            f"Página {self.drops_page} de {pages} · {len(rows)} registro(s)"
         )
-        hours = duration / 3600 if duration else 0
-        gained = float(summary.get("exp_gained") or 0)
-        credits = float(summary.get("credits") or 0)
-        contribution = summary.get("contribution")
-        rarity = dict(summary.get("loot_by_rarity") or {})
-        values = {
-            "exp": summary.get("exp"),
-            "exp_missing": summary.get("exp_missing"),
-            "exp_percent": summary.get("exp_percent"),
-            "exp_gained": gained,
-            "exp_hour": gained / hours if hours else None,
-            "exp_hour_percent": float(summary.get("exp_gained_percent") or 0) / hours if hours else None,
-            "credits": credits,
-            "credits_hour": credits / hours if hours else None,
-            "contribution": contribution,
-            "contribution_hour": float(contribution) / hours if hours and isinstance(contribution, (int, float)) else None,
-            "diamonds": summary.get("diamonds"),
-            "kills": summary.get("kills"),
-            "finalizations": summary.get("finalizations"),
-            "loot": sum(int(rarity.get(item, 0)) for item in ("common", "uncommon", "rare", "epic")),
-            "common": rarity.get("common"),
-            "uncommon": rarity.get("uncommon"),
-            "rare": rarity.get("rare"),
-            "epic": rarity.get("epic"),
-        }
-        for metric, label in self.secondary_metric_labels.items():
-            label.setText(self._format_value(
-                values.get(metric), "%" if metric in {"exp_percent", "exp_hour_percent"} else ""
-            ))
-        active = next((
-            item for item in self.snapshot.get("subsessions") or []
-            if item.get("ended_ns") is None and item.get("client_key") == key
-        ), None)
-        self.secondary_active_subsession.setText(
-            f"{active.get('name')} · {active.get('map_name') or active.get('location') or 'local não informado'}"
-            if active else "Nenhuma subsessão em andamento."
+
+    def _loot_announcement_rows(self) -> list[dict[str, object]]:
+        language = str(self.preferences.get("item_name_language") or "pt")
+        item_names = item_names_for_language(language)
+        rows: list[dict[str, object]] = []
+        latest_by_identity: dict[tuple[str, int, int], dict[str, object]] = {}
+        events = sorted(
+            self.snapshot.get("loot_announcements") or [],
+            key=lambda event: int(event.get("ts_ns") or 0),
         )
+        for event in events:
+            client_key = str(event.get("client_key") or "")
+            client_index = (
+                ord(client_key[-1]) - ord("a")
+                if client_key.startswith("client:") and client_key[-1:].isalpha()
+                else -1
+            )
+            client_name = (
+                self._client_name(client_index)
+                if 0 <= client_index < CLIENT_SLOT_COUNT
+                else "Cliente não identificado"
+            )
+            data = event.get("data") or {}
+            for announcement in data.get("announcements") or []:
+                if not isinstance(announcement, dict):
+                    continue
+                item_index = int(announcement.get("item_index") or 0)
+                count = int(announcement.get("count") or 0)
+                if item_index <= 0 or count <= 0:
+                    continue
+                grade = int(ITEM_GRADES.get(str(item_index), 0) or 0)
+                observed_at_ns = int(event.get("ts_ns") or 0)
+                player = _display_text(announcement.get("player_name"))
+                identity = (player.casefold(), item_index, count)
+                previous = latest_by_identity.get(identity)
+                if (
+                    previous is not None
+                    and observed_at_ns - int(previous["observed_at_ns"] or 0)
+                    <= 2_000_000_000
+                ):
+                    previous["observed_at_ns"] = max(
+                        int(previous["observed_at_ns"] or 0), observed_at_ns
+                    )
+                    previous["client_keys"].add(client_key)
+                    previous["client_names"].add(client_name)
+                    previous["client"] = ", ".join(sorted(previous["client_names"]))
+                    continue
+                row = {
+                    "observed_at_ns": observed_at_ns,
+                    "client_key": client_key,
+                    "client_keys": {client_key},
+                    "client_names": {client_name},
+                    "client": client_name,
+                    "player": player,
+                    "item_index": item_index,
+                    "item": _display_text(
+                        item_names.get(str(item_index)) or f"Item {item_index}"
+                    ),
+                    "count": count,
+                    "grade": grade,
+                    "rarity": DROP_RARITY_LABELS.get(
+                        grade, "Sem raridade identificada"
+                    ),
+                }
+                rows.append(row)
+                latest_by_identity[identity] = row
+        return sorted(
+            rows, key=lambda row: int(row["observed_at_ns"] or 0), reverse=True
+        )
+
+    def _render_loot_announcements(self) -> None:
+        if not hasattr(self, "loot_announcements_table"):
+            return
+        query = self.loot_announcements_search.text().strip().casefold()
+        selected_client = str(
+            self.loot_announcements_client_filter.currentData() or ""
+        )
+        try:
+            selected_grade = int(
+                self.loot_announcements_rarity_filter.currentData()
+            )
+        except (TypeError, ValueError):
+            selected_grade = -1
+        rows = [
+            row for row in self._loot_announcement_rows()
+            if (not selected_client or selected_client in row["client_keys"])
+            and (selected_grade < 0 or row["grade"] == selected_grade)
+            and (
+                not query
+                or query in " ".join((
+                    str(row["player"]), str(row["item"]),
+                    str(row["client"]), str(row["rarity"]),
+                )).casefold()
+            )
+        ]
+        page_size = int(self.loot_announcements_page_size.currentText())
+        pages = max(1, math.ceil(len(rows) / page_size))
+        self.loot_announcements_page = min(self.loot_announcements_page, pages)
+        visible = rows[
+            (self.loot_announcements_page - 1) * page_size:
+            self.loot_announcements_page * page_size
+        ]
+        self.loot_announcements_table.setRowCount(len(visible))
+        for table_row, row in enumerate(visible):
+            observed_at_ns = int(row["observed_at_ns"] or 0)
+            timestamp = (
+                datetime.fromtimestamp(observed_at_ns / 1_000_000_000)
+                .strftime("%d/%m %H:%M:%S")
+                if observed_at_ns > 0 else "—"
+            )
+            grade = int(row["grade"] or 0)
+            color = QtGui.QColor(RARITY_COLORS.get(grade, DROP_DEFAULT_COLOR))
+            values = (
+                timestamp, str(row["client"]), str(row["player"]),
+                str(row["item"]), self._format_count(row["count"]),
+                str(row["rarity"]),
+            )
+            for column, value in enumerate(values):
+                if column == 3:
+                    cell = QtWidgets.QTableWidgetItem(
+                        self._inventory_icon(int(row["item_index"])), value
+                    )
+                    cell.setForeground(color)
+                else:
+                    cell = QtWidgets.QTableWidgetItem(value)
+                    if column == 5:
+                        cell.setForeground(color)
+                if column in (0, 1, 4, 5):
+                    cell.setTextAlignment(
+                        QtCore.Qt.AlignmentFlag.AlignCenter
+                    )
+                self.loot_announcements_table.setItem(table_row, column, cell)
+            self.loot_announcements_table.setRowHeight(table_row, 38)
+        self.loot_announcements_summary.setText(
+            f"{len(rows)} aviso(s) único(s) · {len(visible)} nesta página"
+            if rows else "Nenhum aviso capturado"
+        )
+        self.loot_announcements_page_status.setText(
+            f"Página {self.loot_announcements_page} de {pages} · {len(rows)} registro(s)"
+        )
+
+    def _reset_loot_announcements_page(self, _value: object = None) -> None:
+        self.loot_announcements_page = 1
+        self._render_loot_announcements()
+
+    def _change_loot_announcements_page(self, delta: int) -> None:
+        self.loot_announcements_page = max(1, self.loot_announcements_page + delta)
+        self._render_loot_announcements()
+
+    def _render_overview_drops(self) -> None:
+        if not hasattr(self, "overview_drop_rows"):
+            return
+        language = str(self.preferences.get("item_name_language") or "pt")
+        active_client_key = _client_key(self.active_client)
+        candidates = confirmed_item_drop_alerts(
+            [
+                event
+                for event in self.snapshot.get("drop_events") or []
+                if str(event.get("client_key") or "") == active_client_key
+            ],
+            item_names_for_language(language),
+        )
+        flattened: list[tuple[int, str, int, int, int]] = []
+        now_ns = time.time_ns()
+        for candidate in reversed(candidates):
+            age_seconds = max(
+                0,
+                int((now_ns - int(candidate.get("observed_at_ns") or now_ns)) / 1_000_000_000),
+            )
+            for item in candidate.get("items") or []:
+                flattened.append((
+                    int(item.get("item_index") or 0),
+                    _display_text(item.get("name") or "Item não identificado"),
+                    int(item.get("count") or 0),
+                    age_seconds,
+                    int(ITEM_GRADES.get(str(item.get("item_index") or 0), 0) or 0),
+                ))
+                if len(flattened) >= len(self.overview_drop_rows):
+                    break
+            if len(flattened) >= len(self.overview_drop_rows):
+                break
+        for index, (marker, name, age) in enumerate(self.overview_drop_rows):
+            if index < len(flattened):
+                item_index, item_name, count, age_seconds, grade = flattened[index]
+                color = RARITY_COLORS.get(grade, DROP_DEFAULT_COLOR)
+                rarity = DROP_RARITY_LABELS.get(grade, "Sem raridade identificada")
+                marker.setPixmap(self._inventory_icon(item_index).pixmap(26, 26))
+                marker.setStyleSheet(
+                    f"background: #10161B; border: 1px solid {color}; border-radius: 5px;"
+                )
+                marker.setToolTip(f"{rarity} · Item #{item_index}")
+                name.setStyleSheet(f"color: {color}; font-weight: 600;")
+                name.setToolTip(rarity)
+                name.setText(f"{item_name}  x{count}" if count > 1 else item_name)
+                age.setText(
+                    f"{age_seconds}s" if age_seconds < 60 else f"{age_seconds // 60}m"
+                )
+            else:
+                marker.setPixmap(_navigation_icon("box", 22).pixmap(22, 22))
+                marker.setStyleSheet("")
+                marker.setToolTip("")
+                name.setStyleSheet("")
+                name.setToolTip("")
+                name.setText("Aguardando drop")
+                age.setText("—")
 
     def _set_character_icon(
         self, class_name: str, grade: int, widget: QtWidgets.QLabel | None = None
@@ -6547,94 +11608,141 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_footer(self) -> QtWidgets.QWidget:
         footer = QtWidgets.QWidget(objectName="statusbar")
-        footer.setFixedHeight(42)
+        footer.setFixedHeight(38)
         row = QtWidgets.QHBoxLayout(footer)
-        row.setContentsMargins(18, 0, 18, 0)
+        row.setContentsMargins(32, 0, 18, 0)
+        self.footer_state = _label(
+            "API local desligada · Site remoto desativado neste perfil",
+            "footer",
+        )
+        row.addWidget(self.footer_state)
         row.addStretch(1)
-        row.addWidget(_label(f"v{VERSION}", "muted"))
         return footer
 
 
 STYLE = """
 QWidget { color: #F4F2EB; font-family: 'Saira'; font-size: 14px; }
-QMainWindow { background: #070909; }
-#topbar, #statusbar { background: #0A1115; border-bottom: 1px solid #26333A; }
-#statusbar { border-top: 1px solid #26333A; border-bottom: none; }
-#sidebar { background: #08151C; border-right: 1px solid #26333A; }
-#workspace { background: #07131A; }
+QMainWindow, #mainSurface { background: #090E12; }
+#topbar { background: #0B1116; border-bottom: 1px solid #273138; }
+#statusbar { background: #0B1116; border-top: 1px solid #273138; }
+#sidebar { background: #0A1116; border-right: 1px solid #344049; }
+#sidebarNavScroll, #sidebarNavScroll QWidget#qt_scrollarea_viewport, #sidebarNavContent { background: #0A1116; border: none; }
+#sidebarNavScroll QScrollBar:vertical { background: #0A1116; width: 9px; }
+#sidebarNavScroll QScrollBar::handle:vertical { background: #344049; border-radius: 4px; min-height: 30px; }
+#sidebarNavScroll QScrollBar::add-line:vertical, #sidebarNavScroll QScrollBar::sub-line:vertical { height: 0; }
+#workspace { background: qradialgradient(cx:0.18, cy:0.02, radius:1.1, fx:0.18, fy:0.02, stop:0 #111820, stop:0.36 #0B1217, stop:1 #090E12); }
+#navSeparator { background: #2B343A; margin-left: 18px; margin-right: 18px; }
+
+QLabel[role='workspaceTitle'] { font-family: 'Saira SemiCondensed'; font-size: 31px; font-weight: 700; }
+QLabel[role='versionBadge'] { color: #D8D4CA; border: 1px solid #8B6B2D; border-radius: 5px; padding: 5px 13px; }
+QLabel[role='product'] { font-family: 'Saira SemiCondensed'; font-size: 21px; font-weight: 700; }
 QLabel[role='title'] { font-family: 'Saira SemiCondensed'; font-size: 30px; font-weight: 700; }
-QLabel[role='subtitle'] { font-size: 18px; font-weight: 600; }
+QLabel[role='subtitle'], QLabel[role='cardTitle'] { font-size: 17px; font-weight: 600; }
 QLabel[role='hero'] { font-family: 'Saira SemiCondensed'; font-size: 24px; font-weight: 700; }
-QLabel[role='muted'] { color: #A9B0B2; }
-QLabel[role='info'] { color: #38BDF8; }
-QLabel[role='data'] { color: #38BDF8; font-size: 20px; font-weight: 600; }
+QLabel[role='cardIdentity'] { font-family: 'Saira SemiCondensed'; font-size: 19px; font-weight: 600; }
+QLabel[role='sessionTime'] { font-family: 'Saira SemiCondensed'; font-size: 31px; font-weight: 600; }
+QLabel[role='metricValue'] { font-family: 'Saira SemiCondensed'; font-size: 20px; font-weight: 600; }
+QLabel[role='metricCompact'] { color: #C9C5BB; font-size: 14px; }
+QLabel[role='mapCoordinates'] { color: #E5B35C; font-family: 'Saira SemiCondensed'; font-size: 25px; font-weight: 700; }
+QLabel[role='statusLine'], QLabel[role='detailLine'] { color: #D2CEC5; font-size: 14px; }
+QLabel[role='healthLine'] { color: #E5B35C; font-weight: 600; }
+QLabel[role='healthLineOk'] { color: #58C96B; font-weight: 600; }
+QLabel[role='healthLineInfo'] { color: #63B9F3; font-weight: 600; }
+QLabel[role='footer'] { color: #7F898F; font-size: 12px; }
+QLabel[role='muted'] { color: #AEB7C2; }
+QLabel[role='info'] { color: #63B9F3; }
+QLabel[role='data'] { color: #63B9F3; font-size: 20px; font-weight: 600; }
 QLabel[role='ok'] { color: #58C96B; }
-QLabel[role='warning'] { color: #F0B84A; }
+QLabel[role='warning'] { color: #E5B35C; }
+QLabel[role='activeBadge'] { color: #78D857; background: #17251A; border: 1px solid #2B492F; border-radius: 5px; padding: 3px 10px; }
 QLabel[role='step'] { background: #3A301B; color: #F6BE3B; border: 1px solid #D4A64D; border-radius: 5px; font-weight: 700; }
-QLabel[role='brand'] { color: #D4A64D; font-weight: 700; letter-spacing: 4px; }
-QPushButton { background: #0A1115; border: 1px solid #314149; border-radius: 5px; padding: 8px 14px; }
+#dashboardStatus { font-family: 'Saira SemiCondensed'; font-size: 29px; font-weight: 700; }
+#statusChip { background: #0E1419; border: 1px solid #374149; border-radius: 5px; padding: 5px 11px; min-height: 22px; }
+#mapViewerPanel { background: #0A0F13; border: 1px solid #2C3941; border-radius: 6px; }
+
+QPushButton { background: #0D1317; border: 1px solid #344049; border-radius: 5px; padding: 8px 14px; }
 QPushButton:hover { border-color: #D4A64D; color: #FFFFFF; }
-QPushButton:focus { border: 2px solid #38BDF8; }
-QPushButton:checked { background: #3A301B; border-color: #D4A64D; color: #F6BE3B; }
-QPushButton:disabled { color: #6D7578; border-color: #26333A; background: #0A0E10; }
+QPushButton:focus { border: 2px solid #D4A64D; }
+QPushButton:checked { background: #30291C; border-color: #D4A64D; color: #F4F2EB; }
+QPushButton:disabled { color: #626C72; border-color: #273138; background: #0A0F12; }
+#mapToolButton { padding: 4px 8px; min-height: 24px; font-size: 17px; font-weight: 700; }
+#mapFocusButton { padding: 5px 10px; min-height: 24px; }
+#linkButton { background: transparent; border: none; color: #D4A64D; padding: 4px 0; text-align: left; }
+#linkButton:hover { background: transparent; border: none; color: #F0C977; }
+#linkButton:focus { border: 1px solid #D4A64D; }
+#sidebar QPushButton { text-align: left; border: none; border-radius: 5px; margin: 0 0 0 0; padding: 10px 18px; color: #B8C0C5; }
+#sidebar QPushButton:hover { background: #11191E; color: #F4F2EB; }
+#sidebar QPushButton:checked { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #30291C,stop:1 #16191A); border-left: 3px solid #E5B35C; color: #F4F2EB; padding-left: 15px; }
+QPushButton[client='true'] { min-width: 205px; padding: 10px 16px; text-align: left; }
+QPushButton[client='true']:checked { border: 2px solid #E5B35C; background: #10161B; color: #F4F2EB; }
+#addClient { color: #BFC5C8; padding: 10px 16px; }
+#removeClient { color: #FF8068; border-color: #8F4639; padding: 10px 14px; }
+#removeClient:hover { color: #FF9A86; border-color: #FF6547; background: #1B1110; }
+#removeClient:disabled { color: #626C72; border-color: #273138; background: #0A0F12; }
+QLabel[role='clientSource'] { color: #AEB7C2; padding: 8px 4px; }
+
+QToolButton { background: #0D1317; color: #F4F2EB; border: 1px solid #344049; border-radius: 5px; padding: 6px; }
+QToolButton:hover { border-color: #D4A64D; }
+QToolButton:disabled { border-color: #273138; background: #0A0F12; }
+QToolButton[captureAction='true'] { margin-left: 2px; }
+#captureStart { border-color: #2F6D3A; background: #0D1710; }
+#captureStart:hover { border-color: #58C96B; background: #112117; }
+#captureContinue { border-color: #356C8F; background: #0D151B; }
+#captureContinue:hover { border-color: #63B9F3; background: #10202B; }
+#capturePause { border-color: #6D5428; background: #17140D; }
+#capturePause:hover { border-color: #D4A64D; background: #211A0F; }
+#captureStop, #captureStopRaw { border-color: #8F4639; background: #1B1110; }
+#captureStop:hover, #captureStopRaw:hover { border-color: #FF6547; background: #271412; }
+QToolButton[captureAction='true']:disabled { border-color: #273138; background: #0A0F12; }
+
+#dashboardCard, #emptyCard, #panel, #metricGroup, #mapMetricGroup, #secondaryMetricGroup {
+    background: rgba(15, 21, 26, 235);
+    border: 1px solid #3A4349;
+    border-radius: 8px;
+}
+#dashboardCard { min-height: 225px; }
+#accentPanel { background: rgba(15, 21, 26, 235); border: 1px solid #D4A64D; border-radius: 8px; }
+#metricDivider { background: #344049; }
+#dropRow { background: #0C1216; border: 1px solid #344049; border-radius: 5px; }
+#dropIcon { background: #10161B; border: 1px solid #344049; border-radius: 5px; }
+#characterIcon, #roverIcon { background: #0A1115; border: 1px solid #344049; border-radius: 8px; }
+
+QProgressBar { background: #273138; border: none; border-radius: 4px; height: 9px; }
+QProgressBar::chunk { background: #63B9F3; border-radius: 4px; }
+#goldProgress::chunk { background: #E5B35C; }
+#playerHealthProgress::chunk { background: #58C96B; }
+
 QTabBar { background: transparent; }
-QTabBar::tab {
-    background: #0A1115;
-    color: #F4F2EB;
-    border: 1px solid #314149;
-    border-bottom-color: #D4A64D;
-    padding: 9px 22px;
-    min-width: 96px;
-}
-QTabBar::tab:selected {
-    background: #3A301B;
-    color: #F6BE3B;
-    border-color: #D4A64D;
-}
+QTabWidget::pane { background: #0B1217; border: 1px solid #344049; }
+#pageBancoPvP, #pageBancoPvE, #pageBancoLeilao { background: #0B1217; }
+QTabBar::tab { background: #0D1317; color: #D2CEC5; border: 1px solid #344049; border-bottom-color: #D4A64D; padding: 9px 22px; min-width: 96px; }
+QTabBar::tab:selected { background: #30291C; color: #F4F2EB; border-color: #D4A64D; }
 QTabBar::tab:hover { color: #FFFFFF; border-color: #D4A64D; }
-QMessageBox { background: #081820; }
+
+QMessageBox { background: #0B1217; }
 QMessageBox QLabel { color: #F4F2EB; background: transparent; }
 QMessageBox QPushButton { color: #F4F2EB; min-width: 90px; }
-QMenu { background: #081820; color: #F4F2EB; border: 1px solid #314149; padding: 4px; }
+QMenu { background: #0B1217; color: #F4F2EB; border: 1px solid #344049; padding: 4px; }
 QMenu::item { background: transparent; padding: 7px 24px 7px 28px; }
-QMenu::item:selected { background: #3A301B; color: #F6BE3B; }
-QMenu::item:disabled { color: #6D7578; }
-QMenu::separator { background: #26333A; height: 1px; margin: 4px 8px; }
-#sidebar QPushButton { text-align: left; border-color: transparent; padding-left: 18px; }
-#sidebar QPushButton:checked { border-left: 3px solid #F6BE3B; }
-QPushButton[client='true'] { min-width: 132px; padding-left: 8px; padding-right: 8px; }
-QToolButton { background: #0A1115; color: #F4F2EB; border: 1px solid #314149; border-radius: 5px; padding: 6px; }
-QToolButton:hover { border-color: #D4A64D; color: #FFFFFF; }
-QToolButton:disabled { color: #6D7578; border-color: #26333A; background: #0A0E10; }
-QLineEdit, QComboBox, QSpinBox, QListWidget, QTableWidget {
-    background: #0A1115;
-    color: #F4F2EB;
-    border: 1px solid #314149;
-    border-radius: 5px;
-    padding: 6px;
-    selection-background-color: #3A301B;
-    selection-color: #F6BE3B;
-}
-QLineEdit:disabled { background: #0A0E10; color: #6D7578; }
-QComboBox QAbstractItemView { background: #0A1115; color: #F4F2EB; selection-background-color: #3A301B; }
+QMenu::item:selected { background: #30291C; color: #E5B35C; }
+QMenu::item:disabled { color: #626C72; }
+QMenu::separator { background: #273138; height: 1px; margin: 4px 8px; }
+
+QLineEdit, QComboBox, QSpinBox, QListWidget, QTableWidget { background: #0D1317; color: #F4F2EB; border: 1px solid #344049; border-radius: 5px; padding: 6px; selection-background-color: #30291C; selection-color: #F4F2EB; }
+QLineEdit:disabled { background: #0A0F12; color: #626C72; }
+QComboBox QAbstractItemView { background: #0D1317; color: #F4F2EB; selection-background-color: #30291C; }
 QComboBox::drop-down, QSpinBox::up-button, QSpinBox::down-button { border: none; }
-QTableWidget { gridline-color: #26333A; border-radius: 0; padding: 0; }
-QHeaderView { background: #0D1A20; }
-QHeaderView::section { background: #0D1A20; color: #A9B0B2; border: none; border-right: 1px solid #26333A; border-bottom: 1px solid #26333A; padding: 7px; }
-QTableCornerButton::section { background: #0D1A20; border: none; border-bottom: 1px solid #26333A; }
+QTableWidget { gridline-color: #273138; border-radius: 0; padding: 0; }
+QHeaderView { background: #10181D; }
+QHeaderView::section { background: #10181D; color: #AEB7C2; border: none; border-right: 1px solid #273138; border-bottom: 1px solid #273138; padding: 7px; }
+QTableCornerButton::section { background: #10181D; border: none; border-bottom: 1px solid #273138; }
 QCheckBox { spacing: 7px; }
-QCheckBox::indicator { width: 15px; height: 15px; border: 1px solid #52626A; border-radius: 3px; background: #0A1115; }
+QCheckBox::indicator { width: 15px; height: 15px; border: 1px solid #52626A; border-radius: 3px; background: #0D1317; }
 QCheckBox::indicator:checked { background: #D4A64D; border-color: #F6BE3B; }
-#emptyCard { background: #081820; border: 1px solid #26333A; border-radius: 8px; }
-#panel, #metricGroup, #secondaryMetricGroup { background: #081820; border: 1px solid #26333A; border-radius: 8px; }
-#metricDivider { background: #26333A; }
-#accentPanel { background: #081820; border: 1px solid #D4A64D; border-radius: 8px; }
-#characterIcon, #roverIcon { background: #0A1115; border: 1px solid #314149; border-radius: 8px; }
-QProgressBar { background: #0A1115; border: 1px solid #26333A; border-radius: 5px; height: 10px; }
-QProgressBar::chunk { background: #38BDF8; border-radius: 4px; }
-QScrollArea, QScrollArea QWidget#qt_scrollarea_viewport, #scrollContent { background: #07131A; border: none; }
-QScrollBar:vertical { background: #07131A; width: 10px; }
-QScrollBar::handle:vertical { background: #314149; border-radius: 5px; min-height: 28px; }
+
+QScrollArea, QScrollArea QWidget#qt_scrollarea_viewport, #scrollContent { background: transparent; border: none; }
+QScrollBar:vertical { background: transparent; width: 9px; }
+QScrollBar::handle:vertical { background: #344049; border-radius: 4px; min-height: 30px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
@@ -6650,7 +11758,8 @@ def create_application(argv: list[str] | None = None) -> QtWidgets.QApplication:
         app.installTranslator(translator)
         app._rfnext_translator = translator
     _load_fonts()
-    app.setStyleSheet(STYLE)
+    if app.styleSheet() != STYLE:
+        app.setStyleSheet(STYLE)
     return app
 
 
@@ -6719,6 +11828,11 @@ def main() -> int:
     window.show()
     app.processEvents()
     if self_test:
+        window.overview_map_preview.set_snapshot(
+            "639",
+            {"x": 155.0, "y": 312.0, "z": 0.0},
+            [],
+        )
         passed = (
             window.minimumSize() == QtCore.QSize(1180, 664)
             and window.page_stack.count() == len(PAGES)
@@ -6728,6 +11842,8 @@ def main() -> int:
             and (ROOT / "core" / "job1_all_opcodes.csv").is_file()
             and MACHINE_STATE_DIR != STATE_DIR
             and UPDATES_DIR.parent == MACHINE_STATE_DIR
+            and window.overview_map_preview.map_index == 639
+            and window.overview_map_preview._map_pixmap() is not None
         )
         window.capture_timer.stop()
         window.exit_requested = True

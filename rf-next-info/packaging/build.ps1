@@ -1,4 +1,4 @@
-param([switch]$Release, [switch]$SkipTests)
+param([switch]$Release, [switch]$Installer, [switch]$SkipTests)
 
 $ErrorActionPreference = 'Stop'
 $Project = Split-Path -Parent $PSScriptRoot
@@ -18,7 +18,27 @@ Push-Location $Project
 try {
     $Version = (& $Python -c 'from app.main import VERSION; print(VERSION)').Trim()
     $Sequence = [int](& $Python -c 'from app.main import RELEASE_SEQUENCE; print(RELEASE_SEQUENCE)')
+    $VersionParts = (($Version -split '-', 2)[0] -split '\.')
+    $InvalidVersionParts = @(
+        $VersionParts | Where-Object { $_ -notmatch '^\d+$' }
+    )
+    if ($VersionParts.Count -ne 3 -or $InvalidVersionParts.Count) {
+        throw "Versão incompatível com o instalador: $Version"
+    }
+    $FileVersion = '{0}.{1}.{2}.{3}' -f (
+        [int]$VersionParts[0],
+        [int]$VersionParts[1],
+        [int]$VersionParts[2],
+        $Sequence
+    )
     $UpdateMode = (& $Python -c 'from app.updater import UPDATE_MODE; print(UPDATE_MODE)').Trim()
+    $BuildProfile = (& $Python -c 'from app.build_profile import PROFILE_NAME; print(PROFILE_NAME)').Trim()
+    & $Python -c 'from app.build_profile import validate_build_profile; validate_build_profile()'
+    if ($LASTEXITCODE) { throw 'Perfil de build inválido.' }
+    if ($Release) {
+        & $Python -c 'from app.build_profile import validate_build_profile; validate_build_profile(release=True)'
+        if ($LASTEXITCODE) { throw 'Perfil de build não pode gerar distribuição.' }
+    }
     $Dirty = [bool](git status --porcelain)
     if ($Release -and $Dirty) {
         throw 'Build de release exige commit limpo.'
@@ -44,7 +64,7 @@ try {
     if ($Release) {
         & $Python -c 'import sys; raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)'
         if ($LASTEXITCODE) { throw 'Build de release exige ambiente virtual isolado.' }
-        & $Python -c 'from app.license import validate_release_configuration as a; from app.updater import validate_release_configuration as b; a(); b()'
+        & $Python -c 'from app.main import VERSION; from app.license import validate_release_configuration as a; from app.updater import validate_release_configuration as b; a(require_v3=int(VERSION.split(".", 1)[0]) >= 2); b()'
         if ($LASTEXITCODE) { throw 'Configuração de confiança de produção incompleta.' }
     }
     & $Python -m PyInstaller --clean --noconfirm '.\packaging\RFNextInfo.spec'
@@ -81,7 +101,9 @@ try {
     & $Python -m pip list --local --format=json | Set-Content -LiteralPath (Join-Path $Dist 'sbom-python.json') -Encoding UTF8
     Copy-Item -LiteralPath '.\requirements-lock-win-x64-py313.txt' -Destination $Dist -Force
 
-    $NsisPath = if ($env:RFQOL_NSIS) {
+    $NsisPath = if ($BuildProfile -eq 'staging' -and -not $Installer) {
+        $null
+    } elseif ($env:RFQOL_NSIS) {
         if (-not (Test-Path -LiteralPath $env:RFQOL_NSIS -PathType Leaf)) {
             throw "RFQOL_NSIS não aponta para makensis.exe: $($env:RFQOL_NSIS)"
         }
@@ -90,14 +112,39 @@ try {
         $Command = Get-Command makensis.exe -ErrorAction SilentlyContinue
         if ($Command) { $Command.Source } else { $null }
     }
-    $Installer = $null
+    $InstallerPath = $null
     if (-not $NsisPath) {
-        if ($Release) { throw 'NSIS é obrigatório para o instalador de release.' }
-        Write-Warning 'NSIS não encontrado; somente o pacote portátil foi gerado.'
+        if ($Release -or $Installer) {
+            throw 'NSIS é obrigatório para gerar o instalador.'
+        }
+        if ($BuildProfile -eq 'staging') {
+            Write-Warning 'Perfil de staging gera somente o pacote portátil isolado.'
+        } else {
+            Write-Warning 'NSIS não encontrado; somente o pacote portátil foi gerado.'
+        }
     } else {
-        & $NsisPath '/V2' '/WX' "/DAPP_VERSION=$Version" '.\packaging\installer.nsi'
+        $NsisArguments = @(
+            '/V2', '/WX', "/DAPP_VERSION=$Version",
+            "/DAPP_FILE_VERSION=$FileVersion"
+        )
+        if ($BuildProfile -eq 'staging') {
+            $InstallerPath = Join-Path $Project (
+                "dist\RF QOL Setup $Version Homologacao.exe"
+            )
+            $NsisArguments += '/DSTAGING_PROFILE'
+            $NsisArguments += "/DAPP_OUTFILE=$InstallerPath"
+        } elseif ($BuildProfile -eq 'beta') {
+            $InstallerPath = Join-Path $Project (
+                "dist\RF QOL Setup $Version Beta.exe"
+            )
+            $NsisArguments += '/DBETA_PROFILE'
+            $NsisArguments += "/DAPP_OUTFILE=$InstallerPath"
+        } else {
+            $InstallerPath = Join-Path $Project "dist\RF QOL Setup $Version.exe"
+        }
+        $NsisArguments += '.\packaging\installer.nsi'
+        & $NsisPath @NsisArguments
         if ($LASTEXITCODE) { throw 'Falha ao gerar o instalador.' }
-        $Installer = Join-Path $Project "dist\RF QOL Setup $Version.exe"
     }
 
     if ($Release -and $UpdateMode -eq 'automatic') {
@@ -107,7 +154,7 @@ try {
             }
         }
         & $Python '.\tools\sign_update_manifest.py' `
-            --installer $Installer --version $Version --sequence $Sequence `
+            --installer $InstallerPath --version $Version --sequence $Sequence `
             --key-id $env:RFQOL_UPDATE_KEY_ID `
             --private-key $env:RFQOL_UPDATE_PRIVATE_KEY `
             --out '.\dist\update-manifest.json'
@@ -139,20 +186,22 @@ try {
             if ($LASTEXITCODE) { throw 'Falha ao assinar o manifesto de rollback.' }
         }
     } elseif ($Release) {
-        $InstallerDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash.ToLowerInvariant()
-        "$InstallerDigest  $(Split-Path -Leaf $Installer)" |
+        $InstallerDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $InstallerPath).Hash.ToLowerInvariant()
+        "$InstallerDigest  $(Split-Path -Leaf $InstallerPath)" |
             Set-Content -LiteralPath '.\dist\SHA256SUMS.txt' -Encoding ascii
     }
 
     $Provenance = [ordered]@{
         product = 'rf-qol'
+        build_profile = $BuildProfile
         version = $Version
         update_mode = $UpdateMode
         commit = (git rev-parse HEAD)
         dirty = $Dirty
         python = (& $Python --version 2>&1 | Out-String).Trim()
         executable_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Executable).Hash
-        installer_sha256 = if ($Installer) { (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash } else { $null }
+        installer_sha256 = if ($InstallerPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath $InstallerPath).Hash } else { $null }
+        installer_requested = [bool]($Installer -or $Release)
         lock_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath '.\requirements-lock-win-x64-py313.txt').Hash
         sbom_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Dist 'sbom-python.json')).Hash
         manifest_sha256 = if (Test-Path -LiteralPath '.\dist\update-manifest.json') {

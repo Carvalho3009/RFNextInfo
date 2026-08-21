@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,9 @@ SCHEMA_VERSION = 1
 MAX_EXPORT_BYTES = 512 * 1024 * 1024
 SENSITIVE_KEYS = ("token", "ticket", "password", "secret", "authorization", "jwt")
 CLIENT_KEYS = tuple(f"client:{chr(97 + index)}" for index in range(7))
+EXP_RANK_TOP_LIMIT = 100
+EXP_RANK_CAPTURE_WINDOW_NS = 15 * 60 * 1_000_000_000
+EXP_RANK_IDENTICAL_HISTORY_WINDOW_NS = 60 * 60 * 1_000_000_000
 
 
 def _level_curve() -> dict[int, int]:
@@ -40,6 +44,34 @@ def _level_curve() -> dict[int, int]:
 
 
 LEVEL_CURVE = _level_curve()
+
+
+def exp_rank_level_progress(total_exp: object) -> tuple[int | None, float | None]:
+    """Deriva nível e progresso usando a EXP total e a curva embarcada."""
+    if isinstance(total_exp, bool):
+        return None, None
+    try:
+        remaining = int(total_exp)
+    except (TypeError, ValueError):
+        return None, None
+    if remaining < 0 or not LEVEL_CURVE:
+        return None, None
+    levels = sorted(level for level in LEVEL_CURVE if level >= 1)
+    if not levels:
+        return None, None
+    current_level = levels[0]
+    for next_level in levels:
+        if next_level <= current_level:
+            continue
+        required = int(LEVEL_CURVE.get(next_level) or 0)
+        if required <= 0:
+            current_level = next_level
+            continue
+        if remaining < required:
+            return current_level, round(remaining * 100 / required, 2)
+        remaining -= required
+        current_level = next_level
+    return current_level, 100.0
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -72,6 +104,18 @@ CREATE TABLE IF NOT EXISTS subsessions(
  map_name TEXT NOT NULL DEFAULT '', spot_name TEXT NOT NULL DEFAULT '',
  mobs_json TEXT NOT NULL DEFAULT '[]',
  mob_levels_json TEXT NOT NULL DEFAULT '{}',
+ auto_context INTEGER NOT NULL DEFAULT 0,
+ context_source TEXT NOT NULL DEFAULT '',
+ context_confidence TEXT NOT NULL DEFAULT '',
+ context_observation_count INTEGER NOT NULL DEFAULT 0,
+ context_first_seen_ns INTEGER,
+ context_updated_ns INTEGER,
+ mau_state TEXT NOT NULL DEFAULT 'pending_evidence',
+ launcher_state TEXT NOT NULL DEFAULT 'pending_evidence',
+ exp_potion_state TEXT NOT NULL DEFAULT 'pending_evidence',
+ end_on_teleport INTEGER NOT NULL DEFAULT 0,
+ end_on_death INTEGER NOT NULL DEFAULT 0,
+ end_after_no_kill INTEGER NOT NULL DEFAULT 0,
  duration_minutes INTEGER NOT NULL DEFAULT 0,
  started_ns INTEGER NOT NULL, ended_ns INTEGER,
  sequence INTEGER, upload_state TEXT NOT NULL DEFAULT 'pending',
@@ -103,6 +147,31 @@ CREATE TABLE IF NOT EXISTS client_route_slots(
 CREATE TABLE IF NOT EXISTS store_state(
  key TEXT PRIMARY KEY, value INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS session_checkpoints(
+ id INTEGER PRIMARY KEY,
+ session_id TEXT NOT NULL,
+ checkpoint_ns INTEGER NOT NULL,
+ reason TEXT NOT NULL DEFAULT 'interval',
+ last_event_id INTEGER NOT NULL DEFAULT 0,
+ recognized INTEGER NOT NULL DEFAULT 0,
+ unknown INTEGER NOT NULL DEFAULT 0,
+ unassigned INTEGER NOT NULL DEFAULT 0,
+ raw_bytes INTEGER NOT NULL DEFAULT 0,
+ UNIQUE(session_id, last_event_id)
+);
+CREATE TABLE IF NOT EXISTS exp_rank_captures(
+ id INTEGER PRIMARY KEY,
+ session_id TEXT NOT NULL,
+ captured_at_ns INTEGER NOT NULL,
+ snapshot_key TEXT NOT NULL,
+ signature TEXT NOT NULL,
+ data_json TEXT NOT NULL,
+ UNIQUE(session_id,captured_at_ns,signature)
+);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_session
+ ON session_checkpoints(session_id, checkpoint_ns);
+CREATE INDEX IF NOT EXISTS idx_exp_rank_captures_session
+ ON exp_rank_captures(session_id,captured_at_ns DESC);
 """
 
 
@@ -153,6 +222,16 @@ def _client_key(
     return None
 
 
+def _normalized_flow(flow: str) -> str:
+    """Identifica o mesmo fluxo TCP independentemente da direção."""
+    endpoints = re.findall(r"([^\s]+):(\d+)(?:\s|$)", str(flow or ""))
+    if len(endpoints) != 2:
+        return str(flow or "")
+    return " <-> ".join(
+        sorted(f"{host}:{int(port)}" for host, port in endpoints)
+    )
+
+
 def _event_level(event: dict[str, Any]) -> int | None:
     if event.get("type") not in {"world_info_prefix", "update_exp"}:
         return None
@@ -187,6 +266,7 @@ class CaptureStore:
         self.conn = sqlite3.connect(self.path)
         self.conn.executescript(SCHEMA)
         self._migrate()
+        self._repair_unassigned_canonical_flows_once()
 
     def _migrate(self) -> None:
         with self.conn:
@@ -250,6 +330,18 @@ class CaptureStore:
                 ("client_key", "TEXT NOT NULL DEFAULT ''"),
                 ("map_name", "TEXT NOT NULL DEFAULT ''"),
                 ("spot_name", "TEXT NOT NULL DEFAULT ''"),
+                ("auto_context", "INTEGER NOT NULL DEFAULT 0"),
+                ("context_source", "TEXT NOT NULL DEFAULT ''"),
+                ("context_confidence", "TEXT NOT NULL DEFAULT ''"),
+                ("context_observation_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("context_first_seen_ns", "INTEGER"),
+                ("context_updated_ns", "INTEGER"),
+                ("mau_state", "TEXT NOT NULL DEFAULT 'pending_evidence'"),
+                ("launcher_state", "TEXT NOT NULL DEFAULT 'pending_evidence'"),
+                ("exp_potion_state", "TEXT NOT NULL DEFAULT 'pending_evidence'"),
+                ("end_on_teleport", "INTEGER NOT NULL DEFAULT 0"),
+                ("end_on_death", "INTEGER NOT NULL DEFAULT 0"),
+                ("end_after_no_kill", "INTEGER NOT NULL DEFAULT 0"),
                 ("sequence", "INTEGER"),
                 ("upload_state", "TEXT NOT NULL DEFAULT 'pending'"),
                 ("uploaded_at", "TEXT"),
@@ -361,6 +453,54 @@ class CaptureStore:
                         (level, uid),
                     )
 
+    def _repair_unassigned_canonical_flows_once(self) -> int:
+        """Repara bancos de versões que perderam o roteamento após reconexão.
+
+        A migração só usa o mesmo fluxo TCP confirmado por um único
+        ``world_info_prefix``. Ela não tenta correlacionar portas diferentes e,
+        portanto, não mistura clientes quando a evidência é insuficiente.
+        """
+        marker = "canonical_flow_repair_v1"
+        if self.conn.execute(
+            "SELECT 1 FROM store_state WHERE key=?", (marker,)
+        ).fetchone():
+            return 0
+        confirmed: dict[tuple[str, str], set[str]] = {}
+        for session_id, flow, uid in self.conn.execute(
+            """SELECT session_id,flow,character_uid FROM events
+               WHERE type='world_info_prefix' AND character_uid IS NOT NULL"""
+        ):
+            confirmed.setdefault(
+                (session_id, _normalized_flow(flow)), set()
+            ).add(uid)
+        stable = {
+            key: next(iter(uids))
+            for key, uids in confirmed.items()
+            if len(uids) == 1
+        }
+        repaired = 0
+        with self.conn:
+            for session_id, flow in self.conn.execute(
+                """SELECT DISTINCT session_id,flow FROM events
+                   WHERE character_uid IS NULL AND type!='unparsed'"""
+            ).fetchall():
+                uid = stable.get((session_id, _normalized_flow(flow)))
+                if not uid:
+                    continue
+                repaired += self.conn.execute(
+                    """UPDATE events SET character_uid=?
+                       WHERE session_id=? AND flow=?
+                         AND character_uid IS NULL AND type!='unparsed'""",
+                    (uid, session_id, flow),
+                ).rowcount
+            if repaired:
+                self._bump_event_revision()
+            self.conn.execute(
+                "INSERT INTO store_state(key,value) VALUES(?,?)",
+                (marker, repaired),
+            )
+        return repaired
+
     def _bump_event_revision(self) -> None:
         self.conn.execute(
             "UPDATE store_state SET value=value+1 WHERE key='event_revision'"
@@ -428,6 +568,13 @@ class CaptureStore:
             for client_key, uid, source_name in binding_rows
             if source_name == "manual"
         }
+        known_bindings = {
+            client_key: uid
+            for client_key, uid, _source_name in binding_rows
+        }
+        uid_routes = {
+            uid: client_key for client_key, uid in known_bindings.items()
+        }
         route_slots = {
             physical: logical
             for physical, logical in self.conn.execute(
@@ -437,6 +584,18 @@ class CaptureStore:
             )
         }
         inferred_routes: dict[str, tuple[str, str]] = {}
+        for event in raw_events:
+            physical = _client_key(event["flow"], client_ports)
+            if not (
+                physical
+                and event.get("type") == "world_info_prefix"
+                and re.match(r"^\S+:12020\s*->", event["flow"])
+            ):
+                continue
+            logical = uid_routes.get(_character_uid(event) or "")
+            if logical:
+                inferred_routes[physical] = (logical, "canonical_uid")
+
         if len(manual_bindings) == 2 and len(route_slots) < 2:
             logical_by_uid = {uid: key for key, uid in manual_bindings.items()}
             for event in raw_events:
@@ -478,41 +637,50 @@ class CaptureStore:
                         physical, (matches[0], "historical_level")
                     )
 
-            combined = {
+        if len(known_bindings) == 2 and len(client_ports) == 2:
+            effective = {
                 **route_slots,
                 **{
                     physical: logical
                     for physical, (logical, _evidence) in inferred_routes.items()
                 },
             }
-            if len(set(combined.values())) != len(combined):
-                inferred_routes.clear()
-            elif len(combined) == 1:
-                physical, logical = next(iter(combined.items()))
-                if physical != logical:
-                    other_physical = (
-                        "client:b" if physical == "client:a" else "client:a"
-                    )
-                    other_logical = (
-                        "client:b" if logical == "client:a" else "client:a"
-                    )
-                    inferred_routes.setdefault(
-                        other_physical, (other_logical, "two_client_inference")
-                    )
+            confirmed = {
+                physical: logical
+                for physical, (logical, evidence) in inferred_routes.items()
+                if evidence == "canonical_uid"
+            }
+            if len(confirmed) == 1:
+                physical, logical = next(iter(confirmed.items()))
+                other_physical = next(
+                    key for key in ("client:a", "client:b") if key != physical
+                )
+                other_logical = next(
+                    key for key in known_bindings if key != logical
+                )
+                inferred_routes[other_physical] = (
+                    other_logical,
+                    "two_client_inference",
+                )
+                effective[other_physical] = other_logical
+            if len(set(effective.values())) != len(effective):
+                # Evidência canônica prevalece sobre slots antigos. Se ainda
+                # houver ambiguidade, não adivinhe a identidade do cliente.
+                canonical_only = {
+                    physical: route
+                    for physical, route in inferred_routes.items()
+                    if route[1] == "canonical_uid"
+                }
+                if len({route[0] for route in canonical_only.values()}) != len(
+                    canonical_only
+                ):
+                    inferred_routes.clear()
         logical_routes = {
             **route_slots,
             **{
                 physical: logical
                 for physical, (logical, _evidence) in inferred_routes.items()
             },
-        }
-        uid_routes = {
-            character_uid: client_key
-            for client_key, character_uid in self.conn.execute(
-                """SELECT client_key,character_uid FROM client_bindings
-                   WHERE session_id=?""",
-                (session_id,),
-            )
         }
         reserved_routes = set(uid_routes.values())
         for event in raw_events:
@@ -603,8 +771,10 @@ class CaptureStore:
                 if uid and entry_identity
                 else None
             )
-            if uid and not client_key:
-                flow_uids.setdefault(event["flow"], set()).add(uid)
+            if uid and canonical_identity:
+                flow_uids.setdefault(
+                    _normalized_flow(event["flow"]), set()
+                ).add(uid)
             prepared.append(
                 (event, clean, uid, client_key, binding_source)
             )
@@ -630,29 +800,6 @@ class CaptureStore:
                         for physical, (logical, evidence) in inferred_routes.items()
                     ],
                 )
-                uid_remap = {
-                    manual_bindings[physical]: manual_bindings[logical]
-                    for physical, (logical, _evidence) in inferred_routes.items()
-                    if physical in manual_bindings
-                    and logical in manual_bindings
-                    and physical != logical
-                }
-                if uid_remap:
-                    clauses = " ".join(
-                        "WHEN character_uid=? THEN ?" for _ in uid_remap
-                    )
-                    parameters = list(
-                        itertools.chain.from_iterable(uid_remap.items())
-                    )
-                    parameters.extend((session_id, *uid_remap.keys()))
-                    updated = self.conn.execute(
-                        f"""UPDATE events SET character_uid=CASE {clauses}
-                            ELSE character_uid END
-                            WHERE session_id=? AND character_uid IN
-                            ({','.join('?' for _ in uid_remap)})""",
-                        parameters,
-                    )
-                    rewritten = rewritten or bool(updated.rowcount)
             bindings = {
                 client_key: (character_uid, binding_source)
                 for client_key, character_uid, binding_source
@@ -795,13 +942,69 @@ class CaptureStore:
                                 client_key, (client_key, None)
                             )[0]
                             if client_key
-                            else uid or stable_flow_uid.get(event["flow"])
+                            else uid or stable_flow_uid.get(
+                                _normalized_flow(event["flow"])
+                            )
                         ),
                         json.dumps(clean, ensure_ascii=False, sort_keys=True),
                         session_id,
                     ),
                 )
                 added += cursor.rowcount
+            # Quando uma nova conexão é confirmada por UID, corrija somente
+            # os fluxos das portas físicas atuais. Isso evita trocar o dono de
+            # eventos antigos de outras conexões da mesma sessão.
+            for physical, (logical, _evidence) in inferred_routes.items():
+                binding = bindings.get(logical)
+                if not binding:
+                    continue
+                for (flow,) in self.conn.execute(
+                    "SELECT DISTINCT flow FROM events WHERE session_id=?",
+                    (session_id,),
+                ):
+                    if _client_key(flow, client_ports) != physical:
+                        continue
+                    updated = self.conn.execute(
+                        """UPDATE events SET character_uid=?
+                           WHERE session_id=? AND flow=? AND type!='unparsed'""",
+                        (binding[0], session_id, flow),
+                    )
+                    rewritten = rewritten or bool(updated.rowcount)
+
+            # A identidade canônica e EXP/contribuição/recompensa podem vir
+            # em lotes diferentes do mesmo fluxo (ou no sentido inverso).
+            # Repare retroativamente apenas quando há um único UID confirmado.
+            confirmed_flow_uids: dict[str, set[str]] = {}
+            for flow, uid in self.conn.execute(
+                """SELECT flow,character_uid FROM events
+                   WHERE session_id=? AND type='world_info_prefix'
+                     AND character_uid IS NOT NULL""",
+                (session_id,),
+            ):
+                confirmed_flow_uids.setdefault(
+                    _normalized_flow(flow), set()
+                ).add(uid)
+            stable_confirmed_flows = {
+                flow: next(iter(uids))
+                for flow, uids in confirmed_flow_uids.items()
+                if len(uids) == 1
+            }
+            for (flow,) in self.conn.execute(
+                """SELECT DISTINCT flow FROM events
+                   WHERE session_id=? AND character_uid IS NULL
+                     AND type!='unparsed'""",
+                (session_id,),
+            ):
+                uid = stable_confirmed_flows.get(_normalized_flow(flow))
+                if not uid:
+                    continue
+                updated = self.conn.execute(
+                    """UPDATE events SET character_uid=?
+                       WHERE session_id=? AND flow=?
+                         AND character_uid IS NULL AND type!='unparsed'""",
+                    (uid, session_id, flow),
+                )
+                rewritten = rewritten or bool(updated.rowcount)
             for (flow,) in self.conn.execute(
                 """SELECT DISTINCT flow FROM events
                    WHERE session_id=? AND character_uid IS NULL
@@ -842,7 +1045,46 @@ class CaptureStore:
             )
             if rewritten:
                 self._bump_event_revision()
+        if added and any(
+            event.get("type") in {"exp_rank_list", "exp_rank_info"}
+            for event in raw_events
+        ):
+            self._remember_exp_rank_capture(session_id)
         return added
+
+    def _remember_exp_rank_capture(self, session_id: str) -> None:
+        snapshot = self.exp_rank_snapshot(session_id)
+        captured_at_ns = int(snapshot.get("captured_at_ns") or 0)
+        signature = str(snapshot.get("signature") or "")
+        if captured_at_ns <= 0 or not signature:
+            return
+        with self.conn:
+            identical = self.conn.execute(
+                """SELECT 1 FROM exp_rank_captures
+                   WHERE session_id=? AND signature=?
+                     AND captured_at_ns BETWEEN ? AND ?
+                   LIMIT 1""",
+                (
+                    session_id,
+                    signature,
+                    captured_at_ns - EXP_RANK_IDENTICAL_HISTORY_WINDOW_NS,
+                    captured_at_ns + EXP_RANK_IDENTICAL_HISTORY_WINDOW_NS,
+                ),
+            ).fetchone()
+            if identical:
+                return
+            self.conn.execute(
+                """INSERT OR IGNORE INTO exp_rank_captures
+                   (session_id,captured_at_ns,snapshot_key,signature,data_json)
+                   VALUES(?,?,?,?,?)""",
+                (
+                    session_id,
+                    captured_at_ns,
+                    str(snapshot.get("snapshot_key") or ""),
+                    signature,
+                    json.dumps(snapshot, ensure_ascii=False, sort_keys=True),
+                ),
+            )
 
     def ingest(
         self,
@@ -880,6 +1122,7 @@ class CaptureStore:
                 self.conn.execute("DELETE FROM captures")
                 self.conn.execute("DELETE FROM client_bindings")
                 self.conn.execute("DELETE FROM client_route_slots")
+                self.conn.execute("DELETE FROM session_checkpoints")
             else:
                 self.conn.execute(
                     "DELETE FROM events WHERE session_id=?", (session_id,)
@@ -895,6 +1138,10 @@ class CaptureStore:
                     "DELETE FROM client_route_slots WHERE session_id=?",
                     (session_id,),
                 )
+                self.conn.execute(
+                    "DELETE FROM session_checkpoints WHERE session_id=?",
+                    (session_id,),
+                )
             self._bump_event_revision()
 
     def clear_session(self, session_id: str) -> None:
@@ -904,6 +1151,7 @@ class CaptureStore:
                 "subsessions",
                 "client_bindings",
                 "client_route_slots",
+                "session_checkpoints",
                 "events",
                 "captures",
             ):
@@ -927,7 +1175,13 @@ class CaptureStore:
         ).fetchone()
         return row[0] if row else None
 
-    def character_history(self) -> list[dict[str, Any]]:
+    def character_history(
+        self, *, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        limit_sql = "" if limit is None else " LIMIT ?"
+        values: tuple[object, ...] = (
+            () if limit is None else (max(1, int(limit)),)
+        )
         return [
             {
                 "uid": uid,
@@ -950,11 +1204,13 @@ class CaptureStore:
                 rover_item_index,
             )
             in self.conn.execute(
-                """SELECT character_uid,character_name,last_seen_at,
+                f"""SELECT character_uid,character_name,last_seen_at,
                           last_session_id,last_client_key,level,
                           biosuit_item_index,rover_item_index
                    FROM character_history
-                   ORDER BY last_seen_at DESC,character_name,character_uid"""
+                   ORDER BY last_seen_at DESC,character_name,character_uid
+                   {limit_sql}""",
+                values,
             )
         ]
 
@@ -1286,8 +1542,32 @@ class CaptureStore:
         canonical = json.dumps(sorted(completed.items()), separators=(",", ":"))
         return hashlib.sha256(f"{session_id}:{canonical}".encode()).hexdigest()
 
+    def auction_sale_events(
+        self, session_id: str, character_uid: str
+    ) -> list[dict[str, Any]]:
+        """Eventos próprios de leilão, isolados por personagem e em ordem."""
+        from .auction_sales import AUCTION_EVENT_TYPES
+
+        placeholders = ",".join("?" for _ in AUCTION_EVENT_TYPES)
+        rows = self.conn.execute(
+            f"""SELECT ts_ns,data_json FROM events
+                WHERE session_id=? AND character_uid=?
+                  AND type IN ({placeholders})
+                ORDER BY id""",
+            (session_id, str(character_uid), *AUCTION_EVENT_TYPES),
+        ).fetchall()
+        result = []
+        for ts_ns, data_json in rows:
+            try:
+                data = json.loads(data_json)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(data, dict):
+                result.append({"ts_ns": ts_ns, "data": data})
+        return result
+
     def exp_rank_snapshot(self, session_id: str) -> dict[str, Any]:
-        """Retorna o ranking mais recente, apenas com campos decodificados seguros."""
+        """Retorna o Top 100 mais recente com integridade explícita."""
         parsed_rows: list[tuple[int, int, dict[str, Any]]] = []
         for event_id, ts_ns, data_json in self.conn.execute(
             """SELECT id,COALESCE(ts_ns,0),data_json FROM events
@@ -1308,21 +1588,55 @@ class CaptureStore:
         if not parsed_rows:
             return {}
 
-        latest_records = parsed_rows[0][2].get("records") or []
-        latest = next((item for item in latest_records if isinstance(item, dict)), None)
-        if latest is None:
-            return {}
-        try:
-            scope_id = int(latest.get("scope_id_raw"))
-            ranking_cycle = int(latest.get("ranking_cycle_raw"))
-        except (TypeError, ValueError):
-            return {}
-        if not (0 <= scope_id < 2**32 and 0 <= ranking_cycle < 2**32):
-            return {}
+        def record_context(raw: object) -> tuple[int, int] | None:
+            if not isinstance(raw, dict):
+                return None
+            try:
+                context = (
+                    int(raw.get("scope_id_raw")),
+                    int(raw.get("ranking_cycle_raw")),
+                )
+            except (TypeError, ValueError):
+                return None
+            return context if all(0 <= value < 2**32 for value in context) else None
 
-        by_uid: dict[str, dict[str, Any]] = {}
-        captured_at_ns = 0
-        for _event_id, ts_ns, data in reversed(parsed_rows):
+        target_context = next(
+            (
+                context
+                for _event_id, _ts_ns, data in parsed_rows
+                for raw in (data.get("records") or [])
+                if (context := record_context(raw)) is not None
+            ),
+            None,
+        )
+        if target_context is None:
+            return {}
+        scope_id, ranking_cycle = target_context
+        context_rows = [
+            row
+            for row in parsed_rows
+            if any(
+                record_context(raw) == target_context
+                for raw in (row[2].get("records") or [])
+            )
+        ]
+        anchor_ts_ns = context_rows[0][1]
+        if anchor_ts_ns > 0:
+            selected_rows = [
+                row
+                for row in context_rows
+                if 0 <= anchor_ts_ns - row[1] <= EXP_RANK_CAPTURE_WINDOW_NS
+                and row[1] > 0
+            ]
+        else:
+            selected_rows = context_rows[:1]
+
+        by_rank: dict[int, dict[str, Any]] = {}
+        conflicted_ranks: set[int] = set()
+        contributing_events: set[int] = set()
+        captured_times: list[int] = []
+        for event_id, ts_ns, data in reversed(selected_rows):
+            event_contributed = False
             for raw in data.get("records") or []:
                 if not isinstance(raw, dict):
                     continue
@@ -1340,7 +1654,7 @@ class CaptureStore:
                     uid <= 0
                     or uid != uid_repeat
                     or not 0 <= total_exp <= 2**63 - 1
-                    or not 1 <= rank < 2**32
+                    or not 1 <= rank <= EXP_RANK_TOP_LIMIT
                     or not 0 <= previous_rank < 2**32
                     or (record_scope, record_cycle) != (scope_id, ranking_cycle)
                 ):
@@ -1348,7 +1662,7 @@ class CaptureStore:
                 guild_mark = str(raw.get("guild_mark_hex") or "").lower()
                 if not re.fullmatch(r"[0-9a-f]{8}", guild_mark):
                     guild_mark = ""
-                by_uid[str(uid)] = {
+                record = {
                     "character_uid": str(uid),
                     "character_name": str(raw.get("character_name") or "").strip()[:80],
                     "guild_name": str(raw.get("guild_name") or "").strip()[:80],
@@ -1357,9 +1671,36 @@ class CaptureStore:
                     "rank": rank,
                     "previous_rank": previous_rank,
                 }
-                captured_at_ns = max(captured_at_ns, ts_ns)
-        if not by_uid:
+                previous = by_rank.get(rank)
+                if previous is not None and previous != record:
+                    conflicted_ranks.add(rank)
+                by_rank[rank] = record
+                event_contributed = True
+            if event_contributed:
+                contributing_events.add(event_id)
+                if ts_ns > 0:
+                    captured_times.append(ts_ns)
+        if not by_rank:
             return {}
+
+        ranks_by_uid: dict[str, set[int]] = {}
+        for rank, record in by_rank.items():
+            ranks_by_uid.setdefault(str(record["character_uid"]), set()).add(rank)
+        duplicate_uids = {
+            uid for uid, ranks in ranks_by_uid.items() if len(ranks) > 1
+        }
+        conflict_count = len(conflicted_ranks) + len(duplicate_uids)
+        observed_positions = sorted(by_rank)
+        missing_positions = sorted(
+            set(range(1, EXP_RANK_TOP_LIMIT + 1)) - set(observed_positions)
+        )
+        completeness = (
+            "complete"
+            if not missing_positions and conflict_count == 0
+            else "partial"
+        )
+        first_captured_at_ns = min(captured_times, default=0)
+        captured_at_ns = max(captured_times, default=0)
 
         info = None
         for ts_ns, data_json in self.conn.execute(
@@ -1381,24 +1722,41 @@ class CaptureStore:
                         "previous_rank": int(fields.get("previous_rank")),
                         "ranking_time_ms": int(fields.get("ranking_time_ms")),
                     }
-                    captured_at_ns = max(captured_at_ns, int(ts_ns or 0))
                     break
             except (TypeError, ValueError):
                 continue
 
         records = sorted(
-            by_uid.values(), key=lambda item: (int(item["rank"]), item["character_uid"])
+            by_rank.values(), key=lambda item: int(item["rank"])
         )
         content = {
             "schema_version": 1,
             "scope_id": scope_id,
             "ranking_cycle": ranking_cycle,
+            "top_limit": EXP_RANK_TOP_LIMIT,
+            "record_count": len(records),
+            "observed_positions": observed_positions,
+            "missing_positions": missing_positions,
+            "completeness": completeness,
+            "conflict_count": conflict_count,
+            "source_pages": len(contributing_events),
+            "first_captured_at_ns": first_captured_at_ns,
             "captured_at_ns": captured_at_ns,
+            "capture_span_ns": max(0, captured_at_ns - first_captured_at_ns),
             "records": records,
             **({"player_info": info} if info else {}),
         }
         canonical = json.dumps(
-            {key: value for key, value in content.items() if key != "captured_at_ns"},
+            {
+                key: value
+                for key, value in content.items()
+                if key not in {
+                    "first_captured_at_ns",
+                    "captured_at_ns",
+                    "capture_span_ns",
+                    "source_pages",
+                }
+            },
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
@@ -1408,6 +1766,91 @@ class CaptureStore:
             "snapshot_key": f"{scope_id}:{ranking_cycle}",
             "signature": hashlib.sha256(canonical.encode()).hexdigest(),
         }
+
+    def exp_rank_history(
+        self, session_id: str, *, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Histórico materializado e diferenças entre capturas do Top 100."""
+        try:
+            rows = self.conn.execute(
+                """SELECT captured_at_ns,data_json FROM (
+                       SELECT id,captured_at_ns,data_json
+                       FROM exp_rank_captures WHERE session_id=?
+                       ORDER BY captured_at_ns DESC,id DESC LIMIT ?
+                   ) ORDER BY captured_at_ns,id""",
+                (session_id, max(1, min(500, int(limit)))),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        previous_by_uid: dict[
+            str, tuple[int, int, int | None, float | None]
+        ] = {}
+        history: list[dict[str, Any]] = []
+        for captured_at_ns, data_json in rows:
+            try:
+                snapshot = json.loads(data_json)
+            except (TypeError, ValueError):
+                continue
+            capture_rows = []
+            for raw in snapshot.get("records") or []:
+                if not isinstance(raw, dict):
+                    continue
+                uid = str(raw.get("character_uid") or "")
+                try:
+                    total_exp = int(raw.get("total_exp"))
+                except (TypeError, ValueError):
+                    continue
+                level, level_percent = exp_rank_level_progress(total_exp)
+                previous = previous_by_uid.get(uid)
+                gained_exp = None
+                gained_percent = None
+                elapsed_seconds = None
+                exp_per_hour = None
+                percent_per_hour = None
+                if previous and int(captured_at_ns) > previous[0]:
+                    gained_exp = total_exp - previous[1]
+                    elapsed_seconds = (
+                        int(captured_at_ns) - previous[0]
+                    ) / 1_000_000_000
+                    if (
+                        level is not None
+                        and level_percent is not None
+                        and previous[2] is not None
+                        and previous[3] is not None
+                    ):
+                        gained_percent = round(
+                            (level - previous[2]) * 100
+                            + level_percent - previous[3],
+                            6,
+                        )
+                    if elapsed_seconds > 0:
+                        hours = elapsed_seconds / 3600
+                        exp_per_hour = round(gained_exp / hours, 2)
+                        percent_per_hour = (
+                            round(gained_percent / hours, 6)
+                            if gained_percent is not None else None
+                        )
+                capture_rows.append({
+                    **raw,
+                    "level": level,
+                    "level_percent": level_percent,
+                    "gained_exp": gained_exp,
+                    "gained_percent": gained_percent,
+                    "elapsed_seconds": elapsed_seconds,
+                    "exp_per_hour": exp_per_hour,
+                    "exp_percent_per_hour": percent_per_hour,
+                })
+                previous_by_uid[uid] = (
+                    int(captured_at_ns), total_exp, level, level_percent
+                )
+            history.append({
+                "captured_at_ns": int(captured_at_ns),
+                "signature": str(snapshot.get("signature") or ""),
+                "completeness": str(snapshot.get("completeness") or ""),
+                "record_count": len(capture_rows),
+                "records": capture_rows,
+            })
+        return list(reversed(history))
 
     def capture_windows(self, session_id: str) -> list[dict[str, Any]]:
         return [
@@ -1436,7 +1879,16 @@ class CaptureStore:
         spot_name: str = "",
         mobs: list[str] | None = None,
         mob_levels: dict[str, int | str] | None = None,
+        auto_context: bool = False,
+        context_source: str | None = None,
+        context_confidence: str | None = None,
+        context_observation_count: int = 0,
+        context_first_seen_ns: int | None = None,
+        context_updated_ns: int | None = None,
         duration_minutes: int = 0,
+        end_on_teleport: bool = False,
+        end_on_death: bool = False,
+        end_after_no_kill: bool = False,
         started_ns: int,
     ) -> None:
         name, location = name.strip(), location.strip()
@@ -1459,6 +1911,22 @@ class CaptureStore:
                     first if first == last else f"{first}-{last}"
                 )
         mob_levels = normalized_levels
+        context_source = (
+            str(context_source or "").strip()[:40]
+            if auto_context else "manual"
+        )
+        context_confidence = (
+            str(context_confidence or "").strip()[:40]
+            if auto_context else "confirmed"
+        )
+        context_observation_count = max(0, int(context_observation_count))
+        context_first_seen_ns = (
+            int(context_first_seen_ns) if context_first_seen_ns else None
+        )
+        context_updated_ns = (
+            int(context_updated_ns) if context_updated_ns
+            else started_ns if not auto_context else None
+        )
         if (
             not subsession_id
             or not session_id
@@ -1491,9 +1959,12 @@ class CaptureStore:
             self.conn.execute(
                 """INSERT INTO subsessions
                    (id,session_id,character_uid,client_key,name,location,map_name,
-                     spot_name,mobs_json,mob_levels_json,duration_minutes,
+                     spot_name,mobs_json,mob_levels_json,auto_context,
+                     context_source,context_confidence,context_observation_count,
+                     context_first_seen_ns,context_updated_ns,duration_minutes,
+                     end_on_teleport,end_on_death,end_after_no_kill,
                      started_ns,sequence)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     subsession_id,
                     session_id,
@@ -1505,7 +1976,16 @@ class CaptureStore:
                     spot_name,
                     json.dumps(mobs, ensure_ascii=False),
                     json.dumps(mob_levels, ensure_ascii=False, sort_keys=True),
+                    int(bool(auto_context)),
+                    context_source,
+                    context_confidence,
+                    context_observation_count,
+                    context_first_seen_ns,
+                    context_updated_ns,
                     duration_minutes,
+                    int(bool(end_on_teleport)),
+                    int(bool(end_on_death)),
+                    int(bool(end_after_no_kill)),
                     started_ns,
                     sequence,
                 ),
@@ -1552,6 +2032,10 @@ class CaptureStore:
         mobs: list[str],
         mob_levels: dict[str, int | str],
         duration_minutes: int,
+        auto_context: bool = False,
+        end_on_teleport: bool = False,
+        end_on_death: bool = False,
+        end_after_no_kill: bool = False,
     ) -> None:
         name = name.strip()
         client_key = client_key.strip().casefold()
@@ -1566,8 +2050,12 @@ class CaptureStore:
             if not self.conn.execute(
                 """UPDATE subsessions SET character_uid=?,client_key=?,name=?,
                    location=?,map_name=?,spot_name=?,mobs_json=?,
-                   mob_levels_json=?,duration_minutes=?,upload_state='pending',
-                   uploaded_at=NULL WHERE id=?""",
+                   mob_levels_json=?,auto_context=?,context_source='manual',
+                   context_confidence='confirmed',context_observation_count=0,
+                   context_first_seen_ns=NULL,context_updated_ns=?,
+                   duration_minutes=?,end_on_teleport=?,end_on_death=?,
+                   end_after_no_kill=?,upload_state='pending',uploaded_at=NULL
+                   WHERE id=?""",
                 (
                     character_uid,
                     client_key,
@@ -1577,11 +2065,106 @@ class CaptureStore:
                     spot_name.strip(),
                     json.dumps(mobs, ensure_ascii=False),
                     json.dumps(mob_levels, ensure_ascii=False, sort_keys=True),
+                    int(bool(auto_context)),
+                    time.time_ns(),
                     duration_minutes,
+                    int(bool(end_on_teleport)),
+                    int(bool(end_on_death)),
+                    int(bool(end_after_no_kill)),
                     subsession_id,
                 ),
             ).rowcount:
                 raise ValueError("subsessão não encontrada")
+
+    def update_auto_subsession_context(
+        self,
+        session_id: str,
+        client_key: str,
+        *,
+        map_name: str = "",
+        spot_name: str = "",
+        mobs: Iterable[str] = (),
+        mob_levels: dict[str, int | str] | None = None,
+        context_source: str = "",
+        context_confidence: str = "",
+        context_observation_count: int = 0,
+        context_first_seen_ns: int | None = None,
+        context_updated_ns: int | None = None,
+    ) -> bool:
+        client_key = client_key.strip().casefold()
+        if not session_id or client_key not in CLIENT_KEYS:
+            return False
+        row = self.conn.execute(
+            """SELECT id,map_name,spot_name,mobs_json,mob_levels_json
+               FROM subsessions WHERE session_id=? AND client_key=?
+                 AND ended_ns IS NULL AND auto_context=1
+               ORDER BY started_ns DESC LIMIT 1""",
+            (session_id, client_key),
+        ).fetchone()
+        if row is None:
+            return False
+        current_map = str(row[1] or "")
+        current_spot = str(row[2] or "")
+        current_mobs = json.loads(row[3] or "[]")
+        current_levels = json.loads(row[4] or "{}")
+        merged_mobs = list(dict.fromkeys([
+            *current_mobs,
+            *(str(value).strip() for value in mobs if str(value).strip()),
+        ]))
+        merged_levels = dict(current_levels)
+        for mob, level in (mob_levels or {}).items():
+            if str(mob).strip() and level not in (None, ""):
+                merged_levels[str(mob).strip()] = level
+        inferred_map = map_name.strip()
+        next_map = (
+            inferred_map
+            if current_map.startswith("Mapa #")
+            and inferred_map
+            and not inferred_map.startswith("Mapa #")
+            else current_map or inferred_map
+        )
+        next_spot = current_spot or spot_name.strip()
+        changed = (
+            next_map != current_map
+            or next_spot != current_spot
+            or merged_mobs != current_mobs
+            or merged_levels != current_levels
+        )
+        if not changed:
+            return False
+        context_source = context_source.strip()[:40]
+        context_confidence = context_confidence.strip()[:40]
+        context_observation_count = max(0, int(context_observation_count))
+        context_first_seen_ns = (
+            int(context_first_seen_ns) if context_first_seen_ns else None
+        )
+        context_updated_ns = (
+            int(context_updated_ns) if context_updated_ns else None
+        )
+        location = " > ".join(value for value in (next_map, next_spot) if value)
+        with self.conn:
+            self.conn.execute(
+                """UPDATE subsessions SET map_name=?,spot_name=?,location=?,
+                     mobs_json=?,mob_levels_json=?,context_source=?,
+                     context_confidence=?,context_observation_count=?,
+                     context_first_seen_ns=?,context_updated_ns=?,
+                     upload_state='pending',uploaded_at=NULL
+                   WHERE id=?""",
+                (
+                    next_map,
+                    next_spot,
+                    location,
+                    json.dumps(merged_mobs, ensure_ascii=False),
+                    json.dumps(merged_levels, ensure_ascii=False, sort_keys=True),
+                    context_source,
+                    context_confidence,
+                    context_observation_count,
+                    context_first_seen_ns,
+                    context_updated_ns,
+                    row[0],
+                ),
+            )
+        return True
 
     def delete_subsessions(self, subsession_ids: Iterable[str]) -> int:
         identifiers = tuple(dict.fromkeys(value for value in subsession_ids if value))
@@ -1597,8 +2180,12 @@ class CaptureStore:
     def subsessions(self, session_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """SELECT id,character_uid,client_key,name,location,map_name,spot_name,
-                      mobs_json,mob_levels_json,duration_minutes,started_ns,
-                      ended_ns,sequence,upload_state,uploaded_at
+                      mobs_json,mob_levels_json,auto_context,context_source,
+                      context_confidence,context_observation_count,
+                      context_first_seen_ns,context_updated_ns,duration_minutes,
+                      mau_state,launcher_state,exp_potion_state,
+                      end_on_teleport,end_on_death,end_after_no_kill,
+                      started_ns,ended_ns,sequence,upload_state,uploaded_at
                FROM subsessions WHERE session_id=? ORDER BY started_ns DESC""",
             (session_id,),
         )
@@ -1613,7 +2200,19 @@ class CaptureStore:
                 "spot_name": spot_name,
                 "mobs": json.loads(mobs),
                 "mob_levels": json.loads(mob_levels),
+                "auto_context": bool(auto_context),
+                "context_source": context_source,
+                "context_confidence": context_confidence,
+                "context_observation_count": context_observation_count,
+                "context_first_seen_ns": context_first_seen_ns,
+                "context_updated_ns": context_updated_ns,
                 "duration_minutes": duration_minutes,
+                "mau_state": mau_state,
+                "launcher_state": launcher_state,
+                "exp_potion_state": exp_potion_state,
+                "end_on_teleport": bool(end_on_teleport),
+                "end_on_death": bool(end_on_death),
+                "end_after_no_kill": bool(end_after_no_kill),
                 "started_ns": started_ns,
                 "ended_ns": ended_ns,
                 "sequence": sequence,
@@ -1630,7 +2229,19 @@ class CaptureStore:
                 spot_name,
                 mobs,
                 mob_levels,
+                auto_context,
+                context_source,
+                context_confidence,
+                context_observation_count,
+                context_first_seen_ns,
+                context_updated_ns,
                 duration_minutes,
+                mau_state,
+                launcher_state,
+                exp_potion_state,
+                end_on_teleport,
+                end_on_death,
+                end_after_no_kill,
                 started_ns,
                 ended_ns,
                 sequence,
@@ -1842,6 +2453,93 @@ class CaptureStore:
             "raw_bytes": int(raw_bytes or 0),
         }
 
+    def checkpoint_session(
+        self, session_id: str, *, reason: str = "interval"
+    ) -> dict[str, int | str]:
+        if not session_id or len(session_id) > 128:
+            raise ValueError("session_id inválido")
+        normalized_reason = str(reason or "interval").strip().casefold()
+        if normalized_reason not in {"interval", "paused", "finalized"}:
+            raise ValueError("motivo de checkpoint inválido")
+        stats = self.session_stats(session_id)
+        last_event_id = int(
+            self.conn.execute(
+                "SELECT COALESCE(MAX(id),0) FROM events WHERE session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+        )
+        checkpoint_ns = int(
+            datetime.now(timezone.utc).timestamp() * 1_000_000_000
+        )
+        values = (
+            session_id,
+            checkpoint_ns,
+            normalized_reason,
+            last_event_id,
+            int(stats.get("recognized") or 0),
+            int(stats.get("unknown") or 0),
+            int(stats.get("unassigned") or 0),
+            int(stats.get("raw_bytes") or 0),
+        )
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO session_checkpoints
+                   (session_id,checkpoint_ns,reason,last_event_id,recognized,
+                    unknown,unassigned,raw_bytes)
+                   VALUES(?,?,?,?,?,?,?,?)
+                   ON CONFLICT(session_id,last_event_id) DO UPDATE SET
+                     checkpoint_ns=excluded.checkpoint_ns,
+                     reason=CASE
+                       WHEN excluded.reason='finalized' THEN 'finalized'
+                       WHEN excluded.reason='paused' AND reason='interval' THEN 'paused'
+                       ELSE reason END,
+                     recognized=excluded.recognized,
+                     unknown=excluded.unknown,
+                     unassigned=excluded.unassigned,
+                     raw_bytes=excluded.raw_bytes""",
+                values,
+            )
+        return {
+            "session_id": session_id,
+            "checkpoint_ns": checkpoint_ns,
+            "reason": normalized_reason,
+            "last_event_id": last_event_id,
+            "recognized": values[4],
+            "unknown": values[5],
+            "unassigned": values[6],
+            "raw_bytes": values[7],
+        }
+
+    def session_checkpoints(
+        self, session_id: str, *, limit: int = 100
+    ) -> list[dict[str, int | str]]:
+        return [
+            {
+                "checkpoint_ns": int(checkpoint_ns),
+                "reason": str(reason),
+                "last_event_id": int(last_event_id),
+                "recognized": int(recognized),
+                "unknown": int(unknown),
+                "unassigned": int(unassigned),
+                "raw_bytes": int(raw_bytes),
+            }
+            for (
+                checkpoint_ns,
+                reason,
+                last_event_id,
+                recognized,
+                unknown,
+                unassigned,
+                raw_bytes,
+            ) in self.conn.execute(
+                """SELECT checkpoint_ns,reason,last_event_id,recognized,
+                          unknown,unassigned,raw_bytes
+                   FROM session_checkpoints WHERE session_id=?
+                   ORDER BY checkpoint_ns DESC,id DESC LIMIT ?""",
+                (session_id, max(1, min(1000, int(limit)))),
+            )
+        ]
+
     def ui_event_batch(
         self,
         session_id: str,
@@ -1910,6 +2608,8 @@ class CaptureStore:
             "use_skill_request",
             "use_skill_result",
             "use_normal_skill_result",
+            "update_exp",
+            "drop_item_field",
         )
         placeholders = ",".join("?" for _ in kinds)
         # ponytail: 20 mil eventos cobrem muito mais que a janela observada de
@@ -1962,6 +2662,74 @@ class CaptureStore:
             }
             for _id, ts_ns, kind, data in sorted(unique.values(), key=lambda row: row[0])
         ]
+
+    def recent_drop_events(
+        self, session_id: str, *, recent_seconds: int = 120
+    ) -> list[dict[str, Any]]:
+        """Drops recentes para alerta, sem fluxo, IP ou payload bruto."""
+        newest = self.conn.execute(
+            "SELECT COALESCE(MAX(ts_ns),0) FROM events WHERE session_id=?",
+            (session_id,),
+        ).fetchone()[0]
+        cutoff = int(newest or 0) - max(10, int(recent_seconds)) * 1_000_000_000
+        rows = self.conn.execute(
+            """SELECT ts_ns,stream_offset,bundle_seq,character_uid,data_json
+               FROM events
+               WHERE session_id=? AND type='drop_item_field'
+                 AND (ts_ns IS NULL OR ts_ns>=?)
+               ORDER BY id DESC LIMIT 1000""",
+            (session_id, cutoff),
+        ).fetchall()
+        result = []
+        for ts_ns, stream_offset, bundle_seq, character_uid, data_json in reversed(rows):
+            try:
+                data = json.loads(data_json)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(data, dict):
+                result.append({
+                    "ts_ns": ts_ns,
+                    "stream_offset": int(stream_offset),
+                    "bundle_seq": int(bundle_seq),
+                    "type": "drop_item_field",
+                    "character_uid": character_uid,
+                    "data": data,
+                })
+        return result
+
+    def recent_loot_announcements(
+        self, session_id: str, *, recent_seconds: int = 7 * 24 * 60 * 60
+    ) -> list[dict[str, Any]]:
+        """Avisos de loot de outros jogadores, sem fluxo ou payload bruto."""
+        newest = self.conn.execute(
+            "SELECT COALESCE(MAX(ts_ns),0) FROM events WHERE session_id=?",
+            (session_id,),
+        ).fetchone()[0]
+        cutoff = int(newest or 0) - max(10, int(recent_seconds)) * 1_000_000_000
+        rows = self.conn.execute(
+            """SELECT ts_ns,stream_offset,bundle_seq,character_uid,data_json
+               FROM events
+               WHERE session_id=? AND type='loot_announcement'
+                 AND (ts_ns IS NULL OR ts_ns>=?)
+               ORDER BY id DESC LIMIT 1000""",
+            (session_id, cutoff),
+        ).fetchall()
+        result = []
+        for ts_ns, stream_offset, bundle_seq, character_uid, data_json in reversed(rows):
+            try:
+                data = json.loads(data_json)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(data, dict):
+                result.append({
+                    "ts_ns": ts_ns,
+                    "stream_offset": int(stream_offset),
+                    "bundle_seq": int(bundle_seq),
+                    "type": "loot_announcement",
+                    "character_uid": character_uid,
+                    "data": data,
+                })
+        return result
 
     def session_envelope(
         self,

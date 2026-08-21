@@ -25,8 +25,25 @@ from core.connections import (
     ports_for_executable,
 )
 from core.combat_monitor import summarize_combat
+from core.auction_sales import (
+    auction_sales_snapshot,
+    auction_transaction_history,
+    undercut_warning,
+)
+from core.drop_alerts import (
+    aggregate_item_drops_by_client,
+    confirmed_item_drop_alerts,
+)
 from core.ingest import _decode_stream_resync, _pcapng_to_pcap, _safe_parse
 from core.live_stream import LiveEventDecoder, LiveEventStream
+from core.map_state import (
+    MAP_CATALOG,
+    MAP_PREVIEW_CATALOG,
+    MapModule,
+    apply_manual_map_fallbacks,
+    map_name,
+    map_region,
+)
 from core.knowledge import KnowledgeStore
 from core.rfnext_frame_decode import (
     APPEAR_PLAYER_PREFIX,
@@ -40,7 +57,7 @@ from core.rfnext_frame_decode import (
     parse_observation_payload,
     pcap_tcp_streams,
 )
-from core.store import CaptureStore
+from core.store import CaptureStore, exp_rank_level_progress
 
 
 class CoreTest(unittest.TestCase):
@@ -50,6 +67,52 @@ class CoreTest(unittest.TestCase):
         frame[4:6] = opcode.to_bytes(2, "little")
         frame[6:] = payload
         return bytes(frame)
+
+    def test_server_chat_loot_announcements_decode_single_and_list(self):
+        def record(
+            uid: int, name: str, item_index: int, count: int, kind: int = 2
+        ) -> bytes:
+            encoded_name = name.encode("utf-16le")
+            tail = bytearray(65)
+            tail[21] = kind
+            struct.pack_into("<I", tail, 37, item_index)
+            struct.pack_into("<I", tail, 41, count)
+            return (
+                struct.pack("<QH", uid, len(name))
+                + encoded_name
+                + bytes(tail)
+            )
+
+        single = parse_observation_payload(
+            self._decoder_frame(0x0E09, record(11, "Alice", 1000444, 1))
+        )
+        listed = parse_observation_payload(
+            self._decoder_frame(
+                0x0E0A,
+                struct.pack("<H", 1) + record(12, "Bob", 1000323, 2),
+            )
+        )
+
+        self.assertEqual(single["type"], "loot_announcement")
+        self.assertEqual(single["announcements"], [{
+            "character_uid": 11,
+            "player_name": "Alice",
+            "item_index": 1000444,
+            "count": 1,
+            "message_kind": 2,
+        }])
+        self.assertEqual(
+            [(row["player_name"], row["item_index"], row["count"])
+             for row in listed["announcements"]],
+            [("Bob", 1000323, 2)],
+        )
+        self.assertIsNone(parse_observation_payload(
+            self._decoder_frame(
+                0x0E0A,
+                struct.pack("<H", 1)
+                + record(13, "Carol", 1000156, 1, kind=3),
+            )
+        ))
 
     def test_latest_marked_decoder_movement_disappear_teleport_and_equipment(self):
         movement_payload = bytes.fromhex(
@@ -105,6 +168,10 @@ class CoreTest(unittest.TestCase):
         )
         self.assertEqual(warp["type"], "warp_player")
         self.assertEqual(warp["fields"]["map_index_candidate"], 1202)
+        self.assertEqual(
+            warp["fields"]["map_index_candidate_status"],
+            "refuted-not-map-index",
+        )
         for opcode, payload, event_type in (
             (0x0408, bytes.fromhex("5d020000"), "request_teleport"),
             (0x0409, bytes.fromhex("00005d020000"), "request_teleport_result"),
@@ -115,6 +182,37 @@ class CoreTest(unittest.TestCase):
                     self._decoder_frame(opcode, payload), 12010
                 )
                 self.assertEqual(parsed["type"], event_type)
+                if opcode != 0x040B:
+                    self.assertEqual(parsed["fields"]["map_index"], 605)
+
+        logical_teleports = (
+            (
+                0x0324,
+                bytes.fromhex(
+                    "07000000870300000000000001000000000000005a02000000"
+                    "9004864242f49c43afaa84410000000000000000000000000000000000000000000000000000"
+                ),
+                "teleport_request",
+                "requested_position",
+            ),
+            (
+                0x0325,
+                bytes.fromhex(
+                    "000007000000870300000000000001000000000000005a02000000"
+                    "9004864242f49c433af8844100000000"
+                ),
+                "teleport_response",
+                "resolved_position",
+            ),
+        )
+        for opcode, payload, event_type, position_field in logical_teleports:
+            parsed = parse_marked_gameplay_payload(
+                self._decoder_frame(opcode, payload), 12020
+            )
+            self.assertEqual(parsed["type"], event_type)
+            self.assertEqual(parsed["fields"]["map_index"], 602)
+            self.assertEqual(parsed["fields"]["teleport_kind"], "random")
+            self.assertEqual(len(parsed["fields"][position_field]), 3)
 
         equip = parse_marked_gameplay_payload(
             self._decoder_frame(
@@ -187,6 +285,317 @@ class CoreTest(unittest.TestCase):
                 if event.get("type") == "appear_player_list"
                 for unit in (event.get("data") or {}).get("units") or []
             },
+        )
+
+    def test_pvp_nearby_appearance_expires_after_ten_seconds_without_disappear(self):
+        events = [{
+            "ts_ns": 1_000_000_000,
+            "type": "appear_player_list",
+            "data": {"units": [{
+                "uid": 20, "character_uid": 222, "name": "Rival",
+            }]},
+        }]
+
+        visible = summarize_combat(
+            events, "111", modes=("pvp",), now_ns=11_000_000_000
+        )
+        expired = summarize_combat(
+            events, "111", modes=("pvp",), now_ns=11_000_000_001
+        )
+
+        self.assertEqual([row["name"] for row in visible["nearby_players"]], ["Rival"])
+        self.assertEqual(expired["nearby_players"], [])
+
+    def test_map_module_tracks_local_and_nearby_positions_without_uids(self):
+        flow = "10.0.0.1:12010 -> 127.0.0.1:50000"
+        events = [{
+            "flow": flow,
+            "ts_ns": 1_000_000_000,
+            "type": "world_info_prefix",
+            "data": {"fields": {
+                "character_uid": 987_654_321,
+                "character_name": "Local",
+            }},
+        }, {
+            "flow": flow,
+            "ts_ns": 2_000_000_000,
+            "type": "appear_player_list",
+            "data": {"units": [{
+                "uid": 10,
+                "character_uid": 987_654_321,
+                "name": "Local",
+                "position_x": 9.0,
+                "position_y": 0.0,
+                "position_z": 0.0,
+            }, {
+                "uid": 246_813_579,
+                "character_uid": 222,
+                "name": "Vizinho",
+                "guild_name": "Guilda",
+                "position_x": 12.0,
+                "position_y": 4.0,
+                "position_z": 0.0,
+            }]},
+        }, {
+            "flow": flow,
+            "ts_ns": 3_000_000_000,
+            "type": "move_player_request",
+            "data": {"fields": {"position": [10.0, 0.0, 0.0]}},
+        }, {
+            "flow": flow,
+            "ts_ns": 4_000_000_000,
+            "type": "move_player_update",
+            "data": {"fields": {
+                "entity_uid": 246_813_579,
+                "position": [13.0, 4.0, 0.0],
+            }},
+        }, {
+            "flow": flow,
+            "ts_ns": 4_500_000_000,
+            "type": "teleport_response",
+            "data": {"fields": {
+                "result": 0,
+                "map_index": 602,
+                "resolved_position": [19.0, 0.0, 0.0],
+            }},
+        }, {
+            "flow": flow,
+            "ts_ns": 5_000_000_000,
+            "type": "warp_player",
+            "data": {"fields": {
+                "entity_uid": 10,
+                "position": [20.0, 0.0, 0.0],
+                "map_index_candidate": 1202,
+                "map_index_candidate_status": "refuted-not-map-index",
+            }},
+        }]
+
+        snapshot = MapModule().snapshot(
+            events, ((50000,),), now_ns=5_000_000_000
+        )
+
+        client = snapshot["clients"][0]
+        self.assertEqual(client["map_index"], 602)
+        self.assertEqual(client["map_name"], "Base Secreta Nemesis")
+        self.assertEqual(client["region_name"], "2F")
+        self.assertEqual(client["region_confidence"], "map-index-floor")
+        self.assertEqual(client["position"], {"x": 20.0, "y": 0.0, "z": 0.0})
+        self.assertEqual(client["nearby_players"][0]["name"], "Vizinho")
+        self.assertEqual(client["nearby_players"][0]["distance"], 8.062)
+        public = json.dumps(snapshot, ensure_ascii=False)
+        self.assertNotIn("987654321", public)
+        self.assertNotIn("246813579", public)
+        self.assertNotIn("entity_uid", public)
+        self.assertNotIn("character_uid", public)
+
+        english = MapModule(language="en").snapshot(
+            events, ((50000,),), now_ns=5_000_000_000
+        )
+        self.assertEqual(english["clients"][0]["map_name"], "Secret Nemesis Base")
+        self.assertEqual(english["clients"][0]["region_name"], "2F")
+
+    def test_map_module_expires_unfinished_teleport_and_movement_clears_it(self):
+        flow = "10.0.0.1:12010 -> 127.0.0.1:50000"
+        teleport = {
+            "flow": flow,
+            "ts_ns": 1_000_000_000,
+            "type": "request_teleport",
+            "data": {"fields": {"map_index": 643}},
+        }
+        expired = MapModule().snapshot(
+            [teleport], ((50000,),), now_ns=11_000_000_001
+        )["clients"][0]
+        self.assertFalse(expired["teleporting"])
+
+        moved = MapModule().snapshot(
+            [teleport, {
+                "flow": flow,
+                "ts_ns": 2_000_000_000,
+                "type": "move_player_request",
+                "data": {"fields": {"position": [1.0, 2.0, 3.0]}},
+            }],
+            ((50000,),),
+            now_ns=2_000_000_000,
+        )["clients"][0]
+        self.assertFalse(moved["teleporting"])
+
+    def test_map_catalog_is_versioned_complete_and_has_safe_fallback(self):
+        self.assertEqual(len(MAP_CATALOG), 508)
+        self.assertEqual(map_name(101, "pt"), "Mundo Novus")
+        self.assertEqual(map_name(101, "en"), "Novus World")
+        self.assertEqual(map_name(638, "en"), "Android Junkyard")
+        self.assertEqual(map_region(638, None, "en")["region_name"], "8F")
+        self.assertEqual(map_name(4_294_967_294, "pt"), "Mapa #4294967294")
+
+    def test_map_preview_catalog_covers_requested_maps_and_novus_regions(self):
+        requested = {
+            101, 103,
+            751, 752, 754, 755,
+            *range(635, 641), *range(4211, 4215),
+            601, 602, 605, 606, 607,
+            *range(611, 627), 4625, 4645, 4665, 4685,
+            610, 630, 4603,
+            642, 643, 644, 4504, 4554,
+        }
+
+        self.assertEqual(set(MAP_PREVIEW_CATALOG), requested)
+        self.assertEqual(
+            sum(len(item.get("regions") or []) for item in MAP_PREVIEW_CATALOG.values()),
+            100,
+        )
+        high_orbit = map_region(
+            643,
+            {"x": 1182.8017578125, "y": 683.6202392578125, "z": 0.0},
+            "pt",
+        )
+        self.assertEqual(high_orbit["region_index"], 591001)
+        self.assertEqual(high_orbit["region_name"], "Doca A-04")
+        self.assertEqual(MAP_PREVIEW_CATALOG[635]["asset_source_map_index"], 631)
+        self.assertEqual(MAP_PREVIEW_CATALOG[4645]["asset_source_map_index"], 4625)
+        self.assertEqual(
+            MAP_PREVIEW_CATALOG[635]["evidence"],
+            "shared-level-layout-static-coordinate-match",
+        )
+
+        position = {"x": -478_707.281, "y": 89_840.0, "z": 0.0}
+        portuguese = map_region(101, position, "pt")
+        english = map_region(101, position, "en")
+        self.assertEqual(portuguese["region_name"], "Colônia Saura")
+        self.assertEqual(english["region_name"], "Saura Colony")
+        self.assertEqual(
+            portuguese["region_confidence"], "nearest-official-center"
+        )
+        self.assertEqual(portuguese["region_center"], position)
+
+    def test_manual_map_is_only_a_fallback_for_unresolved_automatic_name(self):
+        snapshot = {
+            "clients": [{
+                "client_key": "client:a",
+                "map_index": 4_294_967_294,
+                "map_name": "Mapa #4294967294",
+            }, {
+                "client_key": "client:b",
+                "map_index": 602,
+                "map_name": "Base Secreta Nemesis 2º Andar",
+            }]
+        }
+        configured = {
+            "client:a": {"map_name": "Mapa informado", "map_index": 639},
+            "client:b": {"map_name": "Não deve substituir"},
+        }
+
+        applied = apply_manual_map_fallbacks(snapshot, configured)
+
+        self.assertEqual(applied["clients"][0]["map_name"], "Mapa informado")
+        self.assertEqual(applied["clients"][0]["map_source"], "manual_fallback")
+        self.assertEqual(applied["clients"][0]["map_index"], 639)
+        self.assertEqual(
+            applied["clients"][0]["automatic_map_name"], "Mapa #4294967294"
+        )
+        self.assertEqual(
+            applied["clients"][1]["map_name"], "Base Secreta Nemesis 2º Andar"
+        )
+        self.assertEqual(applied["clients"][1]["map_source"], "automatic")
+        restored = apply_manual_map_fallbacks(applied, {})
+        self.assertEqual(restored["clients"][0]["map_name"], "Mapa #4294967294")
+        self.assertEqual(restored["clients"][0]["map_index"], 4_294_967_294)
+
+    def test_map_module_limits_two_clients_and_releases_missing_route(self):
+        module = MapModule()
+        flows = [
+            f"10.0.0.1:12010 -> 127.0.0.1:{port}"
+            for port in (50000, 50001, 50002)
+        ]
+        events = [{
+            "flow": flow,
+            "ts_ns": index + 1,
+            "type": "move_player_request",
+            "data": {"fields": {"position": [index, 0, 0]}},
+        } for index, flow in enumerate(flows)]
+
+        first = module.snapshot(events, ((50000,), (50001,), (50002,)))
+
+        self.assertEqual(first["active_count"], 2)
+        self.assertEqual(first["limited_count"], 1)
+        self.assertEqual(
+            [(row["client_key"], row["map_enabled"]) for row in first["clients"]],
+            [("client:a", True), ("client:b", True), ("client:c", False)],
+        )
+        self.assertIsNone(first["clients"][2]["position"])
+
+        second = module.snapshot(events, ((), (50001,), (50002,)))
+
+        self.assertEqual(
+            [(row["client_key"], row["map_enabled"]) for row in second["clients"]],
+            [("client:b", True), ("client:c", True)],
+        )
+
+    def test_live_stream_retains_latest_map_event_and_removes_disappearance(self):
+        stream = LiveEventStream()
+        flow = "10.0.0.1:12010 -> 127.0.0.1:50000"
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": 1,
+            "type": "appear_player_list",
+            "data": {"units": [{"uid": 20, "character_uid": 222, "name": "Rival"}]},
+        }, {
+            "flow": flow,
+            "ts_ns": 2,
+            "type": "move_player_update",
+            "data": {"fields": {"entity_uid": 20, "position": [1, 2, 3]}},
+        }])
+
+        self.assertTrue(any(
+            event.get("type") == "move_player_update" for event in stream.snapshot()
+        ))
+        self.assertEqual(stream.metrics()["map_events"], 1)
+
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": 3,
+            "type": "disappear_unit_list",
+            "data": {"fields": {"entity_uids": [20]}},
+        }])
+
+        self.assertFalse(any(
+            event.get("type") in {"appear_player_list", "move_player_update"}
+            for event in stream.snapshot()
+        ))
+        self.assertEqual(stream.metrics()["map_events"], 0)
+
+    def test_live_stream_retains_teleport_result_for_automatic_map(self):
+        stream = LiveEventStream()
+        flow = "10.0.0.1:12020 -> 127.0.0.1:50000"
+        stream._remember([{
+            "flow": flow,
+            "ts_ns": 1,
+            "type": "teleport_request",
+            "data": {"fields": {"map_index": 602}},
+        }, {
+            "flow": flow,
+            "ts_ns": 2,
+            "type": "teleport_response",
+            "data": {"fields": {
+                "result": 0,
+                "map_index": 602,
+                "resolved_position": [19.0, 0.0, 0.0],
+            }},
+        }])
+
+        snapshot = MapModule().snapshot(
+            stream.snapshot(), ((50000,),), now_ns=2
+        )
+
+        self.assertEqual(stream.metrics()["map_events"], 2)
+        self.assertEqual(snapshot["clients"][0]["map_index"], 602)
+        self.assertEqual(
+            snapshot["clients"][0]["map_name"],
+            "Base Secreta Nemesis",
+        )
+        self.assertEqual(snapshot["clients"][0]["region_name"], "2F")
+        self.assertEqual(
+            snapshot["clients"][0]["position"],
+            {"x": 19.0, "y": 0.0, "z": 0.0},
         )
 
     def test_guild_relation_decode_enriches_pvp_without_overwriting_manual(self):
@@ -461,6 +870,248 @@ class CoreTest(unittest.TestCase):
                 store.close()
         self.assertIsNone(payload["mobs"][0]["max_hp"])
 
+    def test_pvp_quarantine_promotes_only_after_a_second_session(self):
+        event = {
+            "type": "appear_player_list",
+            "data": {"units": [{"character_uid": 123, "name": "Neutro"}]},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                store.observe_events([event], session_id="session-a")
+                quarantined = store.characters(curation_state="quarantine")
+                pending_before = store.pending_payload()["characters"]
+                store.observe_events([event], session_id="session-b")
+                final = store.characters(curation_state="final")
+                pending_after = store.pending_payload()["characters"]
+            finally:
+                store.close()
+
+        self.assertEqual(quarantined[0]["session_count"], 1)
+        self.assertEqual(pending_before, [])
+        self.assertEqual(final[0]["session_count"], 2)
+        self.assertEqual(len(pending_after), 1)
+
+    def test_pvp_bank_indexes_curation_and_status_queries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                index = store.conn.execute(
+                    """SELECT sql FROM sqlite_master
+                       WHERE type='index'
+                         AND name='idx_character_curation_status_name'"""
+                ).fetchone()
+            finally:
+                store.close()
+
+        self.assertIsNotNone(index)
+        self.assertIn("curation_state", index[0])
+        self.assertIn("pvp_status", index[0])
+
+    def test_known_mob_is_not_requeued_until_confirmed_data_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                monitor = {"nearby_monsters": [{
+                    "npc_index": 305208,
+                    "name": "Boss",
+                    "level": 70,
+                    "max_hp": 1_000_000,
+                    "position": {"x": 10.0, "y": 20.0, "z": 30.0},
+                }]}
+                first = store.observe_combat(
+                    [monitor], location={"map_index": 9, "map_name": "Abismo"}
+                )
+                payload = store.pending_payload()
+                store.mark_uploaded(payload)
+                repeated = store.observe_combat(
+                    [monitor], location={"map_index": 9, "map_name": "Abismo"}
+                )
+                unchanged = store.pending_payload()
+                monitor["nearby_monsters"][0]["max_hp"] = 1_100_000
+                divergent = store.observe_combat(
+                    [monitor], location={"map_index": 9, "map_name": "Abismo"}
+                )
+                after_divergence = store.pending_payload()
+                candidates = store.mob_hp_candidates(305208)
+            finally:
+                store.close()
+        self.assertEqual(first["mobs"], 1)
+        self.assertEqual(repeated["mobs"], 0)
+        self.assertEqual(unchanged["mobs"], [])
+        self.assertEqual(divergent["mobs"], 0)
+        self.assertEqual(after_divergence["mobs"], [])
+        self.assertEqual(candidates[0]["max_hp"], 1_100_000)
+        self.assertEqual(candidates[0]["review_state"], "pending")
+
+    def test_mob_bank_keeps_multiple_confirmed_locations(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                base = {
+                    "npc_index": 305208,
+                    "name": "Boss",
+                    "max_hp": 1_000_000,
+                }
+                for position in (
+                    {"x": 10.0, "y": 20.0, "z": 30.0},
+                    {"x": 40.0, "y": 50.0, "z": 60.0},
+                    {"x": 10.4, "y": 20.4, "z": 30.4},
+                ):
+                    store.observe_combat(
+                        [{"nearby_monsters": [{**base, "position": position}]}],
+                        location={"map_index": 9, "map_name": "Abismo"},
+                    )
+                locations = store.mob_locations(305208)
+            finally:
+                store.close()
+        self.assertEqual(len(locations), 2)
+        self.assertEqual({row["map_index"] for row in locations}, {9})
+        self.assertEqual(
+            {(row["position_x"], row["position_y"], row["position_z"]) for row in locations},
+            {(10.0, 20.0, 30.0), (40.0, 50.0, 60.0)},
+        )
+
+    def test_pve_delta_marks_only_explicit_ack_and_does_not_resend_known_mob(self):
+        contract_item = {
+            "kind": "mob", "npc_index": 305209,
+            "protocol_version": "1.29.8", "name": "Boss", "level": 70,
+            "max_hp": 1_000_000,
+            "first_seen_at": "2026-08-11T10:00:00+00:00",
+            "last_seen_at": "2026-08-11T10:01:00+00:00",
+        }
+        self.assertEqual(
+            KnowledgeStore._pve_observation_id(contract_item),
+            "6b062a3571aad565d6cc4a62ca1232d7805fc29ffaa6a25ef5c89608bd1bf788",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                monitor = {"nearby_monsters": [{
+                    "npc_index": 305208,
+                    "name": "Boss",
+                    "level": 70,
+                    "max_hp": 1_000_000,
+                    "position": {"x": 10.0, "y": 20.0, "z": 30.0},
+                }]}
+                location = {"map_index": 9, "map_name": "Abismo"}
+                store.observe_combat([monitor], location=location)
+                first = store.pending_pve_delta()
+                self.assertEqual(
+                    {item["kind"] for item in first["observations"]},
+                    {"mob", "location"},
+                )
+                one = first["observations"][0]
+                partial = store.mark_pve_ack(first, {
+                    "schema": "rf-qol.pve-observations.ack",
+                    "schema_version": 1,
+                    "acks": [{
+                        "observation_id": one["observation_id"],
+                        "status": "accepted",
+                    }],
+                })
+                self.assertEqual(partial, {
+                    "acknowledged": 1, "conflicts": 0, "missing": 1,
+                })
+                remaining = store.pending_pve_delta()
+                self.assertEqual(len(remaining["observations"]), 1)
+                store.mark_pve_ack(remaining, {
+                    "schema": "rf-qol.pve-observations.ack",
+                    "schema_version": 1,
+                    "acks": [{
+                        "observation_id": remaining["observations"][0]["observation_id"],
+                        "status": "known",
+                    }],
+                })
+                store.observe_combat([monitor], location=location)
+                self.assertEqual(store.pending_pve_delta()["observations"], [])
+
+                monitor["nearby_monsters"][0]["max_hp"] = 1_100_000
+                store.observe_combat([monitor], location=location)
+                conflict = store.pending_pve_delta()
+                self.assertEqual(
+                    [item["kind"] for item in conflict["observations"]],
+                    ["hp_candidate"],
+                )
+                result = store.mark_pve_ack(conflict, {
+                    "schema": "rf-qol.pve-observations.ack",
+                    "schema_version": 1,
+                    "acks": [{
+                        "observation_id": conflict["observations"][0]["observation_id"],
+                        "status": "conflict",
+                    }],
+                })
+            finally:
+                store.close()
+        self.assertEqual(result["conflicts"], 1)
+
+    def test_pve_delivery_columns_migrate_additively(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "knowledge.sqlite3"
+            connection = sqlite3.connect(path)
+            connection.executescript("""
+                CREATE TABLE mob_location_observations (
+                    npc_index INTEGER NOT NULL, protocol_version TEXT NOT NULL,
+                    location_key TEXT NOT NULL, label TEXT NOT NULL DEFAULT '',
+                    map_index INTEGER, position_x REAL, position_y REAL,
+                    position_z REAL, first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    PRIMARY KEY(npc_index,protocol_version,location_key)
+                );
+                CREATE TABLE mob_hp_candidates (
+                    npc_index INTEGER NOT NULL, protocol_version TEXT NOT NULL,
+                    max_hp INTEGER NOT NULL, first_seen_at TEXT NOT NULL,
+                    review_state TEXT NOT NULL DEFAULT 'pending',
+                    PRIMARY KEY(npc_index,protocol_version,max_hp)
+                );
+            """)
+            connection.close()
+            store = KnowledgeStore(path)
+            try:
+                location_columns = {
+                    row["name"] for row in store.conn.execute(
+                        "PRAGMA table_info(mob_location_observations)"
+                    )
+                }
+                candidate_columns = {
+                    row["name"] for row in store.conn.execute(
+                        "PRAGMA table_info(mob_hp_candidates)"
+                    )
+                }
+            finally:
+                store.close()
+        self.assertIn("upload_state", location_columns)
+        self.assertTrue({"last_seen_at", "upload_state"}.issubset(candidate_columns))
+
+    def test_mob_bank_summary_counts_locations_and_pending_hp_reviews(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                monitor = {"nearby_monsters": [{
+                    "npc_index": 305208,
+                    "name": "Boss",
+                    "level": 70,
+                    "max_hp": 1_000_000,
+                    "position": {"x": 10.0, "y": 20.0, "z": 30.0},
+                }]}
+                store.observe_combat(
+                    [monitor], location={"map_index": 9, "map_name": "Abismo"}
+                )
+                monitor["nearby_monsters"][0].update({
+                    "max_hp": 1_100_000,
+                    "position": {"x": 40.0, "y": 50.0, "z": 60.0},
+                })
+                store.observe_combat(
+                    [monitor], location={"map_index": 9, "map_name": "Abismo"}
+                )
+                row = store.mobs()[0]
+            finally:
+                store.close()
+        self.assertEqual(row["npc_index"], 305208)
+        self.assertEqual(row["max_hp"], 1_000_000)
+        self.assertEqual(row["location_count"], 2)
+        self.assertEqual(row["hp_candidate_count"], 1)
+
     def test_knowledge_store_merges_newer_character_identity_from_site(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
@@ -603,6 +1254,31 @@ class CoreTest(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_known_pvp_identity_is_not_requeued_without_material_change(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                event = {
+                    "type": "appear_player_list",
+                    "data": {"units": [{
+                        "character_uid": 123,
+                        "name": "Rival",
+                        "level": 70,
+                        "guild_name": "Guilda",
+                    }]},
+                }
+                store.observe_events([event])
+                store.mark_uploaded(store.pending_payload())
+                store.observe_events([event])
+                unchanged = store.pending_payload()
+                event["data"]["units"][0]["level"] = 71
+                store.observe_events([event])
+                changed = store.pending_payload()
+            finally:
+                store.close()
+        self.assertEqual(unchanged["characters"], [])
+        self.assertEqual(changed["characters"][0]["level"], 71)
+
     def test_completed_market_signature_changes_only_on_completed_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = CaptureStore(Path(temporary) / "capture.sqlite3")
@@ -698,6 +1374,86 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(result["pvp"]["name"], "Rival")
         self.assertEqual(result["pvp"]["hp_percent"], 80.0)
         self.assertEqual(result["pvp"]["dps_hp"], 20.0)
+        self.assertEqual(result["pvp_activity"]["direction"], "saída")
+
+    def test_combat_activity_requires_exp_gain_and_actual_pvp_damage(self):
+        second = 1_000_000_000
+        base = [{
+            "ts_ns": second,
+            "type": "appear_player_list",
+            "data": {"units": [
+                {"character_uid": 111, "uid": 10, "name": "Local"},
+                {"character_uid": 222, "uid": 20, "name": "Rival"},
+            ]},
+        }, {
+            "ts_ns": 2 * second,
+            "type": "select_target_request",
+            "data": {"target_uid": 20},
+        }, {
+            "ts_ns": 3 * second,
+            "type": "update_exp",
+            "data": {"fields": {"gain_exp": 250}},
+        }]
+
+        selected = summarize_combat(base, "111", now_ns=4 * second)
+        self.assertIsNone(selected["pvp_activity"])
+        self.assertEqual(selected["exp_gain"]["amount"], 250)
+        rewarded = summarize_combat(base[:2] + [{
+            "ts_ns": 3 * second,
+            "type": "drop_item_field",
+            "data": {"results": [{"item_index": 900, "count": 75}]},
+        }], "111", now_ns=4 * second)
+        self.assertEqual(rewarded["exp_gain"]["amount"], 75)
+        damaged = summarize_combat(base + [{
+            "ts_ns": 4 * second,
+            "type": "use_skill_result",
+            "data": {
+                "ret": 0,
+                "caster_uid": 20,
+                "effect_results": [{"uid": 10, "hp_damage": 30, "final_hp": 970}],
+            },
+        }], "111", now_ns=5 * second)
+        self.assertEqual(damaged["pvp_activity"]["direction"], "entrada")
+
+    def test_pve_activity_requires_local_damage_or_confirmed_kill(self):
+        second = 1_000_000_000
+        base = [{
+            "ts_ns": second,
+            "type": "appear_player_list",
+            "data": {"units": [{"character_uid": 111, "uid": 10, "name": "Local"}]},
+        }, {
+            "ts_ns": 2 * second,
+            "type": "appear_monster_list",
+            "data": {"units": [{
+                "uid": 30, "npc_index": 100, "max_hp": 1000, "current_hp": 1000,
+            }]},
+        }]
+
+        rewarded = summarize_combat(base + [{
+            "ts_ns": 3 * second,
+            "type": "update_exp",
+            "data": {"fields": {"gain_exp": 250}},
+        }], "111", {100: "Mob"}, now_ns=4 * second)
+        self.assertIsNone(rewarded["pve_activity"])
+
+        damaged = summarize_combat(base + [{
+            "ts_ns": 3 * second,
+            "type": "use_skill_result",
+            "data": {
+                "ret": 0,
+                "caster_uid": 10,
+                "effect_results": [{"uid": 30, "hp_damage": 100, "final_hp": 900}],
+            },
+        }], "111", {100: "Mob"}, now_ns=4 * second)
+        self.assertEqual(damaged["pve_activity"]["kind"], "damage")
+        self.assertEqual(damaged["pve_activity"]["target_uid"], 30)
+
+        killed = summarize_combat(base + [{
+            "ts_ns": 3 * second,
+            "type": "dying_unit",
+            "data": {"uid": 30, "killer_uid": 10},
+        }], "111", {100: "Mob"}, now_ns=4 * second)
+        self.assertEqual(killed["pve_activity"]["kind"], "kill")
 
     def test_combat_monitor_uses_confirmed_main_target_and_named_npcs_only(self):
         events = [
@@ -890,8 +1646,13 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(
             result["bosses"][0]["top_damage_players"][0]["damage"], 1000
         )
+        self.assertEqual(result["bosses"][0]["total_damage"], 1000)
         self.assertEqual(
             result["bosses"][0]["top_damage_players"][0]["dps_hp"], 1000.0
+        )
+        self.assertEqual(
+            result["bosses"][0]["top_damage_players"][0]["calculation"],
+            "encounter_total",
         )
         self.assertEqual(
             result["bosses"][0]["top_damage_players"][0]["guild_name"],
@@ -910,11 +1671,17 @@ class CoreTest(unittest.TestCase):
             [{
                 "name": "Karvalho", "guild_id": "55",
                 "damage": 1000, "dps_hp": 1000.0,
+                "elapsed_seconds": 1.0,
+                "calculation": "encounter_total",
             }],
         )
         self.assertEqual(
             result["bosses"][0]["top_damage_groups"],
-            [{"name": "9", "damage": 1000, "dps_hp": 1000.0}],
+            [{
+                "name": "9", "damage": 1000, "dps_hp": 1000.0,
+                "elapsed_seconds": 1.0,
+                "calculation": "encounter_total",
+            }],
         )
 
         events.append({"ts_ns": 4_000_000_000, "type": "dying_unit", "data": {"uid": 30}})
@@ -927,6 +1694,95 @@ class CoreTest(unittest.TestCase):
                 events[:-1], "111", boss_catalog=catalog, now_ns=20_000_000_000
             )["bosses"],
             [],
+        )
+
+    def test_farm_activity_infers_local_caster_from_confirmed_request_response(self):
+        events = [{
+            "ts_ns": 500_000_000,
+            "type": "appear_monster_list",
+            "data": {"units": [{
+                "uid": 30, "npc_index": 5, "max_hp": 1000, "current_hp": 1000,
+            }]},
+        }, {
+            "ts_ns": 1_000_000_000,
+            "type": "use_skill_request",
+            "data": {
+                "skill_index": 9, "request_sequence_raw": 77, "target_uid": 30,
+            },
+        }, {
+            "ts_ns": 1_100_000_000,
+            "type": "use_skill_result",
+            "data": {
+                "ret": 0, "response_number": 77, "caster_uid": 10,
+                "skill_index": 9, "main_target_uid": 30,
+                "effect_results": [{
+                    "uid": 30, "hp_damage": 250, "final_hp": 750,
+                }],
+            },
+        }]
+
+        result = summarize_combat(
+            events, "111", {5: "Mob"}, now_ns=2_000_000_000
+        )
+
+        self.assertEqual(result["local_combat_uid"], 10)
+        self.assertEqual(result["pve_activity"]["kind"], "damage")
+        self.assertEqual(result["pve_activity"]["target_uid"], 30)
+
+    def test_live_boss_total_survives_event_ring_and_transient_disappearance(self):
+        stream = LiveEventStream(
+            boss_indexes={375100}, max_boss_events=2,
+            boss_event_seconds=3600,
+        )
+        flow = "10.0.0.1:12010 -> 127.0.0.1:50000"
+        stream._remember([{
+            "flow": flow, "ts_ns": 100_000_000,
+            "type": "appear_player_list",
+            "data": {"units": [{
+                "uid": 77, "character_uid": 222, "name": "Aliado",
+                "guild_id": 55, "guild_name": "Karvalho",
+            }]},
+        }, {
+            "flow": flow, "ts_ns": 200_000_000,
+            "type": "appear_monster_list",
+            "data": {"units": [{
+                "uid": 30, "npc_index": 375100,
+                "max_hp": 10_000, "current_hp": 10_000,
+            }]},
+        }])
+        for second, damage in enumerate((100, 200, 300), 1):
+            stream._remember([{
+                "flow": flow, "ts_ns": second * 1_000_000_000,
+                "type": "use_skill_result",
+                "data": {
+                    "ret": 0, "caster_uid": 77,
+                    "effect_results": [{
+                        "uid": 30, "hp_damage": damage,
+                        "final_hp": 10_000 - sum((100, 200, 300)[:second]),
+                    }],
+                },
+            }])
+        stream._remember([{
+            "flow": flow, "ts_ns": 3_100_000_000,
+            "type": "disappear_unit_list",
+            "data": {"fields": {"entity_uids": [30]}},
+        }])
+
+        snapshot = stream.snapshot()
+        totals = [item for item in snapshot if item.get("type") == "boss_damage_total"]
+        self.assertEqual(totals[0]["data"]["damage"], 600)
+        self.assertEqual(stream.metrics()["boss_events"], 2)
+        self.assertEqual(stream.metrics()["boss_anchors"], 1)
+        monitor = summarize_combat(
+            snapshot, "111",
+            boss_catalog={375100: {"name": "Boss"}},
+            now_ns=4_000_000_000,
+        )
+        self.assertEqual(
+            monitor["bosses"][0]["top_damage_players"][0]["damage"], 600
+        )
+        self.assertEqual(
+            monitor["bosses"][0]["top_damage_guilds"][0]["name"], "Karvalho"
         )
 
     def test_guild_dps_survives_knowledge_enrichment_without_summing_player_rates(self):
@@ -996,8 +1852,150 @@ class CoreTest(unittest.TestCase):
         guilds = monitor["bosses"][0]["top_damage_guilds"]
         self.assertEqual(
             [(row["name"], row["damage"], row["dps_hp"]) for row in guilds],
-            [("Guild B", 300, 300.0), ("Guild A", 1800, 200.0)],
+            [("Guild A", 1800, 200.0), ("Guild B", 300, 300.0)],
         )
+
+    def test_auction_sales_projection_is_sanitized_and_tracks_lifecycle(self):
+        item = {
+            "id": 987654321,
+            "index": 270062,
+            "count": 3,
+            "enchant_level": 7,
+            "talic_indices": [1, 2],
+            "item_options": [{"option_index": 9, "value": 10}],
+        }
+        sale = {
+            "exchange_index": 444,
+            "account_id": 111,
+            "pc_id": 222,
+            "item_info": item,
+            "registed_time": 10,
+            "expired_time": 20,
+            "selling_time": 0,
+            "selling_price": 1500,
+            "settlement_price": 0,
+        }
+        events = [
+            {"ts_ns": 1, "data": {
+                "message": "FL2C_ans_exchange_for_my_sales_list_Message",
+                "ret": 0,
+                "exchange_server_type": 2,
+                "my_sales_list": [sale],
+            }},
+            {"ts_ns": 2, "data": {
+                "message": "FL2C_notify_exchange_item_sell_Message",
+                "exchange_server_type": 2,
+                "exchange_indices": [444],
+            }},
+            {"ts_ns": 3, "data": {
+                "message": "FL2C_respond_settlement_of_exchange_Message",
+                "ret": 0,
+                "exchange_server_type": 2,
+                "exchange_index_list": [444],
+                "respond_settlement_infos": [{"exchange_index": 444, "selling_price": 4500}],
+            }},
+        ]
+
+        rows = auction_sales_snapshot(
+            events, secret=b"0123456789abcdef", item_names={270062: "Arma"}
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], "settled")
+        self.assertEqual(rows[0]["price_per_unit"], 1500)
+        self.assertEqual(rows[0]["quantity"], 3)
+        self.assertEqual(rows[0]["item_name"], "Arma")
+        serialized = json.dumps(rows[0])
+        for forbidden in ("444", "987654321", "account_id", "pc_id", "talic"):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_auction_projection_ignores_errors_and_warns_without_blocking(self):
+        failed = {"data": {
+            "message": "FL2C_respond_to_registration_of_sale_item_on_exchange_Message",
+            "ret": 9,
+            "exchange_server_type": 1,
+            "exchange_item_info": {
+                "exchange_index": 5,
+                "item_info": {"index": 10, "count": 1, "enchant_level": 0},
+                "selling_price": 90,
+            },
+        }}
+        self.assertEqual(
+            auction_sales_snapshot([failed], secret=b"0123456789abcdef"), []
+        )
+        active = [
+            {"status": "active", "server_type": 1, "item_index": 10,
+             "enchant_level": 4, "price_per_unit": 100},
+            {"status": "sold", "server_type": 1, "item_index": 10,
+             "enchant_level": 4, "price_per_unit": 80},
+        ]
+        warning = undercut_warning(
+            {"server_type": 1, "item_index": 10, "enchant_level": 4,
+             "price_per_unit": 90},
+            active,
+        )
+        self.assertEqual(warning, {
+            "warning": True,
+            "lowest_active_price": 100,
+            "difference": 10,
+        })
+
+    def test_auction_history_separates_confirmed_purchase_from_unknown_type(self):
+        entry = {
+            "exchange_index": 123,
+            "item_info": {"index": 77, "count": 2, "enchant_level": 4},
+            "selling_price": 900,
+        }
+        rows = auction_transaction_history(
+            [
+                {"ts_ns": 1, "data": {
+                    "message": "FL2C_respond_to_purchase_item_on_exchange_Message",
+                    "ret": 0,
+                    "exchange_server_type": 2,
+                    "purchase_results": [{"ret": 0, "exchange_info": entry}],
+                }},
+                {"ts_ns": 2, "data": {
+                    "message": "FL2C_ans_exchange_for_my_transaction_history_Message",
+                    "ret": 0,
+                    "exchange_server_type": 2,
+                    "my_transaction_history": [{
+                        "exchange_type": 3,
+                        "exchange_item_info": {**entry, "exchange_index": 124},
+                    }],
+                }},
+            ],
+            secret=b"0123456789abcdef",
+        )
+
+        self.assertEqual(
+            {row["transaction_type"] for row in rows},
+            {"bought", "unclassified"},
+        )
+        unknown = next(
+            row for row in rows if row["transaction_type"] == "unclassified"
+        )
+        self.assertEqual(unknown["exchange_type_raw"], 3)
+        serialized = json.dumps(rows)
+        self.assertNotIn('"exchange_index"', serialized)
+
+    def test_store_reads_auction_events_only_for_selected_character(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+            try:
+                message = "FL2C_ans_exchange_for_my_sales_list_Message"
+                for offset, character_uid in enumerate(("one", "two")):
+                    store.conn.execute(
+                        """INSERT INTO events(session_id,source,flow,stream_offset,bundle_seq,
+                           ts_ns,opcode,type,character_uid,data_json)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        ("s", "memory", "flow", offset, 0, offset + 1, 0x1D07,
+                         message, character_uid, json.dumps({"message": message})),
+                    )
+                selected = store.auction_sale_events("s", "one")
+            finally:
+                store.close()
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]["ts_ns"], 1)
 
     def test_exp_rank_snapshot_merges_pages_and_excludes_profile_fields(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1033,6 +2031,11 @@ class CoreTest(unittest.TestCase):
                 snapshot = store.exp_rank_snapshot("s")
                 self.assertEqual([item["rank"] for item in snapshot["records"]], [1, 2])
                 self.assertEqual(snapshot["snapshot_key"], "1:44")
+                self.assertEqual(snapshot["completeness"], "partial")
+                self.assertEqual(snapshot["record_count"], 2)
+                self.assertEqual(snapshot["observed_positions"], [1, 2])
+                self.assertEqual(snapshot["missing_positions"][:2], [3, 4])
+                self.assertEqual(snapshot["conflict_count"], 0)
                 self.assertRegex(snapshot["signature"], r"^[a-f0-9]{64}$")
                 self.assertNotIn("profile_uid_raw", snapshot["records"][0])
                 first_signature = snapshot["signature"]
@@ -1040,6 +2043,211 @@ class CoreTest(unittest.TestCase):
                 self.assertEqual(
                     store.exp_rank_snapshot("s")["signature"], first_signature
                 )
+            finally:
+                store.close()
+
+    def test_exp_rank_level_and_percent_are_derived_from_total_exp_curve(self):
+        self.assertEqual(exp_rank_level_progress(0), (1, 0.0))
+        self.assertEqual(exp_rank_level_progress(19), (1, 95.0))
+        self.assertEqual(exp_rank_level_progress(20), (2, 0.0))
+        self.assertEqual(exp_rank_level_progress(35), (2, 50.0))
+        self.assertEqual(exp_rank_level_progress(-1), (None, None))
+
+    def test_exp_rank_history_calculates_gain_between_captures(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+
+            def insert(offset: int, ts_ns: int, total_exp: int) -> None:
+                store.conn.execute(
+                    """INSERT INTO events(session_id,source,flow,stream_offset,
+                       bundle_seq,ts_ns,opcode,type,character_uid,data_json)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        "s", "memory", "flow", offset, 0, ts_ns, 0x1A02,
+                        "exp_rank_list", None,
+                        json.dumps({
+                            "field_decode": "captura-layout-exato",
+                            "records": [{
+                                "character_uid": 101,
+                                "character_uid_repeat": 101,
+                                "character_name": "Jogador",
+                                "guild_name": "Guilda",
+                                "guild_mark_hex": "84000457",
+                                "total_exp": total_exp,
+                                "rank": 1,
+                                "previous_rank": 1,
+                                "scope_id_raw": 1,
+                                "ranking_cycle_raw": 44,
+                            }],
+                        }),
+                    ),
+                )
+                store._remember_exp_rank_capture("s")
+
+            try:
+                insert(1, 1_000_000_000, 1000)
+                insert(2, 3_601_000_000_000, 1200)
+                history = store.exp_rank_history("s")
+            finally:
+                store.close()
+
+        self.assertEqual(len(history), 2)
+        latest = history[0]["records"][0]
+        self.assertEqual(latest["gained_exp"], 200)
+        self.assertEqual(latest["exp_per_hour"], 200.0)
+        previous_level, previous_percent = exp_rank_level_progress(1000)
+        current_level, current_percent = exp_rank_level_progress(1200)
+        expected_percent = round(
+            (current_level - previous_level) * 100
+            + current_percent - previous_percent,
+            6,
+        )
+        self.assertEqual(latest["gained_percent"], expected_percent)
+        self.assertEqual(latest["exp_percent_per_hour"], expected_percent)
+
+    def test_exp_rank_history_ignores_identical_checks_inside_one_hour(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+
+            def remember(offset: int, captured_at_ns: int) -> None:
+                store.conn.execute(
+                    """INSERT INTO events(session_id,source,flow,stream_offset,
+                       bundle_seq,ts_ns,opcode,type,character_uid,data_json)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        "s", "memory", "flow", offset, 0, captured_at_ns,
+                        0x1A02, "exp_rank_list", None,
+                        json.dumps({
+                            "field_decode": "captura-layout-exato",
+                            "records": [{
+                                "character_uid": 101,
+                                "character_uid_repeat": 101,
+                                "character_name": "Jogador",
+                                "guild_name": "Guilda",
+                                "guild_mark_hex": "84000457",
+                                "total_exp": 1000,
+                                "rank": 1,
+                                "previous_rank": 1,
+                                "scope_id_raw": 1,
+                                "ranking_cycle_raw": 44,
+                            }],
+                        }),
+                    ),
+                )
+                store._remember_exp_rank_capture("s")
+
+            try:
+                remember(1, 1_000_000_000)
+                remember(2, 30 * 60 * 1_000_000_000)
+                self.assertEqual(
+                    store.conn.execute(
+                        "SELECT COUNT(*) FROM exp_rank_captures"
+                    ).fetchone()[0],
+                    1,
+                )
+                remember(3, 61 * 60 * 1_000_000_000)
+                history = store.exp_rank_history("s")
+            finally:
+                store.close()
+
+        self.assertEqual(len(history), 2)
+        self.assertEqual(
+            [capture["captured_at_ns"] for capture in history],
+            [61 * 60 * 1_000_000_000, 1_000_000_000],
+        )
+
+    def test_exp_rank_snapshot_is_complete_only_for_unique_top_100(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+            records = [{
+                "character_uid": 10_000 + rank,
+                "character_uid_repeat": 10_000 + rank,
+                "character_name": f"Jogador {rank}",
+                "guild_name": f"Guilda {rank % 4}",
+                "guild_mark_hex": "84000457",
+                "total_exp": 1_000_000 - rank,
+                "rank": rank,
+                "previous_rank": rank,
+                "scope_id_raw": 7,
+                "ranking_cycle_raw": 55,
+            } for rank in range(1, 101)]
+            try:
+                for offset, ts_ns in ((1, 1_000), (2, 2_000)):
+                    store.conn.execute(
+                        """INSERT INTO events(session_id,source,flow,stream_offset,bundle_seq,
+                           ts_ns,opcode,type,character_uid,data_json)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            "s", "memory", f"flow-{offset}", offset, 0, ts_ns,
+                            0x1A02, "exp_rank_list", None,
+                            json.dumps({
+                                "field_decode": "captura-layout-exato",
+                                "records": records,
+                            }),
+                        ),
+                    )
+                    snapshot = store.exp_rank_snapshot("s")
+                    if offset == 1:
+                        first_signature = snapshot["signature"]
+
+                self.assertEqual(snapshot["completeness"], "complete")
+                self.assertEqual(snapshot["record_count"], 100)
+                self.assertEqual(snapshot["missing_positions"], [])
+                self.assertEqual(snapshot["conflict_count"], 0)
+                self.assertEqual(snapshot["source_pages"], 2)
+                self.assertEqual(snapshot["signature"], first_signature)
+            finally:
+                store.close()
+
+    def test_exp_rank_snapshot_does_not_mix_old_or_conflicting_positions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+
+            def insert(offset, ts_ns, records):
+                store.conn.execute(
+                    """INSERT INTO events(session_id,source,flow,stream_offset,bundle_seq,
+                       ts_ns,opcode,type,character_uid,data_json)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        "s", "memory", "flow", offset, 0, ts_ns,
+                        0x1A02, "exp_rank_list", None,
+                        json.dumps({
+                            "field_decode": "captura-layout-exato",
+                            "records": records,
+                        }),
+                    ),
+                )
+
+            def record(uid, rank, scope=1, cycle=44):
+                return {
+                    "character_uid": uid,
+                    "character_uid_repeat": uid,
+                    "character_name": f"Jogador {uid}",
+                    "guild_name": "Guilda",
+                    "guild_mark_hex": "84000457",
+                    "total_exp": 1_000 - rank,
+                    "rank": rank,
+                    "previous_rank": rank,
+                    "scope_id_raw": scope,
+                    "ranking_cycle_raw": cycle,
+                }
+
+            try:
+                insert(1, 1, [record(100 + rank, rank) for rank in range(1, 101)])
+                insert(2, 2, [record(999, 1, scope=2)])
+                insert(
+                    3,
+                    15 * 60 * 1_000_000_000 + 2,
+                    [record(501, 1), record(501, 2)],
+                )
+
+                snapshot = store.exp_rank_snapshot("s")
+
+                self.assertEqual(snapshot["scope_id"], 1)
+                self.assertEqual(snapshot["observed_positions"], [1, 2])
+                self.assertEqual(snapshot["record_count"], 2)
+                self.assertEqual(snapshot["completeness"], "partial")
+                self.assertEqual(snapshot["conflict_count"], 1)
             finally:
                 store.close()
 
@@ -1196,6 +2404,259 @@ class CoreTest(unittest.TestCase):
         self.assertIsNot(stream._thread, old_worker)
         stream.stop()
 
+    def test_live_stream_bounds_pending_packets_before_decode(self):
+        stream = LiveEventStream(max_pending_packets=2)
+        stream.feed(1, b"first")
+        stream.feed(2, b"second")
+        stream.feed(3, b"third")
+
+        metrics = stream.metrics()
+
+        self.assertEqual(metrics["queue_depth"], 2)
+        self.assertEqual(metrics["dropped_packets"], 1)
+
+    def test_live_stream_bounds_pending_packet_bytes_before_decode(self):
+        stream = LiveEventStream(
+            max_pending_packets=10,
+            max_pending_packet_bytes=10,
+        )
+        stream.feed(1, b"123456")
+        stream.feed(2, b"abcdef")
+
+        metrics = stream.metrics()
+
+        self.assertEqual(metrics["queue_depth"], 1)
+        self.assertEqual(metrics["queue_bytes"], 6)
+        self.assertEqual(metrics["dropped_packets"], 1)
+
+    def test_live_stream_clear_preserves_custom_memory_limits(self):
+        stream = LiveEventStream(
+            max_events=5000,
+            max_entity_anchors=1024,
+            max_pending_packets=2048,
+            max_pending_packet_bytes=8 * 1024**2,
+            max_boss_events=1024,
+            max_flows=16,
+            max_pending_segments_per_flow=64,
+            max_pending_bytes_per_flow=1024**2,
+            max_flow_buffer_bytes=1024**2,
+        )
+
+        stream.clear()
+        metrics = stream.metrics()
+
+        self.assertEqual(metrics["queue_limit"], 2048)
+        self.assertEqual(metrics["queue_byte_limit"], 8 * 1024**2)
+        self.assertEqual(metrics["event_limit"], 5000)
+        self.assertEqual(metrics["entity_anchor_limit"], 1024)
+        self.assertEqual(metrics["boss_event_limit"], 1024)
+        self.assertEqual(metrics["flow_limit"], 16)
+        self.assertEqual(metrics["pending_tcp_segments_per_flow_limit"], 64)
+        self.assertEqual(metrics["pending_tcp_bytes_per_flow_limit"], 1024**2)
+        self.assertEqual(metrics["flow_buffer_byte_limit"], 1024**2)
+
+    def test_live_stream_compacts_old_events_under_memory_pressure(self):
+        stream = LiveEventStream(max_events=5000, max_boss_events=1024)
+        stream._events.extend(
+            {"ts_ns": index, "type": "drop_item_field", "data": {}}
+            for index in range(4000)
+        )
+
+        compacted = stream.compact(0.5)
+        metrics = stream.metrics()
+
+        self.assertEqual(compacted["events"], 2500)
+        self.assertEqual(metrics["event_limit"], 2500)
+        self.assertEqual(metrics["memory_compactions"], 1)
+        self.assertEqual(stream.snapshot()[0]["ts_ns"], 1500)
+
+    def test_drop_alert_projection_filters_non_items_and_internal_ids(self):
+        event = {
+            "ts_ns": 123,
+            "stream_offset": 45,
+            "bundle_seq": 0,
+            "type": "drop_item_field",
+            "client_key": "client:a",
+            "character_name": "Alice",
+            "data": {
+                "ret": 0,
+                "results": [
+                    {"ret": 0, "item_index": 900, "count": 100},
+                    {"ret": 0, "item_index": 1, "count": 50},
+                    {"ret": 0, "item_index": 1701, "count": 7},
+                    {"ret": 0, "item_index": 270062, "count": 2,
+                     "item_id": 987654321, "action_code": 1000},
+                    {"ret": 0, "item_index": 270062, "count": 1,
+                     "item_id": 987654322, "action_code": 1000},
+                    {"ret": 9, "item_index": 270063, "count": 1},
+                ],
+            },
+        }
+
+        alerts = confirmed_item_drop_alerts(
+            [event], {"270062": "Talica rara"}
+        )
+
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["character_name"], "Alice")
+        self.assertEqual(alerts[0]["source"], "server_reward_event")
+        self.assertEqual(alerts[0]["items"], [{
+            "item_index": 270062,
+            "name": "Talica rara",
+            "count": 3,
+        }])
+        serialized = json.dumps(alerts[0])
+        self.assertNotIn("987654321", serialized)
+        self.assertNotIn("item_id", serialized)
+        self.assertEqual(
+            confirmed_item_drop_alerts([{**event, "data": {**event["data"], "ret": 5}}]),
+            [],
+        )
+
+    def test_identical_drops_accumulate_only_inside_the_same_client(self):
+        candidates = [
+            {
+                "client_key": "client:a", "character_name": "Alice",
+                "observed_at_ns": 10,
+                "items": [{"item_index": 7, "name": "Item", "count": 2}],
+            },
+            {
+                "client_key": "client:a", "character_name": "Alice",
+                "observed_at_ns": 20,
+                "items": [{"item_index": 7, "name": "Item", "count": 3}],
+            },
+            {
+                "client_key": "client:b", "character_name": "Bob",
+                "observed_at_ns": 30,
+                "items": [{"item_index": 7, "name": "Item", "count": 9}],
+            },
+        ]
+
+        rows = aggregate_item_drops_by_client(candidates)
+
+        self.assertEqual(len(rows), 2)
+        by_client = {row["client_key"]: row for row in rows}
+        self.assertEqual(by_client["client:a"]["count"], 5)
+        self.assertEqual(by_client["client:a"]["occurrences"], 2)
+        self.assertEqual(by_client["client:a"]["first_observed_at_ns"], 10)
+        self.assertEqual(by_client["client:a"]["last_observed_at_ns"], 20)
+        self.assertEqual(by_client["client:b"]["count"], 9)
+
+    def test_live_stream_retains_confirmed_drop_for_realtime_alert(self):
+        stream = LiveEventStream()
+        event = {
+            "flow": "127.0.0.1:12020 -> 127.0.0.1:50000",
+            "ts_ns": 1_000_000_000,
+            "type": "drop_item_field",
+            "data": {"ret": 0, "results": [{
+                "ret": 0, "item_index": 270062, "count": 1,
+            }]},
+        }
+
+        stream._remember([event])
+
+        self.assertIn(event, stream.snapshot())
+
+    def test_live_stream_retains_chat_loot_announcement_for_history(self):
+        stream = LiveEventStream()
+        event = {
+            "flow": "127.0.0.1:12020 -> 127.0.0.1:50000",
+            "ts_ns": 1_000_000_000,
+            "type": "loot_announcement",
+            "data": {"announcements": [{
+                "player_name": "Rival", "item_index": 1000444, "count": 1,
+            }]},
+        }
+
+        stream._remember([event])
+
+        self.assertIn(event, stream.snapshot())
+
+    def test_store_returns_only_recent_drop_events(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CaptureStore(Path(temporary) / "capture.sqlite3")
+            try:
+                for offset, ts_ns, kind in (
+                    (1, 1_000_000_000, "drop_item_field"),
+                    (2, 150_000_000_000, "drop_item_field"),
+                    (3, 200_000_000_000, "update_exp"),
+                ):
+                    store.conn.execute(
+                        """INSERT INTO events(session_id,source,flow,stream_offset,
+                           bundle_seq,ts_ns,opcode,type,character_uid,data_json)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        ("s", "memory", "flow", offset, 0, ts_ns, 0x040A,
+                         kind, "uid", json.dumps({"ret": 0, "results": []})),
+                    )
+                events = store.recent_drop_events("s", recent_seconds=60)
+            finally:
+                store.close()
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["stream_offset"], 2)
+        self.assertNotIn("flow", events[0])
+
+    def test_live_decoder_bounds_old_tcp_flows(self):
+        decoder = LiveEventDecoder(max_flows=2)
+        packets = [
+            ("flow-1", 12020, 1, b"a"),
+            ("flow-2", 12020, 1, b"b"),
+            ("flow-3", 12020, 1, b"c"),
+        ]
+        with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
+            decoder, "_decode_available", return_value=[]
+        ):
+            for timestamp in range(3):
+                decoder.feed(timestamp, b"packet")
+
+        self.assertEqual(decoder.flow_count, 2)
+        self.assertNotIn("flow-1", decoder._flows)
+
+    def test_live_decoder_bounds_out_of_order_tcp_segments_and_bytes(self):
+        decoder = LiveEventDecoder(
+            max_pending_segments=3,
+            max_pending_bytes=12,
+        )
+        packets = [
+            ("flow", 12020, sequence, b"data")
+            for sequence in (0, 10, 20, 30, 40, 50)
+        ]
+        with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
+            decoder, "_decode_available", return_value=[]
+        ):
+            for timestamp in range(len(packets)):
+                decoder.feed(timestamp, b"packet")
+
+        self.assertLessEqual(decoder.pending_segment_count, 3)
+        self.assertLessEqual(decoder.pending_bytes, 12)
+
+    def test_knowledge_store_pages_and_filters_large_pvp_bank(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            knowledge = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                knowledge.observe_events([{
+                    "type": "appear_player_list",
+                    "data": {"units": [
+                        {
+                            "character_uid": 1000 + index,
+                            "name": f"Jogador {index:03d}",
+                        }
+                        for index in range(300)
+                    ]},
+                }])
+
+                page = knowledge.characters(limit=250)
+                filtered = knowledge.characters(query="Jogador 299", limit=250)
+                total = knowledge.character_count()
+            finally:
+                knowledge.close()
+
+        self.assertEqual(len(page), 250)
+        self.assertEqual(total, 300)
+        self.assertEqual(
+            [row["character_uid"] for row in filtered], ["1299"]
+        )
+
     def test_live_stream_never_evicts_active_boss_under_parallel_event_load(self):
         stream = LiveEventStream(max_events=3, boss_indexes={375100})
         flow = "127.0.0.1:12020 -> 127.0.0.1:50000"
@@ -1298,17 +2759,84 @@ class CoreTest(unittest.TestCase):
             "flow": flow,
             "ts_ns": 8_000_000_000,
             "type": "dying_unit",
-            "data": {"uid": 30},
+            "data": {"uid": 30, "killer_uid": 10},
         }])
-        self.assertEqual(
-            summarize_combat(
-                stream.snapshot(),
-                "111",
-                boss_catalog={375100: {"name": "Xenogeyser"}},
-                now_ns=8_000_000_000,
-            )["bosses"],
-            [],
+        death_result = summarize_combat(
+            stream.snapshot(),
+            "111",
+            boss_catalog={375100: {"name": "Xenogeyser"}},
+            now_ns=8_000_000_000,
         )
+        self.assertEqual(death_result["bosses"], [])
+        self.assertEqual(death_result["pve_activity"]["kind"], "kill")
+
+    def test_live_stream_accelerated_soak_bounds_every_resident_collection(self):
+        stream = LiveEventStream(
+            max_events=64,
+            boss_indexes={375100},
+            max_entity_anchors=32,
+            boss_event_seconds=1_000_000,
+            max_boss_events=16,
+        )
+        for batch in range(50):
+            events = []
+            for offset in range(100):
+                index = batch * 100 + offset
+                flow = f"flow-{index}"
+                uid = 100_000 + index
+                ts_ns = 1_000_000_000 + index
+                events.extend((
+                    {
+                        "flow": flow,
+                        "ts_ns": ts_ns,
+                        "type": "world_info_prefix",
+                        "data": {"fields": {"character_uid": str(uid)}},
+                    },
+                    {
+                        "flow": flow,
+                        "ts_ns": ts_ns,
+                        "type": "enemy_guild_list",
+                        "data": {"guilds": []},
+                    },
+                    {
+                        "flow": flow,
+                        "ts_ns": ts_ns,
+                        "type": "appear_monster_list",
+                        "data": {"units": [{
+                            "uid": uid,
+                            "npc_index": 375100,
+                        }]},
+                    },
+                    {
+                        "flow": flow,
+                        "ts_ns": ts_ns,
+                        "type": "move_player_update",
+                        "data": {"fields": {"entity_uid": uid}},
+                    },
+                    {
+                        "flow": flow,
+                        "ts_ns": ts_ns,
+                        "opcode": 0x031D,
+                        "type": "unparsed",
+                        "data": {},
+                    },
+                    {
+                        "flow": flow,
+                        "ts_ns": ts_ns,
+                        "type": "select_target_request",
+                        "data": {"target_uid": uid + 10_000_000},
+                    },
+                ))
+            stream._remember(events)
+
+        metrics = stream.metrics()
+
+        self.assertEqual(metrics["identity_contexts"], 64)
+        self.assertLessEqual(metrics["guild_contexts"], 128)
+        self.assertLessEqual(metrics["boss_anchors"], 32)
+        self.assertLessEqual(metrics["map_events"], 64)
+        self.assertEqual(metrics["boss_events"], 16)
+        self.assertEqual(metrics["retained_events"], 64)
 
     def test_combat_event_reader_keeps_identity_outside_recent_window(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -1502,7 +3030,11 @@ class CoreTest(unittest.TestCase):
             store = CaptureStore(Path(folder) / "capture.sqlite3")
             store.start_subsession("sub-1", "session", "Antes", started_ns=1)
             store.rename_subsession("sub-1", "Depois")
-            self.assertEqual(store.subsessions("session")[0]["name"], "Depois")
+            subsession = store.subsessions("session")[0]
+            self.assertEqual(subsession["name"], "Depois")
+            self.assertEqual(subsession["mau_state"], "pending_evidence")
+            self.assertEqual(subsession["launcher_state"], "pending_evidence")
+            self.assertEqual(subsession["exp_potion_state"], "pending_evidence")
             self.assertEqual(store.delete_subsessions(("sub-1",)), 1)
             self.assertEqual(store.subsessions("session"), [])
             store.close()
@@ -1528,13 +3060,318 @@ class CoreTest(unittest.TestCase):
                 mobs=["Mob"],
                 mob_levels={"Mob": 10},
                 duration_minutes=30,
+                auto_context=True,
             )
             saved = store.subsessions("session")[0]
             self.assertEqual(
                 (saved["name"], saved["client_key"], saved["character_uid"]),
                 ("Depois", "client:b", "202"),
             )
+            self.assertTrue(saved["auto_context"])
+            self.assertEqual(saved["context_source"], "manual")
+            self.assertEqual(saved["context_confidence"], "confirmed")
             store.close()
+
+    def test_session_checkpoint_is_idempotent_and_promotes_reason(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "session.pcap"
+            source.write_bytes(b"raw")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(source, [], "session")
+                store.checkpoint_session("session", reason="interval")
+                store.checkpoint_session("session", reason="paused")
+                checkpoints = store.session_checkpoints("session")
+            finally:
+                store.close()
+
+        self.assertEqual(len(checkpoints), 1)
+        self.assertEqual(checkpoints[0]["reason"], "paused")
+
+    def test_auto_subsession_context_only_fills_new_confirmed_values(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = CaptureStore(Path(folder) / "capture.sqlite3")
+            store.start_subsession(
+                "sub-1", "session", "Automática",
+                client_key="client:a", auto_context=True, started_ns=1,
+            )
+            changed = store.update_auto_subsession_context(
+                "session", "client:a",
+                map_name="Mapa #9", mobs=[],
+            )
+            refined = store.update_auto_subsession_context(
+                "session", "client:a",
+                map_name="Abismo", spot_name="Câmara",
+                mobs=["Boss"], mob_levels={"Boss": 70},
+                context_source="proximity", context_confidence="stable",
+                context_observation_count=3,
+                context_first_seen_ns=10, context_updated_ns=20,
+            )
+            repeated = store.update_auto_subsession_context(
+                "session", "client:a",
+                map_name="Outro", spot_name="Outro spot",
+                mobs=["Boss"], mob_levels={"Boss": 70},
+            )
+            saved = store.subsessions("session")[0]
+            store.close()
+        self.assertTrue(changed)
+        self.assertTrue(refined)
+        self.assertFalse(repeated)
+        self.assertEqual((saved["map_name"], saved["spot_name"]), ("Abismo", "Câmara"))
+        self.assertEqual(saved["mobs"], ["Boss"])
+        self.assertEqual(saved["context_source"], "proximity")
+        self.assertEqual(saved["context_confidence"], "stable")
+        self.assertEqual(saved["context_observation_count"], 3)
+        self.assertEqual(saved["context_first_seen_ns"], 10)
+        self.assertEqual(saved["context_updated_ns"], 20)
+
+    def test_auto_subsession_inference_requires_unique_catalog_spot(self):
+        from core.subsession_context import infer_subsession_context
+
+        monitor = {"nearby_monsters": [
+            {"name": "Mob A", "level": 10, "stale": False},
+            {"name": "Mob B", "level": 11, "stale": False},
+        ]}
+        catalog = {
+            "Mapa 1": {
+                "Spot único": {"Mob A": (10,), "Mob B": (11,)},
+                "Outro": {"Mob A": (10,)},
+            },
+            "Mapa 2": {"Comum": {"Mob A": (10,)}},
+        }
+        inferred = infer_subsession_context(monitor, "", catalog)
+        ambiguous = infer_subsession_context(
+            {"nearby_monsters": [monitor["nearby_monsters"][0]]}, "", catalog
+        )
+        self.assertEqual(
+            (inferred["map_name"], inferred["spot_name"]),
+            ("Mapa 1", "Spot único"),
+        )
+        self.assertEqual((ambiguous["map_name"], ambiguous["spot_name"]), ("", ""))
+
+        fixed_region = infer_subsession_context(
+            monitor,
+            {"map_name": "Android Junkyard", "region_name": "8F"},
+            {"Android Junkyard": {"8F": {"Mob A": (10,), "Mob B": (11,)}}},
+        )
+        self.assertEqual(
+            (fixed_region["map_name"], fixed_region["spot_name"]),
+            ("Android Junkyard", "8F"),
+        )
+
+    def test_auto_subsession_context_requires_stable_repeated_observations(self):
+        from core.subsession_context import SubsessionContextStabilizer
+
+        stabilizer = SubsessionContextStabilizer(
+            min_observations=3, min_stable_seconds=5
+        )
+        context = {
+            "map_name": "Abismo",
+            "spot_name": "Câmara",
+            "mobs": ["Boss"],
+            "mob_levels": {"Boss": 70},
+        }
+        self.assertIsNone(
+            stabilizer.observe("client:a", context, now_ns=1_000_000_000)
+        )
+        self.assertIsNone(
+            stabilizer.observe("client:a", context, now_ns=3_000_000_000)
+        )
+        stable = stabilizer.observe(
+            "client:a", context, now_ns=6_000_000_000
+        )
+        self.assertEqual(stable["context_confidence"], "stable")
+        self.assertEqual(stable["context_observation_count"], 3)
+        self.assertEqual(stable["context_first_seen_ns"], 1_000_000_000)
+
+    def test_auto_subsession_context_resets_when_spot_oscillates(self):
+        from core.subsession_context import SubsessionContextStabilizer
+
+        stabilizer = SubsessionContextStabilizer(
+            min_observations=2, min_stable_seconds=0
+        )
+        first = {"map_name": "Mapa", "spot_name": "A", "mobs": ["Mob"]}
+        second = {"map_name": "Mapa", "spot_name": "B", "mobs": ["Mob"]}
+        self.assertIsNone(stabilizer.observe("client:a", first, now_ns=1))
+        self.assertIsNone(stabilizer.observe("client:a", second, now_ns=2))
+        stable = stabilizer.observe("client:a", second, now_ns=3)
+        self.assertEqual(stable["spot_name"], "B")
+        self.assertEqual(stable["context_observation_count"], 2)
+
+    def test_auto_subsession_context_ignores_transient_mob(self):
+        from core.subsession_context import SubsessionContextStabilizer
+
+        stabilizer = SubsessionContextStabilizer(
+            min_observations=3, min_stable_seconds=0
+        )
+        first = {
+            "map_name": "Mapa",
+            "spot_name": "Spot",
+            "mobs": ["Residente", "De passagem"],
+            "mob_levels": {"Residente": 10, "De passagem": 20},
+        }
+        repeated = {
+            "map_name": "Mapa",
+            "spot_name": "Spot",
+            "mobs": ["Residente"],
+            "mob_levels": {"Residente": 10},
+        }
+        self.assertIsNone(stabilizer.observe("client:a", first, now_ns=1))
+        self.assertIsNone(stabilizer.observe("client:a", repeated, now_ns=2))
+        stable = stabilizer.observe("client:a", repeated, now_ns=3)
+        self.assertEqual(stable["mobs"], ["Residente"])
+        self.assertEqual(stable["mob_levels"], {"Residente": 10})
+
+    def test_program_status_keeps_concurrent_signals_and_presentation_priority(self):
+        from core.program_status import build_program_status
+
+        status = build_program_status(
+            [{
+                "client_key": "client:a",
+                "local_combat_uid": 10,
+                "local": {"hp_percent": 20.0},
+                "pve_activity": {
+                    "observed_at_ns": 99, "kind": "damage", "target_uid": 30,
+                },
+                "pvp_activity": {
+                    "last_seen_ns": 99, "direction": "entrada"
+                },
+                "nearby_players": [{"pvp_status": "enemy", "stale": False}],
+                "bosses": [{"age_seconds": 2.0, "stale": False}],
+            }],
+            {"clients": [{
+                "client_key": "client:a", "observed_at_ns": 10,
+                "age_seconds": 0.5, "teleporting": True, "stale": False,
+            }]},
+            ("pve", "pvp", "boss"),
+            low_hp_percent=30,
+            now_ns=100,
+        )
+        client = status["clients"][0]
+        self.assertEqual(client["availability"], "available")
+        self.assertEqual(client["activity"], "pvp")
+        self.assertEqual(client["active_activities"], ["farm", "pvp", "boss"])
+        self.assertEqual(client["display_status"], "teleporting")
+        self.assertEqual(
+            client["signals"],
+            {
+                "threat": True,
+                "under_attack": True,
+                "low_hp": True,
+                "boss_nearby": True,
+                "teleporting": True,
+            },
+        )
+
+    def test_program_status_uses_unknown_when_monitor_dimension_is_disabled(self):
+        from core.program_status import build_program_status
+
+        client = build_program_status(
+            [{"client_key": "client:a", "local_combat_uid": 10}],
+            {},
+            (),
+            now_ns=100,
+        )["clients"][0]
+        self.assertEqual(client["activity"], "idle")
+        self.assertIsNone(client["signals"]["threat"])
+        self.assertIsNone(client["signals"]["under_attack"])
+
+    def test_program_status_farm_requires_pve_activity_and_expires_after_thirty_seconds(self):
+        from core.program_status import build_program_status
+
+        monitor = [{
+            "client_key": "client:a",
+            "pve_activity": {
+                "observed_at_ns": 1_000_000_000,
+                "kind": "damage",
+                "target_uid": 30,
+            },
+        }]
+        recent = build_program_status(
+            monitor, {}, ("pve",), now_ns=31_000_000_000
+        )["clients"][0]
+        expired = build_program_status(
+            monitor, {}, ("pve",), now_ns=31_000_000_001
+        )["clients"][0]
+        self.assertEqual(recent["display_status"], "farm")
+        self.assertEqual(expired["display_status"], "idle")
+
+        exp_only = build_program_status(
+            [{
+                "client_key": "client:a",
+                "exp_gain": {"observed_at_ns": 31_000_000_000, "amount": 10},
+            }],
+            {},
+            ("pve",),
+            now_ns=31_000_000_000,
+        )["clients"][0]
+        self.assertEqual(exp_only["display_status"], "idle")
+
+    def test_automatic_subsession_end_uses_only_confirmed_events_after_start(self):
+        from core.subsession_context import automatic_subsession_end
+
+        started = 10_000_000_000
+        base = {
+            "started_ns": started,
+            "end_on_teleport": True,
+            "end_on_death": True,
+            "end_after_no_kill": True,
+        }
+        self.assertEqual(
+            automatic_subsession_end(
+                base,
+                {"pve_kill": {"observed_at_ns": started + 5_000_000_000}},
+                {"teleporting": True, "teleport_observed_at_ns": started - 1},
+                now_ns=started + 36_000_000_000,
+            ),
+            (started + 35_000_000_000, "30 s sem kill"),
+        )
+        self.assertEqual(
+            automatic_subsession_end(
+                base,
+                {"local_death": {"observed_at_ns": started + 8_000_000_000}},
+                {"teleporting": True, "teleport_observed_at_ns": started + 12_000_000_000},
+                now_ns=started + 20_000_000_000,
+            ),
+            (started + 8_000_000_000, "morte"),
+        )
+        self.assertEqual(
+            automatic_subsession_end(
+                {**base, "end_on_death": False, "end_after_no_kill": False},
+                {},
+                {"teleporting": True, "teleport_observed_at_ns": started + 12_000_000_000},
+                now_ns=started + 20_000_000_000,
+            ),
+            (started + 12_000_000_000, "teleporte"),
+        )
+
+    def test_exp_rank_guild_enriches_boss_player_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = KnowledgeStore(Path(temporary) / "knowledge.sqlite3")
+            try:
+                self.assertEqual(store.observe_exp_rank_records([{
+                    "character_uid": 222,
+                    "name": "Jogador Blood",
+                    "level": 80,
+                    "guild_name": "Blood",
+                }], session_id="session-blood"), 1)
+                monitors = [{
+                    "nearby_players": [],
+                    "bosses": [{"top_damage_players": [{
+                        "character_uid": "222", "damage": 5000,
+                    }]}],
+                }]
+                store.enrich_combat_monitors(monitors)
+            finally:
+                store.close()
+
+        player = monitors[0]["bosses"][0]["top_damage_players"][0]
+        self.assertEqual(player["guild_name"], "Blood")
+        self.assertEqual(
+            monitors[0]["bosses"][0]["top_damage_guilds"][0]["name"],
+            "Blood",
+        )
 
     def test_capture_windows_and_subsessions_survive_restart(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -1590,7 +3427,19 @@ class CoreTest(unittest.TestCase):
                     "spot_name": "Câmara 3",
                     "mobs": ["Bellato", "Accretia"],
                     "mob_levels": {"Accretia": "60-67", "Bellato": 65},
+                    "auto_context": False,
+                    "context_source": "manual",
+                    "context_confidence": "confirmed",
+                    "context_observation_count": 0,
+                    "context_first_seen_ns": None,
+                    "context_updated_ns": 300,
                     "duration_minutes": 0,
+                    "end_on_teleport": False,
+                    "end_on_death": False,
+                    "end_after_no_kill": False,
+                    "mau_state": "pending_evidence",
+                    "launcher_state": "pending_evidence",
+                    "exp_potion_state": "pending_evidence",
                     "started_ns": 300,
                     "ended_ns": 900,
                     "sequence": 1,
@@ -1661,6 +3510,24 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(capture.add_ports((12020, 53000)), 1)
         self.assertEqual(capture.add_ports((53000,)), 0)
         self.assertEqual(capture._port_set, {12020, 53000})
+
+    def test_realtime_capture_bounds_writer_queue_packets_and_bytes(self):
+        capture = RealtimeCapture(
+            Path("live.pcap"),
+            (12020,),
+            max_write_queue_packets=3,
+            max_write_queue_bytes=10,
+        )
+
+        self.assertTrue(capture._enqueue_write_packet(1, b"123456"))
+        self.assertFalse(capture._enqueue_write_packet(2, b"abcdef"))
+        self.assertTrue(capture._enqueue_write_packet(3, b"7890"))
+        self.assertFalse(capture._enqueue_write_packet(4, b"x"))
+
+        self.assertEqual(capture.write_queue_depth, 2)
+        self.assertEqual(capture.write_queue_bytes, 10)
+        self.assertEqual(capture.dropped_write_packets, 2)
+        self.assertEqual(capture.dropped_write_bytes, 7)
 
     def test_realtime_pcap_is_split_by_client_local_port(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -1969,8 +3836,32 @@ class CoreTest(unittest.TestCase):
             routes = clients_for_executable(
                 game, (12000, 12010, 12020, 12040)
             )
-        self.assertEqual((local_ports, remote_ports, clients), ((50100,), (12020,), 1))
-        self.assertEqual(routes[0]["local_ports"], (50100,))
+        self.assertEqual(
+            (local_ports, remote_ports, clients),
+            ((50100, 50101), (12020,), 1),
+        )
+        self.assertEqual(routes[0]["local_ports"], (50100, 50101))
+        self.assertEqual(routes[0]["remote_ports"], (12020,))
+
+    def test_exitlag_secondary_route_stays_scoped_to_the_game_pid(self):
+        game = r"C:\Games\ProjectRF.exe"
+        exitlag = r"C:\Program Files\ExitLag\ExitLagPmService.exe"
+        rows = [
+            (10, 50101, 9001),
+            (20, 50200, 443),
+        ]
+        paths = {10: game, 20: exitlag}
+        with patch("core.connections._tcp_rows", return_value=rows), patch(
+            "core.connections._process_path", side_effect=paths.get
+        ):
+            processes = connected_processes((12020,))
+            routes = clients_for_executable(game, (12020,))
+
+        self.assertEqual(next(iter(processes.values()))[1], {50101})
+        self.assertEqual(next(iter(processes.values()))[2], set())
+        self.assertEqual(routes[0]["local_ports"], (50101,))
+        self.assertEqual(routes[0]["remote_ports"], ())
+        self.assertNotIn(50200, routes[0]["local_ports"])
 
     def test_pc_and_bluestacks_connections_are_discovered_separately(self):
         paths = {
@@ -3376,6 +5267,186 @@ class CoreTest(unittest.TestCase):
                 self.assertEqual(store.collection_type_counts("session"), {1: 2, 2: 1})
             finally:
                 store.close()
+
+    def test_two_rotated_flows_keep_exp_contribution_and_rewards_per_client(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            history = root / "history.pcap"
+            rotated = root / "rotated.pcap"
+            history.write_bytes(b"history")
+            rotated.write_bytes(b"rotated")
+            store = CaptureStore(root / "state.sqlite3")
+            try:
+                store.add_events(
+                    history,
+                    [
+                        {
+                            "flow": f"10.0.0.1:12020 -> 127.0.0.1:{port}",
+                            "stream_offset": index,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {"fields": {
+                                "character_uid": uid,
+                                "character_name": name,
+                            }},
+                        }
+                        for index, (port, uid, name) in enumerate(
+                            ((50001, 101, "Alice"), (50002, 202, "Bob")), 1
+                        )
+                    ],
+                    "old-session",
+                    client_ports=((50001,), (50002,)),
+                )
+                store.select_client_uid("session", "client:a", "101")
+                store.select_client_uid("session", "client:b", "202")
+                flows = {
+                    "101": "10.0.0.1:12020 -> 127.0.0.1:35108",
+                    "202": "10.0.0.1:12020 -> 127.0.0.1:25162",
+                }
+                events = []
+                for uid, name in (("101", "Alice"), ("202", "Bob")):
+                    flow = flows[uid]
+                    events.extend((
+                        {
+                            "flow": flow,
+                            "stream_offset": len(events) + 1,
+                            "bundle_seq": 0,
+                            "opcode": 0x0106,
+                            "type": "world_info_prefix",
+                            "data": {"fields": {
+                                "character_uid": int(uid),
+                                "character_name": name,
+                            }},
+                        },
+                        {
+                            "flow": "127.0.0.1:" + flow.rsplit(":", 1)[1]
+                            + " -> 10.0.0.1:12020",
+                            "stream_offset": len(events) + 2,
+                            "bundle_seq": 0,
+                            "opcode": 0x0307,
+                            "type": "update_exp",
+                            "data": {"fields": {"gain_exp": int(uid)}},
+                        },
+                        {
+                            "flow": flow,
+                            "stream_offset": len(events) + 3,
+                            "bundle_seq": 0,
+                            "opcode": 0x2407,
+                            "type": "realm_contribution_update",
+                            "data": {"fields": {"contribution_total": int(uid)}},
+                        },
+                        {
+                            "flow": flow,
+                            "stream_offset": len(events) + 4,
+                            "bundle_seq": 0,
+                            "opcode": 0x040A,
+                            "type": "drop_item_field",
+                            "data": {"results": [{
+                                "item_index": 900,
+                                "count": 10,
+                                "action_code": 1006,
+                            }]},
+                        },
+                    ))
+                store.add_events(
+                    rotated,
+                    events,
+                    "session",
+                    client_ports=((47852,), (52743,)),
+                )
+
+                owners = store.conn.execute(
+                    """SELECT character_uid,type FROM events
+                       WHERE session_id='session' ORDER BY id"""
+                ).fetchall()
+                self.assertEqual(
+                    owners,
+                    [
+                        (uid, kind)
+                        for uid in ("101", "202")
+                        for kind in (
+                            "world_info_prefix",
+                            "update_exp",
+                            "realm_contribution_update",
+                            "drop_item_field",
+                        )
+                    ],
+                )
+                for uid in ("101", "202"):
+                    envelope = store._envelope(
+                        f"capture-{uid}", "session", character_uid=uid
+                    )
+                    self.assertEqual(
+                        envelope["summary"]["kills_estimated_by_reward"], 1
+                    )
+                    self.assertEqual(
+                        {event["type"] for event in envelope["events"]},
+                        {
+                            "world_info_prefix",
+                            "update_exp",
+                            "realm_contribution_update",
+                            "drop_item_field",
+                        },
+                    )
+            finally:
+                store.close()
+
+    def test_upgrade_repairs_only_unassigned_events_on_confirmed_same_flow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "state.sqlite3"
+            store = CaptureStore(database)
+            try:
+                with store.conn:
+                    store.conn.execute(
+                        "DELETE FROM store_state WHERE key='canonical_flow_repair_v1'"
+                    )
+                    rows = (
+                        (
+                            "source", "10.0.0.1:12020 -> 127.0.0.1:35108",
+                            1, 0, 1, 0x0106, "world_info_prefix", "101",
+                            '{"fields":{"character_uid":101}}', "session",
+                        ),
+                        (
+                            "source", "127.0.0.1:35108 -> 10.0.0.1:12020",
+                            2, 0, 2, 0x0307, "update_exp", None,
+                            '{"fields":{"gain_exp":10}}', "session",
+                        ),
+                        (
+                            "source", "127.0.0.1:49999 -> 10.0.0.1:12020",
+                            3, 0, 3, 0x0307, "update_exp", None,
+                            '{"fields":{"gain_exp":20}}', "session",
+                        ),
+                    )
+                    store.conn.executemany(
+                        """INSERT INTO events
+                           (source,flow,stream_offset,bundle_seq,ts_ns,opcode,
+                            type,character_uid,data_json,session_id)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        rows,
+                    )
+            finally:
+                store.close()
+
+            reopened = CaptureStore(database)
+            try:
+                self.assertEqual(
+                    reopened.conn.execute(
+                        """SELECT character_uid FROM events
+                           WHERE type='update_exp' ORDER BY id"""
+                    ).fetchall(),
+                    [("101",), (None,)],
+                )
+                self.assertEqual(
+                    reopened.conn.execute(
+                        """SELECT value FROM store_state
+                           WHERE key='canonical_flow_repair_v1'"""
+                    ).fetchone()[0],
+                    1,
+                )
+            finally:
+                reopened.close()
 
     def test_live_ingest_ignores_flow_outside_detected_pc_clients(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -25,6 +25,7 @@ from app.main import (
     item_names_for_language,
 )
 from core.capture import PktmonCapture
+from core.auction_sales import auction_sales_snapshot, auction_transaction_history
 from core.connections import (
     clients_for_executable,
     connected_processes,
@@ -32,6 +33,7 @@ from core.connections import (
 )
 from core.pktmon_realtime import RealtimeCapture
 from core.live_stream import LiveEventStream
+from core.map_state import MapModule
 from core.knowledge import KnowledgeStore
 from core.store import CaptureStore
 
@@ -44,6 +46,73 @@ DEFAULT_GLOBAL_SHORTCUTS = {
     "monitor_pvp": "Ctrl+F6",
     "monitor_boss": "Ctrl+F7",
 }
+MIN_MEMORY_BUDGET_MB = 256
+DEFAULT_MEMORY_BUDGET_MB = 768
+MAX_MEMORY_BUDGET_MB = 2048
+MEMORY_BUDGET_STEP_MB = 128
+
+
+def memory_limits_for_budget(value: object) -> dict[str, int]:
+    try:
+        budget_mb = int(value)
+    except (TypeError, ValueError):
+        budget_mb = DEFAULT_MEMORY_BUDGET_MB
+    budget_mb = max(MIN_MEMORY_BUDGET_MB, min(MAX_MEMORY_BUDGET_MB, budget_mb))
+    budget_mb = MIN_MEMORY_BUDGET_MB + (
+        (budget_mb - MIN_MEMORY_BUDGET_MB + MEMORY_BUDGET_STEP_MB // 2)
+        // MEMORY_BUDGET_STEP_MB
+        * MEMORY_BUDGET_STEP_MB
+    )
+    scale = min(1.0, budget_mb / DEFAULT_MEMORY_BUDGET_MB)
+
+    def scaled(default: int, minimum: int, step: int = 1) -> int:
+        result = max(minimum, int(round(default * scale / step)) * step)
+        return min(default, result)
+
+    mib = 1024 * 1024
+    return {
+        "budget_mb": budget_mb,
+        "pressure_bytes": budget_mb * mib,
+        "pending_packets": scaled(8192, 2048, 256),
+        "pending_packet_bytes": scaled(32, 8) * mib,
+        "events": scaled(20_000, 5_000, 1_000),
+        "entity_anchors": scaled(4096, 1024, 256),
+        "boss_events": scaled(4096, 1024, 256),
+        "flows": scaled(64, 16, 8),
+        "pending_segments_per_flow": scaled(256, 64, 32),
+        "pending_bytes_per_flow": scaled(2, 1) * mib,
+        "flow_buffer_bytes": scaled(4, 1) * mib,
+        "pvp_rows": scaled(250, 75, 25),
+        "inventory_icons": scaled(256, 64, 32),
+        "alert_cooldowns": scaled(2048, 512, 128),
+        "seen_drop_events": scaled(4096, 1024, 256),
+        "character_history": scaled(5000, 1000, 500),
+    }
+
+
+def _live_stream(limits: dict[str, int]) -> LiveEventStream:
+    return LiveEventStream(
+        max_events=limits["events"],
+        max_entity_anchors=limits["entity_anchors"],
+        max_pending_packets=limits["pending_packets"],
+        max_pending_packet_bytes=limits["pending_packet_bytes"],
+        max_boss_events=limits["boss_events"],
+        max_flows=limits["flows"],
+        max_pending_segments_per_flow=limits["pending_segments_per_flow"],
+        max_pending_bytes_per_flow=limits["pending_bytes_per_flow"],
+        max_flow_buffer_bytes=limits["flow_buffer_bytes"],
+    )
+
+
+def _realtime_capture(factory, target, ports, limits: dict[str, int]):
+    if factory is RealtimeCapture:
+        return factory(
+            target,
+            ports,
+            max_write_queue_packets=limits["pending_packets"],
+            max_write_queue_bytes=limits["pending_packet_bytes"],
+        )
+    return factory(target, ports)
 
 
 def _site_loot_rows(raw: object) -> list[dict[str, object]]:
@@ -328,7 +397,11 @@ class SiteUploadEngine:
                 hours = seconds / 3600
                 gained_percent = summary.get("exp_gained_percent")
                 report = {
-                    **item,
+                    **{
+                        key: value
+                        for key, value in item.items()
+                        if key != "auto_context"
+                    },
                     "character_uid": uid,
                     "source_subsession_id": f"{self.license.installation_id}:{item['sequence']}",
                     "duration_seconds": seconds,
@@ -382,7 +455,21 @@ class SiteUploadEngine:
     def send_observations(
         self, session_id: str, knowledge_path: Path
     ) -> dict[str, object]:
-        self.license.require("envio de observações")
+        pvp_allowed = pve_allowed = False
+        try:
+            self.license.require("envio do Banco PvP", "monitor-pvp")
+            pvp_allowed = True
+        except PermissionError:
+            pass
+        try:
+            self.license.require("envio do Banco PvE", "monitor-pve")
+            pve_allowed = True
+        except PermissionError:
+            pass
+        if not pvp_allowed and not pve_allowed:
+            raise PermissionError(
+                "Sua licença não permite enviar os Bancos PvP ou PvE."
+            )
         if not self.site_profile.connected:
             return {"skipped": True, "reason": "profile_not_connected"}
         capture = CaptureStore(self.database_path, readonly=True)
@@ -391,7 +478,9 @@ class SiteUploadEngine:
             envelope = capture.session_envelope(
                 session_id, None, include_unassigned=True
             )
-            knowledge.observe_events(envelope.get("events") or [])
+            knowledge.observe_events(
+                envelope.get("events") or [], session_id=session_id
+            )
             payload = knowledge.pending_payload()
             payload["mobs"] = []
             payload["metadata"] = {
@@ -399,26 +488,58 @@ class SiteUploadEngine:
                 "session_id": session_id,
                 "privacy": "decoded-fields-only; no raw payload or opcode 0x0101",
             }
-            stable = {
-                "profile": self.site_profile.profile,
-                "session_id": session_id,
-                "characters": payload["characters"],
-                "mobs": payload["mobs"],
+            pvp_response: dict[str, object] = {"skipped": True}
+            if pvp_allowed and payload["characters"]:
+                stable = {
+                    "profile": self.site_profile.profile,
+                    "session_id": session_id,
+                    "characters": payload["characters"],
+                }
+                key = hashlib.sha256(json.dumps(
+                    stable, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                ).encode()).hexdigest()
+                pvp_response = self.site_profile.upload_observations(payload, key)
+                knowledge.mark_uploaded(payload)
+
+            delta = knowledge.pending_pve_delta() if pve_allowed else {"observations": []}
+            pve_result = {"acknowledged": 0, "conflicts": 0, "missing": 0}
+            if delta["observations"]:
+                delta["metadata"] = {
+                    **self._metadata("pve_observations"),
+                    "session_id": session_id,
+                    "privacy": "decoded-fields-only; no raw payload or opcode 0x0101",
+                }
+                pve_key = hashlib.sha256(json.dumps(
+                    {
+                        "profile": self.site_profile.profile,
+                        "observations": delta["observations"],
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()).hexdigest()
+                pve_response = self.site_profile.upload_pve_observations(
+                    delta, pve_key
+                )
+                pve_result = knowledge.mark_pve_ack(delta, pve_response)
+                if pve_result["missing"]:
+                    raise ValueError(
+                        "O site confirmou apenas parte do Banco PvE; "
+                        "os registros restantes serão reenviados."
+                    )
+            return {
+                **pvp_response,
+                "skipped": not payload["characters"] and not pve_result["acknowledged"],
+                "sent_characters": len(payload["characters"]),
+                "sent_mobs": pve_result["acknowledged"],
+                "pve_conflicts": pve_result["conflicts"],
             }
-            key = hashlib.sha256(json.dumps(
-                stable, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-            ).encode()).hexdigest()
-            response = self.site_profile.upload_observations(payload, key)
-            knowledge.mark_uploaded(payload)
-            response["sent_characters"] = len(payload["characters"])
-            response["sent_mobs"] = len(payload["mobs"])
-            return response
         finally:
             knowledge.close()
             capture.close()
 
     def send_exp_rank(self, session_id: str) -> dict[str, object]:
-        self.license.require("envio do ranking de EXP")
+        self.license.require("envio do ranking de EXP", "exp-ranking")
         if not self.site_profile.connected:
             raise ValueError("Valide o token do Profile antes de enviar")
         capture = CaptureStore(self.database_path, readonly=True)
@@ -429,6 +550,11 @@ class SiteUploadEngine:
         records = list(ranking.get("records") or [])
         if not records:
             raise ValueError("Ainda não existem dados de ranking de EXP para enviar")
+        if ranking.get("completeness") != "complete":
+            raise ValueError(
+                "O Top 100 de EXP ainda está parcial; percorra todas as posições "
+                "no jogo antes do envio"
+            )
         payload = {
             "metadata": {
                 **self._metadata("exp_rank"),
@@ -458,8 +584,62 @@ class SiteUploadEngine:
             "duplicate": bool(response.get("duplicate")),
         }
 
+    def send_auction_bank(self, session_id: str, language: str) -> dict[str, object]:
+        self.license.require("envio do Banco de Leilão")
+        if not self.site_profile.connected:
+            raise ValueError("Valide o token do Profile antes de enviar")
+        if not session_id:
+            raise ValueError("Ainda não existe uma sessão para enviar")
+        store = CaptureStore(self.database_path, readonly=True)
+        try:
+            events: list[dict[str, object]] = []
+            for profile in store.session_profiles(session_id):
+                uid = str(profile.get("uid") or "")
+                if uid:
+                    events.extend(store.auction_events_for_character(session_id, uid))
+        finally:
+            store.close()
+        secret = hashlib.sha256(
+            f"rf-qol.auction-bank/v1:{self.license.installation_id}".encode()
+        ).digest()
+        names = {
+            int(key): value
+            for key, value in item_names_for_language(language).items()
+            if str(key).isdigit()
+        }
+        listings = auction_sales_snapshot(events, secret=secret, item_names=names)
+        transactions = auction_transaction_history(
+            events, secret=secret, item_names=names
+        )
+        if not listings and not transactions:
+            raise ValueError("Ainda não existem registros confirmados do leilão")
+        payload = {
+            "metadata": {
+                **self._metadata("auction_bank"),
+                "session_id": session_id,
+                "schema_version": 1,
+                "privacy": "decoded-fields-only; no account, character or exchange ids",
+            },
+            "listings": listings,
+            "transactions": transactions,
+        }
+        stable = {**payload, "metadata": {
+            key: value for key, value in payload["metadata"].items()
+            if key != "captured_at"
+        }}
+        idempotency_key = hashlib.sha256(json.dumps(
+            stable, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()).hexdigest()
+        response = self.site_profile.upload_auction_bank(payload, idempotency_key)
+        return {
+            "listings": len(listings),
+            "transactions": len(transactions),
+            "receipt": response.get("receipt", ""),
+            "duplicate": bool(response.get("duplicate")),
+        }
+
     def receive_observations(self, knowledge_path: Path) -> dict[str, object]:
-        self.license.require("recebimento do Banco PvP")
+        self.license.require("recebimento do Banco PvP", "monitor-pvp")
         if not self.site_profile.connected:
             raise ValueError("Conecte o token do Profile antes de receber")
         response = self.site_profile.download_observations()
@@ -547,7 +727,11 @@ class ExportEngine:
         hours = seconds / 3600
         exp_percent = summary.get("exp_gained_percent")
         return {
-            **subsession,
+            **{
+                key: value
+                for key, value in subsession.items()
+                if key != "auto_context"
+            },
             "character_uid": character_uid,
             "source_subsession_id": (
                 f"{self.license.installation_id}:{subsession['sequence']}"
@@ -813,6 +997,23 @@ def _combined_route_groups(
     return (*pc, *emulators)
 
 
+def _stable_capture_ports(
+    routes: Iterable[dict[str, object]],
+) -> tuple[int, ...]:
+    """Retém somente portas remotas estáveis para os filtros de captura.
+
+    As portas locais são efêmeras e continuam sendo usadas para separar os
+    clientes, mas não precisam virar filtros do PktMon: os quatro ports RF
+    padrão e as portas remotas já cobrem ambos os sentidos da conexão.
+    """
+    return tuple(dict.fromkeys(
+        int(port)
+        for route in routes
+        for port in route.get("remote_ports", ())
+        if 1 <= int(port) <= 65535
+    ))
+
+
 def _require_distinct_client_routes(
     routes: Iterable[dict[str, object]], pids: Iterable[int], label: str
 ) -> None:
@@ -832,22 +1033,8 @@ def _require_distinct_client_routes(
 def _enforce_connection_limits(
     claims: dict[str, object], pc_clients: int, emulators: int
 ) -> dict[str, int]:
-    limits = claims.get("connection_limits")
-    if (
-        not isinstance(limits, dict)
-        or type(limits.get("pc")) is not int
-        or type(limits.get("emulators")) is not int
-    ):
-        raise PermissionError("A licença não informa limites de conexão válidos")
-    pc_limit = limits["pc"]
-    emulator_limit = limits["emulators"]
-    if pc_clients > pc_limit or emulators > emulator_limit:
-        raise PermissionError(
-            "Sua licença permite até "
-            f"{pc_limit} clientes PC e {emulator_limit} emuladores. "
-            "Feche as conexões excedentes para continuar."
-        )
-    return {"pc": pc_limit, "emulators": emulator_limit}
+    del claims
+    return {"pc": max(0, int(pc_clients)), "emulators": max(0, int(emulators))}
 
 
 class MonitorEngine:
@@ -861,6 +1048,8 @@ class MonitorEngine:
         process_reader: Callable[..., dict] = connected_processes,
         emulator_reader: Callable[..., dict] | None = None,
         client_reader: Callable[..., list] = clients_for_executable,
+        memory_budget_mb: int = DEFAULT_MEMORY_BUDGET_MB,
+        game_language: str = "pt",
     ) -> None:
         self.license = license_client
         self.live_factory = live_factory
@@ -872,7 +1061,11 @@ class MonitorEngine:
         )
         self.client_reader = client_reader
         self.live_capture: RealtimeCapture | None = None
-        self.events = LiveEventStream()
+        self.memory_limits = memory_limits_for_budget(memory_budget_mb)
+        self.memory_budget_mb = self.memory_limits["budget_mb"]
+        self._pending_memory_limits: dict[str, int] | None = None
+        self.events = _live_stream(self.memory_limits)
+        self.map_module = MapModule(language=game_language)
         self.executable = ""
         self.emulator_executable = ""
         self.pc_client_ports: tuple[tuple[int, ...], ...] = ()
@@ -883,6 +1076,31 @@ class MonitorEngine:
     @property
     def active(self) -> bool:
         return self.live_capture is not None
+
+    def _apply_memory_limits(self, limits: dict[str, int]) -> None:
+        self.events.stop()
+        self.memory_limits = limits
+        self.memory_budget_mb = limits["budget_mb"]
+        self.events = _live_stream(limits)
+        self._pending_memory_limits = None
+
+    def _apply_pending_memory_limits(self) -> None:
+        if self._pending_memory_limits is not None:
+            self._apply_memory_limits(self._pending_memory_limits)
+
+    def configure_memory_budget(self, value: object) -> bool:
+        """Aplica agora quando o stream está ocioso ou agenda para a parada."""
+        limits = memory_limits_for_budget(value)
+        with self._lock:
+            if self.active:
+                self._pending_memory_limits = limits
+                return False
+            self._apply_memory_limits(limits)
+            return True
+
+    def relieve_memory_pressure(self) -> dict[str, int]:
+        with self._lock:
+            return self.events.compact(0.5)
 
     def _authorize(self, features) -> tuple[str, ...]:
         requested = tuple(dict.fromkeys(features))
@@ -899,6 +1117,7 @@ class MonitorEngine:
         with self._lock:
             if self.active:
                 return self.snapshot(features)
+            self._apply_pending_memory_limits()
             processes = self.process_reader(DEFAULT_PORTS)
             emulators = self.emulator_reader(DEFAULT_PORTS)
             if not processes and not emulators:
@@ -934,18 +1153,16 @@ class MonitorEngine:
             self.client_ports = _combined_route_groups(
                 self.pc_client_ports, self.emulator_client_ports
             )
-            ports = tuple(
-                dict.fromkeys((
-                    *DEFAULT_PORTS,
-                    *local_ports,
-                    *remote_ports,
-                    *emulator_local,
-                    *emulator_remote,
-                ))
-            )
+            ports = tuple(dict.fromkeys((
+                *DEFAULT_PORTS,
+                *_stable_capture_ports((*routes, *emulator_routes)),
+            )))
             self.events.clear()
+            self.map_module.reset()
             self.events.start()
-            live = self.live_factory(None, ports)
+            live = _realtime_capture(
+                self.live_factory, None, ports, self.memory_limits
+            )
             if hasattr(live, "set_packet_sink"):
                 live.set_packet_sink(self.events.feed)
             try:
@@ -961,6 +1178,7 @@ class MonitorEngine:
                 "pc_clients": len(pids),
                 "emulators": len(emulator_pids),
                 "client_ports": [list(group) for group in self.client_ports],
+                "map": self.map_module.snapshot([], self.client_ports),
                 "events": [],
             }
 
@@ -1024,11 +1242,17 @@ class MonitorEngine:
                 "added": len(events),
                 "events": events,
                 "client_ports": [list(group) for group in self.client_ports],
+                "map": self.map_module.snapshot(
+                    events,
+                    self.client_ports,
+                    now_ns=time.time_ns(),
+                ),
                 "monitor_metrics": self._monitor_metrics(),
             }
 
     def _monitor_metrics(self) -> dict[str, object]:
         metrics = dict(self.events.metrics())
+        metrics["memory_budget_mb"] = self.memory_budget_mb
         live = self.live_capture
         if live:
             for name in (
@@ -1037,6 +1261,12 @@ class MonitorEngine:
                 "duplicate_packets",
                 "missed_write",
                 "missed_read",
+                "write_queue_depth",
+                "write_queue_limit",
+                "write_queue_bytes",
+                "write_queue_byte_limit",
+                "dropped_write_packets",
+                "dropped_write_bytes",
             ):
                 metrics[name] = int(getattr(live, name, 0) or 0)
         return metrics
@@ -1049,6 +1279,7 @@ class MonitorEngine:
                     live.stop()
             finally:
                 self.events.stop()
+                self._apply_pending_memory_limits()
 
 
 class CaptureEngine:
@@ -1067,6 +1298,8 @@ class CaptureEngine:
         process_reader: Callable[..., dict] = connected_processes,
         emulator_reader: Callable[..., dict] | None = None,
         client_reader: Callable[..., list] = clients_for_executable,
+        memory_budget_mb: int = DEFAULT_MEMORY_BUDGET_MB,
+        game_language: str = "pt",
     ) -> None:
         self.capture_directory = Path(capture_directory)
         self.database_path = Path(database_path)
@@ -1100,7 +1333,11 @@ class CaptureEngine:
         self.capture_index = 0
         self.paused = False
         self.route_identity_trusted = True
-        self.live_events = LiveEventStream()
+        self.memory_limits = memory_limits_for_budget(memory_budget_mb)
+        self.memory_budget_mb = self.memory_limits["budget_mb"]
+        self._pending_memory_limits: dict[str, int] | None = None
+        self.live_events = _live_stream(self.memory_limits)
+        self.map_module = MapModule(language=game_language)
         self._lock = threading.RLock()
 
     def _sync_client_routes(self) -> None:
@@ -1162,6 +1399,31 @@ class CaptureEngine:
             self.capture and self.capture.active
         )
 
+    def _apply_memory_limits(self, limits: dict[str, int]) -> None:
+        self.live_events.stop()
+        self.memory_limits = limits
+        self.memory_budget_mb = limits["budget_mb"]
+        self.live_events = _live_stream(limits)
+        self._pending_memory_limits = None
+
+    def _apply_pending_memory_limits(self) -> None:
+        if self._pending_memory_limits is not None:
+            self._apply_memory_limits(self._pending_memory_limits)
+
+    def configure_memory_budget(self, value: object) -> bool:
+        """Aplica agora quando a captura está ociosa ou agenda para a parada."""
+        limits = memory_limits_for_budget(value)
+        with self._lock:
+            if self.active:
+                self._pending_memory_limits = limits
+                return False
+            self._apply_memory_limits(limits)
+            return True
+
+    def relieve_memory_pressure(self) -> dict[str, int]:
+        with self._lock:
+            return self.live_events.compact(0.5)
+
     def _next_live_target(self) -> Path:
         self.live_index += 1
         directory = self.capture_directory / ".rfnext-preview"
@@ -1181,6 +1443,7 @@ class CaptureEngine:
         with self._lock:
             if self.active:
                 raise RuntimeError("A captura já está ativa")
+            self._apply_pending_memory_limits()
             resuming = self.paused and bool(self.current_session)
             processes = self.process_reader(DEFAULT_PORTS)
             emulators = self.emulator_reader(DEFAULT_PORTS)
@@ -1242,12 +1505,7 @@ class CaptureEngine:
                 self.capture_index = 0
                 self.pending_files.clear()
             prefix = self._next_capture_prefix()
-            ports = tuple(dict.fromkeys((
-                *local_ports,
-                *remote_ports,
-                *emulator_local,
-                *emulator_remote,
-            )))
+            ports = _stable_capture_ports((*routes, *emulator_routes))
             self.capture_ports = ports
             capture = self.capture_factory(self.capture_directory)
             if capture.system_running():
@@ -1261,10 +1519,13 @@ class CaptureEngine:
             live_error = None
             try:
                 self.live_events.clear()
+                self.map_module.reset()
                 self.live_events.start()
-                live = self.live_factory(
+                live = _realtime_capture(
+                    self.live_factory,
                     self._next_live_target(),
                     tuple(dict.fromkeys((*DEFAULT_PORTS, *ports))),
+                    self.memory_limits,
                 )
                 if hasattr(live, "set_packet_sink"):
                     live.set_packet_sink(self.live_events.feed)
@@ -1291,7 +1552,26 @@ class CaptureEngine:
                 "connections": len(local_ports) + len(emulator_local),
                 "live": self.live_capture is not None,
                 "live_error": live_error,
+                "resumed": resuming,
             }
+
+    def start_new(self) -> dict[str, object]:
+        """Finaliza a sessão recuperável atual e começa uma sessão independente."""
+        with self._lock:
+            previous_session = self.current_session
+            if self.active:
+                raise RuntimeError("Encerre ou pause a captura ativa antes de começar outra")
+            if previous_session:
+                finalized = self.stop(pause=False)
+                failures = list(finalized.get("failures") or [])
+                if failures:
+                    raise RuntimeError(
+                        "A sessão anterior não pôde ser finalizada; ela foi preservada para nova tentativa"
+                    )
+            result = self.start()
+            result["previous_session"] = previous_session
+            result["resumed"] = False
+            return result
 
     def _refresh_routes(self) -> None:
         if not self.executable:
@@ -1331,15 +1611,15 @@ class CaptureEngine:
             and active_emulator_pids
             and active_emulator_pids.isdisjoint(self.emulator_client_pids)
         )
-        if (
-            self.route_identity_trusted
-            and (pc_replaced or emulator_replaced)
-        ):
-            self.route_identity_trusted = False
+        if self.route_identity_trusted and pc_replaced:
             self.pc_client_pids = []
-            self.emulator_client_pids = []
             self.pc_client_ports = ()
+        if self.route_identity_trusted and emulator_replaced:
+            self.emulator_client_pids = []
             self.emulator_client_ports = ()
+        # Uma substituição em tempo de execução é uma nova rota observada,
+        # não um motivo para desativar o roteamento pelo restante da sessão.
+        # O CaptureStore confirma a correspondência lógica pelo UID canônico.
         if self.route_identity_trusted:
             self.pc_client_pids, groups = _merge_client_routes(
                 self.pc_client_pids, list(self.pc_client_ports), routes
@@ -1353,14 +1633,7 @@ class CaptureEngine:
             self.pc_client_ports = tuple(groups)
             self.emulator_client_ports = tuple(emulator_groups)
         self._sync_client_routes()
-        ports = tuple(
-            dict.fromkeys(
-                port
-                for route in (*routes, *emulator_routes)
-                for field in ("local_ports", "remote_ports")
-                for port in route.get(field, ())
-            )
-        )
+        ports = _stable_capture_ports((*routes, *emulator_routes))
         if ports and self.capture:
             self.capture.add_ports(ports)
             self.capture_ports = tuple(dict.fromkeys((*self.capture_ports, *ports)))
@@ -1414,6 +1687,9 @@ class CaptureEngine:
                         for path in completed
                         if path.exists()
                     )
+                    checkpoint = store.checkpoint_session(
+                        self.current_session, reason="interval"
+                    )
                 finally:
                     store.close()
                 return {
@@ -1422,6 +1698,7 @@ class CaptureEngine:
                     "fallback": True,
                     "capture_prefix": prefix,
                     "capture_ports": list(self.capture_ports),
+                    "checkpoint": checkpoint,
                 }
             target = self.live_capture.rotate(self._next_live_target())
             if not target.exists() or target.stat().st_size <= 24:
@@ -1438,9 +1715,17 @@ class CaptureEngine:
                     append_only=True,
                     restrict_to_clients=any(self.client_ports),
                 )
+                checkpoint = store.checkpoint_session(
+                    self.current_session, reason="interval"
+                )
             finally:
                 store.close()
-            return {"added": added, "available": True, "bytes": target.stat().st_size}
+            return {
+                "added": added,
+                "available": True,
+                "bytes": target.stat().st_size,
+                "checkpoint": checkpoint,
+            }
 
     def preview_live(self) -> dict[str, object]:
         """Entrega eventos efêmeros já lidos da RAM, sem reler o PCAP."""
@@ -1452,12 +1737,19 @@ class CaptureEngine:
             self.live_events.start()
             events = self.live_events.snapshot()
             metrics = dict(self.live_events.metrics())
+            metrics["memory_budget_mb"] = self.memory_budget_mb
             for name in (
                 "received_packets",
                 "filtered_packets",
                 "duplicate_packets",
                 "missed_write",
                 "missed_read",
+                "write_queue_depth",
+                "write_queue_limit",
+                "write_queue_bytes",
+                "write_queue_byte_limit",
+                "dropped_write_packets",
+                "dropped_write_bytes",
             ):
                 metrics[name] = int(getattr(self.live_capture, name, 0) or 0)
             return {
@@ -1466,6 +1758,11 @@ class CaptureEngine:
                 "fast": True,
                 "events": events,
                 "client_ports": [list(group) for group in self.client_ports],
+                "map": self.map_module.snapshot(
+                    events,
+                    self.client_ports,
+                    now_ns=time.time_ns(),
+                ),
                 "monitor_metrics": metrics,
             }
 
@@ -1486,6 +1783,7 @@ class CaptureEngine:
             self.pending_files.clear()
             self.current_session = None
             self.paused = False
+            self._apply_pending_memory_limits()
             return list(dict.fromkeys(path for path in files if path.exists()))
 
     def stop_without_reading(self) -> dict[str, object]:
@@ -1506,6 +1804,7 @@ class CaptureEngine:
                 status, self.capture = self.capture.stop(), None
                 self.pending_files.extend(status.files)
             self.paused = True
+            self._apply_pending_memory_limits()
             files = list(
                 dict.fromkeys(
                     path
@@ -1570,6 +1869,11 @@ class CaptureEngine:
                     for item in store.subsessions(self.current_session):
                         if item.get("ended_ns") is None:
                             store.end_subsession(item["id"], now)
+                if not failures:
+                    store.checkpoint_session(
+                        self.current_session,
+                        reason="paused" if pause else "finalized",
+                    )
             finally:
                 store.close()
             if not failures:
@@ -1578,9 +1882,10 @@ class CaptureEngine:
                 self.live_files.clear()
                 self.pending_files.clear()
             self.paused = pause
-            if not pause:
+            if not pause and not failures:
                 self.current_session = None
             self.capture = None
+            self._apply_pending_memory_limits()
             return {
                 "session_id": session_id,
                 "added": added,

@@ -59,6 +59,13 @@ DISAPPEAR_REASONS = {
     1: "death",
     2: "random_teleport",
 }
+TELEPORT_KINDS = {
+    1: "normal",
+    5: "base",
+    7: "random",
+    10: "normal",
+}
+SYSTEM_MESSAGE_LOOT_KIND = 2
 
 
 # ---------------------------------------------------------------------------
@@ -799,24 +806,32 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
                 },
             }
         if opcode == 0x0408 and len(payload) == 4:
+            map_index = struct.unpack("<I", payload)[0]
             return {
                 "type": "request_teleport",
                 "message": "FC2G_ask_request_teleport_Message",
                 "direction": "FC2G",
-                "confidence": "alto-7-ciclos-2-marcados",
-                "fields": {"teleport_index": struct.unpack("<I", payload)[0]},
+                "confidence": "alto-7-ciclos-3-mapas-marcados",
+                "fields": {
+                    "map_index": map_index,
+                    "teleport_index": map_index,
+                },
             }
         if opcode == 0x0409 and len(payload) == 6:
-            result, teleport_index = struct.unpack("<HI", payload)
+            result, map_index = struct.unpack("<HI", payload)
             return {
                 "type": "request_teleport_result",
                 "message": "FG2C_ans_request_teleport_Message",
                 "direction": "FG2C",
-                "confidence": "alto-7-ciclos-2-marcados",
-                "fields": {"result": result, "teleport_index": teleport_index},
+                "confidence": "alto-7-ciclos-3-mapas-marcados",
+                "fields": {
+                    "result": result,
+                    "map_index": map_index,
+                    "teleport_index": map_index,
+                },
             }
         if opcode == 0x040A and len(payload) == 24:
-            entity_uid, x, y, z, f16_u16_raw, map_index_candidate, f22_u16_raw = (
+            entity_uid, x, y, z, f16_u16_raw, f18_u32_raw, f22_u16_raw = (
                 struct.unpack("<IfffHIH", payload)
             )
             return {
@@ -828,7 +843,9 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
                     "entity_uid": entity_uid,
                     "position": [x, y, z],
                     "f16_u16_raw": f16_u16_raw,
-                    "map_index_candidate": map_index_candidate,
+                    "f18_u32_raw": f18_u32_raw,
+                    "map_index_candidate": f18_u32_raw,
+                    "map_index_candidate_status": "refuted-not-map-index",
                     "f22_u16_raw": f22_u16_raw,
                 },
             }
@@ -854,6 +871,68 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
         return None
     if port != 12020:
         return None
+
+    if opcode == 0x0324 and len(payload) == 63:
+        teleport_index, parameter_raw, f8_u32_raw, request_flag_raw, f16_u32_raw, map_index = (
+            struct.unpack_from("<IIIIII", payload, 0)
+        )
+        fields: dict[str, Any] = {
+            "teleport_index": teleport_index,
+            "teleport_kind": TELEPORT_KINDS.get(teleport_index),
+            "parameter_raw": parameter_raw,
+            "f8_u32_raw": f8_u32_raw,
+            "request_flag_raw": request_flag_raw,
+            "f16_u32_raw": f16_u32_raw,
+            "map_index": map_index,
+        }
+        if teleport_index == 7:
+            server_region_index_raw = payload[24]
+            fields["requested_position"] = list(
+                struct.unpack_from("<fff", payload, 25)
+            )
+        else:
+            server_region_index_raw = struct.unpack_from("<I", payload, 24)[0]
+        fields["server_region_index_raw"] = server_region_index_raw
+        fields["server_region_index"] = server_region_index_raw or None
+        return {
+            "type": "teleport_request",
+            "message": "FC2L_ask_teleport_Message",
+            "direction": "FC2L",
+            "confidence": "alto-6-ciclos-marcados-4-destinos-2026-08-16",
+            "fields": fields,
+        }
+
+    if opcode == 0x0325 and len(payload) == 43:
+        result, teleport_index, parameter_raw, f10_u32_raw, f14_u32_raw, f18_u32_raw, map_index = (
+            struct.unpack_from("<HIIIIII", payload, 0)
+        )
+        fields = {
+            "result": result,
+            "teleport_index": teleport_index,
+            "teleport_kind": TELEPORT_KINDS.get(teleport_index),
+            "parameter_raw": parameter_raw,
+            "f10_u32_raw": f10_u32_raw,
+            "f14_u32_raw": f14_u32_raw,
+            "f18_u32_raw": f18_u32_raw,
+            "map_index": map_index,
+            "destination_map_index": map_index,
+        }
+        if teleport_index == 7:
+            server_region_index_raw = payload[26]
+            fields["resolved_position"] = list(
+                struct.unpack_from("<fff", payload, 27)
+            )
+        else:
+            server_region_index_raw = struct.unpack_from("<I", payload, 26)[0]
+        fields["server_region_index_raw"] = server_region_index_raw
+        fields["server_region_index"] = server_region_index_raw or None
+        return {
+            "type": "teleport_response",
+            "message": "FL2C_ans_teleport_Message",
+            "direction": "FL2C",
+            "confidence": "alto-6-ciclos-marcados-4-destinos-2026-08-16",
+            "fields": fields,
+        }
 
     if opcode == 0x0501 and len(payload) == 11:
         preset_raw, equipment_slot, item_uid = struct.unpack("<HBQ", payload)
@@ -1850,6 +1929,64 @@ def parse_nmssw_payload(decoded: bytes) -> dict[str, Any] | None:
 def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
     opcode = int.from_bytes(decoded[4:6], "little")
     payload = decoded[HEADER_SIZE:]
+    if opcode in {0x0E09, 0x0E0A}:
+        announcement_count = 1
+        cursor = 0
+        if opcode == 0x0E0A:
+            if len(payload) < 2:
+                return None
+            announcement_count = int.from_bytes(payload[:2], "little")
+            cursor = 2
+            # A captura validada contém uma entrada. O limite evita inventar a
+            # fronteira de registros variáveis sem uma amostra marcada múltipla.
+            if announcement_count != 1:
+                return None
+        announcements = []
+        for _index in range(announcement_count):
+            if cursor + 10 > len(payload):
+                return None
+            character_uid = struct.unpack_from("<Q", payload, cursor)[0]
+            name_length = struct.unpack_from("<H", payload, cursor + 8)[0]
+            name_start = cursor + 10
+            name_end = name_start + name_length * 2
+            record_end = name_end + 65
+            if name_length > 64 or record_end > len(payload):
+                return None
+            try:
+                player_name = payload[name_start:name_end].decode("utf-16le")
+            except UnicodeDecodeError:
+                return None
+            message_kind = payload[name_end + 21]
+            # 119 mensagens reais distintas foram comparadas em 2026-08-20.
+            # O servidor usa 2 para loot anunciado e 3 para aprimoramento/prime.
+            # Não projetamos os demais avisos do sistema como drops.
+            if message_kind != SYSTEM_MESSAGE_LOOT_KIND:
+                return None
+            item_index = struct.unpack_from("<I", payload, name_end + 37)[0]
+            count = struct.unpack_from("<I", payload, name_end + 41)[0]
+            if not player_name.strip() or item_index <= 0 or count <= 0:
+                return None
+            announcements.append({
+                "character_uid": character_uid,
+                "player_name": player_name,
+                "item_index": item_index,
+                "count": count,
+                "message_kind": message_kind,
+            })
+            cursor = record_end
+        if cursor <= len(payload) and len(payload) - cursor <= 128 and announcements:
+            return {
+                "type": "loot_announcement",
+                "message": (
+                    "FL2C_system_msg_list_Message"
+                    if opcode == 0x0E0A
+                    else "FL2C_system_msg_Message"
+                ),
+                "direction": "FL2C",
+                "confidence": "alto-layout-exato-captura-20260820-5-avisos",
+                "source": "server_system_message",
+                "announcements": announcements,
+            }
     if opcode == 0x0601 and len(payload) == USE_SKILL_REQUEST.size:
         skill_index, request_sequence_raw, target_uid = USE_SKILL_REQUEST.unpack(payload)
         return {

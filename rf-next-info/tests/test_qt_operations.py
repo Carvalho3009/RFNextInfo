@@ -8,15 +8,19 @@ from unittest import mock
 
 from app.ui_qt.operations import (
     CaptureEngine,
+    DEFAULT_MEMORY_BUDGET_MB,
     ExportEngine,
     GlobalHotkeys,
     MonitorEngine,
     SiteUploadEngine,
+    _realtime_capture,
+    memory_limits_for_budget,
     _site_loot_rows,
 )
 from app.ui_qt.data import ReadOnlySnapshotReader
 from core.capture import CaptureStatus
 from core.knowledge import KnowledgeStore
+from core.pktmon_realtime import RealtimeCapture
 from core.store import CaptureStore
 
 
@@ -27,12 +31,14 @@ class _FakeCapture:
         self.heartbeats = 0
         self.files = ()
         self.added_ports = []
+        self.started_ports = ()
 
-    def start_for_ports(self, prefix: str, _ports: tuple[int, ...]) -> Path:
+    def start_for_ports(self, prefix: str, ports: tuple[int, ...]) -> Path:
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{prefix}-001.etl"
         path.write_bytes(b"etl")
         self.files = (path,)
+        self.started_ports = tuple(ports)
         self.active = True
         return path
 
@@ -120,6 +126,9 @@ class _FakeStore:
 
     def subsessions(self, _session):
         return []
+
+    def checkpoint_session(self, session_id, *, reason="interval"):
+        return {"session_id": session_id, "reason": reason}
 
     def close(self) -> None:
         pass
@@ -231,8 +240,216 @@ class ReadOnlySnapshotReaderTest(unittest.TestCase):
             )
             self.assertEqual(monitor["local_combat_uid"], 20)
 
+    def test_live_reader_routes_exitlag_flow_by_confirmed_character_uid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            source = root / "profile.pcap"
+            source.write_bytes(b"profile")
+            store = CaptureStore(database)
+            try:
+                store.add_events(source, [{
+                    "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                    "stream_offset": 1,
+                    "bundle_seq": 0,
+                    "opcode": 0x0106,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": 101,
+                        "character_name": "Local",
+                    }},
+                }], "session", client_ports=((50000,),))
+            finally:
+                store.close()
+            tunneled_flow = "127.0.0.1:61000 -> 127.0.0.1:9001"
+            events = [{
+                "flow": tunneled_flow,
+                "ts_ns": time.time_ns(),
+                "type": "world_info_prefix",
+                "data": {"fields": {
+                    "character_uid": 101,
+                    "character_name": "Local",
+                }},
+            }, {
+                "flow": tunneled_flow,
+                "ts_ns": time.time_ns(),
+                "type": "appear_player_list",
+                "data": {"units": [{
+                    "uid": 20,
+                    "character_uid": 202,
+                    "name": "Inimigo",
+                    "pvp_status": "enemy",
+                }]},
+            }]
+
+            result = ReadOnlySnapshotReader(
+                database, _AllowedLicense()
+            ).load_live_combat(events, ((50000,),), modes=("pvp",))
+
+        self.assertEqual(len(result["combat_monitors"]), 1)
+        self.assertEqual(result["combat_monitors"][0]["client_key"], "client:a")
+        self.assertEqual(result["routing_metrics"], {
+            "total_events": 2,
+            "associated_events": 2,
+            "identity_associated_events": 2,
+            "identity_bound_flows": 1,
+            "unmatched_events": 0,
+        })
+
+    def test_live_reader_routes_single_client_boss_across_rotated_game_port(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            source = root / "profile.pcap"
+            source.write_bytes(b"profile")
+            store = CaptureStore(database)
+            try:
+                store.add_events(source, [{
+                    "flow": "10.0.0.1:12020 -> 127.0.0.1:50000",
+                    "stream_offset": 1,
+                    "bundle_seq": 0,
+                    "opcode": 0x0106,
+                    "type": "world_info_prefix",
+                    "data": {"fields": {
+                        "character_uid": 101,
+                        "character_name": "Local",
+                    }},
+                }], "session", client_ports=((50000,),))
+            finally:
+                store.close()
+            now_ns = time.time_ns()
+            events = [{
+                "flow": "10.0.0.1:12020 -> 127.0.0.1:17330",
+                "ts_ns": now_ns,
+                "type": "world_info_prefix",
+                "data": {"fields": {
+                    "character_uid": 101,
+                    "character_name": "Local",
+                }},
+            }, {
+                "flow": "10.0.0.1:12010 -> 127.0.0.1:17346",
+                "ts_ns": now_ns,
+                "type": "appear_monster_list",
+                "data": {"units": [{
+                    "uid": 30,
+                    "npc_index": 375100,
+                    "max_hp": 500_000_000,
+                    "current_hp": 500_000_000,
+                }]},
+            }]
+
+            result = ReadOnlySnapshotReader(
+                database, _AllowedLicense()
+            ).load_live_combat(events, ((50000,),), modes=("boss",))
+
+        self.assertEqual(len(result["combat_monitors"]), 1)
+        self.assertEqual(
+            result["combat_monitors"][0]["bosses"][0]["name"],
+            "Xenogeyser",
+        )
+        self.assertEqual(result["routing_metrics"]["associated_events"], 2)
+        self.assertEqual(result["routing_metrics"]["unmatched_events"], 0)
+        self.assertEqual(
+            result["routing_metrics"]["single_client_fallback_events"], 1
+        )
+
+    def test_live_reader_does_not_mix_uid_bound_exitlag_flows(self):
+        profiles = [
+            {"uid": "101", "name": "A", "client_key": "client:a"},
+            {"uid": "202", "name": "B", "client_key": "client:b"},
+        ]
+        flow = "127.0.0.1:61001 -> 127.0.0.1:9001"
+        events = [{
+            "flow": flow,
+            "type": "world_info_prefix",
+            "data": {"fields": {
+                "character_uid": 202,
+                "character_name": "B",
+            }},
+        }, {
+            "flow": flow,
+            "type": "appear_player_list",
+            "data": {"units": [{"character_uid": 303, "name": "Alvo"}]},
+        }]
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "capture.sqlite3"
+            store = CaptureStore(database)
+            store.close()
+            with mock.patch.object(
+                CaptureStore, "latest_session", return_value="session"
+            ), mock.patch.object(
+                CaptureStore, "session_profiles", return_value=profiles
+            ), mock.patch(
+                "app.ui_qt.data.summarize_combat", side_effect=({}, {})
+            ) as summarize:
+                result = ReadOnlySnapshotReader(
+                    database, _AllowedLicense()
+                ).load_live_combat(
+                    events, ((50000,), (50001,)), modes=("pvp",)
+                )
+
+        self.assertEqual(summarize.call_count, 2)
+        routed_a = summarize.call_args_list[0].args[0]
+        routed_b = summarize.call_args_list[1].args[0]
+        self.assertEqual(routed_a, [])
+        self.assertEqual(routed_b, events)
+        self.assertEqual(
+            [row["client_key"] for row in result["combat_monitors"]],
+            ["client:a", "client:b"],
+        )
+
 
 class CaptureEngineTest(unittest.TestCase):
+    def test_memory_budget_scales_resident_limits_but_not_above_safe_defaults(self):
+        low = memory_limits_for_budget(256)
+        standard = memory_limits_for_budget(DEFAULT_MEMORY_BUDGET_MB)
+        high = memory_limits_for_budget(2048)
+
+        self.assertLess(low["pending_packets"], standard["pending_packets"])
+        self.assertLess(low["events"], standard["events"])
+        self.assertLess(low["pvp_rows"], standard["pvp_rows"])
+        self.assertEqual(high["pending_packets"], standard["pending_packets"])
+        self.assertEqual(high["events"], standard["events"])
+        self.assertEqual(high["pressure_bytes"], 2048 * 1024**2)
+        self.assertEqual(memory_limits_for_budget(300)["budget_mb"], 256)
+        self.assertEqual(memory_limits_for_budget(350)["budget_mb"], 384)
+        self.assertEqual(memory_limits_for_budget(9999)["budget_mb"], 2048)
+
+        monitor = MonitorEngine(_AllowedLicense(), memory_budget_mb=256)
+        metrics = monitor.events.metrics()
+        self.assertEqual(monitor.memory_budget_mb, 256)
+        self.assertEqual(metrics["queue_limit"], low["pending_packets"])
+        self.assertEqual(metrics["event_limit"], low["events"])
+        self.assertEqual(metrics["flow_limit"], low["flows"])
+
+        writer = _realtime_capture(
+            RealtimeCapture,
+            Path("memory-budget.pcap"),
+            (12020,),
+            low,
+        )
+        self.assertEqual(writer.write_queue_limit, low["pending_packets"])
+        self.assertEqual(
+            writer.write_queue_byte_limit,
+            low["pending_packet_bytes"],
+        )
+
+        active_monitor = MonitorEngine(_AllowedLicense())
+        active_monitor.live_capture = _MemoryLive(None, ())
+        previous_events = active_monitor.events
+        self.assertFalse(active_monitor.configure_memory_budget(256))
+        self.assertEqual(
+            active_monitor.memory_budget_mb,
+            DEFAULT_MEMORY_BUDGET_MB,
+        )
+        active_monitor.stop()
+        self.assertEqual(active_monitor.memory_budget_mb, 256)
+        self.assertIsNot(active_monitor.events, previous_events)
+        self.assertEqual(
+            active_monitor.events.metrics()["event_limit"],
+            low["events"],
+        )
+
     def test_denied_license_cannot_start_capture_or_monitor(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -375,9 +592,13 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertEqual(engine.client_pids, [10, 30, 40])
             engine.stop_without_reading()
 
-    def test_tier_one_rejects_second_emulator_before_capture_starts(self):
+    def test_legacy_tier_does_not_limit_second_emulator_for_capture(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            routes = [
+                {"pid": 30, "local_ports": (57001,), "remote_ports": (12020,)},
+                {"pid": 40, "local_ports": (57002,), "remote_ports": (12020,)},
+            ]
             engine = CaptureEngine(
                 root,
                 root / "capture.sqlite3",
@@ -389,13 +610,18 @@ class CaptureEngineTest(unittest.TestCase):
                         {30, 40}, {57001, 57002}, {12020}
                     )
                 },
+                client_reader=lambda *_args: routes,
             )
 
-            with self.assertRaisesRegex(PermissionError, "1 emuladores"):
-                engine.start()
-            self.assertFalse(list(root.glob("*.etl")))
+            started = engine.start()
+            self.assertEqual(started["emulators"], 2)
+            engine.stop_without_reading()
 
-    def test_tier_one_rejects_second_emulator_before_monitor_starts(self):
+    def test_legacy_tier_does_not_limit_second_emulator_for_monitor(self):
+        routes = [
+            {"pid": 30, "local_ports": (57001,), "remote_ports": (12020,)},
+            {"pid": 40, "local_ports": (57002,), "remote_ports": (12020,)},
+        ]
         monitor = MonitorEngine(
             _TierOneLicense(),
             live_factory=_MemoryLive,
@@ -405,13 +631,14 @@ class CaptureEngineTest(unittest.TestCase):
                     {30, 40}, {57001, 57002}, {12020}
                 )
             },
+            client_reader=lambda *_args: routes,
         )
 
-        with self.assertRaisesRegex(PermissionError, "1 emuladores"):
-            monitor.start(("monitor-pve",))
-        self.assertFalse(monitor.active)
+        started = monitor.start(("monitor-pve",))
+        self.assertEqual(started["emulators"], 2)
+        monitor.stop()
 
-    def test_tier_one_ignores_later_excess_without_stopping_capture(self):
+    def test_legacy_tier_accepts_later_client_without_stopping_capture(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             routes = [{
@@ -445,15 +672,26 @@ class CaptureEngineTest(unittest.TestCase):
                 "remote_ports": (12020,),
             })
 
-            with self.assertRaisesRegex(PermissionError, "1 emuladores"):
-                engine.preview_live()
+            engine.preview_live()
             self.assertTrue(engine.active)
+            self.assertEqual(
+                engine.client_ports,
+                ((), (), (57001,), (57002,)),
+            )
             self.assertNotIn(57002, engine.capture.added_ports)
             engine.stop_without_reading()
 
-    def test_capture_rejects_more_than_five_emulators(self):
+    def test_capture_accepts_more_than_five_emulators_without_license_error(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            routes = [
+                {
+                    "pid": pid,
+                    "local_ports": (57000 + pid,),
+                    "remote_ports": (12020,),
+                }
+                for pid in range(1, 7)
+            ]
             engine = CaptureEngine(
                 root,
                 root / "capture.sqlite3",
@@ -465,10 +703,12 @@ class CaptureEngineTest(unittest.TestCase):
                         set(range(1, 7)), set(range(57001, 57007)), {12020}
                     )
                 },
+                client_reader=lambda *_args: routes,
             )
 
-            with self.assertRaisesRegex(PermissionError, "5 emuladores"):
-                engine.start()
+            started = engine.start()
+            self.assertEqual(started["emulators"], 6)
+            engine.stop_without_reading()
 
     def test_restore_pending_capture_keeps_the_same_session(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -605,7 +845,7 @@ class CaptureEngineTest(unittest.TestCase):
             ],
         )
 
-    def test_live_read_refreshes_rotated_client_ports(self):
+    def test_live_read_refreshes_routes_without_accumulating_ephemeral_filters(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "app.ui_qt.operations.CaptureStore", _FakeStore
         ):
@@ -628,7 +868,36 @@ class CaptureEngineTest(unittest.TestCase):
             engine.start()
             engine.read_live()
             self.assertEqual(engine.client_ports, ((50000, 50001),))
-            self.assertIn(50001, engine.capture.added_ports)
+            self.assertNotIn(50000, engine.capture.started_ports)
+            self.assertNotIn(50001, engine.capture.added_ports)
+            self.assertIn(12020, engine.capture.started_ports)
+
+    def test_restarted_client_rebuilds_routes_instead_of_disabling_session(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "app.ui_qt.operations.CaptureStore", _FakeStore
+        ):
+            calls = iter((
+                [{"pid": 10, "local_ports": (50000,), "remote_ports": (12020,)}],
+                [{"pid": 20, "local_ports": (51000,), "remote_ports": (12020,)}],
+            ))
+            engine = CaptureEngine(
+                Path(directory),
+                Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({10}, {50000}, {12020})
+                },
+                client_reader=lambda *_args: next(calls),
+            )
+
+            engine.start()
+            engine.read_live()
+
+            self.assertTrue(engine.route_identity_trusted)
+            self.assertEqual(engine.client_pids, [20])
+            self.assertEqual(engine.client_ports, ((51000,),))
 
     def test_opening_emulator_does_not_discard_temporarily_idle_pc_routes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -737,6 +1006,35 @@ class CaptureEngineTest(unittest.TestCase):
             self.assertFalse(engine.stop()["paused"])
             self.assertIsNone(engine.current_session)
 
+    def test_start_new_finalizes_paused_session_without_deleting_it(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "app.ui_qt.operations.CaptureStore", _FakeStore
+        ):
+            engine = CaptureEngine(
+                Path(directory),
+                Path(directory) / "capture.sqlite3",
+                _AllowedLicense(),
+                profile="Teste",
+                capture_factory=_FakeCapture,
+                live_factory=_FakeLive,
+                process_reader=lambda _ports: {
+                    r"C:\ProjectRF.exe": ({10}, {50000}, {12020})
+                },
+                client_reader=lambda *_args: [{
+                    "pid": 10, "local_ports": (50000,), "remote_ports": (12020,),
+                }],
+            )
+
+            first = engine.start()["session_id"]
+            engine.stop(pause=True)
+            second = engine.start_new()
+
+            self.assertEqual(second["previous_session"], first)
+            self.assertNotEqual(second["session_id"], first)
+            self.assertFalse(second["resumed"])
+            self.assertEqual(engine.current_session, second["session_id"])
+            engine.stop_without_reading()
+
     def test_falls_back_to_rotating_etl_when_realtime_api_is_unavailable(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "app.ui_qt.operations.CaptureStore", _FakeStore
@@ -802,6 +1100,53 @@ class CaptureEngineTest(unittest.TestCase):
 
 
 class SiteUploadEngineTest(unittest.TestCase):
+    def test_auction_bank_send_is_sanitized_and_idempotent(self):
+        class Site:
+            connected = True
+            profile = "Profile"
+
+            def upload_auction_bank(self, payload, key):
+                self.uploaded = (payload, key)
+                return {"receipt": "auction-1"}
+
+        event = {"ts_ns": 1, "data": {
+            "message": "FL2C_ans_exchange_for_my_sales_list_Message",
+            "ret": 0,
+            "exchange_server_type": 2,
+            "my_sales_list": [{
+                "exchange_index": 444,
+                "account_id": 111,
+                "pc_id": 222,
+                "item_info": {
+                    "index": 270062, "count": 3, "enchant_level": 7,
+                    "talic_indices": [1, 2],
+                },
+                "registed_time": 10,
+                "expired_time": 20,
+                "selling_time": 0,
+                "selling_price": 1500,
+                "settlement_price": 0,
+            }],
+        }}
+        store = mock.Mock()
+        store.session_profiles.return_value = [{"uid": "101"}]
+        store.auction_events_for_character.return_value = [event]
+        site = Site()
+        with mock.patch("app.ui_qt.operations.CaptureStore", return_value=store):
+            result = SiteUploadEngine(
+                Path("capture.sqlite3"), site, _AllowedLicense()
+            ).send_auction_bank("session", "pt")
+
+        payload, key = site.uploaded
+        self.assertEqual(result, {
+            "listings": 1, "transactions": 0,
+            "receipt": "auction-1", "duplicate": False,
+        })
+        self.assertRegex(key, r"^[a-f0-9]{64}$")
+        serialized = json.dumps(payload)
+        for forbidden in ("account_id", "pc_id", "exchange_index", "444"):
+            self.assertNotIn(forbidden, serialized)
+
     def test_exp_rank_send_requires_server_confirmation(self):
         class Site:
             connected = True
@@ -820,6 +1165,7 @@ class SiteUploadEngineTest(unittest.TestCase):
             "scope_id": 1,
             "ranking_cycle": 44,
             "captured_at_ns": 123,
+            "completeness": "complete",
             "records": [{
                 "character_uid": "101",
                 "character_name": "Alice",
@@ -841,6 +1187,13 @@ class SiteUploadEngineTest(unittest.TestCase):
             self.assertEqual(result["records"], 1)
             self.assertEqual(site.uploaded[0]["exp_rank"]["records"][0]["rank"], 1)
             self.assertNotIn("signature", site.uploaded[0]["exp_rank"])
+            store.exp_rank_snapshot.return_value = {
+                **ranking,
+                "completeness": "partial",
+            }
+            with self.assertRaisesRegex(ValueError, "ainda está parcial"):
+                engine.send_exp_rank("session")
+            store.exp_rank_snapshot.return_value = ranking
             site.upload_exp_rank = lambda _payload, _key: {"ok": True}
             with self.assertRaisesRegex(ValueError, "contrato do ranking"):
                 engine.send_exp_rank("session")
@@ -860,6 +1213,20 @@ class SiteUploadEngineTest(unittest.TestCase):
                     "last_seen_at": "2026-08-12T10:00:00+00:00",
                 }]}
 
+            def upload_pve_observations(self, payload, key):
+                self.uploaded_pve = (payload, key)
+                return {
+                    "schema": "rf-qol.pve-observations.ack",
+                    "schema_version": 1,
+                    "acks": [
+                        {
+                            "observation_id": item["observation_id"],
+                            "status": "accepted",
+                        }
+                        for item in payload["observations"]
+                    ],
+                }
+
             def download_observations(self):
                 self.downloaded = True
                 return {
@@ -875,7 +1242,11 @@ class SiteUploadEngineTest(unittest.TestCase):
 
         event = {
             "type": "appear_player_list",
-            "data": {"units": [{"character_uid": 123, "name": "Local"}]},
+            "data": {"units": [{
+                "character_uid": 123,
+                "name": "Local",
+                "pvp_status": "enemy",
+            }]},
         }
         mob_event = {
             "type": "appear_monster_list",
@@ -904,9 +1275,9 @@ class SiteUploadEngineTest(unittest.TestCase):
                 knowledge.close()
 
         self.assertEqual(sent["sent_characters"], 1)
-        self.assertEqual(sent["sent_mobs"], 0)
+        self.assertEqual(sent["sent_mobs"], 1)
         self.assertEqual(site.uploaded[0]["mobs"], [])
-        self.assertEqual(len(pending_mobs), 1)
+        self.assertEqual(pending_mobs, [])
         self.assertEqual(after_send["name"], "Local")
         self.assertEqual(after_send["upload_state"], "sent")
         self.assertEqual(received["synced_characters"], 1)

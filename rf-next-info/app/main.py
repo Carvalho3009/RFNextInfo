@@ -22,6 +22,14 @@ ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.build_profile import (
+    APP_VERSION,
+    LICENSE_SERVER,
+    PROFILE_LABEL,
+    RELEASE_SEQUENCE as PROFILE_RELEASE_SEQUENCE,
+    SITE_FEATURES,
+    SITE_SERVER,
+)
 from app.license import LicenseClient
 from app.paths import (
     CAPTURE_DIR,
@@ -60,8 +68,8 @@ from core.rfnext_frame_decode import (
 )
 from core.store import LEVEL_CURVE, CaptureStore
 
-VERSION = "1.0.8"
-RELEASE_SEQUENCE = 9
+VERSION = APP_VERSION
+RELEASE_SEQUENCE = PROFILE_RELEASE_SEQUENCE
 DISCORD_URL = "https://discord.gg/D3hhdMgkj"
 ASSETS = ROOT / "assets"
 
@@ -127,6 +135,13 @@ def _rover_catalog() -> dict[str, dict[str, Any]]:
 ROVERS = _rover_catalog()
 
 
+def normalize_floor_region(value: object) -> str:
+    """Converte rótulos como 'Android Junkyard 8F' em região '8F'."""
+    label = str(value or "").strip()
+    match = re.search(r"(?:^|\s)(\d+)\s*(?:º\s*Andar|F)$", label, re.I)
+    return f"{int(match.group(1))}F" if match else label
+
+
 def _farm_catalog(
     filename: str = "catalogo.csv",
 ) -> dict[str, dict[str, dict[str, tuple[int, ...]]]]:
@@ -148,6 +163,7 @@ def _farm_catalog(
                     or row.get("floor_or_difficulty_ptbr")
                     or ""
                 ).strip()
+                spot_name = normalize_floor_region(spot_name)
                 mob = str(
                     row.get("mob_name") or row.get("mob_name_ptbr") or ""
                 ).strip()
@@ -195,8 +211,8 @@ def _farm_label_translations() -> tuple[dict, dict]:
     forward = {}
     reverse = {}
     for pt, en in zip(pt_rows, en_rows):
-        pt_key = (pt["mapa"], pt["spot_andar"])
-        en_key = (en["mapa"], en["spot_andar"])
+        pt_key = (pt["mapa"], normalize_floor_region(pt["spot_andar"]))
+        en_key = (en["mapa"], normalize_floor_region(en["spot_andar"]))
         forward[pt_key] = en_key
         reverse[en_key] = pt_key
     return forward, reverse
@@ -313,6 +329,57 @@ def _item_categories() -> dict[str, str]:
 
 
 ITEM_CATEGORIES = _item_categories()
+
+
+def _epic_drop_categories() -> dict[str, str]:
+    try:
+        data = json.loads(
+            (ROOT / "core" / "item_epic_categories.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        return {
+            str(item_index): str(category)
+            for item_index, category in data["categories"].items()
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+EPIC_DROP_CATEGORIES = _epic_drop_categories()
+
+
+def _drop_alert_categories() -> dict[str, str]:
+    try:
+        data = json.loads(
+            (ROOT / "core" / "item_alert_categories.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        return {
+            str(item_index): str(category)
+            for item_index, category in data["categories"].items()
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+DROP_ALERT_CATEGORIES = _drop_alert_categories()
+DROP_ALERT_CATEGORY_LABELS = {
+    "weapon": "Arma",
+    "armor": "Armadura",
+    "accessory": "Acessório",
+    "expansion": "Expansão",
+    "skill": "Skill",
+    "blueprint_mau": "Blueprint MAU",
+    "blueprint_launcher": "Blueprint Launcher",
+    "other": "Outros",
+}
+
+
+def drop_alert_category(item_index: object) -> str:
+    """Classifica alertas com metadado oficial e fallback explícito."""
+    return DROP_ALERT_CATEGORIES.get(str(item_index), "other")
 
 
 def inventory_category(item_index: object, kind: object = "") -> str:
@@ -457,6 +524,7 @@ def _capture_summary(
     )
     empty_summary = {
         "character": "",
+        "recognized_at_ns": None,
         "character_class": "",
         "biosuit_item_index": None,
         "biosuit_name": "",
@@ -473,6 +541,7 @@ def _capture_summary(
         "exp_percent": None,
         "exp_gained": 0,
         "exp_gained_percent": None,
+        "credits_total": None,
         "credits": 0,
         "diamonds": None,
         "contribution": None,
@@ -483,9 +552,19 @@ def _capture_summary(
         "loot_by_rarity": {
             key: 0 for key, _label in LOOT_RARITIES.values()
         },
+        "epic_by_category": {
+            key: 0 for key in (
+                "weapon", "armor", "accessory", "expansion",
+                "blueprint_mau", "blueprint_launcher",
+            )
+        },
     }
     state = _state or {}
     summary = copy.deepcopy(state.get("summary", empty_summary))
+    summary.setdefault("recognized_at_ns", None)
+    summary.setdefault("epic_by_category", copy.deepcopy(
+        empty_summary["epic_by_category"]
+    ))
     observed_exp_gained = state.get("observed_exp_gained", 0)
     observed_finalizations = state.get("observed_finalizations", 0)
     reward_finalizations = state.get("reward_finalizations", 0)
@@ -509,6 +588,14 @@ def _capture_summary(
             or str(event_uid if event_uid is not None else observed_uid)
             == target_uid
         )
+        observed_at_ns = event.get("ts_ns")
+        if isinstance(observed_at_ns, int) and observed_at_ns > 0:
+            previous_recognition = summary.get("recognized_at_ns")
+            if (
+                not isinstance(previous_recognition, int)
+                or observed_at_ns < previous_recognition
+            ):
+                summary["recognized_at_ns"] = observed_at_ns
         observed_name = str(fields.get("character_name") or "").strip()
         own_appearance = event.get("type") == "appear_player_prefix" and (
             (
@@ -637,6 +724,8 @@ def _capture_summary(
             if isinstance(fields.get(credit_key), (int, float)):
                 summary["credits"] += fields[credit_key]
                 break
+        if isinstance(fields.get("credits_total"), (int, float)):
+            summary["credits_total"] = fields["credits_total"]
         if isinstance(fields.get("contribution_total"), (int, float)):
             current_contribution = fields["contribution_total"]
             if contribution_last is not None:
@@ -667,6 +756,8 @@ def _capture_summary(
                 if item_index == 1 and isinstance(count, (int, float)):
                     reward_credits += count
                     reward_credits_seen = True
+                    if isinstance(item.get("gain_total"), (int, float)):
+                        summary["credits_total"] = item["gain_total"]
                     continue
                 if item_index == 1701 and isinstance(count, (int, float)):
                     reward_contribution += count
@@ -676,6 +767,9 @@ def _capture_summary(
                 rarity = LOOT_RARITIES.get(grade)
                 if rarity and isinstance(count, (int, float)):
                     summary["loot_by_rarity"][rarity[0]] += count
+                epic_category = EPIC_DROP_CATEGORIES.get(str(item_index))
+                if epic_category and isinstance(count, (int, float)):
+                    summary["epic_by_category"][epic_category] += count
                 loot_item = {
                         "item_index": item_index,
                         "item": (
@@ -864,7 +958,7 @@ class App(tk.Tk):
         if ui_self_test:
             self.withdraw()
         _register_private_fonts()
-        self.title("RF QOL")
+        self.title(f"RF QOL — {VERSION} ({PROFILE_LABEL})")
         self.geometry("1440x810")
         self.minsize(1180, 664)
         self.configure(bg="#070909")
@@ -883,11 +977,14 @@ class App(tk.Tk):
             VERSION,
         )
         self.license = LicenseClient(
-            MACHINE_STATE_DIR, version=VERSION
+            MACHINE_STATE_DIR, server=LICENSE_SERVER, version=VERSION
         )
         self.license.record_release_sequence(RELEASE_SEQUENCE)
         self.site_profile = SiteProfileClient(
-            STATE_DIR, version=VERSION
+            STATE_DIR,
+            server=SITE_SERVER,
+            version=VERSION,
+            features=SITE_FEATURES,
         )
         self.log.info(
             "license_state_loaded source=%s has_lease=%s",

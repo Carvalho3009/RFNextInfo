@@ -16,6 +16,9 @@ API_VERSION = 0x00010000
 FILETIME_UNIX_EPOCH = 116_444_736_000_000_000
 PKTMON_PAYLOAD_ETHERNET = 1
 TCP_PROTOCOL = 6
+MAX_WRITE_QUEUE_PACKETS = 8192
+MAX_WRITE_QUEUE_BYTES = 32 * 1024 * 1024
+WRITE_QUEUE_CONTROL_RESERVE = 16
 
 
 class _IpAddress(ctypes.Union):
@@ -161,6 +164,9 @@ class RealtimeCapture:
         target: Path | None,
         ports: tuple[int, ...],
         packet_sink: Callable[[int, bytes], None] | None = None,
+        *,
+        max_write_queue_packets: int = MAX_WRITE_QUEUE_PACKETS,
+        max_write_queue_bytes: int = MAX_WRITE_QUEUE_BYTES,
     ) -> None:
         if not ports or any(not 1 <= port <= 65535 for port in ports):
             raise ValueError("porta inválida")
@@ -177,16 +183,24 @@ class RealtimeCapture:
         self.data_sources = 0
         self.missed_write = 0
         self.missed_read = 0
+        self.dropped_write_packets = 0
+        self.dropped_write_bytes = 0
         self._recent_groups: deque[tuple[int, int]] = deque()
         self._recent_group_set: set[tuple[int, int]] = set()
-        self._items: queue.SimpleQueue[
+        self._max_write_queue_packets = max(1, int(max_write_queue_packets))
+        self._max_write_queue_bytes = max(1, int(max_write_queue_bytes))
+        self._queued_write_packets = 0
+        self._queued_write_bytes = 0
+        self._queue_lock = threading.Lock()
+        self._items: queue.Queue[
             tuple[int, bytes]
             | tuple[int, bytes, bool]
+            | tuple[int, bytes, bool, bool]
             | tuple[str, Path, threading.Event]
             | threading.Event
             | None
-        ] = (
-            queue.SimpleQueue()
+        ] = queue.Queue(
+            maxsize=self._max_write_queue_packets + WRITE_QUEUE_CONTROL_RESERVE
         )
         self._writer: threading.Thread | None = None
         self._file_lock = threading.Lock()
@@ -198,6 +212,69 @@ class RealtimeCapture:
         self._writer_error: BaseException | None = None
         self._data_callback = _DataCallback(self._on_data)
         self._event_callback = _EventCallback(lambda *_: None)
+
+    @property
+    def write_queue_depth(self) -> int:
+        with self._queue_lock:
+            return self._queued_write_packets
+
+    @property
+    def write_queue_limit(self) -> int:
+        return self._max_write_queue_packets
+
+    @property
+    def write_queue_bytes(self) -> int:
+        with self._queue_lock:
+            return self._queued_write_bytes
+
+    @property
+    def write_queue_byte_limit(self) -> int:
+        return self._max_write_queue_bytes
+
+    def _enqueue_write_packet(self, timestamp_ns: int, packet: bytes) -> bool:
+        packet_bytes = len(packet)
+        with self._queue_lock:
+            if (
+                self._queued_write_packets >= self._max_write_queue_packets
+                or self._queued_write_bytes + packet_bytes
+                > self._max_write_queue_bytes
+            ):
+                self.dropped_write_packets += 1
+                self.dropped_write_bytes += packet_bytes
+                return False
+            self._queued_write_packets += 1
+            self._queued_write_bytes += packet_bytes
+        try:
+            self._items.put_nowait((timestamp_ns, packet, True, True))
+        except queue.Full:
+            with self._queue_lock:
+                self._queued_write_packets = max(
+                    0, self._queued_write_packets - 1
+                )
+                self._queued_write_bytes = max(
+                    0, self._queued_write_bytes - packet_bytes
+                )
+                self.dropped_write_packets += 1
+                self.dropped_write_bytes += packet_bytes
+            return False
+        return True
+
+    def _release_write_packet(self, packet_bytes: int) -> None:
+        with self._queue_lock:
+            self._queued_write_packets = max(
+                0, self._queued_write_packets - 1
+            )
+            self._queued_write_bytes = max(
+                0, self._queued_write_bytes - max(0, int(packet_bytes))
+            )
+
+    def _enqueue_control(self, item: object, timeout: float) -> None:
+        try:
+            self._items.put(item, timeout=max(0.1, float(timeout)))
+        except queue.Full as error:
+            raise RuntimeError(
+                "fila de gravação não aceitou o comando de controle"
+            ) from error
 
     @staticmethod
     def available() -> bool:
@@ -425,7 +502,7 @@ class RealtimeCapture:
             except Exception:
                 self.sink_errors += 1
         if self.target is not None:
-            self._items.put((timestamp_ns, packet, True))
+            self._enqueue_write_packet(timestamp_ns, packet)
 
     def set_packet_sink(
         self, packet_sink: Callable[[int, bytes], None] | None
@@ -448,7 +525,7 @@ class RealtimeCapture:
         if not self._writer or not self._writer.is_alive():
             raise RuntimeError("captura em tempo real não está ativa")
         flushed = threading.Event()
-        self._items.put(flushed)
+        self._enqueue_control(flushed, timeout)
         if not flushed.wait(timeout):
             raise RuntimeError("captura em tempo real não confirmou a leitura")
         if self._writer_error:
@@ -463,7 +540,7 @@ class RealtimeCapture:
             raise RuntimeError("stream em memória não possui arquivo para rotacionar")
         previous = self.target
         rotated = threading.Event()
-        self._items.put(("rotate", Path(target), rotated))
+        self._enqueue_control(("rotate", Path(target), rotated), timeout)
         if not rotated.wait(timeout):
             raise RuntimeError("captura em tempo real não confirmou a rotação")
         if self._writer_error:
@@ -511,11 +588,14 @@ class RealtimeCapture:
                     finally:
                         rotated.set()
                     continue
-                if len(item) == 3:
-                    timestamp_ns, packet, already_counted = item
+                queue_counted = len(item) == 4 and bool(item[3])
+                if len(item) >= 3:
+                    timestamp_ns, packet, already_counted = item[:3]
                 else:
                     timestamp_ns, packet = item
                     already_counted = False
+                if queue_counted:
+                    self._release_write_packet(len(packet))
                 now_ns = time.time_ns()
                 if not 946_684_800_000_000_000 <= timestamp_ns <= (
                     now_ns + 86_400_000_000_000
@@ -550,7 +630,10 @@ class RealtimeCapture:
             self._api.PacketMonitorSetSessionActive(self._session, 0)
         self._active = False
         if self._writer:
-            self._items.put(None)
+            try:
+                self._enqueue_control(None, 2)
+            except RuntimeError as error:
+                self._writer_error = error
             self._writer.join(timeout=10)
             if self._writer.is_alive():
                 self._writer_error = RuntimeError(
@@ -637,4 +720,10 @@ def probe(target: Path, seconds: int = 30) -> dict[str, int | float | str]:
         "data_sources": capture.data_sources,
         "missed_write": capture.missed_write,
         "missed_read": capture.missed_read,
+        "write_queue_depth": capture.write_queue_depth,
+        "write_queue_limit": capture.write_queue_limit,
+        "write_queue_bytes": capture.write_queue_bytes,
+        "write_queue_byte_limit": capture.write_queue_byte_limit,
+        "dropped_write_packets": capture.dropped_write_packets,
+        "dropped_write_bytes": capture.dropped_write_bytes,
     }

@@ -5,6 +5,11 @@ e exportação JSON/CSV para o site RF NEXT.
 
 Suporte: [Discord oficial](https://discord.gg/D3hhdMgkj) · `carvalho@tuta.com`
 
+> Este checkout está configurado como `2.0.0-rc1 (Homologação)`: usa o emissor
+> v3 local em `127.0.0.1:8788`, estado de máquina separado e acessa o site
+> remoto somente para validar o Profile e enviar capturas do Mercado. Build de
+> release e instalador permanecem bloqueados.
+
 ## Recursos atuais
 
 - executável autônomo com identidade visual Karvalho e instalador padrão;
@@ -37,6 +42,12 @@ Suporte: [Discord oficial](https://discord.gg/D3hhdMgkj) · `carvalho@tuta.com`
 - captura, leitura, monitores, exportação e envio bloqueados sem lease válida;
 - módulos Base, Monitor PvE, Monitor PvP e Monitor Boss assinados na lease;
   PvE/PvP ficam visíveis e bloqueados sem permissão, enquanto Boss fica oculto;
+- navegação consolidada: Sessões reúne envios e subsessões; Integrações reúne
+  Profile, API local e saúde sanitizada do programa;
+- Módulo Mapa limitado a dois clientes, com coordenadas, proximidade e catálogo
+  versionado de nomes PT-BR/EN-US por `MapIndex`;
+- Banco PvE envia somente deltas sanitizados e libera a fila apenas após ack
+  explícito por monstro, localização ou candidato de HP;
 - exportação com lease e `installation_id`, nunca com a chave da licença;
 - atualização GitHub sempre visível, com changelog, confirmação, assinatura
   Ed25519 e SHA-256; sem atualização silenciosa;
@@ -69,9 +80,11 @@ Na primeira abertura:
 1. escolha se fechar deve manter a captura visível na área de notificação;
 2. ative a instalação na primeira linha de **Configurações**; a ativação será preservada;
 3. abra até dois clientes `ProjectRF`; a associação ocorre por UID confirmado;
-4. informe o Profile, escolha a pasta de dados e inicie a captura;
-5. use os monitores PvE, PvP e Boss junto da captura ou de forma independente;
-6. pare a captura, aguarde a leitura e exporte JSON + CSV.
+4. em **Integrações**, informe o Profile; em **Configurações**, escolha a pasta
+   de dados e inicie a captura;
+5. em **Monitoramento**, use as abas PvE, PvP e Boss junto da captura ou de
+   forma independente;
+6. em **Sessões**, pare a captura, aguarde a leitura e exporte JSON + CSV.
 
 O instalador testa o executável instalado e registra o resultado em
 `<pasta escolhida>\logs\install.log`. Ao concluir, abra o programa pelo

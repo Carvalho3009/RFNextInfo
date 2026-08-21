@@ -5,7 +5,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from app.license import LicenseClient
 from app.main import (
@@ -21,6 +21,7 @@ from app.main import (
     game_data_language,
     inventory_category,
     item_names_for_language,
+    normalize_floor_region,
 )
 from core.combat_monitor import summarize_combat
 from core.store import CaptureStore
@@ -36,6 +37,71 @@ def _event_matches_ports(
     return bool(endpoints.intersection(ports))
 
 
+def _normalized_flow_key(event: Mapping[str, Any]) -> str:
+    """Identifica o mesmo fluxo TCP nos dois sentidos, inclusive via túnel."""
+    endpoints = re.findall(
+        r"([^\s]+):(\d+)(?:\s|$)", str(event.get("flow") or "")
+    )
+    if len(endpoints) != 2:
+        return str(event.get("flow") or "")
+    return " <-> ".join(
+        sorted(f"{host}:{int(port)}" for host, port in endpoints)
+    )
+
+
+def route_live_drop_events(
+    events: Iterable[dict[str, Any]],
+    client_ports: tuple[tuple[int, ...], ...],
+    client_names: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Associa drops efêmeros ao cliente e remove endereço/fluxo da saída."""
+    names = client_names or {}
+    routed = []
+    for index, ports in enumerate(client_ports[:7]):
+        client_key = f"client:{chr(97 + index)}"
+        for event in events:
+            if (
+                event.get("type") != "drop_item_field"
+                or not _event_matches_ports(event, ports)
+            ):
+                continue
+            routed.append({
+                "ts_ns": event.get("ts_ns"),
+                "stream_offset": event.get("stream_offset"),
+                "bundle_seq": event.get("bundle_seq"),
+                "type": "drop_item_field",
+                "client_key": client_key,
+                "character_name": str(names.get(client_key) or ""),
+                "data": dict(event.get("data") or {}),
+            })
+    return routed
+
+
+def route_live_loot_announcements(
+    events: Iterable[dict[str, Any]],
+    client_ports: tuple[tuple[int, ...], ...],
+) -> list[dict[str, Any]]:
+    """Associa avisos de loot ao cliente sem expor endereço ou fluxo."""
+    routed = []
+    for index, ports in enumerate(client_ports[:7]):
+        client_key = f"client:{chr(97 + index)}"
+        for event in events:
+            if (
+                event.get("type") != "loot_announcement"
+                or not _event_matches_ports(event, ports)
+            ):
+                continue
+            routed.append({
+                "ts_ns": event.get("ts_ns"),
+                "stream_offset": event.get("stream_offset"),
+                "bundle_seq": event.get("bundle_seq"),
+                "type": "loot_announcement",
+                "client_key": client_key,
+                "data": dict(event.get("data") or {}),
+            })
+    return routed
+
+
 def _inventory_item_name(item_index: int, language: str) -> str:
     key = str(item_index)
     return str(
@@ -47,9 +113,16 @@ class ReadOnlySnapshotReader:
     _character_exports = StableApp._character_exports
     _load_info_snapshot = StableApp._load_info_snapshot
 
-    def __init__(self, database_path: Path, license_client) -> None:
+    def __init__(
+        self,
+        database_path: Path,
+        license_client,
+        *,
+        character_history_limit: int = 5000,
+    ) -> None:
         self.database_path = Path(database_path)
         self.license = license_client
+        self.character_history_limit = max(1, int(character_history_limit))
         self.current_session: str | None = None
         self._last_session_stats = {
             "recognized": 0,
@@ -75,9 +148,23 @@ class ReadOnlySnapshotReader:
                 database.capture_windows(self.current_session)
                 if self.current_session else []
             )
-            snapshot["character_history"] = database.character_history()
+            snapshot["exp_rank"] = (
+                database.exp_rank_snapshot(self.current_session)
+                if self.current_session else {}
+            )
+            snapshot["exp_rank_history"] = (
+                database.exp_rank_history(self.current_session, limit=20)
+                if self.current_session else []
+            )
+            snapshot["character_history"] = database.character_history(
+                limit=self.character_history_limit
+            )
             snapshot["client_bindings"] = (
                 database.client_bindings(self.current_session)
+                if self.current_session else []
+            )
+            snapshot["session_checkpoints"] = (
+                database.session_checkpoints(self.current_session)
                 if self.current_session else []
             )
             collection_counts_by_uid = {
@@ -126,13 +213,59 @@ class ReadOnlySnapshotReader:
                             self.current_session, uid
                         )
                     ]
+            profiles_by_uid = {
+                str(profile.get("uid") or ""): profile
+                for profile in snapshot.get("profiles", [])
+                if profile.get("uid")
+            }
+            snapshot["drop_events"] = []
+            snapshot["loot_announcements"] = []
+            if self.current_session:
+                for event in database.recent_drop_events(
+                    self.current_session,
+                    recent_seconds=7 * 24 * 60 * 60,
+                ):
+                    profile = profiles_by_uid.get(
+                        str(event.get("character_uid") or "")
+                    )
+                    if not profile:
+                        continue
+                    snapshot["drop_events"].append({
+                        "ts_ns": event.get("ts_ns"),
+                        "stream_offset": event.get("stream_offset"),
+                        "bundle_seq": event.get("bundle_seq"),
+                        "type": "drop_item_field",
+                        "client_key": str(profile.get("client_key") or ""),
+                        "character_name": str(profile.get("name") or ""),
+                        "data": dict(event.get("data") or {}),
+                    })
+                for event in database.recent_loot_announcements(
+                    self.current_session
+                ):
+                    profile = profiles_by_uid.get(
+                        str(event.get("character_uid") or "")
+                    )
+                    snapshot["loot_announcements"].append({
+                        "ts_ns": event.get("ts_ns"),
+                        "stream_offset": event.get("stream_offset"),
+                        "bundle_seq": event.get("bundle_seq"),
+                        "type": "loot_announcement",
+                        "client_key": str(
+                            (profile or {}).get("client_key") or ""
+                        ),
+                        "data": dict(event.get("data") or {}),
+                    })
             snapshot["combat_monitors"] = []
             if self.current_session:
                 names = load_npc_names(language)
                 bosses = load_boss_catalog(language)
                 for profile in database.session_profiles(self.current_session):
                     monitor = summarize_combat(
-                        database.combat_events(self.current_session, profile["uid"]),
+                        database.combat_events(
+                            self.current_session,
+                            profile["uid"],
+                            recent_seconds=6 * 60 * 60,
+                        ),
                         profile["uid"],
                         names,
                         boss_catalog=bosses,
@@ -168,7 +301,13 @@ class ReadOnlySnapshotReader:
                 bosses = load_boss_catalog(language) if "boss" in active_modes else {}
                 for profile in database.session_profiles(session_id):
                     monitor = summarize_combat(
-                        database.combat_events(session_id, profile["uid"]),
+                        database.combat_events(
+                            session_id,
+                            profile["uid"],
+                            recent_seconds=(
+                                6 * 60 * 60 if "boss" in active_modes else 60
+                            ),
+                        ),
                         profile["uid"],
                         names,
                         boss_catalog=bosses,
@@ -213,23 +352,62 @@ class ReadOnlySnapshotReader:
             for profile in profiles
             if profile.get("uid")
         }
-        routed_events = [
-            [event for event in events if _event_matches_ports(event, ports)]
-            for ports in client_ports[:7]
+        keys = [
+            f"client:{chr(97 + index)}"
+            for index in range(len(client_ports[:7]))
         ]
-        for index, routed in enumerate(routed_events):
-            key = f"client:{chr(97 + index)}"
-            for event in reversed(routed):
-                if event.get("type") != "world_info_prefix":
-                    continue
+        uid_to_key = {
+            str(profile.get("uid")): key
+            for key, profile in identities.items()
+            if key in keys and profile.get("uid")
+        }
+        port_matches = [
+            tuple(
+                index
+                for index, ports in enumerate(client_ports[:7])
+                if _event_matches_ports(event, ports)
+            )
+            for event in events
+        ]
+        flow_owners: dict[str, str] = {}
+        routed_events: list[list[dict[str, Any]]] = [[] for _key in keys]
+        associated_events = 0
+        identity_associated_events = 0
+        single_client_fallback_events = 0
+        for event, matches in zip(events, port_matches):
+            flow = _normalized_flow_key(event)
+            if event.get("type") == "world_info_prefix":
                 fields = (event.get("data") or {}).get("fields") or {}
-                if fields.get("character_uid"):
-                    identities[key] = {
-                        "uid": str(fields["character_uid"]),
+                uid = str(fields.get("character_uid") or "")
+                owner = uid_to_key.get(uid)
+                if not owner and len(matches) == 1:
+                    owner = keys[matches[0]]
+                if owner:
+                    identities[owner] = {
+                        "uid": uid,
                         "name": str(fields.get("character_name") or ""),
-                        "client_key": key,
+                        "client_key": owner,
                     }
-                    break
+                    if flow:
+                        flow_owners[flow] = owner
+            owner = flow_owners.get(flow)
+            if owner in keys:
+                routed_events[keys.index(owner)].append(event)
+                associated_events += 1
+                identity_associated_events += 1
+                continue
+            if not matches:
+                # Um único cliente não pode contaminar outro cliente. Nesse
+                # cenário, aceite também o fluxo de combate que o jogo abriu
+                # em uma porta local diferente do fluxo lógico já identificado.
+                if len(keys) == 1:
+                    routed_events[0].append(event)
+                    associated_events += 1
+                    single_client_fallback_events += 1
+                continue
+            for index in matches:
+                routed_events[index].append(event)
+            associated_events += 1
         monitors = []
         for index, routed in enumerate(routed_events):
             key = f"client:{chr(97 + index)}"
@@ -249,7 +427,22 @@ class ReadOnlySnapshotReader:
                 client_key=key,
             )
             monitors.append(monitor)
-        return {"session_id": session_id, "combat_monitors": monitors}
+        result = {
+            "session_id": session_id,
+            "combat_monitors": monitors,
+            "routing_metrics": {
+                "total_events": len(events),
+                "associated_events": associated_events,
+                "identity_associated_events": identity_associated_events,
+                "identity_bound_flows": len(flow_owners),
+                "unmatched_events": len(events) - associated_events,
+            },
+        }
+        if single_client_fallback_events:
+            result["routing_metrics"]["single_client_fallback_events"] = (
+                single_client_fallback_events
+            )
+        return result
 
     def _empty(self) -> dict[str, Any]:
         return {
@@ -263,9 +456,15 @@ class ReadOnlySnapshotReader:
             "collection_type_counts": {},
             "collection_type_counts_by_uid": {},
             "inventories": {},
+            "drop_events": [],
+            "loot_announcements": [],
             "combat_monitors": [],
+            "exp_rank": {},
+            "exp_rank_history": [],
+            "map": {},
             "character_history": [],
             "client_bindings": [],
+            "session_checkpoints": [],
         }
 
 
@@ -301,6 +500,7 @@ def load_farm_catalog(language: str = "pt") -> dict[str, dict[str, dict[str, tup
             for row in csv.DictReader(source):
                 map_name = str(row.get("mapa") or row.get("map_name_ptbr") or "").strip()
                 spot_name = str(row.get("spot_andar") or row.get("spot_name_ptbr") or "").strip()
+                spot_name = normalize_floor_region(spot_name)
                 mob = str(row.get("mob_name") or row.get("mob_name_ptbr") or "").strip()
                 level = int(row.get("mob_level") or 0)
                 if map_name and spot_name and mob and 1 <= level <= 999:

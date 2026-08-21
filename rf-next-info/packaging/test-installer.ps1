@@ -29,12 +29,26 @@ $Python = if ($env:RFQOL_BUILD_PYTHON) {
     Join-Path $Project '.venv313\Scripts\python.exe'
 }
 $Version = (& $Python -c 'from app.main import VERSION; print(VERSION)').Trim()
+$Sequence = [int](& $Python -c 'from app.main import RELEASE_SEQUENCE; print(RELEASE_SEQUENCE)')
+$VersionParts = (($Version -split '-', 2)[0] -split '\.')
+$FileVersion = '{0}.{1}.{2}.{3}' -f (
+    [int]$VersionParts[0], [int]$VersionParts[1],
+    [int]$VersionParts[2], $Sequence
+)
+$BuildProfile = (& $Python -c 'from app.build_profile import PROFILE_NAME; print(PROFILE_NAME)').Trim()
 $Installer = Join-Path $CompileDir "RF QOL Setup $Version-smoke.exe"
 New-Item -ItemType Directory -Path $CompileDir -Force | Out-Null
 
 Push-Location $Project
 try {
-    & $Nsis '/V2' '/WX' '/DDEV_SMOKE' "/DAPP_OUTFILE=$Installer" '.\packaging\installer.nsi'
+    $NsisArguments = @(
+        '/V2', '/WX', '/DDEV_SMOKE', "/DAPP_OUTFILE=$Installer",
+        "/DAPP_VERSION=$Version", "/DAPP_FILE_VERSION=$FileVersion"
+    )
+    if ($BuildProfile -eq 'staging') { $NsisArguments += '/DSTAGING_PROFILE' }
+    if ($BuildProfile -eq 'beta') { $NsisArguments += '/DBETA_PROFILE' }
+    $NsisArguments += '.\packaging\installer.nsi'
+    & $Nsis @NsisArguments
     if ($LASTEXITCODE) { throw 'Falha ao compilar instalador de ensaio.' }
 } finally {
     Pop-Location
@@ -45,9 +59,15 @@ if ($AuthenticodeStatus -ne 'NotSigned') {
 }
 
 $PreviousSelfTest = $env:RFQOL_SELF_TEST
+$PreviousCompatLayer = $env:__COMPAT_LAYER
 try {
     $env:RFQOL_SELF_TEST = '1'
-    $Install = Start-Process -FilePath $Installer -ArgumentList @('/S', "/D=$InstallDir") -Wait -PassThru
+    $env:__COMPAT_LAYER = 'RunAsInvoker'
+    $Install = Start-Process -FilePath $Installer -ArgumentList @('/S', "/D=$InstallDir") -PassThru
+    if (-not $Install.WaitForExit(90000)) {
+        Stop-Process -Id $Install.Id -Force -ErrorAction SilentlyContinue
+        throw 'Instalação de ensaio excedeu 90 segundos.'
+    }
     if ($Install.ExitCode) { throw "Instalação de ensaio falhou: $($Install.ExitCode)" }
     $Executable = Join-Path $InstallDir 'RF QOL.exe'
     $InstallTestLog = Join-Path $InstallDir 'logs\install.log'
@@ -61,10 +81,17 @@ try {
 } finally {
     $Uninstaller = Join-Path $InstallDir 'Uninstall.exe'
     if (Test-Path -LiteralPath $Uninstaller -PathType Leaf) {
-        $Uninstall = Start-Process -FilePath $Uninstaller -ArgumentList '/S' -Wait -PassThru
+        $Uninstall = Start-Process -FilePath $Uninstaller -ArgumentList @(
+            '/S', "_?=$InstallDir"
+        ) -PassThru
+        if (-not $Uninstall.WaitForExit(120000)) {
+            Stop-Process -Id $Uninstall.Id -Force -ErrorAction SilentlyContinue
+            throw 'Desinstalação de ensaio excedeu 120 segundos.'
+        }
         if ($Uninstall.ExitCode) { Write-Error "Desinstalação de ensaio falhou: $($Uninstall.ExitCode)" }
     }
     $env:RFQOL_SELF_TEST = $PreviousSelfTest
+    $env:__COMPAT_LAYER = $PreviousCompatLayer
 }
 if (Test-Path -LiteralPath (Join-Path $InstallDir 'RF QOL.exe')) {
     throw 'Desinstalação deixou o executável no destino.'

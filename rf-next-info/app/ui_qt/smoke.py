@@ -52,11 +52,7 @@ def run_smoke() -> dict[str, object]:
             button.text(): button.isEnabled() for button in window.nav_buttons
         },
         "frameless": bool(window.windowFlags() & QtCore.Qt.WindowType.FramelessWindowHint),
-        "overview_groups": len([
-            frame
-            for frame in window.findChildren(QtWidgets.QFrame)
-            if frame.objectName() == "metricGroup"
-        ]),
+        "overview_groups": len(window.overview_cards),
         "overview_metrics": len(window.metric_labels),
     }
     window.close()

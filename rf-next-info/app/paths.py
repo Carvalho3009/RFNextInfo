@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .build_profile import MACHINE_STATE_NAME
+
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 RESOURCE_ROOT = Path(getattr(sys, "_MEIPASS", SOURCE_ROOT))
@@ -17,7 +19,7 @@ SELF_TEST_LAYOUT = os.getenv("RFQOL_SELF_TEST") == "1"
 
 STATE_DIR = INSTALL_DIR / "data"
 MACHINE_STATE_DIR = (
-    Path(os.environ["PROGRAMDATA"]) / "Karvalho" / "RF QOL"
+    Path(os.environ["PROGRAMDATA"]) / "Karvalho" / MACHINE_STATE_NAME
     if (
         getattr(sys, "frozen", False)
         and not SELF_TEST_LAYOUT
@@ -29,6 +31,7 @@ DATABASE_DIR = INSTALL_DIR / "database"
 LOG_DIR = INSTALL_DIR / "logs"
 CACHE_DIR = INSTALL_DIR / "cache"
 UPDATES_DIR = MACHINE_STATE_DIR / "updates"
+LOCAL_API_STATE_PATH = MACHINE_STATE_DIR / "local-api.bin"
 CAPTURE_DIR = INSTALL_DIR / "Capturas"
 
 DB_PATH = DATABASE_DIR / "capture.sqlite3"

@@ -192,6 +192,24 @@ class AppLogicTest(unittest.TestCase):
         self.assertEqual(incremental, full)
         self.assertEqual(incremental_marks, full_marks)
 
+    def test_summary_starts_session_clock_at_client_recognition_and_classifies_epic(self):
+        summary, _marks = _capture_summary({"events": [{
+            "ts_ns": 12_000_000_000,
+            "type": "world_info_prefix",
+            "character_uid": "uid-1",
+            "data": {"fields": {"character_name": "Alice", "level": 70}},
+        }, {
+            "ts_ns": 13_000_000_000,
+            "type": "drop_item_field",
+            "character_uid": "uid-1",
+            "data": {"results": [{
+                "ret": 0, "item_index": 240005, "count": 2,
+            }]},
+        }]}, "uid-1")
+
+        self.assertEqual(summary["recognized_at_ns"], 12_000_000_000)
+        self.assertEqual(summary["epic_by_category"]["blueprint_mau"], 2)
+
     def test_stale_info_result_is_discarded(self):
         app = Mock()
         app._info_refresh_running = True
@@ -319,8 +337,12 @@ class AppLogicTest(unittest.TestCase):
                     {"metadata": {}, "exp_rank": {"records": []}},
                     "e" * 64,
                 )
+                client.upload_pve_observations(
+                    {"schema": "rf-qol.pve-observations.delta", "observations": []},
+                    "f" * 64,
+                )
 
-            self.assertEqual(urlopen.call_count, 7)
+            self.assertEqual(urlopen.call_count, 8)
             self.assertTrue(client.connected)
             requests = [call.args[0] for call in urlopen.call_args_list]
             self.assertTrue(
@@ -329,7 +351,12 @@ class AppLogicTest(unittest.TestCase):
                     for request in requests
                 )
             )
-            self.assertTrue(requests[-1].full_url.endswith("/api/import/exp-rank"))
+            self.assertTrue(
+                any(
+                    request.full_url.endswith("/api/import/pve-observations")
+                    for request in requests
+                )
+            )
             self.assertEqual(
                 {
                     request.get_header("Authorization")
@@ -705,6 +732,21 @@ class AppLogicTest(unittest.TestCase):
         )
         self.assertEqual(summary["loot"], [])
 
+    def test_reward_credit_exposes_current_total_and_session_gain(self):
+        summary, _ = _capture_summary({
+            "events": [{
+                "type": "drop_item_field",
+                "data": {"results": [{
+                    "item_index": 1,
+                    "count": 574,
+                    "gain_total": 9_876_543,
+                }]},
+            }],
+        })
+
+        self.assertEqual(summary["credits_total"], 9_876_543)
+        self.assertEqual(summary["credits"], 574)
+
     def test_loot_is_grouped_by_item_rarity(self):
         summary, _ = _capture_summary(
             {
@@ -936,6 +978,18 @@ class AppLogicTest(unittest.TestCase):
             "equipment",
         )
         self.assertEqual(main_module.inventory_category(999999999), "other")
+
+    def test_drop_alert_categories_follow_official_game_metadata(self):
+        self.assertEqual(main_module.drop_alert_category(1000156), "weapon")
+        self.assertEqual(main_module.drop_alert_category(1000200), "armor")
+        self.assertEqual(main_module.drop_alert_category(1000400), "accessory")
+        self.assertEqual(main_module.drop_alert_category(1002001), "expansion")
+        self.assertEqual(main_module.drop_alert_category(4209), "skill")
+        self.assertEqual(main_module.drop_alert_category(240000), "blueprint_mau")
+        self.assertEqual(
+            main_module.drop_alert_category(250000), "blueprint_launcher"
+        )
+        self.assertEqual(main_module.drop_alert_category(999999999), "other")
 
     def test_summary_localizes_biosuit_and_rover_game_names(self):
         biosuit, _ = _capture_summary(
@@ -2515,7 +2569,7 @@ class AppLogicTest(unittest.TestCase):
             )
             self.assertEqual(
                 remembered.local_status()["connection_limits"],
-                {"pc": 2, "emulators": 1},
+                {},
             )
             remembered.require("captura")
             remembered.require("Monitor PvP", "monitor-pvp")

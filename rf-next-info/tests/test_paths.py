@@ -84,7 +84,9 @@ class RuntimePathsTest(unittest.TestCase):
         self.assertIn("/ddev_smoke", smoke)
         self.assertIn("self_test=0", smoke)
         self.assertIn("uninstall.exe", smoke)
-        self.assertIn("execshellwait", installer)
+        self.assertIn("execwait", installer)
+        self.assertNotIn("execshellwait", installer)
+        self.assertIn("runasinvoker", smoke)
         self.assertIn("self-test.ok", installer)
 
     def test_nsis_installer_requires_terms_acceptance(self):

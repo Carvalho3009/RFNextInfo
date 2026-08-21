@@ -4,9 +4,30 @@ RequestExecutionLevel user
 !else
 RequestExecutionLevel admin
 !endif
-Name "RF QOL"
+!ifdef STAGING_PROFILE
+!define APP_DISPLAY_NAME "RF QOL 2.0 Homologacao"
+!define APP_REGKEY "Software\Karvalho\RFQOLStaging"
+!define APP_UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL Staging"
+!define APP_SHORTCUT_NAME "RF QOL 2.0 Homologacao"
+!else
+!ifdef BETA_PROFILE
+!define APP_DISPLAY_NAME "RF QOL 2.0 Beta"
+!define APP_REGKEY "Software\Karvalho\RFQOLBeta"
+!define APP_UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL Beta"
+!define APP_SHORTCUT_NAME "RF QOL 2.0 Beta"
+!else
+!define APP_DISPLAY_NAME "RF QOL"
+!define APP_REGKEY "Software\Karvalho\RFQOL"
+!define APP_UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL"
+!define APP_SHORTCUT_NAME "RF QOL"
+!endif
+!endif
+Name "${APP_DISPLAY_NAME}"
 !ifndef APP_VERSION
 !define APP_VERSION "1.0.8"
+!endif
+!ifndef APP_FILE_VERSION
+!define APP_FILE_VERSION "1.0.8.0"
 !endif
 !ifndef APP_SOURCE
 !define APP_SOURCE "..\dist\RF QOL"
@@ -15,18 +36,26 @@ Name "RF QOL"
 !define APP_OUTFILE "..\dist\RF QOL Setup ${APP_VERSION}.exe"
 !endif
 !ifndef APP_INSTALLDIR
+!ifdef STAGING_PROFILE
+!define APP_INSTALLDIR "$PROGRAMFILES64\Karvalho\RF QOL Staging"
+!else
+!ifdef BETA_PROFILE
+!define APP_INSTALLDIR "$PROGRAMFILES64\Karvalho\RF QOL Beta"
+!else
 !define APP_INSTALLDIR "$PROGRAMFILES64\Karvalho\RF QOL"
+!endif
+!endif
 !endif
 OutFile "${APP_OUTFILE}"
 InstallDir "${APP_INSTALLDIR}"
 !ifndef DEV_SMOKE
-InstallDirRegKey HKLM "Software\Karvalho\RFQOL" "InstallDir"
+InstallDirRegKey HKLM "${APP_REGKEY}" "InstallDir"
 !endif
 SetCompressor /SOLID lzma
 CRCCheck on
 
-VIProductVersion "${APP_VERSION}.0"
-VIAddVersionKey /LANG=1046 "ProductName" "RF QOL"
+VIProductVersion "${APP_FILE_VERSION}"
+VIAddVersionKey /LANG=1046 "ProductName" "${APP_DISPLAY_NAME}"
 VIAddVersionKey /LANG=1046 "CompanyName" "Karvalho"
 VIAddVersionKey /LANG=1046 "FileDescription" "Instalador do RF QOL"
 VIAddVersionKey /LANG=1046 "FileVersion" "${APP_VERSION}"
@@ -86,12 +115,9 @@ Section "RF QOL" SEC_APP
   ClearErrors
   StrCpy $0 -1
   Delete "$INSTDIR\logs\self-test.ok"
-  ExecShellWait "" "$INSTDIR\RF QOL.exe" "--self-test" SW_HIDE
+  ExecWait '$\"$INSTDIR\RF QOL.exe$\" --self-test' $0
   IfErrors self_test_exec_failed
-  IfFileExists "$INSTDIR\logs\self-test.ok" self_test_ok_marker self_test_exec_failed
-self_test_ok_marker:
-  StrCpy $0 0
-  Goto self_test_log
+  StrCmp $0 0 self_test_log self_test_exec_failed
 self_test_exec_failed:
   StrCpy $0 -1
 self_test_log:
@@ -105,28 +131,28 @@ self_test_log:
   Abort
 self_test_ok:
 !ifndef DEV_SMOKE
-  WriteRegStr HKLM "Software\Karvalho\RFQOL" "InstallDir" "$INSTDIR"
+  WriteRegStr HKLM "${APP_REGKEY}" "InstallDir" "$INSTDIR"
 !endif
 !ifndef DEV_SMOKE
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "DisplayName" "RF QOL"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "DisplayVersion" "${APP_VERSION}"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "Publisher" "Karvalho"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "URLInfoAbout" "https://karvalho.dev.br/"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "HelpLink" "https://discord.gg/D3hhdMgkj"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "DisplayIcon" "$INSTDIR\RF QOL.exe"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "NoModify" 1
-  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL" "NoRepair" 1
+  WriteRegStr HKLM "${APP_UNINSTALL_KEY}" "DisplayName" "${APP_DISPLAY_NAME}"
+  WriteRegStr HKLM "${APP_UNINSTALL_KEY}" "DisplayVersion" "${APP_VERSION}"
+  WriteRegStr HKLM "${APP_UNINSTALL_KEY}" "Publisher" "Karvalho"
+  WriteRegStr HKLM "${APP_UNINSTALL_KEY}" "URLInfoAbout" "https://karvalho.dev.br/"
+  WriteRegStr HKLM "${APP_UNINSTALL_KEY}" "HelpLink" "https://discord.gg/D3hhdMgkj"
+  WriteRegStr HKLM "${APP_UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\RF QOL.exe"
+  WriteRegStr HKLM "${APP_UNINSTALL_KEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
+  WriteRegDWORD HKLM "${APP_UNINSTALL_KEY}" "NoModify" 1
+  WriteRegDWORD HKLM "${APP_UNINSTALL_KEY}" "NoRepair" 1
   CreateDirectory "$SMPROGRAMS\Karvalho"
-  CreateShortcut "$SMPROGRAMS\Karvalho\RF QOL.lnk" "$INSTDIR\RF QOL.exe"
-  CreateShortcut "$DESKTOP\RF QOL.lnk" "$INSTDIR\RF QOL.exe"
+  CreateShortcut "$SMPROGRAMS\Karvalho\${APP_SHORTCUT_NAME}.lnk" "$INSTDIR\RF QOL.exe"
+  CreateShortcut "$DESKTOP\${APP_SHORTCUT_NAME}.lnk" "$INSTDIR\RF QOL.exe"
 !endif
 SectionEnd
 
 Section "Uninstall"
 !ifndef DEV_SMOKE
-  Delete "$DESKTOP\RF QOL.lnk"
-  Delete "$SMPROGRAMS\Karvalho\RF QOL.lnk"
+  Delete "$DESKTOP\${APP_SHORTCUT_NAME}.lnk"
+  Delete "$SMPROGRAMS\Karvalho\${APP_SHORTCUT_NAME}.lnk"
   RMDir "$SMPROGRAMS\Karvalho"
 !endif
   RMDir /r "$INSTDIR\_internal"
@@ -135,7 +161,7 @@ Section "Uninstall"
   Delete "$INSTDIR\sbom-python.json"
   Delete "$INSTDIR\Uninstall.exe"
 !ifndef DEV_SMOKE
-  DeleteRegKey HKLM "Software\Karvalho\RFQOL"
-  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RF QOL"
+  DeleteRegKey HKLM "${APP_REGKEY}"
+  DeleteRegKey HKLM "${APP_UNINSTALL_KEY}"
 !endif
 SectionEnd

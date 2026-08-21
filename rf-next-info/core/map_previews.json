@@ -1,0 +1,4065 @@
+{
+  "schema_version": 1,
+  "source_version": "1.29.7",
+  "region_resolution": "nearest-official-center",
+  "groups": {
+    "novus": [
+      101,
+      103
+    ],
+    "albern_crater": [
+      751,
+      752,
+      754,
+      755
+    ],
+    "android_junkyard": [
+      635,
+      636,
+      637,
+      638,
+      639,
+      640,
+      4211,
+      4212,
+      4213,
+      4214
+    ],
+    "secret_nemesis_base": [
+      601,
+      602,
+      605,
+      606,
+      607
+    ],
+    "public_mining_field": [
+      611,
+      612,
+      613,
+      614,
+      615,
+      616,
+      617,
+      618,
+      619,
+      620,
+      621,
+      622,
+      623,
+      624,
+      625,
+      626,
+      4625,
+      4645,
+      4665,
+      4685
+    ],
+    "exclusive_mining_field": [
+      610,
+      630,
+      4603
+    ],
+    "orbital": [
+      642,
+      643,
+      644,
+      4504,
+      4554
+    ]
+  },
+  "maps": {
+    "101": {
+      "map_index": 101,
+      "category": "novus",
+      "pt": "Mundo Novus",
+      "en": "Novus World",
+      "display_pt": "Mundo Novus",
+      "display_en": "Novus World",
+      "fixed_region": null,
+      "asset": "101.webp",
+      "asset_source_map_index": 101,
+      "level_path": "/Game/Streaming/Maps/Novus/World/NovusWorld.NovusWorld",
+      "world_bounds": {
+        "min_x": -819200.0,
+        "max_x": 179200.0,
+        "min_y": -614400.0,
+        "max_y": 332800.0,
+        "span_x": 998400.0,
+        "span_y": 947200.0,
+        "world_per_tile": 25600.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [
+        {
+          "region_index": 51001,
+          "pt": "Colônia Saura",
+          "en": "Saura Colony",
+          "center": {
+            "x": -478707.281,
+            "y": 89840.0,
+            "z": 0.0
+          },
+          "spawn_count": 13,
+          "spawn_bounds": {
+            "min_x": -482342.438,
+            "max_x": -435752.438,
+            "min_y": 87198.023,
+            "max_y": 124228.023
+          },
+          "crop_bounds": {
+            "min_x": -495142.438,
+            "max_x": -422952.438,
+            "min_y": 74398.023,
+            "max_y": 137028.023,
+            "span_x": 72190.0,
+            "span_y": 62630.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 52001,
+          "pt": "Deserto de Ramon",
+          "en": "Ramon Desert",
+          "center": {
+            "x": -424050.0,
+            "y": -11050.0,
+            "z": 5000.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -433226.812,
+            "max_x": -412570.812,
+            "min_y": -39857.879,
+            "max_y": 13522.083
+          },
+          "crop_bounds": {
+            "min_x": -448498.812,
+            "max_x": -397298.812,
+            "min_y": -52657.879,
+            "max_y": 26322.083,
+            "span_x": 51200.0,
+            "span_y": 78979.962
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 53001,
+          "pt": "Ermo Rambler",
+          "en": "Rambler Wasteland",
+          "center": {
+            "x": -767470.0,
+            "y": -60.0,
+            "z": 11290.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -782484.938,
+            "max_x": -737639.938,
+            "min_y": -1806.909,
+            "max_y": 31315.832
+          },
+          "crop_bounds": {
+            "min_x": -795284.938,
+            "max_x": -724839.938,
+            "min_y": -14606.909,
+            "max_y": 44115.832,
+            "span_x": 70445.0,
+            "span_y": 58722.741
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 54001,
+          "pt": "Vale de Skadi",
+          "en": "Skadi Vale",
+          "center": {
+            "x": -409633.0,
+            "y": -256877.0,
+            "z": 7780.0
+          },
+          "spawn_count": 12,
+          "spawn_bounds": {
+            "min_x": -420953.562,
+            "max_x": -397629.719,
+            "min_y": -301919.375,
+            "max_y": -256842.656
+          },
+          "crop_bounds": {
+            "min_x": -434891.641,
+            "max_x": -383691.641,
+            "min_y": -314719.375,
+            "max_y": -244042.656,
+            "span_x": 51200.0,
+            "span_y": 70676.719
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 55001,
+          "pt": "Favelas de Seth",
+          "en": "Seth Slums",
+          "center": {
+            "x": -663538.688,
+            "y": 228553.625,
+            "z": 11290.0
+          },
+          "spawn_count": 13,
+          "spawn_bounds": {
+            "min_x": -686699.5,
+            "max_x": -645979.375,
+            "min_y": 208011.812,
+            "max_y": 239965.297
+          },
+          "crop_bounds": {
+            "min_x": -699499.5,
+            "max_x": -633179.375,
+            "min_y": 195211.812,
+            "max_y": 252765.297,
+            "span_x": 66320.125,
+            "span_y": 57553.484
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 56001,
+          "pt": "Floresta de Mayazar",
+          "en": "Mayazar Forest",
+          "center": {
+            "x": -322240.0,
+            "y": -246410.0,
+            "z": 7170.0
+          },
+          "spawn_count": 12,
+          "spawn_bounds": {
+            "min_x": -325546.938,
+            "max_x": -298703.688,
+            "min_y": -269247.969,
+            "max_y": -230890.594
+          },
+          "crop_bounds": {
+            "min_x": -338346.938,
+            "max_x": -285903.688,
+            "min_y": -282047.969,
+            "max_y": -218090.594,
+            "span_x": 52443.25,
+            "span_y": 63957.375
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 57001,
+          "pt": "Campo de Treinamento de Mayazar",
+          "en": "Mayazar Training Ground",
+          "center": {
+            "x": -352801.0,
+            "y": -225002.0,
+            "z": 5790.0
+          },
+          "spawn_count": 10,
+          "spawn_bounds": {
+            "min_x": -372932.25,
+            "max_x": -348638.375,
+            "min_y": -248869.406,
+            "max_y": -221669.406
+          },
+          "crop_bounds": {
+            "min_x": -386385.312,
+            "max_x": -335185.312,
+            "min_y": -261669.406,
+            "max_y": -208869.406,
+            "span_x": 51200.0,
+            "span_y": 52800.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 58001,
+          "pt": "Floresta de Lowed",
+          "en": "Lowed Forest",
+          "center": {
+            "x": -171900.0,
+            "y": -174300.0,
+            "z": 6616.173
+          },
+          "spawn_count": 6,
+          "spawn_bounds": {
+            "min_x": -167135.875,
+            "max_x": -145814.234,
+            "min_y": -192492.0,
+            "max_y": -178701.562
+          },
+          "crop_bounds": {
+            "min_x": -182075.055,
+            "max_x": -130875.055,
+            "min_y": -211196.781,
+            "max_y": -159996.781,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 60001,
+          "pt": "Floresta Norte de Dorian",
+          "en": "North Dorian Forest",
+          "center": {
+            "x": -163500.0,
+            "y": -134550.0,
+            "z": 11290.0
+          },
+          "spawn_count": 11,
+          "spawn_bounds": {
+            "min_x": -188256.672,
+            "max_x": -163725.812,
+            "min_y": -132924.391,
+            "max_y": -110641.398
+          },
+          "crop_bounds": {
+            "min_x": -201591.242,
+            "max_x": -150391.242,
+            "min_y": -147382.895,
+            "max_y": -96182.895,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 61001,
+          "pt": "Floresta Sul de Dorian",
+          "en": "South Dorian Forest",
+          "center": {
+            "x": -178700.0,
+            "y": -100900.0,
+            "z": 11290.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": -190711.125,
+            "max_x": -162212.609,
+            "min_y": -93585.383,
+            "max_y": -71685.383
+          },
+          "crop_bounds": {
+            "min_x": -203511.125,
+            "max_x": -149412.609,
+            "min_y": -108235.383,
+            "max_y": -57035.383,
+            "span_x": 54098.516,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 62001,
+          "pt": "Velha Fronteira",
+          "en": "Old Frontier",
+          "center": {
+            "x": -141700.0,
+            "y": -225050.0,
+            "z": 11290.0
+          },
+          "spawn_count": 6,
+          "spawn_bounds": {
+            "min_x": -140372.781,
+            "max_x": -122559.766,
+            "min_y": -218798.938,
+            "max_y": -194638.312
+          },
+          "crop_bounds": {
+            "min_x": -157066.273,
+            "max_x": -105866.273,
+            "min_y": -232318.625,
+            "max_y": -181118.625,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 63001,
+          "pt": "Colina do Pioneiro",
+          "en": "Pioneer's Hill",
+          "center": {
+            "x": -721690.0,
+            "y": 60590.0,
+            "z": 3000.0
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": -728182.188,
+            "max_x": -700924.875,
+            "min_y": 66447.406,
+            "max_y": 99444.625
+          },
+          "crop_bounds": {
+            "min_x": -740982.188,
+            "max_x": -688124.875,
+            "min_y": 53647.406,
+            "max_y": 112244.625,
+            "span_x": 52857.312,
+            "span_y": 58597.219
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 64001,
+          "pt": "Planícies de Spire",
+          "en": "Spire Plains",
+          "center": {
+            "x": 71882.461,
+            "y": 18462.705,
+            "z": 8415.991
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": 39114.602,
+            "max_x": 89570.328,
+            "min_y": 3641.658,
+            "max_y": 36065.223
+          },
+          "crop_bounds": {
+            "min_x": 26314.602,
+            "max_x": 102370.328,
+            "min_y": -9158.342,
+            "max_y": 48865.223,
+            "span_x": 76055.727,
+            "span_y": 58023.565
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 65001,
+          "pt": "Colina do Errante",
+          "en": "Wanderer's Hill",
+          "center": {
+            "x": -39841.84,
+            "y": 124091.82,
+            "z": 4907.745
+          },
+          "spawn_count": 17,
+          "spawn_bounds": {
+            "min_x": -45023.484,
+            "max_x": -20432.645,
+            "min_y": 112215.094,
+            "max_y": 135665.719
+          },
+          "crop_bounds": {
+            "min_x": -58328.064,
+            "max_x": -7128.064,
+            "min_y": 98340.406,
+            "max_y": 149540.406,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 66001,
+          "pt": "Floresta dos Exilados",
+          "en": "Forest of Exiles",
+          "center": {
+            "x": 105126.0,
+            "y": 15555.0,
+            "z": 8262.148
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": 101611.242,
+            "max_x": 131291.25,
+            "min_y": 12634.6,
+            "max_y": 34204.602
+          },
+          "crop_bounds": {
+            "min_x": 88811.242,
+            "max_x": 144091.25,
+            "min_y": -2180.399,
+            "max_y": 49019.601,
+            "span_x": 55280.008,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 67001,
+          "pt": "Floresta dos Mortos",
+          "en": "Forest of the Dead",
+          "center": {
+            "x": -56678.0,
+            "y": 19783.0,
+            "z": 3000.0
+          },
+          "spawn_count": 16,
+          "spawn_bounds": {
+            "min_x": -70662.766,
+            "max_x": -47776.754,
+            "min_y": 23989.576,
+            "max_y": 46005.082
+          },
+          "crop_bounds": {
+            "min_x": -84819.76,
+            "max_x": -33619.76,
+            "min_y": 9397.329,
+            "max_y": 60597.329,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 68001,
+          "pt": "Planície Negra",
+          "en": "Black Plains",
+          "center": {
+            "x": -51177.68,
+            "y": 65617.32,
+            "z": 5812.839
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": -60353.934,
+            "max_x": -40817.785,
+            "min_y": 58027.922,
+            "max_y": 76866.633
+          },
+          "crop_bounds": {
+            "min_x": -76185.859,
+            "max_x": -24985.859,
+            "min_y": 41847.277,
+            "max_y": 93047.277,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 69001,
+          "pt": "Pântano da Névoa",
+          "en": "Misty Swamp",
+          "center": {
+            "x": -23437.0,
+            "y": 39305.0,
+            "z": -317.0
+          },
+          "spawn_count": 16,
+          "spawn_bounds": {
+            "min_x": -35136.738,
+            "max_x": -13507.125,
+            "min_y": 12850.692,
+            "max_y": 42177.691
+          },
+          "crop_bounds": {
+            "min_x": -49921.932,
+            "max_x": 1278.068,
+            "min_y": 50.692,
+            "max_y": 54977.691,
+            "span_x": 51200.0,
+            "span_y": 54926.999
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 70001,
+          "pt": "Ilha do Peregrino",
+          "en": "Pilgrim's Island",
+          "center": {
+            "x": 11350.0,
+            "y": 196450.0,
+            "z": 15642.0
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": 9051.138,
+            "max_x": 35435.996,
+            "min_y": 188787.891,
+            "max_y": 219536.656
+          },
+          "crop_bounds": {
+            "min_x": -3748.862,
+            "max_x": 48235.996,
+            "min_y": 175987.891,
+            "max_y": 232336.656,
+            "span_x": 51984.858,
+            "span_y": 56348.766
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 71001,
+          "pt": "Planaltos de Numerus",
+          "en": "Numerus Plateau",
+          "center": {
+            "x": -97289.0,
+            "y": 172193.0,
+            "z": 9620.273
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -110317.195,
+            "max_x": -90622.195,
+            "min_y": 155967.766,
+            "max_y": 180790.75
+          },
+          "crop_bounds": {
+            "min_x": -126069.695,
+            "max_x": -74869.695,
+            "min_y": 142779.258,
+            "max_y": 193979.258,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 72001,
+          "pt": "Templo em Ruínas",
+          "en": "Fallen Temple",
+          "center": {
+            "x": -63965.0,
+            "y": 157854.0,
+            "z": 7499.94
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": -76644.875,
+            "max_x": -50493.957,
+            "min_y": 139646.844,
+            "max_y": 166798.375
+          },
+          "crop_bounds": {
+            "min_x": -89444.875,
+            "max_x": -37693.957,
+            "min_y": 126846.844,
+            "max_y": 179598.375,
+            "span_x": 51750.918,
+            "span_y": 52751.531
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 73001,
+          "pt": "Ruínas da Mina de Ghent",
+          "en": "Ghent Mine Ruins",
+          "center": {
+            "x": -173772.0,
+            "y": -20408.0,
+            "z": 11185.364
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": -188968.75,
+            "max_x": -166738.75,
+            "min_y": -35175.398,
+            "max_y": -13275.4
+          },
+          "crop_bounds": {
+            "min_x": -203453.75,
+            "max_x": -152253.75,
+            "min_y": -49825.399,
+            "max_y": 1374.601,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 74001,
+          "pt": "Terras Submersas de Galio",
+          "en": "Galio Sunken Lands",
+          "center": {
+            "x": -135869.125,
+            "y": -27853.553,
+            "z": 4681.77
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": -149725.984,
+            "max_x": -122564.719,
+            "min_y": -42003.57,
+            "max_y": -14748.89
+          },
+          "crop_bounds": {
+            "min_x": -162525.984,
+            "max_x": -109764.719,
+            "min_y": -54803.57,
+            "max_y": -1948.89,
+            "span_x": 52761.266,
+            "span_y": 52854.681
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 75001,
+          "pt": "Colina de Cauldron",
+          "en": "Cauldron Hill",
+          "center": {
+            "x": -228700.0,
+            "y": -30900.0,
+            "z": 15495.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -239719.203,
+            "max_x": -209756.969,
+            "min_y": -56759.391,
+            "max_y": -19493.678
+          },
+          "crop_bounds": {
+            "min_x": -252519.203,
+            "max_x": -196956.969,
+            "min_y": -69559.391,
+            "max_y": -6693.678,
+            "span_x": 55562.234,
+            "span_y": 62865.713
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 76001,
+          "pt": "Complexo de Pesquisa Anakade",
+          "en": "Anakade Research Complex",
+          "center": {
+            "x": -229630.0,
+            "y": -166600.0,
+            "z": 11290.0
+          },
+          "spawn_count": 10,
+          "spawn_bounds": {
+            "min_x": -225942.0,
+            "max_x": -214480.0,
+            "min_y": -183700.0,
+            "max_y": -159949.0
+          },
+          "crop_bounds": {
+            "min_x": -245811.0,
+            "max_x": -194611.0,
+            "min_y": -197424.5,
+            "max_y": -146224.5,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 77001,
+          "pt": "Praça do Grande Templo",
+          "en": "Great Temple Square",
+          "center": {
+            "x": -60881.0,
+            "y": 90859.0,
+            "z": 6396.0
+          },
+          "spawn_count": 13,
+          "spawn_bounds": {
+            "min_x": -78258.758,
+            "max_x": -50128.754,
+            "min_y": 90664.602,
+            "max_y": 105584.602
+          },
+          "crop_bounds": {
+            "min_x": -91058.758,
+            "max_x": -37328.754,
+            "min_y": 72524.602,
+            "max_y": 123724.602,
+            "span_x": 53730.004,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 78001,
+          "pt": "Deserto da Morte",
+          "en": "Desert of Death",
+          "center": {
+            "x": -514680.0,
+            "y": 24290.0,
+            "z": 11290.0
+          },
+          "spawn_count": 16,
+          "spawn_bounds": {
+            "min_x": -534664.125,
+            "max_x": -495025.0,
+            "min_y": 11283.617,
+            "max_y": 41455.586
+          },
+          "crop_bounds": {
+            "min_x": -547464.125,
+            "max_x": -482225.0,
+            "min_y": -1516.383,
+            "max_y": 54255.586,
+            "span_x": 65239.125,
+            "span_y": 55771.969
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 79001,
+          "pt": "Terra do Descanso",
+          "en": "Land of Rest",
+          "center": {
+            "x": -520950.0,
+            "y": 70620.0,
+            "z": 8330.0
+          },
+          "spawn_count": 13,
+          "spawn_bounds": {
+            "min_x": -552133.25,
+            "max_x": -524363.25,
+            "min_y": 66507.992,
+            "max_y": 89967.992
+          },
+          "crop_bounds": {
+            "min_x": -564933.25,
+            "max_x": -511563.25,
+            "min_y": 52637.992,
+            "max_y": 103837.992,
+            "span_x": 53370.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 81001,
+          "pt": "Base de Perfuração Byrosa",
+          "en": "Byrosa Drilling Base",
+          "center": {
+            "x": -163380.0,
+            "y": -244260.0,
+            "z": 11290.0
+          },
+          "spawn_count": 10,
+          "spawn_bounds": {
+            "min_x": -188989.719,
+            "max_x": -172013.062,
+            "min_y": -244448.531,
+            "max_y": -227400.031
+          },
+          "crop_bounds": {
+            "min_x": -206101.391,
+            "max_x": -154901.391,
+            "min_y": -261524.281,
+            "max_y": -210324.281,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 82001,
+          "pt": "Vale Esquecido",
+          "en": "Forgotten Valley",
+          "center": {
+            "x": -196950.0,
+            "y": -230200.0,
+            "z": 0.0
+          },
+          "spawn_count": 8,
+          "spawn_bounds": {
+            "min_x": -222028.625,
+            "max_x": -201795.766,
+            "min_y": -240226.328,
+            "max_y": -222543.797
+          },
+          "crop_bounds": {
+            "min_x": -237512.195,
+            "max_x": -186312.195,
+            "min_y": -256985.062,
+            "max_y": -205785.062,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 83001,
+          "pt": "Colina dos Predadores",
+          "en": "Hill of Predators",
+          "center": {
+            "x": -196093.625,
+            "y": -201403.344,
+            "z": 11290.0
+          },
+          "spawn_count": 12,
+          "spawn_bounds": {
+            "min_x": -200984.219,
+            "max_x": -177012.422,
+            "min_y": -220248.672,
+            "max_y": -202040.719
+          },
+          "crop_bounds": {
+            "min_x": -214598.32,
+            "max_x": -163398.32,
+            "min_y": -236744.695,
+            "max_y": -185544.695,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 84001,
+          "pt": "Vale Vulcan",
+          "en": "Vulcan Valley",
+          "center": {
+            "x": -408710.0,
+            "y": -246190.0,
+            "z": 6000.0
+          },
+          "spawn_count": 11,
+          "spawn_bounds": {
+            "min_x": -423938.0,
+            "max_x": -383597.0,
+            "min_y": -274304.0,
+            "max_y": -222460.0
+          },
+          "crop_bounds": {
+            "min_x": -436738.0,
+            "max_x": -370797.0,
+            "min_y": -287104.0,
+            "max_y": -209660.0,
+            "span_x": 65941.0,
+            "span_y": 77444.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 85001,
+          "pt": "Ermo de Somora",
+          "en": "Somora Wasteland",
+          "center": {
+            "x": -286870.0,
+            "y": -191100.0,
+            "z": 4410.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": -304124.906,
+            "max_x": -280300.0,
+            "min_y": -189716.188,
+            "max_y": -170364.062
+          },
+          "crop_bounds": {
+            "min_x": -317812.453,
+            "max_x": -266612.453,
+            "min_y": -205640.125,
+            "max_y": -154440.125,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 86001,
+          "pt": "Portão de Romulus",
+          "en": "Romulus Gate",
+          "center": {
+            "x": -609570.0,
+            "y": 189782.0,
+            "z": 7273.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -622514.938,
+            "max_x": -587693.375,
+            "min_y": 171770.578,
+            "max_y": 221796.109
+          },
+          "crop_bounds": {
+            "min_x": -635314.938,
+            "max_x": -574893.375,
+            "min_y": 158970.578,
+            "max_y": 234596.109,
+            "span_x": 60421.562,
+            "span_y": 75625.531
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 87001,
+          "pt": "Jardim dos Deuses",
+          "en": "Garden of the Gods",
+          "center": {
+            "x": 92133.0,
+            "y": 53747.004,
+            "z": 8315.75
+          },
+          "spawn_count": 18,
+          "spawn_bounds": {
+            "min_x": 59150.934,
+            "max_x": 104751.609,
+            "min_y": 48811.09,
+            "max_y": 83424.766
+          },
+          "crop_bounds": {
+            "min_x": 46350.934,
+            "max_x": 117551.609,
+            "min_y": 36011.09,
+            "max_y": 96224.766,
+            "span_x": 71200.676,
+            "span_y": 60213.676
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 88001,
+          "pt": "Posto Avançado de Lowed",
+          "en": "Lowed Outpost",
+          "center": {
+            "x": -121800.0,
+            "y": -185150.0,
+            "z": 11290.0
+          },
+          "spawn_count": 6,
+          "spawn_bounds": {
+            "min_x": -135891.828,
+            "max_x": -110612.867,
+            "min_y": -180129.875,
+            "max_y": -174678.812
+          },
+          "crop_bounds": {
+            "min_x": -148852.348,
+            "max_x": -97652.348,
+            "min_y": -203004.344,
+            "max_y": -151804.344,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 125001,
+          "pt": "Fábrica de Munições Blackstone",
+          "en": "Blackstone Munitions Factory",
+          "center": {
+            "x": -721100.0,
+            "y": 38280.0,
+            "z": 11290.0
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": -742709.0,
+            "max_x": -714567.188,
+            "min_y": 28883.283,
+            "max_y": 56711.328
+          },
+          "crop_bounds": {
+            "min_x": -755509.0,
+            "max_x": -701767.188,
+            "min_y": 16083.283,
+            "max_y": 69511.328,
+            "span_x": 53741.812,
+            "span_y": 53428.045
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 126001,
+          "pt": "Ferro-Velho de Seth",
+          "en": "Seth Landfill",
+          "center": {
+            "x": -639068.0,
+            "y": 249604.0,
+            "z": 11290.0
+          },
+          "spawn_count": 13,
+          "spawn_bounds": {
+            "min_x": -661450.0,
+            "max_x": -627900.0,
+            "min_y": 234340.0,
+            "max_y": 256990.0
+          },
+          "crop_bounds": {
+            "min_x": -674250.0,
+            "max_x": -615100.0,
+            "min_y": 220065.0,
+            "max_y": 271265.0,
+            "span_x": 59150.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 128001,
+          "pt": "Ruínas Despedaçadas",
+          "en": "Broken Ruins",
+          "center": {
+            "x": -464780.0,
+            "y": 17790.0,
+            "z": 11290.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -482493.719,
+            "max_x": -445879.0,
+            "min_y": -207.735,
+            "max_y": 31753.463
+          },
+          "crop_bounds": {
+            "min_x": -495293.719,
+            "max_x": -433079.0,
+            "min_y": -13007.735,
+            "max_y": 44553.463,
+            "span_x": 62214.719,
+            "span_y": 57561.198
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 129001,
+          "pt": "Base Horizon",
+          "en": "Horizon Base",
+          "center": {
+            "x": -409333.906,
+            "y": 8199.338,
+            "z": 5047.0
+          },
+          "spawn_count": 13,
+          "spawn_bounds": {
+            "min_x": -407547.031,
+            "max_x": -395477.719,
+            "min_y": -10556.419,
+            "max_y": 41280.242
+          },
+          "crop_bounds": {
+            "min_x": -427112.375,
+            "max_x": -375912.375,
+            "min_y": -23356.419,
+            "max_y": 54080.242,
+            "span_x": 51200.0,
+            "span_y": 77436.661
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 130001,
+          "pt": "Vale dos Gritos",
+          "en": "Screaming Vale",
+          "center": {
+            "x": -407637.0,
+            "y": 56170.0,
+            "z": 5507.0
+          },
+          "spawn_count": 18,
+          "spawn_bounds": {
+            "min_x": -423040.094,
+            "max_x": -401370.094,
+            "min_y": 59587.328,
+            "max_y": 99032.328
+          },
+          "crop_bounds": {
+            "min_x": -437805.094,
+            "max_x": -386605.094,
+            "min_y": 46787.328,
+            "max_y": 111832.328,
+            "span_x": 51200.0,
+            "span_y": 65045.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 132001,
+          "pt": "Base de Pesquisa Severin",
+          "en": "Severin Research Base",
+          "center": {
+            "x": -88340.0,
+            "y": -385930.0,
+            "z": 10660.0
+          },
+          "spawn_count": 14,
+          "spawn_bounds": {
+            "min_x": -104313.672,
+            "max_x": -76363.672,
+            "min_y": -402917.906,
+            "max_y": -371267.906
+          },
+          "crop_bounds": {
+            "min_x": -117113.672,
+            "max_x": -63563.672,
+            "min_y": -415717.906,
+            "max_y": -358467.906,
+            "span_x": 53550.0,
+            "span_y": 57250.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 133001,
+          "pt": "Zona de Quarentena Pumus",
+          "en": "Pumus Quarantine Zone",
+          "center": {
+            "x": -75625.0,
+            "y": -340490.0,
+            "z": 8454.0
+          },
+          "spawn_count": 17,
+          "spawn_bounds": {
+            "min_x": -91430.453,
+            "max_x": -55526.543,
+            "min_y": -359053.188,
+            "max_y": -328596.188
+          },
+          "crop_bounds": {
+            "min_x": -104230.453,
+            "max_x": -42726.543,
+            "min_y": -371853.188,
+            "max_y": -315796.188,
+            "span_x": 61503.91,
+            "span_y": 56057.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 134001,
+          "pt": "Vale Karma",
+          "en": "Karma Valley",
+          "center": {
+            "x": -16830.0,
+            "y": -328970.0,
+            "z": 10660.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -36839.223,
+            "max_x": 2760.776,
+            "min_y": -341679.75,
+            "max_y": -315979.75
+          },
+          "crop_bounds": {
+            "min_x": -49639.223,
+            "max_x": 15560.776,
+            "min_y": -354479.75,
+            "max_y": -303179.75,
+            "span_x": 65199.998,
+            "span_y": 51300.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 135001,
+          "pt": "Campo de Mineração Nable",
+          "en": "Nable Mining Field",
+          "center": {
+            "x": 21875.773,
+            "y": -363621.0,
+            "z": 11290.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": 10642.965,
+            "max_x": 40542.965,
+            "min_y": -382845.406,
+            "max_y": -350500.0
+          },
+          "crop_bounds": {
+            "min_x": -2157.035,
+            "max_x": 53342.965,
+            "min_y": -395645.406,
+            "max_y": -337700.0,
+            "span_x": 55500.0,
+            "span_y": 57945.406
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 136001,
+          "pt": "Floresta de Inewt",
+          "en": "Inewt Forest",
+          "center": {
+            "x": -137113.219,
+            "y": -379119.406,
+            "z": 11076.035
+          },
+          "spawn_count": 20,
+          "spawn_bounds": {
+            "min_x": -159449.203,
+            "max_x": -112899.203,
+            "min_y": -413571.406,
+            "max_y": -369931.406
+          },
+          "crop_bounds": {
+            "min_x": -172249.203,
+            "max_x": -100099.203,
+            "min_y": -426371.406,
+            "max_y": -357131.406,
+            "span_x": 72150.0,
+            "span_y": 69240.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 140001,
+          "pt": "Baía de Ropus",
+          "en": "Ropus Bay",
+          "center": {
+            "x": -115757.906,
+            "y": -442789.188,
+            "z": 8265.136
+          },
+          "spawn_count": 20,
+          "spawn_bounds": {
+            "min_x": -148612.844,
+            "max_x": -105770.336,
+            "min_y": -454763.281,
+            "max_y": -426000.062
+          },
+          "crop_bounds": {
+            "min_x": -161412.844,
+            "max_x": -92970.336,
+            "min_y": -467563.281,
+            "max_y": -413200.062,
+            "span_x": 68442.508,
+            "span_y": 54363.219
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 141001,
+          "pt": "Mina Diamant",
+          "en": "Diamant Mine",
+          "center": {
+            "x": -81060.0,
+            "y": -451741.0,
+            "z": 5480.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -99662.398,
+            "max_x": -68728.109,
+            "min_y": -472646.688,
+            "max_y": -441379.281
+          },
+          "crop_bounds": {
+            "min_x": -112462.398,
+            "max_x": -55928.109,
+            "min_y": -485446.688,
+            "max_y": -428579.281,
+            "span_x": 56534.289,
+            "span_y": 56867.406
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 142001,
+          "pt": "Campo Nevado Stray",
+          "en": "Stray Snowfield",
+          "center": {
+            "x": -118370.0,
+            "y": -490190.0,
+            "z": 5480.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -136650.0,
+            "max_x": -108550.0,
+            "min_y": -505000.0,
+            "max_y": -463200.0
+          },
+          "crop_bounds": {
+            "min_x": -149450.0,
+            "max_x": -95750.0,
+            "min_y": -517800.0,
+            "max_y": -450400.0,
+            "span_x": 53700.0,
+            "span_y": 67400.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 143001,
+          "pt": "Floresta Congelada de Ruvia",
+          "en": "Ruvia Frost Forest",
+          "center": {
+            "x": -66682.0,
+            "y": -534077.0,
+            "z": 6160.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -96300.0,
+            "max_x": -55400.0,
+            "min_y": -544750.0,
+            "max_y": -519850.0
+          },
+          "crop_bounds": {
+            "min_x": -109100.0,
+            "max_x": -42600.0,
+            "min_y": -557900.0,
+            "max_y": -506700.0,
+            "span_x": 66500.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 144001,
+          "pt": "Ruínas de Anteros",
+          "en": "Anteros Ruins",
+          "center": {
+            "x": -28807.0,
+            "y": -540567.0,
+            "z": 5580.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -44675.332,
+            "max_x": -11460.195,
+            "min_y": -547622.375,
+            "max_y": -515783.719
+          },
+          "crop_bounds": {
+            "min_x": -57475.332,
+            "max_x": 1339.805,
+            "min_y": -560422.375,
+            "max_y": -502983.719,
+            "span_x": 58815.137,
+            "span_y": 57438.656
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        }
+      ],
+      "evidence": "official-world-map-tiles"
+    },
+    "103": {
+      "map_index": 103,
+      "category": "novus",
+      "pt": "Novus Mundo 2",
+      "en": "Novus World",
+      "display_pt": "Mundo Novus",
+      "display_en": "Novus World",
+      "fixed_region": null,
+      "asset": "103.webp",
+      "asset_source_map_index": 103,
+      "level_path": "/Game/Streaming/Maps/Novus/World_2/NovusWorld_2.NovusWorld_2",
+      "world_bounds": {
+        "min_x": -288000.0,
+        "max_x": 348000.0,
+        "min_y": -300000.0,
+        "max_y": 258000.0,
+        "span_x": 636000.0,
+        "span_y": 558000.0,
+        "world_per_tile": 25602.013671875,
+        "coordinate_scale": 50.00393295288086
+      },
+      "live_position_transform": null,
+      "regions": [
+        {
+          "region_index": 1101,
+          "pt": "Ermo Credo",
+          "en": "Credo Wasteland",
+          "center": {
+            "x": -219190.0,
+            "y": 174440.0,
+            "z": 9000.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -246670.0,
+            "max_x": -205620.0,
+            "min_y": 146830.0,
+            "max_y": 185030.0
+          },
+          "crop_bounds": {
+            "min_x": -259470.0,
+            "max_x": -192820.0,
+            "min_y": 134030.0,
+            "max_y": 197830.0,
+            "span_x": 66650.0,
+            "span_y": 63800.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 1201,
+          "pt": "Ilha Vulcânica de Chaldea",
+          "en": "Glossa Sunken Lands",
+          "center": {
+            "x": -186600.0,
+            "y": 109500.0,
+            "z": 100.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -209300.0,
+            "max_x": -159750.0,
+            "min_y": 86950.0,
+            "max_y": 125850.0
+          },
+          "crop_bounds": {
+            "min_x": -222100.0,
+            "max_x": -146950.0,
+            "min_y": 74150.0,
+            "max_y": 138650.0,
+            "span_x": 75150.0,
+            "span_y": 64500.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 1301,
+          "pt": "Penhascos de Limen",
+          "en": "Limen Cliffs",
+          "center": {
+            "x": -132200.0,
+            "y": 178040.0,
+            "z": 100.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -149758.016,
+            "max_x": -108644.062,
+            "min_y": 152062.469,
+            "max_y": 206102.172
+          },
+          "crop_bounds": {
+            "min_x": -162558.016,
+            "max_x": -95844.062,
+            "min_y": 139262.469,
+            "max_y": 218902.172,
+            "span_x": 66713.953,
+            "span_y": 79639.703
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 1401,
+          "pt": "Ruínas de Sacer",
+          "en": "Sacer Ruins",
+          "center": {
+            "x": -73470.0,
+            "y": 156340.0,
+            "z": 100.0
+          },
+          "spawn_count": 15,
+          "spawn_bounds": {
+            "min_x": -91596.492,
+            "max_x": -54355.883,
+            "min_y": 132033.109,
+            "max_y": 177657.266
+          },
+          "crop_bounds": {
+            "min_x": -104396.492,
+            "max_x": -41555.883,
+            "min_y": 119233.109,
+            "max_y": 190457.266,
+            "span_x": 62840.609,
+            "span_y": 71224.156
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 1501,
+          "pt": "Cratera Cordis",
+          "en": "Cordis Crater",
+          "center": {
+            "x": -131810.0,
+            "y": 105500.0,
+            "z": 100.0
+          },
+          "spawn_count": 16,
+          "spawn_bounds": {
+            "min_x": -150515.938,
+            "max_x": -110840.906,
+            "min_y": 88837.203,
+            "max_y": 121009.812
+          },
+          "crop_bounds": {
+            "min_x": -163315.938,
+            "max_x": -98040.906,
+            "min_y": 76037.203,
+            "max_y": 133809.812,
+            "span_x": 65275.031,
+            "span_y": 57772.609
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        }
+      ],
+      "evidence": "official-world-map-tiles"
+    },
+    "601": {
+      "map_index": 601,
+      "category": "secret_nemesis_base",
+      "pt": "Base Secreta Nemesis 1º Andar",
+      "en": "Secret Nemesis Base 1F",
+      "display_pt": "Base Secreta Nemesis",
+      "display_en": "Secret Nemesis Base",
+      "fixed_region": {
+        "pt": "1F",
+        "en": "1F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "601.webp",
+      "asset_source_map_index": 601,
+      "level_path": "/Game/Streaming/Maps/Dungeon/NemesisBase/NemesisBase1.NemesisBase1",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 51200.0,
+        "min_y": -25600.0,
+        "max_y": 76800.0,
+        "span_x": 89600.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "602": {
+      "map_index": 602,
+      "category": "secret_nemesis_base",
+      "pt": "Base Secreta Nemesis 2º Andar",
+      "en": "Secret Nemesis Base 2F",
+      "display_pt": "Base Secreta Nemesis",
+      "display_en": "Secret Nemesis Base",
+      "fixed_region": {
+        "pt": "2F",
+        "en": "2F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "602.webp",
+      "asset_source_map_index": 602,
+      "level_path": "/Game/Streaming/Maps/Dungeon/NemesisBase/NemesisBase1.NemesisBase1",
+      "world_bounds": {
+        "min_x": -140800.0,
+        "max_x": -51200.0,
+        "min_y": -76800.0,
+        "max_y": 25600.0,
+        "span_x": 89600.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "605": {
+      "map_index": 605,
+      "category": "secret_nemesis_base",
+      "pt": "Base Secreta Nemesis 3º Andar",
+      "en": "Secret Nemesis Base 3F",
+      "display_pt": "Base Secreta Nemesis",
+      "display_en": "Secret Nemesis Base",
+      "fixed_region": {
+        "pt": "3F",
+        "en": "3F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "605.webp",
+      "asset_source_map_index": 605,
+      "level_path": "/Game/Streaming/Maps/Dungeon/NemesisBase/NemesisBase1.NemesisBase1",
+      "world_bounds": {
+        "min_x": -25600.0,
+        "max_x": 64000.0,
+        "min_y": -115200.0,
+        "max_y": -25600.0,
+        "span_x": 89600.0,
+        "span_y": 89600.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "606": {
+      "map_index": 606,
+      "category": "secret_nemesis_base",
+      "pt": "Base Secreta Nemesis 4F",
+      "en": "Secret Nemesis Base 4F",
+      "display_pt": "Base Secreta Nemesis",
+      "display_en": "Secret Nemesis Base",
+      "fixed_region": {
+        "pt": "4F",
+        "en": "4F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "606.webp",
+      "asset_source_map_index": 606,
+      "level_path": "/Game/Streaming/Maps/Dungeon/NemesisBase/NemesisBase1.NemesisBase1",
+      "world_bounds": {
+        "min_x": 76800.0,
+        "max_x": 192000.0,
+        "min_y": -115200.0,
+        "max_y": -12800.0,
+        "span_x": 115200.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "607": {
+      "map_index": 607,
+      "category": "secret_nemesis_base",
+      "pt": "Base Secreta Nemesis 5F",
+      "en": "Secret Nemesis Base 5F",
+      "display_pt": "Base Secreta Nemesis",
+      "display_en": "Secret Nemesis Base",
+      "fixed_region": {
+        "pt": "5F",
+        "en": "5F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "607.webp",
+      "asset_source_map_index": 607,
+      "level_path": "/Game/Streaming/Maps/Dungeon/NemesisBase/NemesisBase1.NemesisBase1",
+      "world_bounds": {
+        "min_x": 89600.0,
+        "max_x": 192000.0,
+        "min_y": -25600.0,
+        "max_y": 76800.0,
+        "span_x": 102400.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "610": {
+      "map_index": 610,
+      "category": "exclusive_mining_field",
+      "pt": "Campo de Mineração Exclusivo 1F",
+      "en": "Exclusive Mining Field 1F",
+      "display_pt": "Campo de Mineração Exclusivo",
+      "display_en": "Exclusive Mining Field",
+      "fixed_region": {
+        "pt": "1F",
+        "en": "1F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "610.webp",
+      "asset_source_map_index": 610,
+      "level_path": "/Game/Streaming/Maps/Dungeon/ExclusiveStope/ExclusiveStope.ExclusiveStope",
+      "world_bounds": {
+        "min_x": -25600.000109714285,
+        "max_x": 25600.000109714285,
+        "min_y": -25600.000109714285,
+        "max_y": 25600.000109714285,
+        "span_x": 51200.00021942857,
+        "span_y": 51200.00021942857,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "611": {
+      "map_index": 611,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "1F",
+        "en": "1F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "611.webp",
+      "asset_source_map_index": 611,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 76800.00032705306,
+        "min_y": -332800.0014172299,
+        "max_y": -204800.00087214148,
+        "span_x": 153600.00065410612,
+        "span_y": 128000.0005450884,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "612": {
+      "map_index": 612,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "2F",
+        "en": "2F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "612.webp",
+      "asset_source_map_index": 612,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 243200.0010364953,
+        "max_x": 332800.00141836196,
+        "min_y": -38400.000163657154,
+        "max_y": 51200.000218209534,
+        "span_x": 89600.00038186667,
+        "span_y": 89600.00038186669,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "613": {
+      "map_index": 613,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "3F",
+        "en": "3F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "613.webp",
+      "asset_source_map_index": 613,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 89600.0003815619,
+        "min_y": -64000.00027254421,
+        "max_y": 64000.00027254421,
+        "span_x": 166400.00070861494,
+        "span_y": 128000.00054508842,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "614": {
+      "map_index": 614,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "1F",
+        "en": "1F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "614.webp",
+      "asset_source_map_index": 614,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 76800.00032705306,
+        "min_y": -332800.0014172299,
+        "max_y": -204800.00087214148,
+        "span_x": 153600.00065410612,
+        "span_y": 128000.0005450884,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "615": {
+      "map_index": 615,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "2F",
+        "en": "2F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "615.webp",
+      "asset_source_map_index": 615,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 243200.0010364953,
+        "max_x": 332800.00141836196,
+        "min_y": -38400.000163657154,
+        "max_y": 51200.000218209534,
+        "span_x": 89600.00038186667,
+        "span_y": 89600.00038186669,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "616": {
+      "map_index": 616,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "3F",
+        "en": "3F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "616.webp",
+      "asset_source_map_index": 616,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 89600.0003815619,
+        "min_y": -64000.00027254421,
+        "max_y": 64000.00027254421,
+        "span_x": 166400.00070861494,
+        "span_y": 128000.00054508842,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "617": {
+      "map_index": 617,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "1F",
+        "en": "1F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "617.webp",
+      "asset_source_map_index": 617,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 76800.00032705306,
+        "min_y": -332800.0014172299,
+        "max_y": -204800.00087214148,
+        "span_x": 153600.00065410612,
+        "span_y": 128000.0005450884,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "618": {
+      "map_index": 618,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "2F",
+        "en": "2F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "618.webp",
+      "asset_source_map_index": 618,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 243200.0010364953,
+        "max_x": 332800.00141836196,
+        "min_y": -38400.000163657154,
+        "max_y": 51200.000218209534,
+        "span_x": 89600.00038186667,
+        "span_y": 89600.00038186669,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "619": {
+      "map_index": 619,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "3F",
+        "en": "3F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "619.webp",
+      "asset_source_map_index": 619,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 89600.0003815619,
+        "min_y": -64000.00027254421,
+        "max_y": 64000.00027254421,
+        "span_x": 166400.00070861494,
+        "span_y": 128000.00054508842,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "620": {
+      "map_index": 620,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "4F",
+        "en": "4F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "620.webp",
+      "asset_source_map_index": 620,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 217600.0,
+        "max_x": 345600.0,
+        "min_y": -320000.0,
+        "max_y": -192000.0,
+        "span_x": 128000.0,
+        "span_y": 128000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "621": {
+      "map_index": 621,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "4F",
+        "en": "4F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "621.webp",
+      "asset_source_map_index": 621,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 217600.0,
+        "max_x": 345600.0,
+        "min_y": -320000.0,
+        "max_y": -192000.0,
+        "span_x": 128000.0,
+        "span_y": 128000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "622": {
+      "map_index": 622,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "4F",
+        "en": "4F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "622.webp",
+      "asset_source_map_index": 622,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 217600.0,
+        "max_x": 345600.0,
+        "min_y": -320000.0,
+        "max_y": -192000.0,
+        "span_x": 128000.0,
+        "span_y": 128000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "623": {
+      "map_index": 623,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "1F",
+        "en": "1F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "623.webp",
+      "asset_source_map_index": 623,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 76800.00032705306,
+        "min_y": -332800.0014172299,
+        "max_y": -204800.00087214148,
+        "span_x": 153600.00065410612,
+        "span_y": 128000.0005450884,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "624": {
+      "map_index": 624,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "2F",
+        "en": "2F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "624.webp",
+      "asset_source_map_index": 624,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 243200.0010364953,
+        "max_x": 332800.00141836196,
+        "min_y": -38400.000163657154,
+        "max_y": 51200.000218209534,
+        "span_x": 89600.00038186667,
+        "span_y": 89600.00038186669,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "625": {
+      "map_index": 625,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "3F",
+        "en": "3F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "625.webp",
+      "asset_source_map_index": 625,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": -76800.00032705306,
+        "max_x": 89600.0003815619,
+        "min_y": -64000.00027254421,
+        "max_y": 64000.00027254421,
+        "span_x": 166400.00070861494,
+        "span_y": 128000.00054508842,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "626": {
+      "map_index": 626,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "4F",
+        "en": "4F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "626.webp",
+      "asset_source_map_index": 626,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope.PublicStope",
+      "world_bounds": {
+        "min_x": 217600.0,
+        "max_x": 345600.0,
+        "min_y": -320000.0,
+        "max_y": -192000.0,
+        "span_x": 128000.0,
+        "span_y": 128000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "630": {
+      "map_index": 630,
+      "category": "exclusive_mining_field",
+      "pt": "Campo de Mineração Exclusivo 2F",
+      "en": "Exclusive Mining Field 2F",
+      "display_pt": "Campo de Mineração Exclusivo",
+      "display_en": "Exclusive Mining Field",
+      "fixed_region": {
+        "pt": "2F",
+        "en": "2F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "630.webp",
+      "asset_source_map_index": 630,
+      "level_path": "/Game/Streaming/Maps/Dungeon/ExclusiveStope/ExclusiveStope.ExclusiveStope",
+      "world_bounds": {
+        "min_x": -25600.0,
+        "max_x": 25600.0,
+        "min_y": -25600.0,
+        "max_y": 25600.0,
+        "span_x": 51200.0,
+        "span_y": 51200.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "635": {
+      "map_index": 635,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 5F",
+      "en": "Android Junkyard 5F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "5F",
+        "en": "5F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "635.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "636": {
+      "map_index": 636,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 6F",
+      "en": "Android Junkyard 6F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "6F",
+        "en": "6F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "636.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "637": {
+      "map_index": 637,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 7F",
+      "en": "Android Junkyard 7F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "7F",
+        "en": "7F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "637.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "638": {
+      "map_index": 638,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 8F",
+      "en": "Android Junkyard 8F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "8F",
+        "en": "8F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "638.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "639": {
+      "map_index": 639,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 9F",
+      "en": "Android Junkyard 9F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "9F",
+        "en": "9F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "639.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "640": {
+      "map_index": 640,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 10F",
+      "en": "Android Junkyard 10F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "10F",
+        "en": "10F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "640.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "642": {
+      "map_index": 642,
+      "category": "orbital",
+      "pt": "Elevador Orbital Crag",
+      "en": "Crag Orbital Lift",
+      "display_pt": "Elevador Orbital Crag",
+      "display_en": "Crag Orbital Lift",
+      "fixed_region": null,
+      "asset": "642.webp",
+      "asset_source_map_index": 642,
+      "level_path": "/Game/Streaming/Maps/Dungeon/OrbitEL/OrbitEL.OrbitEL",
+      "world_bounds": {
+        "min_x": -89600.0,
+        "max_x": 89600.0,
+        "min_y": -83200.0,
+        "max_y": 96000.0,
+        "span_x": 179200.0,
+        "span_y": 179200.0,
+        "world_per_tile": 6400.0,
+        "coordinate_scale": 25.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "643": {
+      "map_index": 643,
+      "category": "orbital",
+      "pt": "Base de Lançamento em Órbita Alta",
+      "en": "High-Orbit Launch Base",
+      "display_pt": "Base de Lançamento em Órbita Alta",
+      "display_en": "High-Orbit Launch Base",
+      "fixed_region": null,
+      "asset": "643.webp",
+      "asset_source_map_index": 643,
+      "level_path": "/Game/Streaming/Maps/Dungeon/OrbitEL_2F/OrbitEL_2F.OrbitEL_2F",
+      "world_bounds": {
+        "min_x": -96000.0,
+        "max_x": 96000.0,
+        "min_y": -96000.0,
+        "max_y": 96000.0,
+        "span_x": 192000.0,
+        "span_y": 192000.0,
+        "world_per_tile": 6400.0,
+        "coordinate_scale": 25.0
+      },
+      "live_position_transform": {
+        "scale_x": 25.0,
+        "scale_y": 25.0,
+        "offset_x": 11397.281,
+        "offset_y": -21539.558,
+        "evidence": "live-npc-to-static-spawn-2026-08-18-52-samples"
+      },
+      "regions": [
+        {
+          "region_index": 577001,
+          "pt": "Plataforma de Atracação A-00",
+          "en": "Landing Dock A-00",
+          "center": {
+            "x": -28512.629,
+            "y": 15966.41,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -31291.463,
+            "max_x": -25657.861,
+            "min_y": 13176.044,
+            "max_y": 20815.732
+          },
+          "crop_bounds": {
+            "min_x": -54074.662,
+            "max_x": -2874.662,
+            "min_y": -8604.112,
+            "max_y": 42595.888,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 578001,
+          "pt": "Plataforma de Atracação B-00",
+          "en": "Landing Dock B-00",
+          "center": {
+            "x": 31957.703,
+            "y": 16626.795,
+            "z": 3095.024
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 34414.133,
+            "max_x": 38137.648,
+            "min_y": 15483.823,
+            "max_y": 16723.822
+          },
+          "crop_bounds": {
+            "min_x": 10675.891,
+            "max_x": 61875.891,
+            "min_y": -9496.177,
+            "max_y": 41703.823,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 579001,
+          "pt": "Plataforma de Atracação C-00",
+          "en": "Landing Dock C-00",
+          "center": {
+            "x": -999.817,
+            "y": -31876.18,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -844.514,
+            "max_x": 1517.667,
+            "min_y": -40412.352,
+            "max_y": -32516.688
+          },
+          "crop_bounds": {
+            "min_x": -25263.423,
+            "max_x": 25936.577,
+            "min_y": -62064.52,
+            "max_y": -10864.52,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 580001,
+          "pt": "Campo de Batalha dos Gigantes",
+          "en": "Battlefield of Giants",
+          "center": {
+            "x": -26700.0,
+            "y": -250.0,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -30288.27,
+            "max_x": -25908.195,
+            "min_y": -3089.31,
+            "max_y": 2711.775
+          },
+          "crop_bounds": {
+            "min_x": -53698.232,
+            "max_x": -2498.232,
+            "min_y": -25788.768,
+            "max_y": 25411.232,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 581001,
+          "pt": "Doca A-01",
+          "en": "Dock A-01",
+          "center": {
+            "x": -42350.0,
+            "y": 1750.0,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -44808.27,
+            "max_x": -41608.27,
+            "min_y": -3288.225,
+            "max_y": -114.977
+          },
+          "crop_bounds": {
+            "min_x": -68808.27,
+            "max_x": -17608.27,
+            "min_y": -27301.601,
+            "max_y": 23898.399,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 582001,
+          "pt": "Doca C-01",
+          "en": "Dock C-01",
+          "center": {
+            "x": -39573.359,
+            "y": -24173.896,
+            "z": 0.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": -57278.711,
+            "max_x": -36416.742,
+            "min_y": -45927.922,
+            "max_y": -15237.26
+          },
+          "crop_bounds": {
+            "min_x": -72447.727,
+            "max_x": -21247.727,
+            "min_y": -58727.922,
+            "max_y": -2437.26,
+            "span_x": 51200.0,
+            "span_y": 56290.662
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 583001,
+          "pt": "Doca C-11",
+          "en": "Dock C-11",
+          "center": {
+            "x": -48642.082,
+            "y": -23666.295,
+            "z": 0.0
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": -47214.133,
+            "max_x": -41696.012,
+            "min_y": -34142.934,
+            "max_y": -22988.646
+          },
+          "crop_bounds": {
+            "min_x": -70055.072,
+            "max_x": -18855.072,
+            "min_y": -54165.79,
+            "max_y": -2965.79,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 584001,
+          "pt": "Doca B-01",
+          "en": "Dock B-01",
+          "center": {
+            "x": -18042.443,
+            "y": -18354.295,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -23280.027,
+            "max_x": -14811.662,
+            "min_y": -23722.633,
+            "max_y": -14942.274
+          },
+          "crop_bounds": {
+            "min_x": -44645.845,
+            "max_x": 6554.155,
+            "min_y": -44932.454,
+            "max_y": 6267.546,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 585001,
+          "pt": "Doca A-02",
+          "en": "Dock A-02",
+          "center": {
+            "x": -22368.969,
+            "y": -37561.738,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -21407.262,
+            "max_x": -20521.848,
+            "min_y": -40292.598,
+            "max_y": -33167.711
+          },
+          "crop_bounds": {
+            "min_x": -46564.555,
+            "max_x": 4635.445,
+            "min_y": -62330.154,
+            "max_y": -11130.154,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 586001,
+          "pt": "Terreno de Caça do Piromaníaco",
+          "en": "Pyromaniac's Hunting Ground",
+          "center": {
+            "x": 13981.031,
+            "y": -24561.74,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 10057.935,
+            "max_x": 13487.967,
+            "min_y": -27779.443,
+            "max_y": -22712.701
+          },
+          "crop_bounds": {
+            "min_x": -13827.049,
+            "max_x": 37372.951,
+            "min_y": -50846.072,
+            "max_y": 353.928,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 587001,
+          "pt": "Doca A-03",
+          "en": "Dock A-03",
+          "center": {
+            "x": 20781.031,
+            "y": -36611.738,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 16473.131,
+            "max_x": 17717.209,
+            "min_y": -37357.691,
+            "max_y": -33204.633
+          },
+          "crop_bounds": {
+            "min_x": -8504.83,
+            "max_x": 42695.17,
+            "min_y": -60881.162,
+            "max_y": -9681.162,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 588001,
+          "pt": "Doca C-02",
+          "en": "Dock C-02",
+          "center": {
+            "x": 41185.043,
+            "y": -23722.094,
+            "z": 0.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": 35109.867,
+            "max_x": 58875.746,
+            "min_y": -43247.625,
+            "max_y": -12077.623
+          },
+          "crop_bounds": {
+            "min_x": 21392.807,
+            "max_x": 72592.807,
+            "min_y": -56047.625,
+            "max_y": 722.377,
+            "span_x": 51200.0,
+            "span_y": 56770.002
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 589001,
+          "pt": "Doca C-12",
+          "en": "Dock C-12",
+          "center": {
+            "x": 42382.434,
+            "y": -31732.562,
+            "z": 3848.256
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": 43673.695,
+            "max_x": 49978.582,
+            "min_y": -34235.805,
+            "max_y": -26068.652
+          },
+          "crop_bounds": {
+            "min_x": 21226.139,
+            "max_x": 72426.139,
+            "min_y": -55752.229,
+            "max_y": -4552.229,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 590001,
+          "pt": "Doca B-02",
+          "en": "Dock B-02",
+          "center": {
+            "x": 23697.723,
+            "y": -7808.259,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 19844.445,
+            "max_x": 23264.594,
+            "min_y": -16463.051,
+            "max_y": -12701.925
+          },
+          "crop_bounds": {
+            "min_x": -4045.48,
+            "max_x": 47154.52,
+            "min_y": -40182.488,
+            "max_y": 11017.512,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 591001,
+          "pt": "Doca A-04",
+          "en": "Dock A-04",
+          "center": {
+            "x": 41781.031,
+            "y": 988.26,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 39992.98,
+            "max_x": 41342.98,
+            "min_y": -2610.004,
+            "max_y": -1840.295
+          },
+          "crop_bounds": {
+            "min_x": 15067.98,
+            "max_x": 66267.98,
+            "min_y": -27825.15,
+            "max_y": 23374.85,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 592001,
+          "pt": "Doca A-05",
+          "en": "Dock A-05",
+          "center": {
+            "x": 20850.965,
+            "y": 34972.645,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 16499.289,
+            "max_x": 21356.779,
+            "min_y": 32362.436,
+            "max_y": 34633.031
+          },
+          "crop_bounds": {
+            "min_x": -6671.966,
+            "max_x": 44528.034,
+            "min_y": 7897.733,
+            "max_y": 59097.733,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 593001,
+          "pt": "Traços do Pulverizador",
+          "en": "Pulverizer's Traces",
+          "center": {
+            "x": 14140.264,
+            "y": 23863.354,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 14632.215,
+            "max_x": 16618.059,
+            "min_y": 19656.967,
+            "max_y": 22434.732
+          },
+          "crop_bounds": {
+            "min_x": -9974.863,
+            "max_x": 41225.137,
+            "min_y": -4554.15,
+            "max_y": 46645.85,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 594001,
+          "pt": "Doca C-03",
+          "en": "Dock C-03",
+          "center": {
+            "x": -2222.967,
+            "y": 44878.59,
+            "z": 0.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": -18139.084,
+            "max_x": 12190.916,
+            "min_y": 42410.68,
+            "max_y": 58750.68
+          },
+          "crop_bounds": {
+            "min_x": -30939.084,
+            "max_x": 24990.916,
+            "min_y": 24980.68,
+            "max_y": 76180.68,
+            "span_x": 55930.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 595001,
+          "pt": "Doca C-13",
+          "en": "Dock C-13",
+          "center": {
+            "x": 3553.033,
+            "y": 53035.59,
+            "z": 0.0
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": -8512.567,
+            "max_x": 4390.575,
+            "min_y": 52126.426,
+            "max_y": 54983.102
+          },
+          "crop_bounds": {
+            "min_x": -27660.996,
+            "max_x": 23539.004,
+            "min_y": 27954.764,
+            "max_y": 79154.764,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 596001,
+          "pt": "Doca B-03",
+          "en": "Dock B-03",
+          "center": {
+            "x": -5443.045,
+            "y": 25256.715,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -8181.836,
+            "max_x": -2681.836,
+            "min_y": 22436.502,
+            "max_y": 28136.502
+          },
+          "crop_bounds": {
+            "min_x": -31031.836,
+            "max_x": 20168.164,
+            "min_y": -313.498,
+            "max_y": 50886.502,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 597001,
+          "pt": "Doca A-06",
+          "en": "Dock A-06",
+          "center": {
+            "x": -23010.379,
+            "y": 35024.605,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -25140.131,
+            "max_x": -24540.131,
+            "min_y": 34164.285,
+            "max_y": 35464.285
+          },
+          "crop_bounds": {
+            "min_x": -50440.131,
+            "max_x": 759.869,
+            "min_y": 9214.285,
+            "max_y": 60414.285,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 598001,
+          "pt": "Torre Central",
+          "en": "Central Tower",
+          "center": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": -9556.807,
+            "max_x": 1192.853,
+            "min_y": -3640.898,
+            "max_y": 6841.594
+          },
+          "crop_bounds": {
+            "min_x": -29781.977,
+            "max_x": 21418.023,
+            "min_y": -23999.652,
+            "max_y": 27200.348,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        }
+      ],
+      "evidence": "official-world-map-tiles"
+    },
+    "644": {
+      "map_index": 644,
+      "category": "orbital",
+      "pt": "Base de Lançamento em Órbita Alta",
+      "en": "High-Orbit Launch Base",
+      "display_pt": "Base de Lançamento em Órbita Alta",
+      "display_en": "High-Orbit Launch Base",
+      "fixed_region": null,
+      "asset": "644.webp",
+      "asset_source_map_index": 644,
+      "level_path": "/Game/Streaming/Maps/Dungeon/OrbitEL_2F/OrbitEL_2F.OrbitEL_2F",
+      "world_bounds": {
+        "min_x": -96000.0,
+        "max_x": 96000.0,
+        "min_y": -96000.0,
+        "max_y": 96000.0,
+        "span_x": 192000.0,
+        "span_y": 192000.0,
+        "world_per_tile": 6400.0,
+        "coordinate_scale": 25.0
+      },
+      "live_position_transform": {
+        "scale_x": 25.0,
+        "scale_y": 25.0,
+        "offset_x": 11397.281,
+        "offset_y": -21539.558,
+        "evidence": "shared-level-layout-map-643-live-calibration"
+      },
+      "regions": [
+        {
+          "region_index": 577001,
+          "pt": "Plataforma de Atracação A-00",
+          "en": "Landing Dock A-00",
+          "center": {
+            "x": -28512.629,
+            "y": 15966.41,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -31291.463,
+            "max_x": -25657.861,
+            "min_y": 13176.044,
+            "max_y": 20815.732
+          },
+          "crop_bounds": {
+            "min_x": -54074.662,
+            "max_x": -2874.662,
+            "min_y": -8604.112,
+            "max_y": 42595.888,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 578001,
+          "pt": "Plataforma de Atracação B-00",
+          "en": "Landing Dock B-00",
+          "center": {
+            "x": 31957.703,
+            "y": 16626.795,
+            "z": 3095.024
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 34414.133,
+            "max_x": 38137.648,
+            "min_y": 15483.823,
+            "max_y": 16723.822
+          },
+          "crop_bounds": {
+            "min_x": 10675.891,
+            "max_x": 61875.891,
+            "min_y": -9496.177,
+            "max_y": 41703.823,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 579001,
+          "pt": "Plataforma de Atracação C-00",
+          "en": "Landing Dock C-00",
+          "center": {
+            "x": -999.817,
+            "y": -31876.18,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -844.514,
+            "max_x": 1517.667,
+            "min_y": -40412.352,
+            "max_y": -32516.688
+          },
+          "crop_bounds": {
+            "min_x": -25263.423,
+            "max_x": 25936.577,
+            "min_y": -62064.52,
+            "max_y": -10864.52,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 580001,
+          "pt": "Campo de Batalha dos Gigantes",
+          "en": "Battlefield of Giants",
+          "center": {
+            "x": -26700.0,
+            "y": -250.0,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -30288.27,
+            "max_x": -25908.195,
+            "min_y": -3089.31,
+            "max_y": 2711.775
+          },
+          "crop_bounds": {
+            "min_x": -53698.232,
+            "max_x": -2498.232,
+            "min_y": -25788.768,
+            "max_y": 25411.232,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 581001,
+          "pt": "Doca A-01",
+          "en": "Dock A-01",
+          "center": {
+            "x": -42350.0,
+            "y": 1750.0,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -44808.27,
+            "max_x": -41608.27,
+            "min_y": -3288.225,
+            "max_y": -114.977
+          },
+          "crop_bounds": {
+            "min_x": -68808.27,
+            "max_x": -17608.27,
+            "min_y": -27301.601,
+            "max_y": 23898.399,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 582001,
+          "pt": "Doca C-01",
+          "en": "Dock C-01",
+          "center": {
+            "x": -39573.359,
+            "y": -24173.896,
+            "z": 0.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": -57278.711,
+            "max_x": -36416.742,
+            "min_y": -45927.922,
+            "max_y": -15237.26
+          },
+          "crop_bounds": {
+            "min_x": -72447.727,
+            "max_x": -21247.727,
+            "min_y": -58727.922,
+            "max_y": -2437.26,
+            "span_x": 51200.0,
+            "span_y": 56290.662
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 583001,
+          "pt": "Doca C-11",
+          "en": "Dock C-11",
+          "center": {
+            "x": -48642.082,
+            "y": -23666.295,
+            "z": 0.0
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": -47214.133,
+            "max_x": -41696.012,
+            "min_y": -34142.934,
+            "max_y": -22988.646
+          },
+          "crop_bounds": {
+            "min_x": -70055.072,
+            "max_x": -18855.072,
+            "min_y": -54165.79,
+            "max_y": -2965.79,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 584001,
+          "pt": "Doca B-01",
+          "en": "Dock B-01",
+          "center": {
+            "x": -18042.443,
+            "y": -18354.295,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -23280.027,
+            "max_x": -14811.662,
+            "min_y": -23722.633,
+            "max_y": -14942.274
+          },
+          "crop_bounds": {
+            "min_x": -44645.845,
+            "max_x": 6554.155,
+            "min_y": -44932.454,
+            "max_y": 6267.546,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 585001,
+          "pt": "Doca A-02",
+          "en": "Dock A-02",
+          "center": {
+            "x": -22368.969,
+            "y": -37561.738,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -21407.262,
+            "max_x": -20521.848,
+            "min_y": -40292.598,
+            "max_y": -33167.711
+          },
+          "crop_bounds": {
+            "min_x": -46564.555,
+            "max_x": 4635.445,
+            "min_y": -62330.154,
+            "max_y": -11130.154,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 586001,
+          "pt": "Terreno de Caça do Piromaníaco",
+          "en": "Pyromaniac's Hunting Ground",
+          "center": {
+            "x": 13981.031,
+            "y": -24561.74,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 10057.935,
+            "max_x": 13487.967,
+            "min_y": -27779.443,
+            "max_y": -22712.701
+          },
+          "crop_bounds": {
+            "min_x": -13827.049,
+            "max_x": 37372.951,
+            "min_y": -50846.072,
+            "max_y": 353.928,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 587001,
+          "pt": "Doca A-03",
+          "en": "Dock A-03",
+          "center": {
+            "x": 20781.031,
+            "y": -36611.738,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 16473.131,
+            "max_x": 17717.209,
+            "min_y": -37357.691,
+            "max_y": -33204.633
+          },
+          "crop_bounds": {
+            "min_x": -8504.83,
+            "max_x": 42695.17,
+            "min_y": -60881.162,
+            "max_y": -9681.162,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 588001,
+          "pt": "Doca C-02",
+          "en": "Dock C-02",
+          "center": {
+            "x": 41185.043,
+            "y": -23722.094,
+            "z": 0.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": 35109.867,
+            "max_x": 58875.746,
+            "min_y": -43247.625,
+            "max_y": -12077.623
+          },
+          "crop_bounds": {
+            "min_x": 21392.807,
+            "max_x": 72592.807,
+            "min_y": -56047.625,
+            "max_y": 722.377,
+            "span_x": 51200.0,
+            "span_y": 56770.002
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 589001,
+          "pt": "Doca C-12",
+          "en": "Dock C-12",
+          "center": {
+            "x": 42382.434,
+            "y": -31732.562,
+            "z": 3848.256
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": 43673.695,
+            "max_x": 49978.582,
+            "min_y": -34235.805,
+            "max_y": -26068.652
+          },
+          "crop_bounds": {
+            "min_x": 21226.139,
+            "max_x": 72426.139,
+            "min_y": -55752.229,
+            "max_y": -4552.229,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 590001,
+          "pt": "Doca B-02",
+          "en": "Dock B-02",
+          "center": {
+            "x": 23697.723,
+            "y": -7808.259,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 19844.445,
+            "max_x": 23264.594,
+            "min_y": -16463.051,
+            "max_y": -12701.925
+          },
+          "crop_bounds": {
+            "min_x": -4045.48,
+            "max_x": 47154.52,
+            "min_y": -40182.488,
+            "max_y": 11017.512,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 591001,
+          "pt": "Doca A-04",
+          "en": "Dock A-04",
+          "center": {
+            "x": 41781.031,
+            "y": 988.26,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 39992.98,
+            "max_x": 41342.98,
+            "min_y": -2610.004,
+            "max_y": -1840.295
+          },
+          "crop_bounds": {
+            "min_x": 15067.98,
+            "max_x": 66267.98,
+            "min_y": -27825.15,
+            "max_y": 23374.85,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 592001,
+          "pt": "Doca A-05",
+          "en": "Dock A-05",
+          "center": {
+            "x": 20850.965,
+            "y": 34972.645,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 16499.289,
+            "max_x": 21356.779,
+            "min_y": 32362.436,
+            "max_y": 34633.031
+          },
+          "crop_bounds": {
+            "min_x": -6671.966,
+            "max_x": 44528.034,
+            "min_y": 7897.733,
+            "max_y": 59097.733,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 593001,
+          "pt": "Traços do Pulverizador",
+          "en": "Pulverizer's Traces",
+          "center": {
+            "x": 14140.264,
+            "y": 23863.354,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": 14632.215,
+            "max_x": 16618.059,
+            "min_y": 19656.967,
+            "max_y": 22434.732
+          },
+          "crop_bounds": {
+            "min_x": -9974.863,
+            "max_x": 41225.137,
+            "min_y": -4554.15,
+            "max_y": 46645.85,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 594001,
+          "pt": "Doca C-03",
+          "en": "Dock C-03",
+          "center": {
+            "x": -2222.967,
+            "y": 44878.59,
+            "z": 0.0
+          },
+          "spawn_count": 9,
+          "spawn_bounds": {
+            "min_x": -18139.084,
+            "max_x": 12190.916,
+            "min_y": 42410.68,
+            "max_y": 58750.68
+          },
+          "crop_bounds": {
+            "min_x": -30939.084,
+            "max_x": 24990.916,
+            "min_y": 24980.68,
+            "max_y": 76180.68,
+            "span_x": 55930.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 595001,
+          "pt": "Doca C-13",
+          "en": "Dock C-13",
+          "center": {
+            "x": 3553.033,
+            "y": 53035.59,
+            "z": 0.0
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": -8512.567,
+            "max_x": 4390.575,
+            "min_y": 52126.426,
+            "max_y": 54983.102
+          },
+          "crop_bounds": {
+            "min_x": -27660.996,
+            "max_x": 23539.004,
+            "min_y": 27954.764,
+            "max_y": 79154.764,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 596001,
+          "pt": "Doca B-03",
+          "en": "Dock B-03",
+          "center": {
+            "x": -5443.045,
+            "y": 25256.715,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -8181.836,
+            "max_x": -2681.836,
+            "min_y": 22436.502,
+            "max_y": 28136.502
+          },
+          "crop_bounds": {
+            "min_x": -31031.836,
+            "max_x": 20168.164,
+            "min_y": -313.498,
+            "max_y": 50886.502,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 597001,
+          "pt": "Doca A-06",
+          "en": "Dock A-06",
+          "center": {
+            "x": -23010.379,
+            "y": 35024.605,
+            "z": 0.0
+          },
+          "spawn_count": 4,
+          "spawn_bounds": {
+            "min_x": -25140.131,
+            "max_x": -24540.131,
+            "min_y": 34164.285,
+            "max_y": 35464.285
+          },
+          "crop_bounds": {
+            "min_x": -50440.131,
+            "max_x": 759.869,
+            "min_y": 9214.285,
+            "max_y": 60414.285,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        },
+        {
+          "region_index": 598001,
+          "pt": "Torre Central",
+          "en": "Central Tower",
+          "center": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "spawn_count": 5,
+          "spawn_bounds": {
+            "min_x": -9556.807,
+            "max_x": 1192.853,
+            "min_y": -3640.898,
+            "max_y": 6841.594
+          },
+          "crop_bounds": {
+            "min_x": -29781.977,
+            "max_x": 21418.023,
+            "min_y": -23999.652,
+            "max_y": 27200.348,
+            "span_x": 51200.0,
+            "span_y": 51200.0
+          },
+          "evidence": "official-region-center-and-static-spawns"
+        }
+      ],
+      "evidence": "official-world-map-tiles"
+    },
+    "751": {
+      "map_index": 751,
+      "category": "albern_crater",
+      "pt": "Área 1 da Cratera Albern",
+      "en": "Albern Crater Area 1",
+      "display_pt": "Área 1 da Cratera Albern",
+      "display_en": "Albern Crater Area 1",
+      "fixed_region": null,
+      "asset": "751.webp",
+      "asset_source_map_index": 751,
+      "level_path": "/Game/Streaming/Maps/Dungeon/ExoPlanet_Dungeon/ExoPlanet_Dungeon_Sector_01.ExoPlanet_Dungeon_Sector_01",
+      "world_bounds": {
+        "min_x": -96057.17729993568,
+        "max_x": 96057.17729993568,
+        "min_y": -96057.17729993568,
+        "max_y": 96057.17729993568,
+        "span_x": 192114.35459987135,
+        "span_y": 192114.35459987135,
+        "world_per_tile": 32019.05859375,
+        "coordinate_scale": 125.07444763183594
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "752": {
+      "map_index": 752,
+      "category": "albern_crater",
+      "pt": "Área 2 da Cratera Albern",
+      "en": "Albern Crater Area 2",
+      "display_pt": "Área 2 da Cratera Albern",
+      "display_en": "Albern Crater Area 2",
+      "fixed_region": null,
+      "asset": "752.webp",
+      "asset_source_map_index": 752,
+      "level_path": "/Game/Streaming/Maps/Dungeon/ExoPlanet_Dungeon/ExoPlanet_Dungeon_Sector_02.ExoPlanet_Dungeon_Sector_02",
+      "world_bounds": {
+        "min_x": -89600.0,
+        "max_x": 89600.0,
+        "min_y": -89600.0,
+        "max_y": 89600.0,
+        "span_x": 179200.0,
+        "span_y": 179200.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "754": {
+      "map_index": 754,
+      "category": "albern_crater",
+      "pt": "Área 1 da Cratera Albern",
+      "en": "Albern Crater Area 1",
+      "display_pt": "Área 1 da Cratera Albern",
+      "display_en": "Albern Crater Area 1",
+      "fixed_region": null,
+      "asset": "754.webp",
+      "asset_source_map_index": 754,
+      "level_path": "/Game/Streaming/Maps/Dungeon/ExoPlanet_Dungeon/ExoPlanet_Dungeon_Sector_01.ExoPlanet_Dungeon_Sector_01",
+      "world_bounds": {
+        "min_x": -96057.17729993568,
+        "max_x": 96057.17729993568,
+        "min_y": -96057.17729993568,
+        "max_y": 96057.17729993568,
+        "span_x": 192114.35459987135,
+        "span_y": 192114.35459987135,
+        "world_per_tile": 32019.05859375,
+        "coordinate_scale": 125.07444763183594
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "755": {
+      "map_index": 755,
+      "category": "albern_crater",
+      "pt": "Área 2 da Cratera Albern",
+      "en": "Albern Crater Area 2",
+      "display_pt": "Área 2 da Cratera Albern",
+      "display_en": "Albern Crater Area 2",
+      "fixed_region": null,
+      "asset": "755.webp",
+      "asset_source_map_index": 755,
+      "level_path": "/Game/Streaming/Maps/Dungeon/ExoPlanet_Dungeon/ExoPlanet_Dungeon_Sector_02.ExoPlanet_Dungeon_Sector_02",
+      "world_bounds": {
+        "min_x": -89600.0,
+        "max_x": 89600.0,
+        "min_y": -89600.0,
+        "max_y": 89600.0,
+        "span_x": 179200.0,
+        "span_y": 179200.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "4211": {
+      "map_index": 4211,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 11F",
+      "en": "Android Junkyard 11F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "11F",
+        "en": "11F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4211.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "4212": {
+      "map_index": 4212,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 12F",
+      "en": "Android Junkyard 12F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "12F",
+        "en": "12F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4212.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "4213": {
+      "map_index": 4213,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 13F",
+      "en": "Android Junkyard 13F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "13F",
+        "en": "13F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4213.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "4214": {
+      "map_index": 4214,
+      "category": "android_junkyard",
+      "pt": "Ferro-Velho de Androides 14F",
+      "en": "Android Junkyard 14F",
+      "display_pt": "Ferro-Velho de Androides",
+      "display_en": "Android Junkyard",
+      "fixed_region": {
+        "pt": "14F",
+        "en": "14F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4214.webp",
+      "asset_source_map_index": 631,
+      "level_path": "/Game/Streaming/Maps/Dungeon/LostSupply/LostSupply_WP.LostSupply_WP",
+      "world_bounds": {
+        "min_x": -38400.0,
+        "max_x": 38400.0,
+        "min_y": -38400.0,
+        "max_y": 25600.0,
+        "span_x": 76800.0,
+        "span_y": 64000.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "4504": {
+      "map_index": 4504,
+      "category": "orbital",
+      "pt": "Instalação de Defesa Orbital",
+      "en": "Orbital Defense Facility",
+      "display_pt": "Instalação de Defesa Orbital",
+      "display_en": "Orbital Defense Facility",
+      "fixed_region": null,
+      "asset": "4504.webp",
+      "asset_source_map_index": 4504,
+      "level_path": "/Game/Streaming/Maps/Dungeon/Conflict_Area/Conflict_Area_1.Conflict_Area_1",
+      "world_bounds": {
+        "min_x": -102400.0,
+        "max_x": 102400.0,
+        "min_y": -102400.0,
+        "max_y": 102400.0,
+        "span_x": 204800.0,
+        "span_y": 204800.0,
+        "world_per_tile": 6400.0,
+        "coordinate_scale": 25.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "4554": {
+      "map_index": 4554,
+      "category": "orbital",
+      "pt": "Instalação de Defesa Orbital",
+      "en": "Orbital Defense Facility",
+      "display_pt": "Instalação de Defesa Orbital",
+      "display_en": "Orbital Defense Facility",
+      "fixed_region": null,
+      "asset": "4554.webp",
+      "asset_source_map_index": 4554,
+      "level_path": "/Game/Streaming/Maps/Dungeon/Conflict_Area/Conflict_Area_1.Conflict_Area_1",
+      "world_bounds": {
+        "min_x": -102400.0,
+        "max_x": 102400.0,
+        "min_y": -102400.0,
+        "max_y": 102400.0,
+        "span_x": 204800.0,
+        "span_y": 204800.0,
+        "world_per_tile": 6400.0,
+        "coordinate_scale": 25.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "4603": {
+      "map_index": 4603,
+      "category": "exclusive_mining_field",
+      "pt": "Campo de Mineração Exclusivo 3F",
+      "en": "Exclusive Mining Field 3F",
+      "display_pt": "Campo de Mineração Exclusivo",
+      "display_en": "Exclusive Mining Field",
+      "fixed_region": {
+        "pt": "3F",
+        "en": "3F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4603.webp",
+      "asset_source_map_index": 4603,
+      "level_path": "/Game/Streaming/Maps/Dungeon/ExclusiveStope/ExclusiveStope2.ExclusiveStope2",
+      "world_bounds": {
+        "min_x": -25600.0,
+        "max_x": 25600.0,
+        "min_y": -25600.0,
+        "max_y": 25600.0,
+        "span_x": 51200.0,
+        "span_y": 51200.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "4625": {
+      "map_index": 4625,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "5F",
+        "en": "5F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4625.webp",
+      "asset_source_map_index": 4625,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope2.PublicStope2",
+      "world_bounds": {
+        "min_x": -51200.0,
+        "max_x": 51200.0,
+        "min_y": -51200.0,
+        "max_y": 51200.0,
+        "span_x": 102400.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "official-world-map-tiles"
+    },
+    "4645": {
+      "map_index": 4645,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "5F",
+        "en": "5F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4645.webp",
+      "asset_source_map_index": 4625,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope2.PublicStope2",
+      "world_bounds": {
+        "min_x": -51200.0,
+        "max_x": 51200.0,
+        "min_y": -51200.0,
+        "max_y": 51200.0,
+        "span_x": 102400.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "4665": {
+      "map_index": 4665,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "5F",
+        "en": "5F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4665.webp",
+      "asset_source_map_index": 4625,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope2.PublicStope2",
+      "world_bounds": {
+        "min_x": -51200.0,
+        "max_x": 51200.0,
+        "min_y": -51200.0,
+        "max_y": 51200.0,
+        "span_x": 102400.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    },
+    "4685": {
+      "map_index": 4685,
+      "category": "public_mining_field",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F",
+      "display_pt": "Campo de Mineração Público",
+      "display_en": "Public Mining Field",
+      "fixed_region": {
+        "pt": "5F",
+        "en": "5F",
+        "confidence": "map-index-floor"
+      },
+      "asset": "4685.webp",
+      "asset_source_map_index": 4625,
+      "level_path": "/Game/Streaming/Maps/Dungeon/PublicStope/PublicStope2.PublicStope2",
+      "world_bounds": {
+        "min_x": -51200.0,
+        "max_x": 51200.0,
+        "min_y": -51200.0,
+        "max_y": 51200.0,
+        "span_x": 102400.0,
+        "span_y": 102400.0,
+        "world_per_tile": 12800.0,
+        "coordinate_scale": 50.0
+      },
+      "live_position_transform": null,
+      "regions": [],
+      "evidence": "shared-level-layout-static-coordinate-match"
+    }
+  }
+}

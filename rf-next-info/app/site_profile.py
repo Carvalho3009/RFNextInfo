@@ -11,6 +11,20 @@ from .protected_state import protect, unprotect
 
 
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+ALL_SITE_FEATURES = frozenset({
+    "character",
+    "market",
+    "codex",
+    "memory_chips",
+    "inventory",
+    "subsession",
+    "export",
+    "observations",
+    "pve-observations",
+    "exp-ranking",
+    "auction-bank",
+    "pvp-sync",
+})
 
 
 class SiteProfileClient:
@@ -20,10 +34,12 @@ class SiteProfileClient:
         server: str = "https://rfnext.karvalho.dev.br",
         version: str = "unknown",
         legacy_paths: tuple[Path, ...] = (),
+        features: frozenset[str] | set[str] | tuple[str, ...] = ALL_SITE_FEATURES,
     ) -> None:
         self.path = Path(state_dir) / "site-profile.dat"
         self.server = server.rstrip("/")
         self.user_agent = f"RFQOL/{version}"
+        self.features = frozenset(str(feature) for feature in features)
         self.state = self._load()
         if not self.state:
             for legacy_path in map(Path, legacy_paths):
@@ -82,7 +98,28 @@ class SiteProfileClient:
         self.state = {}
         self.path.unlink(missing_ok=True)
 
+    def allows(self, feature: str) -> bool:
+        return str(feature) in self.features
+
+    def _require_feature(self, feature: str) -> None:
+        if not self.allows(feature):
+            labels = {
+                "market": "Mercado",
+                "exp-ranking": "Ranking de EXP",
+                "auction-bank": "Banco de Leilão",
+            }
+            enabled = sorted(
+                labels[feature]
+                for feature in self.features
+                if feature in labels
+            )
+            raise ValueError(
+                "Nesta versão, a integração com o site está liberada somente para "
+                + " e ".join(enabled)
+            )
+
     def upload(self, path: Path, idempotency_key: str) -> dict:
+        self._require_feature("export")
         if not self.connected:
             raise ValueError("Conecte o token do Profile antes de enviar")
         envelope = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -104,8 +141,6 @@ class SiteProfileClient:
     def upload_live(
         self, mode: str, payload: dict, idempotency_key: str
     ) -> dict:
-        if not self.connected:
-            raise ValueError("Conecte o token do Profile antes de enviar")
         if mode not in {
             "character",
             "market",
@@ -115,6 +150,9 @@ class SiteProfileClient:
             "subsession",
         }:
             raise ValueError("Tipo de envio inválido")
+        self._require_feature(mode)
+        if not self.connected:
+            raise ValueError("Conecte o token do Profile antes de enviar")
         if mode == "market":
             groups: dict[int, list[dict]] = {}
             for row in payload.get("rows") or []:
@@ -162,6 +200,7 @@ class SiteProfileClient:
         )
 
     def upload_observations(self, payload: dict, idempotency_key: str) -> dict:
+        self._require_feature("observations")
         if not self.connected:
             raise ValueError("Conecte o token do Profile antes de enviar")
         return self._request(
@@ -172,7 +211,20 @@ class SiteProfileClient:
             idempotency_key,
         )
 
+    def upload_pve_observations(self, payload: dict, idempotency_key: str) -> dict:
+        self._require_feature("pve-observations")
+        if not self.connected:
+            raise ValueError("Conecte o token do Profile antes de enviar")
+        return self._request(
+            "/api/import/pve-observations",
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(),
+            self.state["token"],
+            "application/json",
+            idempotency_key,
+        )
+
     def upload_exp_rank(self, payload: dict, idempotency_key: str) -> dict:
+        self._require_feature("exp-ranking")
         if not self.connected:
             raise ValueError("Conecte o token do Profile antes de enviar")
         return self._request(
@@ -183,7 +235,20 @@ class SiteProfileClient:
             idempotency_key,
         )
 
+    def upload_auction_bank(self, payload: dict, idempotency_key: str) -> dict:
+        self._require_feature("auction-bank")
+        if not self.connected:
+            raise ValueError("Conecte o token do Profile antes de enviar")
+        return self._request(
+            "/api/import/auction-bank",
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(),
+            self.state["token"],
+            "application/json",
+            idempotency_key,
+        )
+
     def download_observations(self) -> dict:
+        self._require_feature("pvp-sync")
         if not self.connected:
             raise ValueError("Conecte o token do Profile antes de receber")
         return self._request(
@@ -203,6 +268,10 @@ class SiteProfileClient:
         idempotency_key: str = "",
         method: str = "POST",
     ) -> dict:
+        if not self.server:
+            raise ValueError(
+                "Integração com o site está desativada no perfil de homologação"
+            )
         headers = {
             "Accept": "application/json",
             "Authorization": f"Bearer {token}",

@@ -8,3 +8,8 @@
 - Nenhum token/ticket de sessão ou payload `0x0101` pode ser salvo ou exibido.
 - Por decisão do owner, executável e instalador não usam Authenticode; release pública exige manifesto e procedência Ed25519, hashes e testes limpos.
 - Alterações não devem publicar releases nem mudar produção sem validação final.
+- Toda mudança ou adição deve preservar as funcionalidades já existentes. Antes
+  de considerar o trabalho concluído, executar testes específicos do novo
+  comportamento e a suíte automática de regressão; qualquer regressão conhecida
+  deve ser corrigida ou registrada explicitamente como bloqueio, nunca aceita
+  silenciosamente.
