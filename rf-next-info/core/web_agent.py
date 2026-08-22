@@ -16,7 +16,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 DECODED_EVENT_SCHEMA = "rf-qol.decoded-event/v1"
@@ -841,11 +841,13 @@ class WebAgentBridge:
         outbox: AgentOutbox,
         *,
         max_queue_events: int = 2048,
+        event_observer: Callable[[dict[str, Any]], object] | None = None,
     ) -> None:
         if projector.installation_id != outbox.installation_id:
             raise ValueError("Projector e outbox pertencem a instalacoes diferentes")
         self.projector = projector
         self.outbox = outbox
+        self.event_observer = event_observer
         self._queue: queue.Queue[
             tuple[str, dict[str, Any] | None] | None
         ] = queue.Queue(
@@ -859,6 +861,7 @@ class WebAgentBridge:
         self.ignored = 0
         self.dropped = 0
         self.errors = 0
+        self.observer_errors = 0
 
     def start_session(self, session_id: str, *, resumed: bool = False) -> None:
         value = _text(session_id, 160)
@@ -930,18 +933,31 @@ class WebAgentBridge:
                 if event is None:
                     self.projector.finish_session(session_id)
                 elif event.get("_agent_lifecycle"):
-                    self.outbox.enqueue(self.projector.project_lifecycle(
+                    projected = self.projector.project_lifecycle(
                         session_id,
                         str(event["_agent_lifecycle"]),
                         reason=event.get("reason"),
                         occurred_ns=_integer(event.get("occurred_ns")),
-                    ))
+                    )
+                    self._observe(projected)
+                    self.outbox.enqueue(projected)
                 else:
-                    self.outbox.enqueue(self.projector.project(event, session_id))
+                    projected = self.projector.project(event, session_id)
+                    self._observe(projected)
+                    self.outbox.enqueue(projected)
             except Exception:
                 self.errors += 1
             finally:
                 self._queue.task_done()
+
+    def _observe(self, event: dict[str, Any]) -> None:
+        if self.event_observer is None:
+            return
+        try:
+            self.event_observer(event)
+        except Exception:
+            # A API local e apenas consumidora; nunca pode interromper a outbox.
+            self.observer_errors += 1
 
     def wait_until_idle(self) -> None:
         self._queue.join()
@@ -954,6 +970,7 @@ class WebAgentBridge:
             "ignored": self.ignored,
             "dropped": self.dropped,
             "errors": self.errors,
+            "observer_errors": self.observer_errors,
             "worker_alive": bool(self._thread and self._thread.is_alive()),
             **{f"outbox_{key}": value for key, value in self.outbox.metrics().items()},
         }

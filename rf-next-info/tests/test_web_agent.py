@@ -247,6 +247,61 @@ class AgentOutboxTest(unittest.TestCase):
 
 
 class WebAgentBridgeTest(unittest.TestCase):
+    def test_local_observer_remains_independent_when_outbox_is_full(self):
+        with tempfile.TemporaryDirectory() as folder:
+            observed = []
+            projector = WebEventProjector(
+                "install-publica", b"0123456789abcdef0123456789abcdef",
+                decoder_version="test",
+            )
+            outbox = AgentOutbox(
+                Path(folder) / "outbox.sqlite3", "install-publica", max_events=1
+            )
+            bridge = WebAgentBridge(
+                projector, outbox, event_observer=observed.append
+            )
+            bridge.start_session("sessao-1")
+            self.assertTrue(bridge.submit(decoded_event(
+                "update_exp", {"exp": 100, "gain_exp": 100}, offset=1
+            )))
+            bridge.wait_until_idle()
+
+            self.assertEqual(
+                [event["type"] for event in observed],
+                ["session.lifecycle", "character.exp_changed"],
+            )
+            self.assertEqual(bridge.metrics()["outbox_events"], 1)
+            self.assertEqual(bridge.metrics()["errors"], 1)
+            self.assertEqual(bridge.metrics()["observer_errors"], 0)
+            bridge.close()
+
+    def test_local_observer_failure_never_blocks_outbox(self):
+        with tempfile.TemporaryDirectory() as folder:
+            projector = WebEventProjector(
+                "install-publica", b"0123456789abcdef0123456789abcdef",
+                decoder_version="test",
+            )
+            outbox = AgentOutbox(
+                Path(folder) / "outbox.sqlite3", "install-publica"
+            )
+            bridge = WebAgentBridge(
+                projector,
+                outbox,
+                event_observer=lambda _event: (_ for _ in ()).throw(
+                    RuntimeError("falha local simulada")
+                ),
+            )
+            bridge.start_session("sessao-1")
+            self.assertTrue(bridge.submit(decoded_event(
+                "update_exp", {"exp": 100, "gain_exp": 100}, offset=1
+            )))
+            bridge.wait_until_idle()
+
+            self.assertEqual(bridge.metrics()["outbox_events"], 2)
+            self.assertEqual(bridge.metrics()["errors"], 0)
+            self.assertEqual(bridge.metrics()["observer_errors"], 2)
+            bridge.close()
+
     def test_bridge_is_nonblocking_and_isolates_outbox_failure(self):
         with tempfile.TemporaryDirectory() as folder:
             projector = WebEventProjector(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from core.web_agent import (
     DEFAULT_OUTBOX_BYTES,
@@ -43,6 +44,7 @@ class WebAgentRuntime:
         max_outbox_events: int = DEFAULT_OUTBOX_EVENTS,
         max_queue_events: int = 2048,
         transport_sender=None,
+        event_observer: Callable[[dict], object] | None = None,
     ) -> "WebAgentRuntime":
         state_dir = Path(state_dir)
         identity = AgentIdentityStore(state_dir).load_or_create(installation_id)
@@ -58,7 +60,10 @@ class WebAgentRuntime:
             decoder_version=decoder_version or version,
         )
         bridge = WebAgentBridge(
-            projector, outbox, max_queue_events=max_queue_events
+            projector,
+            outbox,
+            max_queue_events=max_queue_events,
+            event_observer=event_observer,
         )
         transport_options = {}
         if transport_sender is not None:
@@ -160,6 +165,7 @@ class WebAgentOfflineRuntime:
         max_outbox_bytes: int = DEFAULT_OUTBOX_BYTES,
         max_outbox_events: int = DEFAULT_OUTBOX_EVENTS,
         max_queue_events: int = 2048,
+        event_observer: Callable[[dict], object] | None = None,
     ) -> "WebAgentOfflineRuntime":
         state_dir = Path(state_dir)
         identity = AgentIdentityStore(state_dir).load_or_create(installation_id)
@@ -175,7 +181,10 @@ class WebAgentOfflineRuntime:
             decoder_version=decoder_version or version,
         )
         bridge = WebAgentBridge(
-            projector, outbox, max_queue_events=max_queue_events
+            projector,
+            outbox,
+            max_queue_events=max_queue_events,
+            event_observer=event_observer,
         )
         return cls(identity, bridge)
 

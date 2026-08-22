@@ -13,16 +13,24 @@ servidor, migração, infraestrutura, DNS, deploy, publicação ou instalador.
 
 A nova linha do RF QOL será dividida assim:
 
-- **computador:** captura passiva, reagrupamento TCP, decode, correlação mínima
+- **usuário comum:** utiliza somente o executável independente RF QOL Agent;
+- **computador:** o Agent realiza captura passiva, reagrupamento TCP, decode, correlação mínima
   necessária para identificar o cliente, sanitização, fila offline e envio;
-- **servidor dedicado:** processamento dos eventos decodificados, estado vivo,
+- **servidor dedicado central:** uma única hospedagem administrada pelo owner,
+  compartilhada entre usuários com isolamento obrigatório por conta/Profile;
+  executa processamento dos eventos decodificados, estado vivo,
   sessões, subsessões, status, monitores, agregações, históricos, bancos
   autorizados, APIs e painel;
 - **navegador:** visualização e configuração dos recursos permitidos do Profile;
-- **versão desktop atual:** permanece preservada e utilizável como rollback.
+- **versão desktop atual:** permanece somente como referência interna,
+  equivalência e rollback durante o desenvolvimento; não é o produto normal.
 
 O servidor será a fonte autoritativa dos dados processados. O computador não
 enviará pacotes brutos e não haverá um segundo decoder no servidor.
+
+O Agent e o Desktop são executáveis separados. A ativação experimental presente
+no Desktop desta branch é apenas um harness interno e deverá sair do pacote do
+Agent e da distribuição normal.
 
 ## 2. Objetivo do primeiro ciclo
 
@@ -96,6 +104,10 @@ Pktmon -> reagrupamento TCP -> decoder canônico -> evento normalizado
 O aplicativo Windows nunca aguarda o processamento remoto para continuar a
 captura. Recebimento, confirmação e compactação da outbox ocorrem fora da thread
 da interface e fora do callback do Pktmon.
+
+O mesmo evento sanitizado também pode alimentar uma fila efêmera e limitada da
+API loopback. Essa fila é independente da outbox destinada ao site: outbox cheia
+ou servidor indisponível não podem interromper o monitor local.
 
 ## 5. Evento normalizado no computador
 
@@ -232,6 +244,35 @@ posse sozinha não concede acesso.
 Durante a migração, os processadores desktop permanecem em **shadow mode** para
 comparação e rollback. Eles não podem gravar no mesmo estado autoritativo do
 servidor nem corrigir resultados remotos silenciosamente.
+
+### 7.3 API local para programas de monitoramento
+
+O Agent oferece uma API autenticada exclusivamente em `127.0.0.1`. Ela permite
+que outro programa na mesma máquina implemente monitores e overlays de Boss e
+PvP sem capturar tráfego ou executar outro decoder.
+
+Rotas iniciais:
+
+- `GET /api/agent/v1/capabilities` — versão, domínios e limites;
+- `GET /api/agent/v1/health` — saúde sanitizada do Agent e das filas;
+- `GET /api/agent/v1/monitor/events` — eventos por cursor, domínio e long poll.
+
+Parâmetros de eventos: `after`, `domains=boss,pvp`, `limit` e `wait_ms`. O
+cursor é monotônico dentro da execução e `reset_required=true` informa quando o
+consumidor ficou atrás do ring buffer. A resposta máxima é 256 KiB, com até 250
+eventos e espera máxima de 1 segundo.
+
+Regras obrigatórias:
+
+- token local aleatório protegido por DPAPI do usuário atual;
+- credencial revelada somente por ação explícita de pareamento no Agent;
+- somente leitura, sem comandos, CORS, bind LAN ou acesso remoto;
+- nenhum PCAP, pacote, fluxo/endereço, UID canônico, credencial ou `0x0101`;
+- eventos de combate ambíguos permanecem ambíguos; o consumidor correlaciona
+  jogadores/Boss por referências opacas e evidência de aparição;
+- ring buffer separado, limitado simultaneamente por eventos e bytes, e
+  deduplicado por `event_id`;
+- falha do consumidor/API nunca bloqueia captura, decode ou outbox do site.
 
 ## 8. Servidor dedicado recomendado
 
