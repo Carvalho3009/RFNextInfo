@@ -39,6 +39,11 @@ KNOWLEDGE_DB_PATH = DATABASE_DIR / "knowledge.sqlite3"
 PREFERENCES_PATH = STATE_DIR / "preferences.json"
 LOG_PATH = LOG_DIR / "rf-qol.log"
 PREVIEW_DIR = CACHE_DIR / "preview"
+WEB_AGENT_STATE_DIR = (
+    Path(os.environ["LOCALAPPDATA"]) / "Karvalho" / MACHINE_STATE_NAME / "web-agent"
+    if os.getenv("LOCALAPPDATA")
+    else INSTALL_DIR / "user-data" / "web-agent"
+)
 
 RUNTIME_DIRS = (
     STATE_DIR,

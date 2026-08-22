@@ -26,7 +26,10 @@ from core.web_agent_runtime import (
     create_offline_web_agent_if_enabled,
     create_web_agent_if_enabled,
 )
-from core.web_agent_selftest import run_offline_agent_self_test
+from core.web_agent_selftest import (
+    run_offline_agent_self_test,
+    run_offline_agent_stress_test,
+)
 from core.web_agent_transport import (
     AgentBatchTransport,
     AgentDeliveryWorker,
@@ -408,6 +411,29 @@ class WebAgentRuntimeTest(unittest.TestCase):
             self.assertGreaterEqual(result["isolated_clients"], 3)
             self.assertEqual(result["session_lifecycle_events"], 6)
             self.assertEqual(result["queue_errors"], 0)
+            urlopen.assert_not_called()
+
+    def test_offline_stress_test_stays_bounded_and_uses_no_network(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch(
+            "urllib.request.urlopen",
+            side_effect=AssertionError("teste de pressao tentou usar rede"),
+        ) as urlopen:
+            result = run_offline_agent_stress_test(
+                Path(folder),
+                str(uuid.uuid4()),
+                sessions=3,
+                clients=4,
+                events_per_client=40,
+                version="test",
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["network_used"])
+            self.assertEqual(result["events"], 498)
+            self.assertEqual(result["queue_errors"], 0)
+            self.assertEqual(result["queue_dropped"], 0)
+            self.assertLess(result["peak_traced_memory_bytes"], 64 * 1024 * 1024)
+            self.assertGreater(result["events_per_second"], 0)
             urlopen.assert_not_called()
 
     def test_opt_in_runtime_delivers_outside_capture_queue(self):

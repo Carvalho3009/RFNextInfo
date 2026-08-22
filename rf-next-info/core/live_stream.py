@@ -370,6 +370,11 @@ class LiveEventStream:
         self.last_received_ns = 0
         self.last_processed_ns = 0
 
+    def set_event_sink(
+        self, sink: Callable[[dict[str, Any]], bool] | None
+    ) -> None:
+        self._event_sink = sink
+
     def start(self) -> None:
         if self._thread:
             if self._thread.is_alive():

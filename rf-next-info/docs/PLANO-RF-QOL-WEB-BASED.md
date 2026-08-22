@@ -426,6 +426,8 @@ Nunca enviar ou persistir remotamente:
 - [x] preservar identidade por backup protegido e bloquear rotação silenciosa
   quando ambos os arquivos estiverem corrompidos;
 - [x] criar modo `offline_shadow` sem URL, transporte ou thread de entrega;
+- [x] disponibilizar ativação explícita em Configurações, desligada por padrão,
+  com estado protegido por usuário e saúde visível no programa;
 - [x] persistir os ciclos `started`, `paused`, `resumed`, `finished` e
   `abandoned`, mantendo uma referência opaca comum da sessão;
 - [x] executar corpus sintético local com múltiplos clientes e sessões,
@@ -472,6 +474,8 @@ Gate: zero mistura entre clientes e equivalência aprovada dos campos do MVP.
 
 - [x] reinício do Agent com outbox pendente em corpus sintético;
 - [x] múltiplos clientes, pausa/retomada e sessão seguinte em shadow local;
+- [x] ensaio automático de pressão com três sessões, quatro clientes, fila
+  limitada, medição de memória e rede bloqueada;
 - lote duplicado, parcial, atrasado e fora de ordem;
 - indisponibilidade do banco/worker;
 - ensaio de 10 h com pelo menos dois clientes;
@@ -594,7 +598,7 @@ Continuar sem servidor até fechar a validação local do Agent:
 1. ampliar o corpus sintético para todos os tipos do MVP;
 2. medir eventos por segundo e bytes por hora com captura real sanitizada;
 3. ensaiar reinício e pressão dos limites escolhidos da outbox;
-4. executar ensaio prolongado com dois ou mais clientes e observar RAM/CPU;
+4. executar ensaio prolongado real com dois ou mais clientes e observar RAM/CPU;
 5. gerar relatório de equivalência entre desktop e eventos do shadow local;
 6. revisar a lista de eventos e campos permitidos antes de congelar W0.
 

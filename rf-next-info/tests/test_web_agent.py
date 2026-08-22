@@ -428,6 +428,30 @@ class WebAgentBridgeTest(unittest.TestCase):
             )
             self.assertFalse((Path(folder) / "agent-outbox.sqlite3").exists())
 
+    def test_capture_engine_close_releases_optional_agent(self):
+        class Agent:
+            def __init__(self):
+                self.closed = False
+
+            def submit(self, _event):
+                return True
+
+            def close(self):
+                self.closed = True
+
+        with tempfile.TemporaryDirectory() as folder:
+            agent = Agent()
+            engine = CaptureEngine(
+                Path(folder), Path(folder) / "desktop.sqlite3", object(),
+                web_agent=agent,
+            )
+
+            engine.close()
+
+            self.assertTrue(agent.closed)
+            self.assertIsNone(engine.web_agent)
+            self.assertIsNone(engine.live_events._event_sink)
+
 
 if __name__ == "__main__":
     unittest.main()

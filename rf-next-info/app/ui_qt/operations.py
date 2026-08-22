@@ -1437,6 +1437,18 @@ class CaptureEngine:
             "last_error_code": "health_invalid",
         }
 
+    def close(self) -> None:
+        """Libera recursos opcionais depois que a sessao foi encerrada."""
+        with self._lock:
+            if self.current_session or self.active:
+                raise RuntimeError("Encerre a captura antes de liberar o mecanismo")
+            web_agent, self.web_agent = self.web_agent, None
+            self.live_events.stop()
+            self.live_events.set_event_sink(None)
+        closer = getattr(web_agent, "close", None)
+        if callable(closer):
+            closer()
+
     def _apply_memory_limits(self, limits: dict[str, int]) -> None:
         self.live_events.stop()
         self.memory_limits = limits

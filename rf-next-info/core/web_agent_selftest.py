@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import tracemalloc
 from pathlib import Path
 
 from core.web_agent import AgentOutbox
@@ -167,6 +168,122 @@ def run_offline_agent_self_test(
             "outbox_bytes": metrics["bytes"],
             "queue_errors": health_before_close["capture_bridge"]["errors"],
             "checked_at_ns": time.time_ns(),
+        }
+    finally:
+        outbox.close()
+
+
+def run_offline_agent_stress_test(
+    state_dir: Path,
+    installation_id: str,
+    *,
+    sessions: int = 3,
+    clients: int = 4,
+    events_per_client: int = 50,
+    version: str = "offline-stress-test",
+) -> dict[str, object]:
+    """Exercita volume local limitado sem criar qualquer componente de rede."""
+    sessions = int(sessions)
+    clients = int(clients)
+    events_per_client = int(events_per_client)
+    if not 1 <= sessions <= 100:
+        raise ValueError("sessions fora do limite de teste")
+    if not 1 <= clients <= 32:
+        raise ValueError("clients fora do limite de teste")
+    if not 1 <= events_per_client <= 10_000:
+        raise ValueError("events_per_client fora do limite de teste")
+    expected_events = sessions * (2 + clients * (1 + events_per_client))
+    if expected_events > 250_000:
+        raise ValueError("teste excede o limite total de eventos")
+
+    state_dir = Path(state_dir)
+    tracemalloc.start()
+    started_at = time.perf_counter()
+    runtime: WebAgentOfflineRuntime | None = None
+    try:
+        runtime = WebAgentOfflineRuntime.create(
+            state_dir,
+            installation_id,
+            version=version,
+            max_outbox_events=expected_events + 8,
+            max_outbox_bytes=max(2 * 1024 * 1024, expected_events * 2048),
+            max_queue_events=max(256, min(4096, expected_events + 8)),
+        )
+        offset = 0
+        for session_index in range(sessions):
+            session_id = f"offline-stress-session-{session_index}"
+            runtime.start_session(session_id)
+            for client_index in range(clients):
+                flow = (
+                    f"10.0.{session_index}.1:{51000 + client_index} -> "
+                    "10.0.0.2:12020"
+                )
+                offset += 1
+                _require(runtime.submit(_event(
+                    "world_info_prefix", offset,
+                    {"fields": {
+                        "character_uid": 10_000 + client_index,
+                        "character_name": f"Cliente {client_index}",
+                        "level": 60 + client_index,
+                    }},
+                    flow=flow, opcode=0x0106,
+                )), "identidade rejeitada no teste de pressao")
+                for event_index in range(events_per_client):
+                    offset += 1
+                    _require(runtime.submit(_event(
+                        "update_exp", offset,
+                        {
+                            "level": 60 + client_index,
+                            "exp": event_index * 100,
+                            "gain_exp": 100,
+                        },
+                        flow=flow, opcode=0x0307,
+                    )), "evento rejeitado no teste de pressao")
+            runtime.finish_session(session_id, reason="finalized")
+        runtime.bridge.wait_until_idle()
+        health = runtime.health()
+        _require(
+            int(health["capture_bridge"]["errors"]) == 0,
+            "fila registrou erro no teste de pressao",
+        )
+        _require(
+            int(health["capture_bridge"]["dropped"]) == 0,
+            "fila descartou evento no teste de pressao",
+        )
+    finally:
+        try:
+            if runtime is not None:
+                runtime.close()
+        finally:
+            _current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+
+    outbox = AgentOutbox(
+        state_dir / "web-agent-outbox.sqlite3",
+        installation_id,
+        max_events=expected_events + 8,
+        max_bytes=max(2 * 1024 * 1024, expected_events * 2048),
+    )
+    try:
+        metrics = outbox.metrics()
+        _require(
+            int(metrics["events"]) == expected_events,
+            "quantidade persistida diverge do volume submetido",
+        )
+        elapsed = max(0.000001, time.perf_counter() - started_at)
+        return {
+            "ok": True,
+            "mode": "offline",
+            "network_used": False,
+            "sessions": sessions,
+            "clients": clients,
+            "events": metrics["events"],
+            "outbox_bytes": metrics["bytes"],
+            "peak_traced_memory_bytes": peak_bytes,
+            "elapsed_seconds": round(elapsed, 6),
+            "events_per_second": round(expected_events / elapsed, 2),
+            "queue_errors": 0,
+            "queue_dropped": 0,
         }
     finally:
         outbox.close()

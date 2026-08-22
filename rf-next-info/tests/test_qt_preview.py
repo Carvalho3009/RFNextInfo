@@ -305,6 +305,49 @@ class QtPreviewSmokeTest(unittest.TestCase):
             window.capture_engine = None
             window.close()
 
+    def test_offline_agent_setting_builds_shadow_runtime_without_network(self):
+        from PySide6 import QtWidgets
+
+        from app.ui_qt.data import load_preferences
+        from app.ui_qt.main import MainWindow, create_application
+        from core.web_agent_runtime import WebAgentOfflineRuntime
+
+        create_application(["offline-agent-setting-test"])
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "urllib.request.urlopen",
+            side_effect=AssertionError("configuracao offline tentou usar rede"),
+        ) as urlopen:
+            root = Path(directory)
+            preferences_path = root / "preferences.json"
+            window = MainWindow(
+                load_data=False,
+                database_path=root / "capture.sqlite3",
+                preferences_path=preferences_path,
+            )
+            window.capture_timer.stop()
+            self.assertFalse((root / "web-agent").exists())
+            window.setting_capture_directory.setText(str(root / "captures"))
+            window.setting_web_agent_offline.setChecked(True)
+
+            with mock.patch.object(QtWidgets.QMessageBox, "information"):
+                window._save_settings()
+
+            self.assertTrue(
+                load_preferences(preferences_path)["web_agent_offline_enabled"]
+            )
+            self.assertIsInstance(
+                window.capture_engine.web_agent, WebAgentOfflineRuntime
+            )
+            self.assertEqual(
+                window._health_api_snapshot()["web_agent"]["state"],
+                "offline_shadow",
+            )
+            self.assertTrue((root / "web-agent" / "web-agent-outbox.sqlite3").is_file())
+            self.assertIn("Nenhum dado será enviado", window.setting_web_agent_status.text())
+            urlopen.assert_not_called()
+            window.exit_requested = True
+            window.close()
+
     def test_inventory_names_fall_back_to_english_when_pt_translation_is_missing(self):
         from app.ui_qt.data import _inventory_item_name
 
@@ -3341,7 +3384,7 @@ class QtPreviewSmokeTest(unittest.TestCase):
         self.assertTrue(settings_page.isAncestorOf(window.setting_capture_directory))
         self.assertEqual(window.settings_sections.count(), 2)
         self.assertEqual(set(window.integration_health_labels), {
-            "capture", "memory", "checkpoint", "stream",
+            "capture", "memory", "checkpoint", "stream", "agent",
         })
         window.close()
 

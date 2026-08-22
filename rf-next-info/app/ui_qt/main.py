@@ -65,6 +65,7 @@ from app.paths import (
     KNOWLEDGE_DB_PATH,
     LOCAL_API_STATE_PATH,
     UPDATES_DIR,
+    WEB_AGENT_STATE_DIR,
     ensure_runtime_layout,
 )
 from app.local_api import (
@@ -122,6 +123,7 @@ from core.map_state import (
     map_region,
 )
 from core.program_status import build_program_status
+from core.web_agent_runtime import create_offline_web_agent_if_enabled
 from core.subsession_context import (
     SubsessionContextStabilizer,
     automatic_subsession_end,
@@ -1139,6 +1141,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loot_announcements_page = 1
         self.editing_subsession_id: str | None = None
         self.capture_engine: CaptureEngine | None = None
+        self.web_agent_init_error = ""
         self.monitor_engine: MonitorEngine | None = None
         self.local_api: LocalOutputApi | None = None
         self.local_api_token = ""
@@ -4525,13 +4528,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_integration_health_panel(self) -> QtWidgets.QWidget:
         health = QtWidgets.QFrame(objectName="accentPanel")
         layout = QtWidgets.QGridLayout(health)
-        layout.addWidget(_label("Saúde do programa", "subtitle"), 0, 0, 1, 4)
+        layout.addWidget(_label("Saúde do programa", "subtitle"), 0, 0, 1, 5)
         self.integration_health_labels: dict[str, QtWidgets.QLabel] = {}
         for column, (key, title) in enumerate((
             ("capture", "Captura"),
             ("memory", "Memória"),
             ("checkpoint", "Checkpoint"),
             ("stream", "Stream"),
+            ("agent", "Agent offline"),
         )):
             layout.addWidget(_label(title, "muted"), 1, column)
             value = _label("—", "info")
@@ -4601,6 +4605,20 @@ class MainWindow(QtWidgets.QMainWindow):
         capture_form.addRow("", self.setting_memory_summary)
         self.setting_memory_limit.setValue(self.memory_limits["budget_mb"])
         self._update_memory_limit_summary(self.setting_memory_limit.value())
+        self.setting_web_agent_offline = QtWidgets.QCheckBox(
+            "Ativar shadow local para testes da versão web"
+        )
+        self.setting_web_agent_offline.setToolTip(
+            "Grava somente eventos decodificados e sanitizados em uma fila "
+            "local limitada. Não cria conexão e não envia dados ao servidor."
+        )
+        capture_form.addRow("Agent Windows", self.setting_web_agent_offline)
+        self.setting_web_agent_status = _label(
+            "Desativado. O Agent não cria nem atualiza sua outbox.",
+            "muted",
+        )
+        self.setting_web_agent_status.setWordWrap(True)
+        capture_form.addRow("", self.setting_web_agent_status)
         self.setting_language = QtWidgets.QComboBox(); self.setting_language.addItem("Português", "pt"); self.setting_language.addItem("English", "en")
         capture_form.addRow("Idioma dos dados do jogo", self.setting_language)
         grid.addWidget(capture, 1, 0)
@@ -4741,6 +4759,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setting_memory_limit.setValue(
             memory_limits_for_budget(preferences.get("memory_limit_mb"))["budget_mb"]
         )
+        agent_enabled = bool(preferences.get("web_agent_offline_enabled", False))
+        self.setting_web_agent_offline.setChecked(agent_enabled)
+        self.setting_web_agent_status.setText(
+            "Shadow local ativo. Nenhum dado será enviado; a outbox será usada "
+            "na próxima captura."
+            if agent_enabled
+            else "Desativado. O Agent não cria nem atualiza sua outbox."
+        )
         language = "en" if preferences.get("item_name_language") == "en" else "pt"
         self.setting_language.setCurrentIndex(self.setting_language.findData(language))
         self.setting_profile.setText(
@@ -4864,6 +4890,10 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         new_language = game_data_language(self.setting_language.currentData())
         old_memory_budget = self.memory_limits["budget_mb"]
+        old_agent_enabled = bool(
+            self.preferences.get("web_agent_offline_enabled", False)
+        )
+        new_agent_enabled = self.setting_web_agent_offline.isChecked()
         new_memory_limits = memory_limits_for_budget(
             self.setting_memory_limit.value()
         )
@@ -4885,6 +4915,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "capture_directory": str(capture_directory),
             "decode_interval_seconds": self.setting_decode_interval.value(),
             "memory_limit_mb": new_memory_limits["budget_mb"],
+            "web_agent_offline_enabled": new_agent_enabled,
             "item_name_language": new_language,
             "subsession_map": selected_farm[0],
             "subsession_spot": selected_farm[1],
@@ -4935,9 +4966,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self.setting_delete_export.isChecked(),
         )
         memory_restart_pending = False
+        capture_rebuild_failed = False
         if not self.capture_engine or not self.capture_engine.current_session:
-            self.capture_engine = None
-            self._ensure_capture_engine()
+            if self.capture_engine is not None:
+                try:
+                    self.capture_engine.close()
+                except Exception:
+                    capture_rebuild_failed = True
+                    self.log.exception("capture_engine_close_before_rebuild_failed")
+            if not capture_rebuild_failed:
+                self.capture_engine = None
+                self._ensure_capture_engine()
         elif old_memory_budget != self.memory_limits["budget_mb"]:
             configure = getattr(
                 self.capture_engine, "configure_memory_budget", None
@@ -4972,6 +5011,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_global_hotkeys(shortcuts)
         self._sync_local_api()
         self.setting_storage.setText(f"Capturas: {capture_directory}\nPreferências salvas para a interface estável e para o preview.")
+        self.setting_web_agent_status.setText(
+            "Shadow local ativo. Nenhum dado será enviado; a outbox será usada "
+            "na próxima captura."
+            if new_agent_enabled
+            else "Desativado. O Agent não cria nem atualiza sua outbox."
+        )
+        agent_restart_pending = bool(
+            self.capture_engine
+            and (self.capture_engine.current_session or capture_rebuild_failed)
+            and old_agent_enabled != new_agent_enabled
+        )
         QtWidgets.QMessageBox.information(
             self,
             "Configurações",
@@ -4980,6 +5030,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 " O novo limite completo será usado na próxima ativação "
                 "da captura ou dos monitores."
                 if memory_restart_pending else ""
+            )
+            + (
+                " Reinicie o programa depois de encerrar a captura para aplicar "
+                "a mudança do Agent offline."
+                if agent_restart_pending else ""
             ),
         )
 
@@ -5048,6 +5103,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
         memory_bytes = _process_memory_bytes()
         memory_budget_bytes = int(self.memory_limits["pressure_bytes"])
+        if self.web_agent_init_error:
+            agent_health = {
+                "enabled": True,
+                "mode": "offline",
+                "state": "error",
+                "last_error_code": self.web_agent_init_error,
+            }
+        elif engine is not None and callable(
+            getattr(engine, "web_agent_health", None)
+        ):
+            agent_health = engine.web_agent_health()
+        elif self.preferences.get("web_agent_offline_enabled", False):
+            agent_health = {
+                "enabled": True,
+                "mode": "offline",
+                "state": "waiting_capture",
+            }
+        else:
+            agent_health = {"enabled": False, "state": "disabled"}
         return {
             "generated_at_ns": now_ns,
             "process": {
@@ -5075,6 +5149,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 **stream_metrics,
                 "available": stream_available,
             },
+            "web_agent": agent_health,
         }
 
     def _render_integration_health(self) -> None:
@@ -5085,6 +5160,7 @@ class MainWindow(QtWidgets.QMainWindow):
         capture = dict(health.get("capture") or {})
         checkpoint = dict(health.get("checkpoint") or {})
         stream = dict(health.get("stream") or {})
+        agent = dict(health.get("web_agent") or {})
         capture_labels = {
             "active": "Ativa",
             "paused": "Pausada",
@@ -5123,6 +5199,22 @@ class MainWindow(QtWidgets.QMainWindow):
             )
         else:
             self.integration_health_labels["stream"].setText("Inativo")
+        agent_state = str(agent.get("state") or "disabled")
+        agent_labels = {
+            "disabled": "Desativado",
+            "waiting_capture": "Aguardando captura",
+            "offline_shadow": "Ativo · sem rede",
+            "storage_full": "Fila local cheia",
+            "closed": "Encerrado",
+            "error": "Falha local",
+        }
+        agent_text = agent_labels.get(agent_state, "Preparando")
+        outbox = dict(agent.get("outbox") or {})
+        if agent_state == "offline_shadow":
+            agent_text += f" · {int(outbox.get('events') or 0):,} eventos".replace(
+                ",", "."
+            )
+        self.integration_health_labels["agent"].setText(agent_text)
         if hasattr(self, "overview_memory_limit"):
             memory_mb = (
                 float(memory) / (1024 * 1024)
@@ -5442,6 +5534,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 engine.stop()
             except Exception:
                 self.log.exception("capture_stop_on_close_failed")
+        if engine and not engine.current_session:
+            try:
+                engine.close()
+            except Exception:
+                self.log.exception("capture_engine_close_failed")
         if self._tray and hasattr(self._tray, "hide"):
             self._tray.hide()
             if hasattr(self._tray, "setContextMenu"):
@@ -9291,6 +9388,27 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.preferences.get("capture_directory")
                 or CAPTURE_DIR
             )
+            web_agent = None
+            self.web_agent_init_error = ""
+            if bool(self.preferences.get("web_agent_offline_enabled", False)):
+                agent_state_dir = (
+                    WEB_AGENT_STATE_DIR
+                    if self.preferences_path == PREFERENCES_PATH
+                    else self.preferences_path.parent / "web-agent"
+                )
+                try:
+                    web_agent = create_offline_web_agent_if_enabled(
+                        True,
+                        agent_state_dir,
+                        self.license_client.installation_id,
+                        version=VERSION,
+                        max_queue_events=max(
+                            256, min(2048, self.memory_limits["events"] // 4)
+                        ),
+                    )
+                except Exception as error:
+                    self.web_agent_init_error = type(error).__name__
+                    self.log.exception("offline_web_agent_init_failed")
             self.capture_engine = CaptureEngine(
                 directory,
                 self.database_path,
@@ -9303,6 +9421,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 game_language=game_data_language(
                     self.preferences.get("item_name_language")
                 ),
+                web_agent=web_agent,
             )
             if not self.capture_recovery_attempted:
                 self.capture_recovery_attempted = True
