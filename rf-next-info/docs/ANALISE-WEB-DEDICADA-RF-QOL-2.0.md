@@ -5,6 +5,12 @@ Estado: planejamento
 Escopo: site/servidor dedicado para receber e apresentar informações do RF QOL  
 Não autoriza: implementação, migração de banco, abertura de rede, deploy, publicação ou geração de instalador
 
+> Atualização de direção em 22 ago 2026: o owner definiu que captura e decode
+> permanecem no computador, mas o processamento de domínio passa a ser
+> autoritativo no servidor. O plano vigente está em
+> `PLANO-RF-QOL-WEB-BASED.md`; este documento permanece como análise histórica
+> da alternativa híbrida anterior.
+
 ## 1. Definição de “web based” neste projeto
 
 Nesta proposta, **web based não significa executar o RF QOL em um navegador
