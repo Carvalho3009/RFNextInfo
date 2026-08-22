@@ -269,6 +269,38 @@ class WebAgentBridgeTest(unittest.TestCase):
         self.assertEqual(metrics["event_sink_rejected"], 1)
         self.assertEqual(metrics["event_sink_accepted"], 1)
 
+    def test_session_finish_marker_runs_after_queued_events(self):
+        with tempfile.TemporaryDirectory() as folder:
+            projector = WebEventProjector(
+                "install-publica", b"0123456789abcdef0123456789abcdef",
+                decoder_version="test",
+            )
+            outbox = AgentOutbox(
+                Path(folder) / "outbox.sqlite3", "install-publica"
+            )
+            bridge = WebAgentBridge(projector, outbox)
+            bridge.start_session("sessao-1")
+            self.assertTrue(bridge.submit(decoded_event(
+                "world_info_prefix",
+                {"fields": {
+                    "character_uid": 123,
+                    "character_name": "Teste",
+                    "level": 1,
+                }},
+                opcode=0x0106,
+            )))
+            self.assertTrue(bridge.submit(decoded_event(
+                "update_exp", {"exp": 100, "gain_exp": 100}, offset=2
+            )))
+            bridge.finish_session("sessao-1")
+            bridge.wait_until_idle()
+
+            batch = outbox.next_batch()
+            self.assertEqual(len(batch["events"]), 2)
+            self.assertIsNotNone(batch["events"][1]["client_ref"])
+            self.assertEqual(projector._flow_clients, {})
+            bridge.close()
+
     def test_capture_engine_opt_in_tracks_separate_sessions(self):
         class License:
             def require(self, *_args):
@@ -330,7 +362,9 @@ class WebAgentBridgeTest(unittest.TestCase):
                 }],
                 web_agent=bridge,
             )
-            first = engine.start()["session_id"]
+            first_result = engine.start()
+            first = first_result["session_id"]
+            self.assertEqual(first_result["web_agent_health"]["state"], "ready")
             engine.abandon()
             second = engine.start()["session_id"]
             engine.abandon()
@@ -346,6 +380,10 @@ class WebAgentBridgeTest(unittest.TestCase):
             )
             self.assertIsNone(engine.web_agent)
             self.assertIsNone(engine.live_events._event_sink)
+            self.assertEqual(
+                engine.web_agent_health(),
+                {"enabled": False, "state": "disabled"},
+            )
             self.assertFalse((Path(folder) / "agent-outbox.sqlite3").exists())
 
 

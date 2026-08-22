@@ -12,7 +12,7 @@ from ctypes import wintypes
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol
 
 from app.main import (
     DEFAULT_PORTS,
@@ -36,11 +36,17 @@ from core.live_stream import LiveEventStream
 from core.map_state import MapModule
 from core.knowledge import KnowledgeStore
 from core.store import CaptureStore
-from core.web_agent import WebAgentBridge
 
 
 LOG = logging.getLogger("rfqol")
 LOG.addHandler(logging.NullHandler())
+
+
+class WebAgentSink(Protocol):
+    def start_session(self, session_id: str) -> None: ...
+    def finish_session(self, session_id: str) -> None: ...
+    def submit(self, event: dict[str, object]) -> bool: ...
+
 
 DEFAULT_GLOBAL_SHORTCUTS = {
     "monitor_pve": "Ctrl+F5",
@@ -1305,7 +1311,7 @@ class CaptureEngine:
         client_reader: Callable[..., list] = clients_for_executable,
         memory_budget_mb: int = DEFAULT_MEMORY_BUDGET_MB,
         game_language: str = "pt",
-        web_agent: WebAgentBridge | None = None,
+        web_agent: WebAgentSink | None = None,
     ) -> None:
         self.capture_directory = Path(capture_directory)
         self.database_path = Path(database_path)
@@ -1408,6 +1414,27 @@ class CaptureEngine:
         return self.live_capture is not None or bool(
             self.capture and self.capture.active
         )
+
+    def web_agent_health(self) -> dict[str, object]:
+        if self.web_agent is None:
+            return {"enabled": False, "state": "disabled"}
+        provider = getattr(self.web_agent, "health", None)
+        if not callable(provider):
+            return {"enabled": True, "state": "ready"}
+        try:
+            health = provider()
+        except Exception:
+            LOG.exception("web_agent_health_failed")
+            return {
+                "enabled": True,
+                "state": "error",
+                "last_error_code": "health_unavailable",
+            }
+        return health if isinstance(health, dict) else {
+            "enabled": True,
+            "state": "error",
+            "last_error_code": "health_invalid",
+        }
 
     def _apply_memory_limits(self, limits: dict[str, int]) -> None:
         self.live_events.stop()
@@ -1578,6 +1605,7 @@ class CaptureEngine:
                     self.web_agent is not None and web_agent_error is None
                 ),
                 "web_agent_error": web_agent_error,
+                "web_agent_health": self.web_agent_health(),
                 "resumed": resuming,
             }
 
@@ -1800,6 +1828,7 @@ class CaptureEngine:
                     now_ns=time.time_ns(),
                 ),
                 "monitor_metrics": metrics,
+                "web_agent_health": self.web_agent_health(),
             }
 
     def abandon(self) -> list[Path]:

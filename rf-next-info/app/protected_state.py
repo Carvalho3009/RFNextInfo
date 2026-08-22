@@ -45,21 +45,33 @@ def _result(blob: _DataBlob, kernel32) -> bytes:
             kernel32.LocalFree(blob.pbData)
 
 
-def protect(value: bytes) -> bytes:
+def _protect(value: bytes, description: str, flags: int) -> bytes:
     crypt32, kernel32 = _libraries()
     source, _buffer = _input(value)
     target = _DataBlob()
     if not crypt32.CryptProtectData(
         ctypes.byref(source),
-        "RF QOL licença",
+        description,
         None,
         None,
         None,
-        CRYPTPROTECT_LOCAL_MACHINE | CRYPTPROTECT_UI_FORBIDDEN,
+        flags | CRYPTPROTECT_UI_FORBIDDEN,
         ctypes.byref(target),
     ):
         raise ctypes.WinError(ctypes.get_last_error())
     return _result(target, kernel32)
+
+
+def protect(value: bytes) -> bytes:
+    """Mantém o escopo de máquina usado pelo estado legado da licença."""
+    return _protect(value, "RF QOL licença", CRYPTPROTECT_LOCAL_MACHINE)
+
+
+def protect_for_current_user(
+    value: bytes, *, description: str = "RF QOL estado privado"
+) -> bytes:
+    """Protege segredo novo para o usuário Windows atual, sem interface."""
+    return _protect(value, description, 0)
 
 
 def unprotect(value: bytes) -> bytes:

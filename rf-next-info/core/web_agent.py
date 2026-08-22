@@ -736,11 +736,32 @@ class AgentOutbox:
 
     def metrics(self) -> dict[str, int | bool]:
         with self._lock:
+            row = self.conn.execute(
+                """SELECT MIN(sequence),MAX(sequence),MIN(created_ns)
+                   FROM outbox_events"""
+            ).fetchone()
+            oldest_ns = int(row[2]) if row[2] is not None else 0
+            disk_bytes = sum(
+                path.stat().st_size
+                for path in (
+                    self.path,
+                    self.path.with_name(self.path.name + "-wal"),
+                    self.path.with_name(self.path.name + "-shm"),
+                )
+                if path.exists()
+            )
             return {
                 "events": self._event_count,
                 "bytes": self._byte_count,
+                "disk_bytes": disk_bytes,
                 "event_limit": self.max_events,
                 "byte_limit": self.max_bytes,
+                "oldest_sequence": int(row[0]) if row[0] is not None else 0,
+                "newest_sequence": int(row[1]) if row[1] is not None else 0,
+                "oldest_age_seconds": (
+                    round(max(0, time.time_ns() - oldest_ns) / 1_000_000_000)
+                    if oldest_ns else 0
+                ),
                 "full": (
                     self._event_count >= self.max_events
                     or self._byte_count >= self.max_bytes
@@ -766,7 +787,9 @@ class WebAgentBridge:
             raise ValueError("Projector e outbox pertencem a instalacoes diferentes")
         self.projector = projector
         self.outbox = outbox
-        self._queue: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue(
+        self._queue: queue.Queue[
+            tuple[str, dict[str, Any] | None] | None
+        ] = queue.Queue(
             maxsize=max(1, int(max_queue_events))
         )
         self._session_id: str | None = None
@@ -794,7 +817,12 @@ class WebAgentBridge:
         with self._lock:
             if self._session_id == session_id:
                 self._session_id = None
-        self.projector.finish_session(session_id)
+        try:
+            self._queue.put_nowait((session_id, None))
+        except queue.Full:
+            # A identidade e vinculada tambem a session_id e o mapa e limitado;
+            # portanto a falta do marcador nao mistura a sessao seguinte.
+            self.dropped += 1
 
     def submit(self, event: dict[str, Any]) -> bool:
         if event.get("opcode") == SENSITIVE_OPCODE or event.get("type") not in EVENT_TYPES:
@@ -820,7 +848,10 @@ class WebAgentBridge:
                 if item is None:
                     return
                 session_id, event = item
-                self.outbox.enqueue(self.projector.project(event, session_id))
+                if event is None:
+                    self.projector.finish_session(session_id)
+                else:
+                    self.outbox.enqueue(self.projector.project(event, session_id))
             except Exception:
                 self.errors += 1
             finally:

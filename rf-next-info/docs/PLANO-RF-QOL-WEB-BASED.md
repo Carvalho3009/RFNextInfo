@@ -2,11 +2,12 @@
 
 Data: 22 ago 2026  
 Branch: `feat/rf-qol-web-based`  
-Estado: W0 em implementação somente no computador
+Estado: W0 concluído tecnicamente; fundação local de W1 em implementação
 Base preservada: `rf-qol-desktop-2.0.0-beta.6` / commit `795333d`  
-Autorizado em 22 ago 2026: preparar a base local do Agent Windows.
-Ainda não autoriza: transporte de rede, servidor, migração, infraestrutura,
-DNS, deploy, publicação ou instalador.
+Autorizado em 22 ago 2026: avançar a base local do Agent Windows, incluindo
+identidade DPAPI e transporte HTTPS testável.
+Ainda não autoriza: habilitar envio real, registrar instalação em produção,
+servidor, migração, infraestrutura, DNS, deploy, publicação ou instalador.
 
 ## 1. Decisão do owner
 
@@ -178,6 +179,28 @@ Limites iniciais de homologação:
   autoritativo até a lacuna ser resolvida ou expirar por política explícita.
 
 Os valores serão recalibrados por medição; não são cotas comerciais.
+
+### 6.1 Assinatura preparada no Agent
+
+O cliente local já monta, mas não envia por padrão, os cabeçalhos:
+
+- `Idempotency-Key`;
+- `X-RFQOL-Installation-ID`;
+- `X-RFQOL-Key-ID`;
+- `X-RFQOL-Timestamp`;
+- `X-RFQOL-Nonce`;
+- `X-RFQOL-Body-SHA256`;
+- `X-RFQOL-Signature`.
+
+A assinatura Ed25519 usa o contexto `RFQOL-INGEST-V1`, método, caminho, lote,
+horário, nonce e SHA-256 do JSON canônico antes de eventual gzip. O cliente
+recusa HTTP, credenciais na URL e redirecionamentos. Nenhum bearer token,
+lease, chave privada ou segredo de pseudonimização entra no request.
+
+O contrato público de registro inclui chave pública, `key_id`, algoritmo e uma
+prova de posse Ed25519 no contexto separado `RFQOL-REGISTER-V1`. O futuro
+servidor ainda deverá vincular esse registro ao Profile autenticado; a prova de
+posse sozinha não concede acesso.
 
 ## 7. Agent Windows
 
@@ -396,6 +419,10 @@ Nunca enviar ou persistir remotamente:
 - [x] integrar um sink opcional e não bloqueante após o decoder, isolando falhas
   para que captura e processamento desktop continuem funcionando;
 - [x] manter criação da outbox e todo envio novo desligados por padrão;
+- [x] gerar par Ed25519 por instalação e proteger chave privada e segredo de
+  pseudonimização com DPAPI no escopo do usuário Windows;
+- [x] preservar identidade por backup protegido e bloquear rotação silenciosa
+  quando ambos os arquivos estiverem corrompidos;
 - [ ] revisar a lista de eventos do MVP com o owner antes de congelar W0;
 - [ ] medir volume real e completar corpus permitido sem incluir dados brutos.
 
@@ -403,11 +430,16 @@ Gate: revisão dos contratos e dados permitidos.
 
 ### W1 — Ingestão mínima em homologação
 
-- registrar instalação;
-- aceitar lote autenticado e idempotente;
-- armazenar recibo e eventos sanitizados;
-- comprovar rejeição de campos proibidos e limites;
-- sem processamento de domínio ou painel real.
+- [x] preparar contrato público de registro da instalação, sem chave privada;
+- [x] preparar request HTTPS assinado por lote, com timestamp, nonce,
+  idempotência e SHA-256, sem bearer token ou lease;
+- [x] preparar worker local de entrega com ACK parcial, backoff, limites e
+  diagnóstico sanitizado, sem iniciá-lo por padrão;
+- [ ] registrar instalação no servidor de homologação;
+- [ ] aceitar lote autenticado e idempotente;
+- [ ] armazenar recibo e eventos sanitizados;
+- [ ] comprovar rejeição de campos proibidos e limites no servidor;
+- [x] manter esta fase sem processamento de domínio ou painel real.
 
 Gate: segurança, backup e rollback do banco de homologação.
 
@@ -536,7 +568,8 @@ Servidor:
 3. **Retenção:** aprovar prazos para eventos decodificados, sessões e auditoria.
 4. **Outbox:** aprovar limite inicial de 512 MiB/7 dias ou definir outro.
 5. **Infraestrutura:** aprovar serviço e PostgreSQL próprios do RF QOL.
-6. **Identidade:** aprovar chave por instalação protegida por DPAPI.
+6. **Identidade:** aprovado e implementado localmente com Ed25519 e DPAPI por
+   usuário; registro da chave pública no servidor continua pendente.
 7. **Domínio:** aprovar posteriormente os destinos de painel/API; nenhum DNS é
    criado por este plano.
 8. **Privacidade:** decidir quais campos de mapa, coordenadas e proximidade podem
