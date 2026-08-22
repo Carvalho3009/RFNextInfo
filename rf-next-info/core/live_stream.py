@@ -12,7 +12,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from core.ingest import DEFAULT_PORTS, SENSITIVE_OPCODE, _safe_parse
 from core import rfnext_frame_decode as decoder
@@ -315,6 +315,7 @@ class LiveEventStream:
         max_pending_segments_per_flow: int = MAX_PENDING_SEGMENTS_PER_FLOW,
         max_pending_bytes_per_flow: int = MAX_PENDING_BYTES_PER_FLOW,
         max_flow_buffer_bytes: int = MAX_FLOW_BUFFER_BYTES,
+        event_sink: Callable[[dict[str, Any]], bool] | None = None,
     ) -> None:
         self._max_pending_packets = max(1, int(max_pending_packets))
         self._max_pending_packet_bytes = max(1, int(max_pending_packet_bytes))
@@ -353,6 +354,7 @@ class LiveEventStream:
         self._boss_event_ns = max(1, int(boss_event_seconds)) * 1_000_000_000
         self._lock = threading.Lock()
         self._decoder = LiveEventDecoder(**self._decoder_kwargs)
+        self._event_sink = event_sink
         self._thread: threading.Thread | None = None
         self._worker_stop = threading.Event()
         self.decode_errors = 0
@@ -361,6 +363,9 @@ class LiveEventStream:
         self.ignored_events = 0
         self.dropped_events = 0
         self.dropped_packets = 0
+        self.event_sink_accepted = 0
+        self.event_sink_rejected = 0
+        self.event_sink_errors = 0
         self.memory_compactions = 0
         self.last_received_ns = 0
         self.last_processed_ns = 0
@@ -527,6 +532,9 @@ class LiveEventStream:
             "ignored_events": self.ignored_events,
             "dropped_events": self.dropped_events,
             "dropped_packets": self.dropped_packets,
+            "event_sink_accepted": self.event_sink_accepted,
+            "event_sink_rejected": self.event_sink_rejected,
+            "event_sink_errors": self.event_sink_errors,
             "retained_events": retained,
             "event_limit": int(self._events.maxlen or 0),
             "entity_anchors": anchors,
@@ -574,6 +582,9 @@ class LiveEventStream:
         self.ignored_events = 0
         self.dropped_events = 0
         self.dropped_packets = 0
+        self.event_sink_accepted = 0
+        self.event_sink_rejected = 0
+        self.event_sink_errors = 0
         self.memory_compactions = 0
         self.last_received_ns = 0
         self.last_processed_ns = 0
@@ -646,10 +657,27 @@ class LiveEventStream:
                 self.processed_packets += 1
                 self.last_processed_ns = max(self.last_processed_ns, int(item[0]))
             if events:
+                self._dispatch_events(events)
                 try:
                     self._remember(events)
                 except Exception:
                     self.decode_errors += 1
+
+    def _dispatch_events(self, events: list[dict[str, Any]]) -> None:
+        """Entrega opcional fora do estado local; falhas nunca param a captura."""
+        sink = self._event_sink
+        if sink is None:
+            return
+        for event in events:
+            try:
+                accepted = sink(event)
+            except Exception:
+                self.event_sink_errors += 1
+                continue
+            if accepted:
+                self.event_sink_accepted += 1
+            else:
+                self.event_sink_rejected += 1
 
     def _remember(self, events: list[dict[str, Any]]) -> None:
         with self._lock:

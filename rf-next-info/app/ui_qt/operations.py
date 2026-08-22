@@ -36,6 +36,7 @@ from core.live_stream import LiveEventStream
 from core.map_state import MapModule
 from core.knowledge import KnowledgeStore
 from core.store import CaptureStore
+from core.web_agent import WebAgentBridge
 
 
 LOG = logging.getLogger("rfqol")
@@ -90,7 +91,10 @@ def memory_limits_for_budget(value: object) -> dict[str, int]:
     }
 
 
-def _live_stream(limits: dict[str, int]) -> LiveEventStream:
+def _live_stream(
+    limits: dict[str, int],
+    event_sink: Callable[[dict[str, object]], bool] | None = None,
+) -> LiveEventStream:
     return LiveEventStream(
         max_events=limits["events"],
         max_entity_anchors=limits["entity_anchors"],
@@ -101,6 +105,7 @@ def _live_stream(limits: dict[str, int]) -> LiveEventStream:
         max_pending_segments_per_flow=limits["pending_segments_per_flow"],
         max_pending_bytes_per_flow=limits["pending_bytes_per_flow"],
         max_flow_buffer_bytes=limits["flow_buffer_bytes"],
+        event_sink=event_sink,
     )
 
 
@@ -1300,6 +1305,7 @@ class CaptureEngine:
         client_reader: Callable[..., list] = clients_for_executable,
         memory_budget_mb: int = DEFAULT_MEMORY_BUDGET_MB,
         game_language: str = "pt",
+        web_agent: WebAgentBridge | None = None,
     ) -> None:
         self.capture_directory = Path(capture_directory)
         self.database_path = Path(database_path)
@@ -1336,7 +1342,11 @@ class CaptureEngine:
         self.memory_limits = memory_limits_for_budget(memory_budget_mb)
         self.memory_budget_mb = self.memory_limits["budget_mb"]
         self._pending_memory_limits: dict[str, int] | None = None
-        self.live_events = _live_stream(self.memory_limits)
+        self.web_agent = web_agent
+        self.live_events = _live_stream(
+            self.memory_limits,
+            self.web_agent.submit if self.web_agent is not None else None,
+        )
         self.map_module = MapModule(language=game_language)
         self._lock = threading.RLock()
 
@@ -1403,7 +1413,10 @@ class CaptureEngine:
         self.live_events.stop()
         self.memory_limits = limits
         self.memory_budget_mb = limits["budget_mb"]
-        self.live_events = _live_stream(limits)
+        self.live_events = _live_stream(
+            limits,
+            self.web_agent.submit if self.web_agent is not None else None,
+        )
         self._pending_memory_limits = None
 
     def _apply_pending_memory_limits(self) -> None:
@@ -1519,6 +1532,13 @@ class CaptureEngine:
             self.capture = capture
             self.live_capture = None
             live_error = None
+            web_agent_error = None
+            if self.web_agent is not None:
+                try:
+                    self.web_agent.start_session(str(self.current_session))
+                except Exception as error:
+                    LOG.exception("web_agent_start_failed")
+                    web_agent_error = f"{type(error).__name__}: {error}"
             try:
                 self.live_events.clear()
                 self.map_module.reset()
@@ -1554,6 +1574,10 @@ class CaptureEngine:
                 "connections": len(local_ports) + len(emulator_local),
                 "live": self.live_capture is not None,
                 "live_error": live_error,
+                "web_agent_active": bool(
+                    self.web_agent is not None and web_agent_error is None
+                ),
+                "web_agent_error": web_agent_error,
                 "resumed": resuming,
             }
 
@@ -1781,6 +1805,7 @@ class CaptureEngine:
     def abandon(self) -> list[Path]:
         """Interrompe a captura e devolve os arquivos sem decodificá-los."""
         with self._lock:
+            session_id = self.current_session
             files = [*self.pending_files, *self.live_files]
             if self.live_capture:
                 live, self.live_capture = self.live_capture, None
@@ -1794,6 +1819,8 @@ class CaptureEngine:
             self.live_files.clear()
             self.pending_files.clear()
             self.current_session = None
+            if self.web_agent is not None and session_id:
+                self.web_agent.finish_session(session_id)
             self.paused = False
             self._apply_pending_memory_limits()
             return list(dict.fromkeys(path for path in files if path.exists()))
@@ -1896,6 +1923,8 @@ class CaptureEngine:
             self.paused = pause
             if not pause and not failures:
                 self.current_session = None
+                if self.web_agent is not None:
+                    self.web_agent.finish_session(session_id)
             self.capture = None
             self._apply_pending_memory_limits()
             return {

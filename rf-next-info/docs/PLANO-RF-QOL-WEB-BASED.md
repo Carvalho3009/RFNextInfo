@@ -2,10 +2,11 @@
 
 Data: 22 ago 2026  
 Branch: `feat/rf-qol-web-based`  
-Estado: planejamento  
+Estado: W0 em implementação somente no computador
 Base preservada: `rf-qol-desktop-2.0.0-beta.6` / commit `795333d`  
-Não autoriza: implementação, migração, criação de infraestrutura, DNS, abertura
-de rede, deploy, publicação ou instalador
+Autorizado em 22 ago 2026: preparar a base local do Agent Windows.
+Ainda não autoriza: transporte de rede, servidor, migração, infraestrutura,
+DNS, deploy, publicação ou instalador.
 
 ## 1. Decisão do owner
 
@@ -385,11 +386,18 @@ Nunca enviar ou persistir remotamente:
 
 ### W0 — Contratos e corpus
 
-- congelar os schemas `decoded-event/v1` e `ingest-batch/v1`;
-- listar tipos e campos permitidos do MVP;
-- criar corpus sanitizado a partir de eventos sintéticos e capturas permitidas;
-- definir relógio, sequência, identidade e idempotência;
-- manter todo envio novo desligado.
+- [x] materializar os schemas `decoded-event/v1` e `ingest-batch/v1` no Agent;
+- [x] aplicar lista positiva inicial de tipos/campos e rejeitar `0x0101`,
+  credenciais, IDs canônicos, fluxo, porta, payload e arquivos brutos;
+- [x] criar corpus sintético sanitizado e testes de contrato;
+- [x] definir relógio, sequência local, identidade opaca e idempotência;
+- [x] criar outbox SQLite separada, deduplicada e limitada, sem descarte
+  automático de eventos não confirmados;
+- [x] integrar um sink opcional e não bloqueante após o decoder, isolando falhas
+  para que captura e processamento desktop continuem funcionando;
+- [x] manter criação da outbox e todo envio novo desligados por padrão;
+- [ ] revisar a lista de eventos do MVP com o owner antes de congelar W0;
+- [ ] medir volume real e completar corpus permitido sem incluir dados brutos.
 
 Gate: revisão dos contratos e dados permitidos.
 
@@ -555,7 +563,8 @@ volume do corpus e escolher o ambiente.
 
 ## 21. Fora do escopo atual
 
-- implementar Agent, API, worker, banco ou painel;
+- ativar o Agent por padrão ou transmitir a outbox;
+- implementar API remota, worker, banco do servidor ou painel;
 - alterar o decoder;
 - criar DNS, firewall, domínio, contêiner ou volume;
 - migrar dados reais;
