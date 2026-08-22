@@ -92,7 +92,9 @@ class WebEventProjectorTest(unittest.TestCase):
         self.assertEqual(identity["payload"]["name"], "Personagem")
         self.assertEqual(identity["client_ref"], exp["client_ref"])
         self.assertEqual(identity["stream_id"], exp["stream_id"])
+        self.assertEqual(identity["session_ref"], exp["session_ref"])
         self.assertEqual(exp["payload"]["gained_exp"], 4_500)
+        self.assertNotIn("sessao-1", json.dumps(identity))
         self.assertNotIn("123456789", json.dumps(identity))
         assert_no_forbidden_keys(self, identity)
 
@@ -143,6 +145,24 @@ class WebEventProjectorTest(unittest.TestCase):
         first = self.projector.project(event, "sessao-1")
         second = self.projector.project(event, "sessao-1")
         self.assertEqual(first["event_id"], second["event_id"])
+
+    def test_lifecycle_uses_same_opaque_session_reference(self):
+        started = self.projector.project_lifecycle(
+            "sessao-1", "started", occurred_ns=100
+        )
+        finished = self.projector.project_lifecycle(
+            "sessao-1", "finished", reason="finalized", occurred_ns=200
+        )
+        decoded = self.projector.project(self.identity_event(), "sessao-1")
+
+        self.assertEqual(started["session_ref"], finished["session_ref"])
+        self.assertEqual(started["session_ref"], decoded["session_ref"])
+        self.assertEqual(started["payload"], {"state": "started"})
+        self.assertEqual(
+            finished["payload"], {"state": "finished", "reason": "finalized"}
+        )
+        self.assertNotIn("sessao-1", json.dumps([started, finished]))
+        assert_no_forbidden_keys(self, started)
 
     def test_identity_context_is_bounded_for_long_running_agent(self):
         for index in range(300):
@@ -234,7 +254,7 @@ class WebAgentBridgeTest(unittest.TestCase):
                 decoder_version="test",
             )
             outbox = AgentOutbox(
-                Path(folder) / "outbox.sqlite3", "install-publica", max_events=1
+                Path(folder) / "outbox.sqlite3", "install-publica", max_events=2
             )
             bridge = WebAgentBridge(projector, outbox, max_queue_events=8)
             bridge.start_session("sessao-1")
@@ -247,7 +267,7 @@ class WebAgentBridgeTest(unittest.TestCase):
             self.assertFalse(bridge.submit(decoded_event("unparsed", {}, offset=3)))
             bridge.wait_until_idle()
             metrics = bridge.metrics()
-            self.assertEqual(metrics["outbox_events"], 1)
+            self.assertEqual(metrics["outbox_events"], 2)
             self.assertEqual(metrics["errors"], 1)
             self.assertEqual(metrics["ignored"], 1)
             bridge.close()
@@ -296,8 +316,12 @@ class WebAgentBridgeTest(unittest.TestCase):
             bridge.wait_until_idle()
 
             batch = outbox.next_batch()
-            self.assertEqual(len(batch["events"]), 2)
-            self.assertIsNotNone(batch["events"][1]["client_ref"])
+            self.assertEqual(len(batch["events"]), 4)
+            self.assertEqual(
+                [event["payload"].get("state") for event in batch["events"]],
+                ["started", None, None, "finished"],
+            )
+            self.assertIsNotNone(batch["events"][2]["client_ref"])
             self.assertEqual(projector._flow_clients, {})
             bridge.close()
 
@@ -342,11 +366,14 @@ class WebAgentBridgeTest(unittest.TestCase):
             def submit(self, _event):
                 return True
 
-            def start_session(self, session_id):
-                self.started.append(session_id)
+            def start_session(self, session_id, *, resumed=False):
+                self.started.append((session_id, resumed))
 
-            def finish_session(self, session_id):
-                self.finished.append(session_id)
+            def pause_session(self, session_id, *, reason="paused"):
+                self.finished.append((session_id, reason))
+
+            def finish_session(self, session_id, *, reason="finished"):
+                self.finished.append((session_id, reason))
 
         with tempfile.TemporaryDirectory() as folder:
             bridge = Bridge()
@@ -365,13 +392,28 @@ class WebAgentBridgeTest(unittest.TestCase):
             first_result = engine.start()
             first = first_result["session_id"]
             self.assertEqual(first_result["web_agent_health"]["state"], "ready")
+            paused = engine.stop_without_reading()
+            self.assertTrue(paused["paused"])
+            resumed = engine.start()
+            self.assertTrue(resumed["resumed"])
+            self.assertEqual(resumed["session_id"], first)
             engine.abandon()
             second = engine.start()["session_id"]
             engine.abandon()
 
             self.assertNotEqual(first, second)
-            self.assertEqual(bridge.started, [first, second])
-            self.assertEqual(bridge.finished, [first, second])
+            self.assertEqual(
+                bridge.started,
+                [(first, False), (first, True), (second, False)],
+            )
+            self.assertEqual(
+                bridge.finished,
+                [
+                    (first, "capture_stopped_without_reading"),
+                    (first, "abandoned"),
+                    (second, "abandoned"),
+                ],
+            )
 
     def test_capture_engine_keeps_web_agent_disabled_by_default(self):
         with tempfile.TemporaryDirectory() as folder:

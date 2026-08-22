@@ -43,8 +43,9 @@ LOG.addHandler(logging.NullHandler())
 
 
 class WebAgentSink(Protocol):
-    def start_session(self, session_id: str) -> None: ...
-    def finish_session(self, session_id: str) -> None: ...
+    def start_session(self, session_id: str, *, resumed: bool = False) -> None: ...
+    def pause_session(self, session_id: str, *, reason: str = "paused") -> None: ...
+    def finish_session(self, session_id: str, *, reason: str = "finished") -> None: ...
     def submit(self, event: dict[str, object]) -> bool: ...
 
 
@@ -1562,7 +1563,9 @@ class CaptureEngine:
             web_agent_error = None
             if self.web_agent is not None:
                 try:
-                    self.web_agent.start_session(str(self.current_session))
+                    self.web_agent.start_session(
+                        str(self.current_session), resumed=resuming
+                    )
                 except Exception as error:
                     LOG.exception("web_agent_start_failed")
                     web_agent_error = f"{type(error).__name__}: {error}"
@@ -1849,7 +1852,10 @@ class CaptureEngine:
             self.pending_files.clear()
             self.current_session = None
             if self.web_agent is not None and session_id:
-                self.web_agent.finish_session(session_id)
+                try:
+                    self.web_agent.finish_session(session_id, reason="abandoned")
+                except Exception:
+                    LOG.exception("web_agent_finish_failed")
             self.paused = False
             self._apply_pending_memory_limits()
             return list(dict.fromkeys(path for path in files if path.exists()))
@@ -1872,6 +1878,13 @@ class CaptureEngine:
                 status, self.capture = self.capture.stop(), None
                 self.pending_files.extend(status.files)
             self.paused = True
+            if self.web_agent is not None:
+                try:
+                    self.web_agent.pause_session(
+                        session_id, reason="capture_stopped_without_reading"
+                    )
+                except Exception:
+                    LOG.exception("web_agent_pause_failed")
             self._apply_pending_memory_limits()
             files = list(
                 dict.fromkeys(
@@ -1950,10 +1963,16 @@ class CaptureEngine:
                 self.live_files.clear()
                 self.pending_files.clear()
             self.paused = pause
+            if not failures and self.web_agent is not None:
+                try:
+                    if pause:
+                        self.web_agent.pause_session(session_id, reason="paused")
+                    else:
+                        self.web_agent.finish_session(session_id, reason="finalized")
+                except Exception:
+                    LOG.exception("web_agent_session_transition_failed")
             if not pause and not failures:
                 self.current_session = None
-                if self.web_agent is not None:
-                    self.web_agent.finish_session(session_id)
             self.capture = None
             self._apply_pending_memory_limits()
             return {

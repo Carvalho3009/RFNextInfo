@@ -54,6 +54,8 @@ EVENT_TYPES = {
     "FG2C_notify_boss_result_Message": "boss.result_observed",
 }
 
+SESSION_STATES = {"started", "resumed", "paused", "finished", "abandoned"}
+
 _PAYLOAD_FIELDS = {
     "character.observed": {"name", "level", "biosuit_item_index"},
     "character.exp_changed": {
@@ -86,6 +88,7 @@ _PAYLOAD_FIELDS = {
     "map.teleport_finished": {"entity_ref", "map_index", "teleport_index", "server_region_index", "result", "position"},
     "boss.position_observed": {"boss_ref", "npc_index", "position", "result"},
     "boss.result_observed": {"boss_ref", "npc_index", "position", "result"},
+    "session.lifecycle": {"state", "reason"},
 }
 _NESTED_FIELDS = {
     "items": {"result", "item_index", "count", "gain_total", "action_code"},
@@ -204,8 +207,8 @@ def _assert_safe_contract(value: object, *, root: bool = True) -> None:
 
 def _validate_event_contract(event: dict[str, Any]) -> None:
     expected_root = {
-        "schema", "event_id", "installation_id", "stream_id", "occurred_at",
-        "client_ref", "type", "payload", "evidence",
+        "schema", "event_id", "installation_id", "session_ref", "stream_id",
+        "occurred_at", "client_ref", "type", "payload", "evidence",
     }
     if set(event) != expected_root:
         raise WebEventContractError("Campos externos ao schema de evento")
@@ -218,6 +221,8 @@ def _validate_event_contract(event: dict[str, Any]) -> None:
         raise WebEventContractError("Payload ou evidencia invalidos")
     if not set(payload).issubset(_PAYLOAD_FIELDS[str(event_type)]):
         raise WebEventContractError("Campo de payload nao aprovado")
+    if event_type == "session.lifecycle" and payload.get("state") not in SESSION_STATES:
+        raise WebEventContractError("Estado de sessao nao aprovado")
     if set(evidence) != {"confidence", "decoder_version"}:
         raise WebEventContractError("Campo de evidencia nao aprovado")
     for name, allowed in _NESTED_FIELDS.items():
@@ -287,6 +292,59 @@ class WebEventProjector:
             for key in tuple(self._flow_clients):
                 if key[0] == session_id:
                     self._flow_clients.pop(key, None)
+
+    def session_ref(self, session_id: str) -> str:
+        value = _text(session_id, 160)
+        if not value:
+            raise WebEventContractError("Sessao obrigatoria")
+        return self._opaque("session", value, size=32)
+
+    def project_lifecycle(
+        self,
+        session_id: str,
+        state: str,
+        *,
+        reason: str | None = None,
+        occurred_ns: int | None = None,
+    ) -> dict[str, Any]:
+        """Cria um evento de controle sem expor o identificador local da sessao."""
+        session_id = _text(session_id, 160) or ""
+        normalized_state = _text(state, 32) or ""
+        if not session_id:
+            raise WebEventContractError("Sessao obrigatoria")
+        if normalized_state not in SESSION_STATES:
+            raise WebEventContractError("Estado de sessao nao aprovado")
+        timestamp_ns = max(0, _integer(occurred_ns, time.time_ns()) or 0)
+        payload = {"state": normalized_state}
+        safe_reason = _text(reason, 96)
+        if safe_reason:
+            payload["reason"] = safe_reason
+        session_ref = self.session_ref(session_id)
+        identity = {
+            "session": session_id,
+            "state": normalized_state,
+            "reason": safe_reason,
+            "time": timestamp_ns,
+        }
+        result = {
+            "schema": DECODED_EVENT_SCHEMA,
+            "event_id": self._opaque(
+                "event", _canonical_json(identity).hex(), size=48
+            ),
+            "installation_id": self.installation_id,
+            "session_ref": session_ref,
+            "stream_id": self._opaque("stream", f"{session_id}:lifecycle", size=32),
+            "occurred_at": _utc_from_ns(timestamp_ns),
+            "client_ref": None,
+            "type": "session.lifecycle",
+            "payload": payload,
+            "evidence": {
+                "confidence": "agent",
+                "decoder_version": self.decoder_version,
+            },
+        }
+        _validate_event_contract(result)
+        return result
 
     def _project_units(
         self,
@@ -521,6 +579,7 @@ class WebEventProjector:
             "schema": DECODED_EVENT_SCHEMA,
             "event_id": self._opaque("event", _canonical_json(identity).hex(), size=48),
             "installation_id": self.installation_id,
+            "session_ref": self.session_ref(session_id),
             "stream_id": self._opaque(
                 "stream", f"{session_id}:{connection}", size=32
             ),
@@ -801,28 +860,48 @@ class WebAgentBridge:
         self.dropped = 0
         self.errors = 0
 
-    def start_session(self, session_id: str) -> None:
+    def start_session(self, session_id: str, *, resumed: bool = False) -> None:
         value = _text(session_id, 160)
         if not value:
             raise ValueError("session_id obrigatorio")
         with self._lock:
             self._session_id = value
-            if self._thread and self._thread.is_alive():
-                return
-            self._stop.clear()
-            self._thread = threading.Thread(target=self._worker, daemon=True)
-            self._thread.start()
+            if not self._thread or not self._thread.is_alive():
+                self._stop.clear()
+                self._thread = threading.Thread(target=self._worker, daemon=True)
+                self._thread.start()
 
-    def finish_session(self, session_id: str) -> None:
+        self._put_control(value, "resumed" if resumed else "started")
+
+    def pause_session(self, session_id: str, *, reason: str = "paused") -> None:
+        self._end_session(session_id, "paused", reason)
+
+    def finish_session(self, session_id: str, *, reason: str = "finished") -> None:
+        state = "abandoned" if reason == "abandoned" else "finished"
+        self._end_session(session_id, state, reason)
+
+    def _put_control(self, session_id: str, state: str, reason: str | None = None) -> None:
+        command = {
+            "_agent_lifecycle": state,
+            "reason": reason,
+            "occurred_ns": time.time_ns(),
+        }
+        try:
+            self._queue.put((session_id, command), timeout=3)
+        except queue.Full:
+            self.dropped += 1
+            raise RuntimeError("Fila do Agent cheia ao registrar ciclo da sessao")
+
+    def _end_session(self, session_id: str, state: str, reason: str) -> None:
         with self._lock:
             if self._session_id == session_id:
                 self._session_id = None
+        self._put_control(session_id, state, reason)
         try:
-            self._queue.put_nowait((session_id, None))
+            self._queue.put((session_id, None), timeout=3)
         except queue.Full:
-            # A identidade e vinculada tambem a session_id e o mapa e limitado;
-            # portanto a falta do marcador nao mistura a sessao seguinte.
             self.dropped += 1
+            raise RuntimeError("Fila do Agent cheia ao limpar contexto da sessao")
 
     def submit(self, event: dict[str, Any]) -> bool:
         if event.get("opcode") == SENSITIVE_OPCODE or event.get("type") not in EVENT_TYPES:
@@ -850,6 +929,13 @@ class WebAgentBridge:
                 session_id, event = item
                 if event is None:
                     self.projector.finish_session(session_id)
+                elif event.get("_agent_lifecycle"):
+                    self.outbox.enqueue(self.projector.project_lifecycle(
+                        session_id,
+                        str(event["_agent_lifecycle"]),
+                        reason=event.get("reason"),
+                        occurred_ns=_integer(event.get("occurred_ns")),
+                    ))
                 else:
                     self.outbox.enqueue(self.projector.project(event, session_id))
             except Exception:

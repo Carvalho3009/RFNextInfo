@@ -2,10 +2,10 @@
 
 Data: 22 ago 2026  
 Branch: `feat/rf-qol-web-based`  
-Estado: W0 concluído tecnicamente; fundação local de W1 em implementação
+Estado: W0 concluído tecnicamente; Agent Windows em shadow offline testável
 Base preservada: `rf-qol-desktop-2.0.0-beta.6` / commit `795333d`  
 Autorizado em 22 ago 2026: avançar a base local do Agent Windows, incluindo
-identidade DPAPI e transporte HTTPS testável.
+identidade DPAPI, transporte HTTPS testável e testes locais sem servidor.
 Ainda não autoriza: habilitar envio real, registrar instalação em produção,
 servidor, migração, infraestrutura, DNS, deploy, publicação ou instalador.
 
@@ -107,6 +107,7 @@ conceitual:
   "schema": "rf-qol.decoded-event/v1",
   "event_id": "id-opaco-idempotente",
   "installation_id": "instalacao-publica",
+  "session_ref": "sessao-opaca-comum-aos-fluxos",
   "stream_id": "fluxo-logico-opaco",
   "sequence": 18421,
   "occurred_at": "2026-08-22T12:00:00.123Z",
@@ -125,6 +126,7 @@ conceitual:
 Regras obrigatórias:
 
 - `event_id` permanece estável em todo reenvio;
+- `session_ref` liga fluxos da mesma sessão sem expor o identificador local;
 - `sequence` é monotônica por instalação/stream e permite detectar lacunas;
 - evento sem cliente confirmado mantém `client_ref=null`;
 - o servidor não inventa propriedade para evento sem identidade;
@@ -423,6 +425,11 @@ Nunca enviar ou persistir remotamente:
   pseudonimização com DPAPI no escopo do usuário Windows;
 - [x] preservar identidade por backup protegido e bloquear rotação silenciosa
   quando ambos os arquivos estiverem corrompidos;
+- [x] criar modo `offline_shadow` sem URL, transporte ou thread de entrega;
+- [x] persistir os ciclos `started`, `paused`, `resumed`, `finished` e
+  `abandoned`, mantendo uma referência opaca comum da sessão;
+- [x] executar corpus sintético local com múltiplos clientes e sessões,
+  reinício da outbox e prova de que nenhuma chamada de rede foi feita;
 - [ ] revisar a lista de eventos do MVP com o owner antes de congelar W0;
 - [ ] medir volume real e completar corpus permitido sem incluir dados brutos.
 
@@ -463,7 +470,8 @@ Gate: zero mistura entre clientes e equivalência aprovada dos campos do MVP.
 
 ### W4 — Offline, carga e estabilidade
 
-- reinício do Agent com outbox pendente;
+- [x] reinício do Agent com outbox pendente em corpus sintético;
+- [x] múltiplos clientes, pausa/retomada e sessão seguinte em shadow local;
 - lote duplicado, parcial, atrasado e fora de ordem;
 - indisponibilidade do banco/worker;
 - ensaio de 10 h com pelo menos dois clientes;
@@ -581,18 +589,17 @@ Servidor:
 
 ## 20. Próximo gate recomendado
 
-Fechar W0 antes de implementar qualquer serviço:
+Continuar sem servidor até fechar a validação local do Agent:
 
-1. catálogo dos tipos de evento do MVP;
-2. schema de cada payload e lista de campos proibidos;
-3. regras de sequência, relógio, idempotência e cliente não identificado;
-4. amostras sanitizadas de contrato;
-5. matriz que relaciona cada métrica web aos eventos que a comprovam;
-6. orçamento preliminar de eventos por segundo e armazenamento diário.
+1. ampliar o corpus sintético para todos os tipos do MVP;
+2. medir eventos por segundo e bytes por hora com captura real sanitizada;
+3. ensaiar reinício e pressão dos limites escolhidos da outbox;
+4. executar ensaio prolongado com dois ou mais clientes e observar RAM/CPU;
+5. gerar relatório de equivalência entre desktop e eventos do shadow local;
+6. revisar a lista de eventos e campos permitidos antes de congelar W0.
 
-Somente após a aprovação desses seis artefatos deve começar a ingestão em
-homologação. Custo de infraestrutura e operação permanece `unknown` até medir o
-volume do corpus e escolher o ambiente.
+API, banco, worker e painel permanecem fora deste gate. Custo de infraestrutura
+e operação continua `unknown` até medir o volume e escolher o ambiente.
 
 ## 21. Fora do escopo atual
 

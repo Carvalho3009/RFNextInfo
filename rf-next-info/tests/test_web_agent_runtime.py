@@ -21,9 +21,12 @@ from core.web_agent_identity import (
     AgentIdentityStore,
 )
 from core.web_agent_runtime import (
+    WebAgentOfflineRuntime,
     WebAgentRuntime,
+    create_offline_web_agent_if_enabled,
     create_web_agent_if_enabled,
 )
+from core.web_agent_selftest import run_offline_agent_self_test
 from core.web_agent_transport import (
     AgentBatchTransport,
     AgentDeliveryWorker,
@@ -363,6 +366,49 @@ class WebAgentRuntimeTest(unittest.TestCase):
             self.assertNotIn("public_key", serialized)
             self.assertNotIn("https://", serialized)
             runtime.close()
+
+    def test_offline_runtime_creates_no_delivery_and_never_uses_network(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch(
+            "urllib.request.urlopen",
+            side_effect=AssertionError("rede nao permitida no modo offline"),
+        ) as urlopen:
+            runtime = create_offline_web_agent_if_enabled(
+                True,
+                Path(folder),
+                str(uuid.uuid4()),
+                version="test",
+            )
+            self.assertIsInstance(runtime, WebAgentOfflineRuntime)
+            self.assertFalse(hasattr(runtime, "delivery"))
+            runtime.start_session("sessao-1")
+            self.assertTrue(runtime.submit(_event(1, "world_info_prefix")))
+            runtime.pause_session("sessao-1")
+            runtime.start_session("sessao-1", resumed=True)
+            runtime.finish_session("sessao-1")
+            runtime.bridge.wait_until_idle()
+            health = runtime.health()
+            self.assertEqual(health["state"], "offline_shadow")
+            self.assertEqual(health["mode"], "offline")
+            self.assertNotIn("delivery", health)
+            runtime.close()
+            urlopen.assert_not_called()
+
+    def test_offline_self_test_covers_multiple_clients_and_sessions(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch(
+            "urllib.request.urlopen",
+            side_effect=AssertionError("autoteste tentou usar rede"),
+        ) as urlopen:
+            result = run_offline_agent_self_test(
+                Path(folder), str(uuid.uuid4()), version="test"
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["network_used"])
+            self.assertEqual(result["isolated_sessions"], 2)
+            self.assertGreaterEqual(result["isolated_clients"], 3)
+            self.assertEqual(result["session_lifecycle_events"], 6)
+            self.assertEqual(result["queue_errors"], 0)
+            urlopen.assert_not_called()
 
     def test_opt_in_runtime_delivers_outside_capture_queue(self):
         calls = 0
