@@ -284,6 +284,107 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
             finally:
                 runtime.close()
 
+    def test_stable_exitlag_route_change_restarts_only_capture(self):
+        current = {
+            "value": {
+                "projectrf.exe": ({10}, {51000}, set()),
+            }
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = StandaloneWindowsAgentRuntime.create_offline(
+                Path(folder),
+                str(uuid.uuid4()),
+                version="test",
+                local_api_port=0,
+                capture_factory=_FakeCapture,
+                process_reader=lambda _ports: current["value"],
+                route_change_confirmations=2,
+                route_restart_cooldown_seconds=0,
+            )
+            try:
+                runtime.start_capture()
+                session_id = runtime.session_id
+                first_capture = runtime.live_capture
+                first_capture.received_packets = 7
+
+                current["value"] = {
+                    "projectrf.exe": ({10}, {52000}, set()),
+                }
+                first = runtime.refresh_routes()
+                second = runtime.refresh_routes()
+
+                self.assertFalse(first["capture_restarted"])
+                self.assertTrue(second["capture_restarted"])
+                self.assertTrue(first_capture.stopped)
+                self.assertIsNot(runtime.live_capture, first_capture)
+                self.assertIn(52000, runtime.live_capture.ports)
+                self.assertEqual(runtime.session_id, session_id)
+                self.assertEqual(runtime.health()["capture"]["route_restarts"], 1)
+                self.assertEqual(runtime.health()["capture"]["received_packets"], 7)
+                self.assertTrue(runtime.live_events.metrics()["worker_alive"])
+            finally:
+                runtime.close()
+
+    def test_failed_route_restart_restores_previous_capture(self):
+        current = {
+            "value": {"projectrf.exe": ({10}, {51000}, set())}
+        }
+        created = []
+
+        def factory(target, ports):
+            capture = _FakeCapture(target, ports)
+            capture.fail_start = len(created) == 1
+            created.append(capture)
+            return capture
+
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = StandaloneWindowsAgentRuntime.create_offline(
+                Path(folder),
+                str(uuid.uuid4()),
+                version="test",
+                local_api_port=0,
+                capture_factory=factory,
+                process_reader=lambda _ports: current["value"],
+                route_change_confirmations=2,
+                route_restart_cooldown_seconds=0,
+            )
+            try:
+                runtime.start_capture()
+                current["value"] = {
+                    "projectrf.exe": ({10}, {52000}, set())
+                }
+                runtime.refresh_routes()
+                result = runtime.refresh_routes()
+
+                self.assertFalse(result["capture_restarted"])
+                self.assertTrue(runtime.active)
+                self.assertEqual(runtime.live_capture.ports, created[0].ports)
+                self.assertIn("captura anterior restaurada", runtime.last_error)
+                self.assertEqual(len(created), 3)
+            finally:
+                runtime.close()
+
+    def test_local_health_exposes_capture_counters_without_packets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = self._runtime(folder, lambda _ports: _processes(101))
+            try:
+                runtime.start_capture()
+                runtime.live_capture.received_packets = 12
+                runtime.live_capture.filtered_packets = 3
+                health = runtime.service.api._health()
+
+                self.assertEqual(health["capture_state"], "capturing")
+                self.assertTrue(health["session_active"])
+                self.assertEqual(health["capture"]["received_packets"], 12)
+                self.assertEqual(health["capture"]["filtered_packets"], 3)
+                self.assertIn("decoded_events", health["decoder"])
+                serialized = json.dumps(health).lower()
+                self.assertNotIn("packet_bytes", serialized)
+                self.assertNotIn('"source"', serialized)
+                self.assertNotIn('"flow"', serialized)
+            finally:
+                runtime.close()
+
 
 if __name__ == "__main__":
     unittest.main()

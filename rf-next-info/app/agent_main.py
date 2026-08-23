@@ -202,6 +202,9 @@ class AgentWindow(QtWidgets.QWidget):
             "Modo local · envio desativado", objectName="statusValue"
         )
         self.outbox_value = QtWidgets.QLabel("0 eventos", objectName="statusValue")
+        self.traffic_value = QtWidgets.QLabel(
+            "0 pacotes · 0 eventos", objectName="statusValue"
+        )
         self.memory_value = QtWidgets.QLabel(
             "Limite 1.024 MiB", objectName="statusValue"
         )
@@ -211,6 +214,7 @@ class AgentWindow(QtWidgets.QWidget):
             ("Clientes", self.clients_value),
             ("Servidor", self.server_value),
             ("Fila offline", self.outbox_value),
+            ("Leitura", self.traffic_value),
             ("Memória", self.memory_value),
             ("API local", self.api_value),
         )
@@ -495,6 +499,15 @@ class AgentWindow(QtWidgets.QWidget):
         outbox_bytes = int(outbox.get("bytes") or 0)
         self.outbox_value.setText(
             f"{outbox_events:,} eventos · {outbox_bytes / 1024 / 1024:.1f} MiB".replace(",", ".")
+        )
+        capture = dict(health.get("capture") or {})
+        decoder = dict(health.get("decoder") or {})
+        received_packets = int(capture.get("received_packets") or 0)
+        decoded_events = int(decoder.get("decoded_events") or 0)
+        self.traffic_value.setText(
+            f"{received_packets:,} pacotes · {decoded_events:,} eventos".replace(
+                ",", "."
+            )
         )
         self.memory_value.setText(f"Limite {int(health.get('memory_budget_mb') or 0):,} MiB".replace(",", "."))
         api = dict(health.get("local_api") or {})

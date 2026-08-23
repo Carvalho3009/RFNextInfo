@@ -329,6 +329,14 @@ class AgentLocalMonitorApi:
             source.get("capture_bridge")
             if isinstance(source.get("capture_bridge"), dict) else {}
         )
+        capture = (
+            source.get("capture")
+            if isinstance(source.get("capture"), dict) else {}
+        )
+        decoder = (
+            source.get("decoder")
+            if isinstance(source.get("decoder"), dict) else {}
+        )
         return {
             "schema": LOCAL_HEALTH_SCHEMA,
             "ok": True,
@@ -352,6 +360,27 @@ class AgentLocalMonitorApi:
                 for key in (
                     "queue_depth", "queue_limit", "accepted", "ignored",
                     "dropped", "errors", "observer_errors",
+                )
+            },
+            "capture": {
+                key: _integer(
+                    capture.get(key), minimum=0, maximum=2**63 - 1, default=0
+                )
+                for key in (
+                    "received_packets", "filtered_packets", "duplicate_packets",
+                    "missed_write", "missed_read", "sink_errors",
+                    "route_restarts", "port_count",
+                )
+            },
+            "decoder": {
+                key: _integer(
+                    decoder.get(key), minimum=0, maximum=2**63 - 1, default=0
+                )
+                for key in (
+                    "processed_packets", "decoded_events", "ignored_events",
+                    "dropped_events", "dropped_packets", "decode_errors",
+                    "event_sink_accepted", "event_sink_rejected",
+                    "event_sink_errors", "flow_count",
                 )
             },
         }

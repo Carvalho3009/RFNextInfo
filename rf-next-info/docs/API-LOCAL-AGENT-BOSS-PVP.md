@@ -84,6 +84,12 @@ relações confirmadas antes de exibir uma classificação.
 1. Receber do usuário o endereço e o token exibidos pelo Agent.
 2. Consultar `capabilities` e validar os domínios necessários.
 3. Consultar `health` e aguardar `session_active=true` quando aplicável.
+
+O `health` também publica apenas contadores numéricos sanitizados de captura e
+decoder (`received_packets`, `processed_packets`, `decoded_events`, descartes e
+reinícios de rota). Ele não expõe bytes de pacote, portas individuais, IPs,
+fluxos ou identificadores internos. Esses contadores permitem distinguir falha
+de captura, decode e projeção sem abrir arquivos brutos.
 4. Ler eventos por long poll, sempre persistindo o último `next_cursor`.
 5. Isolar estado por `session_ref` e `client_ref`; nunca misturar clientes.
 6. Ao receber `session.lifecycle`, iniciar, pausar ou encerrar somente o estado
