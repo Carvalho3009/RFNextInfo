@@ -1,4 +1,4 @@
-"""Transporte HTTPS assinado do Agent; nao e iniciado automaticamente."""
+"""Transporte HTTPS assinado, ativado apenas no perfil online do Agent."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from core.web_agent_identity import AgentIdentity
 
 
 INGEST_PATH = "/api/qol/v1/ingest/batches"
+REGISTRATION_PATH = "/api/qol/v1/installations/register"
 MAX_RESPONSE_BYTES = 64 * 1024
 
 
@@ -31,6 +32,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class AgentTransportError(RuntimeError):
     code = "transport_error"
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        if code:
+            self.code = str(code)[:64]
 
 
 class TemporaryTransportError(AgentTransportError):
@@ -51,6 +57,14 @@ class DeliveryReceipt:
     accepted_through_sequence: int
     duplicate: bool
     rejected_event_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RegistrationReceipt:
+    installation_id: str
+    status: str
+    duplicate: bool
+    server_time: str
 
 
 def _utc_now() -> str:
@@ -97,12 +111,28 @@ def _default_sender(
             return int(response.status), dict(response.headers.items()), body
     except urllib.error.HTTPError as error:
         try:
-            error.read(response_limit + 1)
+            body = error.read(response_limit + 1)
         except OSError:
-            pass
+            body = b""
+        server_code = f"http_{error.code}"
+        if len(body) <= response_limit:
+            try:
+                value = json.loads(body)
+                if (
+                    isinstance(value, dict)
+                    and isinstance(value.get("error"), str)
+                    and 1 <= len(value["error"]) <= 64
+                ):
+                    server_code = value["error"]
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                pass
         if error.code in {408, 425, 429} or 500 <= error.code <= 599:
-            raise TemporaryTransportError(f"HTTP {error.code}") from None
-        raise PermanentTransportError(f"HTTP {error.code}") from None
+            raise TemporaryTransportError(
+                f"HTTP {error.code}", code=server_code
+            ) from None
+        raise PermanentTransportError(
+            f"HTTP {error.code}", code=server_code
+        ) from None
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         raise TemporaryTransportError(type(error).__name__) from None
 
@@ -124,10 +154,55 @@ class AgentBatchTransport:
     ) -> None:
         self.base_url, self.request_path = _validated_base_url(base_url)
         self.url = self.base_url + INGEST_PATH
+        self.registration_url = self.base_url + REGISTRATION_PATH
         self.identity = identity
         self.user_agent = f"RFQOL-Agent/{str(version)[:64]}"
         self.timeout_seconds = max(1.0, min(30.0, float(timeout_seconds)))
         self._sender = sender
+
+    def register(self) -> RegistrationReceipt:
+        body = _canonical(self.identity.registration())
+        request = urllib.request.Request(
+            self.registration_url,
+            data=body,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": self.user_agent,
+            },
+            method="POST",
+        )
+        status, _headers, response_body = self._sender(
+            request, self.timeout_seconds, MAX_RESPONSE_BYTES
+        )
+        if not 200 <= int(status) <= 299:
+            if status in {408, 425, 429} or status >= 500:
+                raise TemporaryTransportError(f"HTTP {status}")
+            raise PermanentTransportError(f"HTTP {status}")
+        if len(response_body) > MAX_RESPONSE_BYTES:
+            raise InvalidTransportResponse("Resposta excede o limite")
+        try:
+            value = json.loads(response_body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise InvalidTransportResponse("Resposta de registro invalida") from error
+        required = {"installation_id", "status", "duplicate", "server_time"}
+        if not isinstance(value, dict) or set(value) != required:
+            raise InvalidTransportResponse("Schema de registro invalido")
+        if value["installation_id"] != self.identity.installation_id:
+            raise InvalidTransportResponse("Registro pertence a outra instalacao")
+        if value["status"] not in {"pending", "active", "revoked"}:
+            raise InvalidTransportResponse("Estado de registro invalido")
+        if type(value["duplicate"]) is not bool:
+            raise InvalidTransportResponse("Duplicidade de registro invalida")
+        server_time = str(value["server_time"])
+        if not server_time.endswith("Z") or len(server_time) > 40:
+            raise InvalidTransportResponse("Horario do registro invalido")
+        return RegistrationReceipt(
+            installation_id=str(value["installation_id"]),
+            status=str(value["status"]),
+            duplicate=bool(value["duplicate"]),
+            server_time=server_time,
+        )
 
     def _request(self, batch: dict) -> urllib.request.Request:
         if (
@@ -247,6 +322,7 @@ class AgentDeliveryWorker:
         flush_seconds: float = 1.0,
         max_backoff_seconds: float = 60.0,
         jitter: Callable[[], float] = random.random,
+        registration_retry_seconds: float = 30.0,
     ) -> None:
         if outbox.installation_id != transport.identity.installation_id:
             raise ValueError("Outbox e transporte pertencem a instalacoes diferentes")
@@ -257,6 +333,9 @@ class AgentDeliveryWorker:
             self.flush_seconds, min(300.0, float(max_backoff_seconds))
         )
         self._jitter = jitter
+        self.registration_retry_seconds = max(
+            5.0, min(300.0, float(registration_retry_seconds))
+        )
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
@@ -264,6 +343,7 @@ class AgentDeliveryWorker:
         self._temporary_failures = 0
         self._blocked = False
         self._sending = False
+        self._registration_state = "unknown"
         self.last_attempt_at: str | None = None
         self.last_ack_at: str | None = None
         self.last_error_code: str | None = None
@@ -290,6 +370,21 @@ class AgentDeliveryWorker:
             self._sending = True
             self.last_attempt_at = _utc_now()
         try:
+            if self._registration_state != "active":
+                registration = self.transport.register()
+                with self._lock:
+                    self._registration_state = registration.status
+                if registration.status == "pending":
+                    with self._lock:
+                        self.last_error_code = "registration_pending"
+                    return False
+                if registration.status == "revoked":
+                    with self._lock:
+                        self.last_error_code = "registration_revoked"
+                        self._blocked = True
+                    return False
+                with self._lock:
+                    self.last_error_code = None
             batch = self.outbox.next_batch()
             if batch is None:
                 return False
@@ -316,7 +411,16 @@ class AgentDeliveryWorker:
             with self._lock:
                 self.permanent_errors += 1
                 self.last_error_code = error.code
-                self._blocked = True
+                if self._registration_state == "active" and error.code in {
+                    "installation_not_active", "registration_required",
+                }:
+                    self._registration_state = (
+                        "pending"
+                        if error.code == "installation_not_active"
+                        else "unknown"
+                    )
+                else:
+                    self._blocked = True
             return False
         except Exception:
             # Falha local inesperada nao pode encerrar silenciosamente a thread
@@ -333,6 +437,9 @@ class AgentDeliveryWorker:
     def _delay(self) -> float:
         with self._lock:
             failures = self._temporary_failures
+            registration_state = self._registration_state
+        if registration_state == "pending":
+            return self.registration_retry_seconds
         if failures <= 0:
             return self.flush_seconds
         base = min(
@@ -354,6 +461,7 @@ class AgentDeliveryWorker:
         with self._lock:
             state = (
                 "blocked" if self._blocked else
+                "registration_pending" if self._registration_state == "pending" else
                 "sending" if self._sending else
                 "backoff" if self._temporary_failures else
                 "idle"
@@ -364,6 +472,7 @@ class AgentDeliveryWorker:
                 "last_attempt_at": self.last_attempt_at,
                 "last_ack_at": self.last_ack_at,
                 "last_error_code": self.last_error_code,
+                "registration_state": self._registration_state,
                 "sent_batches": self.sent_batches,
                 "sent_events": self.sent_events,
                 "temporary_errors": self.temporary_errors,

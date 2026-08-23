@@ -24,6 +24,8 @@ class BetaBuildProfileTest(unittest.TestCase):
         self.assertEqual(
             build_profile.SITE_SERVER, "https://rfnext.karvalho.dev.br"
         )
+        self.assertEqual(build_profile.AGENT_SERVER, "")
+        self.assertNotEqual(build_profile.AGENT_SERVER, build_profile.SITE_SERVER)
         self.assertEqual(
             build_profile.SITE_FEATURES,
             {

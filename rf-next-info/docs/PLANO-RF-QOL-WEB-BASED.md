@@ -2,12 +2,13 @@
 
 Data: 22 ago 2026  
 Branch: `feat/rf-qol-web-based`  
-Estado: Agent Windows independente funcional em modo offline; servidor pendente
+Estado: Agent Windows funcional offline e caminho online preparado; receptor
+dedicado local separado, sem deploy
 Base preservada: `rf-qol-desktop-2.0.0-beta.6` / commit `795333d`  
 Autorizado em 22 ago 2026: avançar a base local do Agent Windows, incluindo
 identidade DPAPI, transporte HTTPS testável e testes locais sem servidor.
-Ainda não autoriza: habilitar envio real, registrar instalação em produção,
-servidor, migração, infraestrutura, DNS, deploy, publicação ou instalador.
+Ainda não realizado: habilitar envio real, registrar instalação em produção,
+infraestrutura, DNS, deploy, publicação ou instalador.
 
 Implementado localmente em 23 ago 2026:
 
@@ -18,6 +19,10 @@ Implementado localmente em 23 ago 2026:
   opcional e desativada por padrão;
 - limite de RAM configurável, com 1 GiB como padrão;
 - API local somente leitura para Boss/PvP e diagnóstico sanitizado;
+- seleção interna do modo online somente quando `AGENT_SERVER` apontar para um
+  domínio HTTPS dedicado, explicitamente impedido de reutilizar o RF Next;
+- registro automático com prova de posse, espera de aprovação sem perda da
+  outbox e nova verificação ao abrir o Agent;
 - UID permanente do personagem, nome, level e guilda aprovados no contrato;
   UID de sessão/login/autenticação e opcode `0x0101` continuam proibidos.
 
@@ -208,7 +213,8 @@ Os valores serão recalibrados por medição; não são cotas comerciais.
 
 ### 6.1 Assinatura preparada no Agent
 
-O cliente local já monta, mas não envia por padrão, os cabeçalhos:
+O cliente local monta e envia somente quando um `AGENT_SERVER` dedicado estiver
+configurado os cabeçalhos:
 
 - `Idempotency-Key`;
 - `X-RFQOL-Installation-ID`;
@@ -225,8 +231,9 @@ lease, chave privada ou segredo de pseudonimização entra no request.
 
 O contrato público de registro inclui chave pública, `key_id`, algoritmo e uma
 prova de posse Ed25519 no contexto separado `RFQOL-REGISTER-V1`. O futuro
-servidor ainda deverá vincular esse registro ao Profile autenticado; a prova de
-posse sozinha não concede acesso.
+vínculo ao Profile ainda deverá ser implementado no servidor; a prova de posse
+sozinha cria estado `pending` e não concede acesso. O Agent consulta novamente o
+registro em intervalo limitado até receber estado `active`.
 
 ## 7. Agent Windows
 

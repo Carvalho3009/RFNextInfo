@@ -153,6 +153,15 @@ class AgentTransportTest(unittest.TestCase):
 
     @staticmethod
     def accepted_sender(request, _timeout, _limit):
+        if request.full_url.endswith("/api/qol/v1/installations/register"):
+            registration = json.loads(bytes(request.data))
+            response = {
+                "installation_id": registration["installation_id"],
+                "status": "active",
+                "duplicate": False,
+                "server_time": "2026-08-22T12:00:00Z",
+            }
+            return 202, {"Content-Type": "application/json"}, json.dumps(response).encode()
         body = bytes(request.data)
         if request.get_header("Content-encoding") == "gzip":
             body = gzip.decompress(body)
@@ -249,6 +258,14 @@ class AgentTransportTest(unittest.TestCase):
         self.enqueue(2)
 
         def partial_sender(request, _timeout, _limit):
+            if request.full_url.endswith("/api/qol/v1/installations/register"):
+                registration = json.loads(bytes(request.data))
+                return 200, {}, json.dumps({
+                    "installation_id": registration["installation_id"],
+                    "status": "active",
+                    "duplicate": True,
+                    "server_time": "2026-08-22T12:00:00Z",
+                }).encode()
             body = bytes(request.data)
             if request.get_header("Content-encoding") == "gzip":
                 body = gzip.decompress(body)
@@ -328,6 +345,38 @@ class AgentTransportTest(unittest.TestCase):
         self.assertEqual(worker.metrics()["state"], "blocked")
         self.assertEqual(worker.metrics()["last_error_code"], "local_delivery_error")
         self.assertEqual(self.outbox.metrics()["events"], 1)
+
+    def test_registration_is_automatic_and_pending_never_sends_events(self):
+        self.enqueue()
+        calls: list[str] = []
+
+        def pending_sender(request, _timeout, _limit):
+            calls.append(request.full_url)
+            registration = json.loads(bytes(request.data))
+            return 202, {}, json.dumps({
+                "installation_id": registration["installation_id"],
+                "status": "pending",
+                "duplicate": False,
+                "server_time": "2026-08-22T12:00:00Z",
+            }).encode()
+
+        worker = AgentDeliveryWorker(
+            self.outbox,
+            AgentBatchTransport(
+                "https://qol.example.test",
+                self.identity,
+                version="test",
+                sender=pending_sender,
+            ),
+        )
+
+        self.assertFalse(worker.send_once())
+        self.assertEqual(worker.metrics()["state"], "registration_pending")
+        self.assertEqual(worker.metrics()["last_error_code"], "registration_pending")
+        self.assertEqual(self.outbox.metrics()["events"], 1)
+        self.assertEqual(calls, [
+            "https://qol.example.test/api/qol/v1/installations/register"
+        ])
 
 
 class WebAgentRuntimeTest(unittest.TestCase):
@@ -442,6 +491,14 @@ class WebAgentRuntimeTest(unittest.TestCase):
         def sender(request, _timeout, _limit):
             nonlocal calls
             calls += 1
+            if request.full_url.endswith("/api/qol/v1/installations/register"):
+                registration = json.loads(bytes(request.data))
+                return 202, {}, json.dumps({
+                    "installation_id": registration["installation_id"],
+                    "status": "active",
+                    "duplicate": False,
+                    "server_time": "2026-08-22T12:00:00Z",
+                }).encode()
             body = bytes(request.data)
             if request.get_header("Content-encoding") == "gzip":
                 body = gzip.decompress(body)

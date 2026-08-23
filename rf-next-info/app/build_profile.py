@@ -11,6 +11,9 @@ RELEASE_SEQUENCE = 16
 
 LICENSE_SERVER = "https://rflicenca.karvalho.dev.br"
 SITE_SERVER = "https://rfnext.karvalho.dev.br"
+# Receptor exclusivo do RF QOL Agent. Permanece vazio até existir um domínio
+# dedicado homologado; nunca reutilizar SITE_SERVER/RF Next para este fluxo.
+AGENT_SERVER = ""
 SITE_FEATURES = frozenset({
     "character",
     "market",
@@ -102,3 +105,16 @@ def validate_build_profile(*, release: bool = False) -> None:
             raise RuntimeError("Chave pública v3 inválida") from error
         if len(public_key) != 32:
             raise RuntimeError("Chave pública v3 inválida")
+    if AGENT_SERVER:
+        agent = urlsplit(AGENT_SERVER)
+        if (
+            agent.scheme != "https"
+            or not agent.hostname
+            or agent.username is not None
+            or agent.password is not None
+            or agent.query
+            or agent.fragment
+            or AGENT_SERVER.rstrip("/") == SITE_SERVER.rstrip("/")
+            or agent.hostname == "rfnext.karvalho.dev.br"
+        ):
+            raise RuntimeError("Servidor do Agent deve ser HTTPS e separado do RF Next")

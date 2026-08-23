@@ -86,6 +86,35 @@ class AgentWindowTest(unittest.TestCase):
                 self.assertNotIn("opaque-a", window.clients_list.item(0).text())
                 self.assertTrue(window.stop_button.isEnabled())
                 self.assertFalse(window.start_button.isEnabled())
+                self.assertEqual(
+                    window.server_value.text(), "Modo local · envio desativado"
+                )
+            finally:
+                window._exiting = True
+                window.close()
+                window.deleteLater()
+                self.app.processEvents()
+
+    def test_server_registration_state_is_readable(self):
+        from app.agent_main import AgentWindow
+
+        with tempfile.TemporaryDirectory() as folder:
+            window = AgentWindow(
+                self._runtime(),
+                preferences_path=Path(folder) / "preferences.json",
+                start_worker=False,
+            )
+            try:
+                window._render_health({
+                    "server": {
+                        "mode": "online",
+                        "state": "registration_pending",
+                    }
+                })
+                self.assertEqual(
+                    window.server_value.text(),
+                    "Cadastro enviado · aguardando liberação",
+                )
             finally:
                 window._exiting = True
                 window.close()
@@ -272,6 +301,36 @@ class AgentWindowTest(unittest.TestCase):
 
         self.assertEqual(result, 0)
         create_runtime.assert_not_called()
+
+    def test_runtime_uses_only_the_dedicated_agent_server_when_configured(self):
+        from app import agent_main
+
+        preferences = {
+            "installation_id": "9f81db93-57df-4cab-a2e6-6ef20a8bfa9d",
+            "memory_limit_mb": 1024,
+            "storage_limit_mb": 512,
+            "local_api_port": 17621,
+        }
+        sentinel = object()
+        with (
+            mock.patch.object(agent_main, "AGENT_RUNTIME_DIR", Path("agent-state")),
+            mock.patch.object(
+                agent_main, "AGENT_SERVER", "https://qol.example.test"
+            ),
+            mock.patch.object(
+                agent_main.StandaloneWindowsAgentRuntime,
+                "create_online",
+                return_value=sentinel,
+            ) as online,
+            mock.patch.object(
+                agent_main.StandaloneWindowsAgentRuntime, "create_offline"
+            ) as offline,
+        ):
+            self.assertIs(agent_main._create_runtime(preferences), sentinel)
+
+        online.assert_called_once()
+        self.assertEqual(online.call_args.args[2], "https://qol.example.test")
+        offline.assert_not_called()
 
 
 if __name__ == "__main__":

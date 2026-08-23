@@ -25,7 +25,7 @@ from app.agent_preferences import (
     load_agent_preferences,
     save_agent_preferences,
 )
-from app.build_profile import APP_VERSION
+from app.build_profile import AGENT_SERVER, APP_VERSION
 from core.windows_agent_capture import StandaloneWindowsAgentRuntime
 
 
@@ -502,6 +502,21 @@ class AgentWindow(QtWidgets.QWidget):
             f"Ativa em 127.0.0.1:{int(api.get('port') or 0)}"
             if api.get("active") else "Desligada"
         )
+        server = dict(health.get("server") or {})
+        server_state = str(server.get("state") or "offline_shadow")
+        server_labels = {
+            "offline_shadow": "Modo local · envio desativado",
+            "ready": "Conectado · aguardando eventos",
+            "online": "Conectado · envio confirmado",
+            "registration_pending": "Cadastro enviado · aguardando liberação",
+            "registration_required": "Cadastro do Agent requer atenção",
+            "delayed": "Servidor temporariamente indisponível",
+            "storage_full": "Fila offline atingiu o limite",
+            "closed": "Encerrado",
+        }
+        self.server_value.setText(
+            server_labels.get(server_state, "Estado do servidor indisponível")
+        )
         clients = list(health.get("clients") or [])
         self.clients_list.clear()
         if clients:
@@ -679,6 +694,28 @@ def _configure_logging() -> None:
     )
 
 
+def _create_runtime(preferences: dict[str, Any]) -> StandaloneWindowsAgentRuntime:
+    options = {
+        "version": APP_VERSION,
+        "memory_budget_mb": int(preferences["memory_limit_mb"]),
+        "local_api_port": int(preferences["local_api_port"]),
+        "max_outbox_bytes": int(preferences["storage_limit_mb"]) * 1024 * 1024,
+    }
+    installation_id = str(preferences["installation_id"])
+    if AGENT_SERVER:
+        return StandaloneWindowsAgentRuntime.create_online(
+            AGENT_RUNTIME_DIR,
+            installation_id,
+            AGENT_SERVER,
+            **options,
+        )
+    return StandaloneWindowsAgentRuntime.create_offline(
+        AGENT_RUNTIME_DIR,
+        installation_id,
+        **options,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="RF QOL Agent")
     parser.add_argument("--background", action="store_true")
@@ -690,14 +727,7 @@ def main(argv: list[str] | None = None) -> int:
     preferences = load_agent_preferences(AGENT_PREFERENCES_PATH)
     preferences = save_agent_preferences(AGENT_PREFERENCES_PATH, preferences)
     _configure_logging()
-    runtime = StandaloneWindowsAgentRuntime.create_offline(
-        AGENT_RUNTIME_DIR,
-        str(preferences["installation_id"]),
-        version=APP_VERSION,
-        memory_budget_mb=int(preferences["memory_limit_mb"]),
-        local_api_port=int(preferences["local_api_port"]),
-        max_outbox_bytes=int(preferences["storage_limit_mb"]) * 1024 * 1024,
-    )
+    runtime = _create_runtime(preferences)
     try:
         runtime.start_local_api()
         app = create_application(["rf-qol-agent"])

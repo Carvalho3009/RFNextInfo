@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import tempfile
+import json
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -186,6 +188,50 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                     runtime.start_capture()
                 self.assertFalse(runtime.health()["active"])
                 self.assertEqual(runtime.service.runtime.bridge.metrics()["outbox_events"], 0)
+            finally:
+                runtime.close()
+
+    def test_online_runtime_registers_without_starting_capture(self):
+        calls = []
+
+        def sender(request, _timeout, _limit):
+            calls.append(request.full_url)
+            registration = json.loads(bytes(request.data))
+            return 202, {}, json.dumps({
+                "installation_id": registration["installation_id"],
+                "status": "pending",
+                "duplicate": False,
+                "server_time": "2026-08-23T12:00:00Z",
+            }).encode()
+
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = StandaloneWindowsAgentRuntime.create_online(
+                Path(folder),
+                str(uuid.uuid4()),
+                "https://qol.example.test",
+                version="test",
+                local_api_port=0,
+                transport_sender=sender,
+                capture_factory=_FakeCapture,
+                process_reader=lambda _ports: {},
+            )
+            try:
+                runtime.start_local_api()
+                deadline = time.monotonic() + 2
+                while (
+                    runtime.health()["server"]["state"] != "registration_pending"
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.01)
+                health = runtime.health()
+                self.assertFalse(health["active"])
+                self.assertEqual(health["server"]["mode"], "online")
+                self.assertEqual(
+                    health["server"]["state"], "registration_pending"
+                )
+                self.assertEqual(calls, [
+                    "https://qol.example.test/api/qol/v1/installations/register"
+                ])
             finally:
                 runtime.close()
 

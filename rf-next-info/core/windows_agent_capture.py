@@ -155,6 +155,42 @@ class StandaloneWindowsAgentRuntime:
             process_reader=process_reader,
         )
 
+    @classmethod
+    def create_online(
+        cls,
+        state_dir: Path,
+        installation_id: str,
+        server_url: str,
+        *,
+        version: str,
+        memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
+        local_api_port: int = 17621,
+        capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
+        process_reader: Callable[..., dict] = connected_processes,
+        **service_options: Any,
+    ) -> "StandaloneWindowsAgentRuntime":
+        limits = agent_memory_limits(memory_budget_mb)
+        registry = AgentClientRegistry()
+        service = WindowsAgentLocalService.create_online(
+            Path(state_dir),
+            installation_id,
+            server_url,
+            version=version,
+            local_api_port=local_api_port,
+            max_monitor_events=limits["events"],
+            max_monitor_bytes=limits["monitor_feed_bytes"],
+            max_queue_events=limits["bridge_queue_events"],
+            event_observer=registry.observe,
+            **service_options,
+        )
+        return cls(
+            service,
+            registry,
+            memory_budget_mb=memory_budget_mb,
+            capture_factory=capture_factory,
+            process_reader=process_reader,
+        )
+
     @property
     def active(self) -> bool:
         return self.live_capture is not None
@@ -195,7 +231,9 @@ class StandaloneWindowsAgentRuntime:
         return tuple(sorted(pids)), tuple(dict.fromkeys(capture_ports))
 
     def start_local_api(self) -> int:
-        return self.service.start_local_api()
+        port = self.service.start_local_api()
+        self.service.start_delivery()
+        return port
 
     def start_capture(self) -> dict[str, Any]:
         with self._lock:
@@ -313,6 +351,11 @@ class StandaloneWindowsAgentRuntime:
                 "decoder": stream,
                 "local_api": service_health.get("local_api", {}),
                 "outbox": service_health.get("outbox", {}),
+                "server": {
+                    "mode": service_health.get("mode", "offline"),
+                    "state": service_health.get("state", "offline_shadow"),
+                    "delivery": service_health.get("delivery", {}),
+                },
                 "last_error": self.last_error,
             }
 

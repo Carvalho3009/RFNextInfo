@@ -12,7 +12,7 @@ from core.web_agent_local_api import (
     AgentLocalMonitorApi,
     AgentMonitorFeed,
 )
-from core.web_agent_runtime import WebAgentOfflineRuntime
+from core.web_agent_runtime import WebAgentOfflineRuntime, WebAgentRuntime
 
 
 class WindowsAgentLocalService:
@@ -20,7 +20,7 @@ class WindowsAgentLocalService:
 
     def __init__(
         self,
-        runtime: WebAgentOfflineRuntime,
+        runtime: WebAgentOfflineRuntime | WebAgentRuntime,
         feed: AgentMonitorFeed,
         api: AgentLocalMonitorApi,
         token: str,
@@ -77,10 +77,63 @@ class WindowsAgentLocalService:
             raise
         return cls(runtime, feed, api, token)
 
+    @classmethod
+    def create_online(
+        cls,
+        state_dir: Path,
+        installation_id: str,
+        server_url: str,
+        *,
+        version: str,
+        local_api_port: int = LOCAL_API_DEFAULT_PORT,
+        max_monitor_events: int = 10_000,
+        max_monitor_bytes: int = LOCAL_API_DEFAULT_FEED_BYTES,
+        event_observer: Callable[[dict], object] | None = None,
+        **runtime_options,
+    ) -> "WindowsAgentLocalService":
+        state_dir = Path(state_dir)
+        feed = AgentMonitorFeed(
+            max_events=max_monitor_events,
+            max_bytes=max_monitor_bytes,
+        )
+
+        def observe(event: dict) -> None:
+            feed.add(event)
+            if event_observer is not None:
+                event_observer(event)
+
+        runtime = WebAgentRuntime.create(
+            state_dir,
+            installation_id,
+            server_url,
+            version=version,
+            event_observer=observe,
+            **runtime_options,
+        )
+        try:
+            token = AgentLocalApiTokenStore(
+                state_dir / "local-monitor-api.dat"
+            ).load_or_create()
+            api = AgentLocalMonitorApi(
+                feed,
+                token,
+                health_provider=runtime.health,
+                port=local_api_port,
+            )
+        except Exception:
+            runtime.close()
+            raise
+        return cls(runtime, feed, api, token)
+
     def start_local_api(self) -> int:
         if self._closed:
             raise RuntimeError("Agent ja encerrado")
         return self.api.start()
+
+    def start_delivery(self) -> None:
+        if self._closed:
+            raise RuntimeError("Agent ja encerrado")
+        self.runtime.start_delivery()
 
     def pairing_credentials(self) -> dict[str, object]:
         """Credencial explícita para o usuário copiar ao programa autorizado."""

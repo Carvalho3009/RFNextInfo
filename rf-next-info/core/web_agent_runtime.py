@@ -77,9 +77,14 @@ class WebAgentRuntime:
     def start_session(self, session_id: str, *, resumed: bool = False) -> None:
         if self._closed:
             raise RuntimeError("Agent ja encerrado")
-        self.delivery.start()
+        self.start_delivery()
         self.bridge.start_session(session_id, resumed=resumed)
         self._session_active = True
+
+    def start_delivery(self) -> None:
+        if self._closed:
+            raise RuntimeError("Agent ja encerrado")
+        self.delivery.start()
 
     def pause_session(self, session_id: str, *, reason: str = "paused") -> None:
         if self._closed:
@@ -117,6 +122,7 @@ class WebAgentRuntime:
         outbox = self.bridge.outbox.metrics()
         state = (
             "storage_full" if outbox["full"] else
+            "registration_pending" if delivery["state"] == "registration_pending" else
             "registration_required" if delivery["state"] == "blocked" else
             "delayed" if delivery["state"] == "backoff" else
             "online" if delivery["last_ack_at"] else
@@ -124,6 +130,7 @@ class WebAgentRuntime:
         )
         return {
             "enabled": True,
+            "mode": "online",
             "state": state,
             "session_active": self._session_active,
             "installation_id": self.identity.installation_id,
@@ -193,6 +200,11 @@ class WebAgentOfflineRuntime:
             raise RuntimeError("Agent ja encerrado")
         self.bridge.start_session(session_id, resumed=resumed)
         self._session_active = True
+
+    def start_delivery(self) -> None:
+        """Mantém uma interface comum sem criar rede no modo offline."""
+        if self._closed:
+            raise RuntimeError("Agent ja encerrado")
 
     def pause_session(self, session_id: str, *, reason: str = "paused") -> None:
         if self._closed:
