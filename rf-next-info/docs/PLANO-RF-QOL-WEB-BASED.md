@@ -2,12 +2,24 @@
 
 Data: 22 ago 2026  
 Branch: `feat/rf-qol-web-based`  
-Estado: W0 concluído tecnicamente; Agent Windows em shadow offline testável
+Estado: Agent Windows independente funcional em modo offline; servidor pendente
 Base preservada: `rf-qol-desktop-2.0.0-beta.6` / commit `795333d`  
 Autorizado em 22 ago 2026: avançar a base local do Agent Windows, incluindo
 identidade DPAPI, transporte HTTPS testável e testes locais sem servidor.
 Ainda não autoriza: habilitar envio real, registrar instalação em produção,
 servidor, migração, infraestrutura, DNS, deploy, publicação ou instalador.
+
+Implementado localmente em 23 ago 2026:
+
+- executável portátil separado `RF QOL Agent.exe`, sem telas/processadores do Desktop;
+- captura Pktmon efêmera em memória, decode, sanitização e outbox limitada;
+- início manual por padrão e modo automático opcional ao reconhecer cliente;
+- múltiplas conexões detectadas, janela compacta, bandeja e abertura com Windows
+  opcional e desativada por padrão;
+- limite de RAM configurável, com 1 GiB como padrão;
+- API local somente leitura para Boss/PvP e diagnóstico sanitizado;
+- UID permanente do personagem, nome, level e guilda aprovados no contrato;
+  UID de sessão/login/autenticação e opcode `0x0101` continuam proibidos.
 
 ## 1. Decisão do owner
 
@@ -454,7 +466,8 @@ Nunca enviar ou persistir remotamente:
 
 - [x] materializar os schemas `decoded-event/v1` e `ingest-batch/v1` no Agent;
 - [x] aplicar lista positiva inicial de tipos/campos e rejeitar `0x0101`,
-  credenciais, IDs canônicos, fluxo, porta, payload e arquivos brutos;
+  credenciais, IDs de sessão/login/autenticação, fluxo, porta, payload e
+  arquivos brutos; UID permanente do personagem é permitido por decisão do owner;
 - [x] criar corpus sintético sanitizado e testes de contrato;
 - [x] definir relógio, sequência local, identidade opaca e idempotência;
 - [x] criar outbox SQLite separada, deduplicada e limitada, sem descarte
@@ -473,7 +486,7 @@ Nunca enviar ou persistir remotamente:
   `abandoned`, mantendo uma referência opaca comum da sessão;
 - [x] executar corpus sintético local com múltiplos clientes e sessões,
   reinício da outbox e prova de que nenhuma chamada de rede foi feita;
-- [ ] revisar a lista de eventos do MVP com o owner antes de congelar W0;
+- [x] revisar a lista de eventos e prioridades do produto com o owner;
 - [ ] medir volume real e completar corpus permitido sem incluir dados brutos.
 
 Gate: revisão dos contratos e dados permitidos.

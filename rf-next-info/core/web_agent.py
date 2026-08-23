@@ -57,7 +57,9 @@ EVENT_TYPES = {
 SESSION_STATES = {"started", "resumed", "paused", "finished", "abandoned"}
 
 _PAYLOAD_FIELDS = {
-    "character.observed": {"name", "level", "biosuit_item_index"},
+    "character.observed": {
+        "character_uid", "name", "level", "biosuit_item_index",
+    },
     "character.exp_changed": {
         "action_code", "before_level", "level", "highest_level", "total_exp",
         "gained_exp",
@@ -92,17 +94,19 @@ _PAYLOAD_FIELDS = {
 }
 _NESTED_FIELDS = {
     "items": {"result", "item_index", "count", "gain_total", "action_code"},
-    "announcements": {"player_ref", "player_name", "item_index", "count"},
+    "announcements": {
+        "character_uid", "player_ref", "player_name", "item_index", "count",
+    },
     "entities": {
-        "entity_ref", "position", "current_hp", "max_hp", "player_ref", "name",
-        "level", "biosuit_item_index", "rover_item_index", "npc_index", "realm",
+        "entity_ref", "position", "current_hp", "max_hp", "character_uid",
+        "player_ref", "name", "level", "guild_id", "guild_name",
+        "biosuit_item_index", "rover_item_index", "npc_index", "realm",
     },
     "effects": {"entity_ref", "shield_damage", "hp_damage", "final_hp"},
 }
 
 _FORBIDDEN_KEYS = {
     "account_id",
-    "character_uid",
     "flow",
     "item_id",
     "opcode",
@@ -116,6 +120,9 @@ _FORBIDDEN_KEYS = {
     "source_pcap",
     "ticket",
     "token",
+    "session_uid",
+    "login_uid",
+    "auth_uid",
 }
 
 
@@ -132,6 +139,12 @@ def _integer(value: object, default: int | None = None) -> int | None:
         return int(value)
     except (TypeError, ValueError, OverflowError):
         return default
+
+
+def _character_uid(value: object) -> int | None:
+    """UID público e permanente do personagem; nunca UID de sessão/login."""
+    result = _integer(value)
+    return result if result is not None and 0 < result <= 2**64 - 1 else None
 
 
 def _number(value: object) -> float | None:
@@ -279,7 +292,7 @@ class WebEventProjector:
         key = (session_id, _connection_key(flow))
         with self._lock:
             if kind == "world_info_prefix":
-                uid = _integer(fields.get("character_uid"))
+                uid = _character_uid(fields.get("character_uid"))
                 if uid:
                     self._flow_clients.pop(key, None)
                     self._flow_clients[key] = self._opaque("client", uid)
@@ -365,11 +378,14 @@ class WebEventProjector:
             }
             if players:
                 item.update({
+                    "character_uid": _character_uid(row.get("character_uid")),
                     "player_ref": self._entity_ref(
                         session_id, row.get("character_uid")
                     ),
                     "name": _text(row.get("name") or row.get("character_name")),
                     "level": _integer(row.get("level")),
+                    "guild_id": _integer(row.get("guild_id")),
+                    "guild_name": _text(row.get("guild_name")),
                     "biosuit_item_index": _integer(row.get("biosuit_item_index")),
                     "rover_item_index": _integer(row.get("rover_item_index")),
                 })
@@ -408,6 +424,7 @@ class WebEventProjector:
         if kind == "world_info_prefix":
             return {
                 key: value for key, value in {
+                    "character_uid": _character_uid(fields.get("character_uid")),
                     "name": _text(fields.get("character_name")),
                     "level": _integer(fields.get("level")),
                     "biosuit_item_index": _integer(fields.get("biosuit_item_index")),
@@ -451,6 +468,9 @@ class WebEventProjector:
                     continue
                 rows.append({
                     key: value for key, value in {
+                        "character_uid": _character_uid(
+                            row.get("character_uid")
+                        ),
                         "player_ref": self._entity_ref(
                             session_id, row.get("character_uid")
                         ),

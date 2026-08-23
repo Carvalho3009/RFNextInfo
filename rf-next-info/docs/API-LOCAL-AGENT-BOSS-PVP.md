@@ -18,8 +18,10 @@ indisponíveis.
 - o token aleatório é protegido por DPAPI para o usuário Windows atual;
 - o token só deve ser exibido por uma ação explícita de pareamento no Agent;
 - API somente leitura, sem CORS, comandos ou bind na rede local;
-- não expõe pacote bruto, endereço/fluxo de rede, UID original, credencial,
-  `installation_id`, chave privada ou opcode `0x0101`.
+- não expõe pacote bruto, endereço/fluxo de rede, UID de sessão/login/autenticação,
+  credencial, `installation_id`, chave privada ou opcode `0x0101`;
+- o UID permanente do personagem é um campo aprovado e pode acompanhar nome,
+  level e guilda para sincronização do diretório público e correlação dos monitores.
 
 ## Descoberta e saúde
 
@@ -58,8 +60,9 @@ deve limpar apenas seu estado vivo e reconstruí-lo com os eventos retornados.
 Não deve apagar históricos já concluídos.
 
 Cada evento contém referências opacas de sessão, stream, cliente e entidades.
-Essas referências servem para correlação dentro do contrato e não revelam os
-identificadores originais do jogo.
+Essas referências servem para correlação dentro do contrato. A única identidade
+canônica do jogo liberada é `character_uid`; UIDs transitórios de entidades
+continuam convertidos em referências de sessão.
 
 Eventos compartilhados de combate podem pertencer a Boss ou PvP. A API não
 transforma automaticamente um jogador próximo em inimigo e não classifica dano
@@ -86,3 +89,14 @@ relações confirmadas antes de exibir uma classificação.
 6. Ao receber `session.lifecycle`, iniciar, pausar ou encerrar somente o estado
    da sessão correspondente.
 7. Ao desconectar, tentar novamente com espera progressiva, sem gerar carga alta.
+
+## Build portátil do Agent
+
+O pacote separado pode ser validado localmente com:
+
+```powershell
+.\packaging\build-agent.ps1
+```
+
+O resultado é `dist\RF QOL Agent\RF QOL Agent.exe`. Esse processo não gera
+instalador, não configura servidor e não publica o artefato.

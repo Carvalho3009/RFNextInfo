@@ -39,9 +39,9 @@ def decoded_event(
 
 def assert_no_forbidden_keys(test: unittest.TestCase, value: object) -> None:
     forbidden = {
-        "account_id", "character_uid", "flow", "item_id", "opcode",
+        "account_id", "auth_uid", "flow", "item_id", "login_uid", "opcode",
         "packet", "password", "pc_id", "port", "private_key", "secret",
-        "source", "source_pcap", "ticket", "token",
+        "session_uid", "source", "source_pcap", "ticket", "token",
     }
     if isinstance(value, dict):
         for key, item in value.items():
@@ -89,14 +89,47 @@ class WebEventProjectorTest(unittest.TestCase):
         ), "sessao-1")
 
         self.assertEqual(identity["type"], "character.observed")
+        self.assertEqual(identity["payload"]["character_uid"], 123456789)
         self.assertEqual(identity["payload"]["name"], "Personagem")
         self.assertEqual(identity["client_ref"], exp["client_ref"])
         self.assertEqual(identity["stream_id"], exp["stream_id"])
         self.assertEqual(identity["session_ref"], exp["session_ref"])
         self.assertEqual(exp["payload"]["gained_exp"], 4_500)
         self.assertNotIn("sessao-1", json.dumps(identity))
-        self.assertNotIn("123456789", json.dumps(identity))
         assert_no_forbidden_keys(self, identity)
+
+    def test_exports_confirmed_character_uid_but_rejects_session_uid(self):
+        identity = self.projector.project(self.identity_event(), "sessao-1")
+        self.assertEqual(identity["payload"]["character_uid"], 123456789)
+
+        unsafe = json.loads(json.dumps(identity))
+        unsafe["payload"]["session_uid"] = 987654321
+        with self.assertRaises(WebEventContractError):
+            from core.web_agent import _validate_event_contract
+            _validate_event_contract(unsafe)
+
+    def test_player_appearance_exports_uid_for_site_directory_sync(self):
+        projected = self.projector.project(decoded_event(
+            "appear_player_list",
+            {"units": [{
+                "uid": 77,
+                "character_uid": 987654321,
+                "name": "Jogador",
+                "level": 65,
+                "guild_id": 44,
+                "guild_name": "Blood",
+                "position": [10, 20, 30],
+            }]},
+            opcode=0x0306,
+        ), "sessao-1")
+
+        player = projected["payload"]["entities"][0]
+        self.assertEqual(player["character_uid"], 987654321)
+        self.assertEqual(player["name"], "Jogador")
+        self.assertEqual(player["guild_id"], 44)
+        self.assertEqual(player["guild_name"], "Blood")
+        self.assertNotEqual(player["player_ref"], "987654321")
+        assert_no_forbidden_keys(self, projected)
 
     def test_event_without_confirmed_identity_is_not_claimed(self):
         event = decoded_event(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from core.web_agent_local_api import (
     LOCAL_API_DEFAULT_FEED_BYTES,
@@ -41,6 +42,7 @@ class WindowsAgentLocalService:
         local_api_port: int = LOCAL_API_DEFAULT_PORT,
         max_monitor_events: int = 10_000,
         max_monitor_bytes: int = LOCAL_API_DEFAULT_FEED_BYTES,
+        event_observer: Callable[[dict], object] | None = None,
         **runtime_options,
     ) -> "WindowsAgentLocalService":
         state_dir = Path(state_dir)
@@ -48,11 +50,16 @@ class WindowsAgentLocalService:
             max_events=max_monitor_events,
             max_bytes=max_monitor_bytes,
         )
+        def observe(event: dict) -> None:
+            feed.add(event)
+            if event_observer is not None:
+                event_observer(event)
+
         runtime = WebAgentOfflineRuntime.create(
             state_dir,
             installation_id,
             version=version,
-            event_observer=feed.add,
+            event_observer=observe,
             **runtime_options,
         )
         try:

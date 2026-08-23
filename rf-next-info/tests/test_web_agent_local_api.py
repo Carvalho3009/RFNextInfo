@@ -109,6 +109,21 @@ class AgentMonitorFeedTest(unittest.TestCase):
         self.assertEqual(metrics["events"], 1)
         self.assertLessEqual(metrics["bytes"], metrics["byte_limit"])
 
+    def test_feed_limits_can_be_reduced_while_agent_is_idle(self):
+        feed = AgentMonitorFeed(max_events=4, max_bytes=4096)
+        for index in range(4):
+            self.assertTrue(feed.add(_public_event(
+                str(index), "combat.skill_resolved", {"value": "x" * 200}
+            )))
+
+        feed.configure_limits(max_events=2, max_bytes=1024)
+
+        metrics = feed.metrics()
+        self.assertLessEqual(metrics["events"], 2)
+        self.assertLessEqual(metrics["bytes"], 1024)
+        self.assertEqual(metrics["event_limit"], 2)
+        self.assertEqual(metrics["byte_limit"], 1024)
+
     def test_long_poll_wakes_when_matching_event_arrives(self):
         feed = AgentMonitorFeed()
 
@@ -260,8 +275,10 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
                     {"pvp": pvp, "boss": boss, "health": health},
                     ensure_ascii=False,
                 )
+                self.assertIn('"character_uid": 123456', serialized)
+                self.assertIn('"character_uid": 999', serialized)
                 for forbidden in (
-                    "sessao-local", "123456", "installation_id", "key_id",
+                    "sessao-local", "installation_id", "key_id",
                     "memory://", "10.0.0.1", '"opcode"',
                 ):
                     self.assertNotIn(forbidden, serialized)

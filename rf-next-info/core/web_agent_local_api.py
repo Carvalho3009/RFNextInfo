@@ -122,6 +122,24 @@ class AgentMonitorFeed:
         self.duplicates = 0
         self.oversized = 0
 
+    def _trim_locked(self) -> None:
+        while len(self._events) > self.max_events or self._bytes > self.max_bytes:
+            _cursor, _domains, _event, expired_bytes = self._events.popleft()
+            self._bytes = max(0, self._bytes - expired_bytes)
+            expired_id = self._event_ids.popleft()
+            self._known_ids.discard(expired_id)
+
+    def configure_limits(
+        self, *, max_events: int | None = None, max_bytes: int | None = None
+    ) -> None:
+        """Reduz ou amplia limites sem perder a ordem dos eventos restantes."""
+        with self._condition:
+            if max_events is not None:
+                self.max_events = max(1, int(max_events))
+            if max_bytes is not None:
+                self.max_bytes = max(1024, int(max_bytes))
+            self._trim_locked()
+
     def add(self, event: dict[str, Any]) -> bool:
         domains = _event_domains(event.get("type"))
         if not domains:
@@ -150,11 +168,7 @@ class AgentMonitorFeed:
             self._event_ids.append(event_id)
             self._known_ids.add(event_id)
             self._bytes += event_bytes
-            while len(self._events) > self.max_events or self._bytes > self.max_bytes:
-                _cursor, _domains, _event, expired_bytes = self._events.popleft()
-                self._bytes = max(0, self._bytes - expired_bytes)
-                expired_id = self._event_ids.popleft()
-                self._known_ids.discard(expired_id)
+            self._trim_locked()
             self.accepted += 1
             self._condition.notify_all()
             return True
