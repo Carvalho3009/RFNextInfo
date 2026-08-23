@@ -636,7 +636,8 @@ Servidor:
 
 Continuar sem servidor até fechar a validação local do Agent:
 
-0. concluir o `GRILL-ME-RF-QOL-AGENT-WEB.md` e registrar as decisões do owner;
+0. [x] concluir o `GRILL-ME-RF-QOL-AGENT-WEB.md` e registrar as decisões do
+   owner em `DECISOES-GRILL-ME-RF-QOL-AGENT-WEB-2026-08-23.md`;
 1. ampliar o corpus sintético para todos os tipos do MVP;
 2. medir eventos por segundo e bytes por hora com captura real sanitizada;
 3. ensaiar reinício e pressão dos limites escolhidos da outbox;
@@ -664,6 +665,8 @@ e operação continua `unknown` até medir o volume e escolher o ambiente.
 
 - `GRILL-ME-RF-QOL-AGENT-WEB.md` — questionário de funcionalidades, interesse,
   comportamento, privacidade e critérios do beta;
+- `DECISOES-GRILL-ME-RF-QOL-AGENT-WEB-2026-08-23.md` — respostas consolidadas,
+  prioridades e detalhes ainda abertos;
 - `ANALISE-WEB-DEDICADA-RF-QOL-2.0.md` — análise anterior, ainda centrada em
   processamento local;
 - `PLANO-RF-QOL-2.0.md` — estado da versão desktop preservada;
