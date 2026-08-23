@@ -27,6 +27,7 @@ class _FakeCapture:
         self.started = False
         self.stopped = False
         self.added_ports = []
+        self.packets = 0
         self.received_packets = 0
         self.filtered_packets = 0
         self.duplicate_packets = 0
@@ -306,6 +307,9 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 session_id = runtime.session_id
                 first_capture = runtime.live_capture
                 first_capture.received_packets = 7
+                first_capture.packets = 3
+                runtime.live_events.processed_packets = 5
+                runtime.live_events.decoded_events = 2
 
                 current["value"] = {
                     "projectrf.exe": ({10}, {52000}, set()),
@@ -321,7 +325,10 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 self.assertEqual(runtime.session_id, session_id)
                 self.assertEqual(runtime.health()["capture"]["route_restarts"], 1)
                 self.assertEqual(runtime.health()["capture"]["received_packets"], 7)
+                self.assertEqual(runtime.health()["capture"]["packets"], 3)
                 self.assertTrue(runtime.live_events.metrics()["worker_alive"])
+                self.assertEqual(runtime.live_events.metrics()["processed_packets"], 5)
+                self.assertEqual(runtime.live_events.metrics()["decoded_events"], 2)
             finally:
                 runtime.close()
 
@@ -370,12 +377,14 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
             try:
                 runtime.start_capture()
                 runtime.live_capture.received_packets = 12
+                runtime.live_capture.packets = 4
                 runtime.live_capture.filtered_packets = 3
                 health = runtime.service.api._health()
 
                 self.assertEqual(health["capture_state"], "capturing")
                 self.assertTrue(health["session_active"])
                 self.assertEqual(health["capture"]["received_packets"], 12)
+                self.assertEqual(health["capture"]["packets"], 4)
                 self.assertEqual(health["capture"]["filtered_packets"], 3)
                 self.assertIn("decoded_events", health["decoder"])
                 serialized = json.dumps(health).lower()

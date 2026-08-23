@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from core.connections import connected_processes
+from core.connections import agent_processes
 from core.ingest import DEFAULT_PORTS
 from core.live_stream import LiveEventStream
 from core.pktmon_realtime import RealtimeCapture
@@ -20,7 +20,7 @@ MIN_AGENT_MEMORY_MB = 256
 DEFAULT_AGENT_MEMORY_MB = 1024
 MAX_AGENT_MEMORY_MB = 8192
 CAPTURE_METRIC_NAMES = (
-    "received_packets", "filtered_packets", "duplicate_packets",
+    "packets", "received_packets", "filtered_packets", "duplicate_packets",
     "missed_write", "missed_read", "sink_errors",
 )
 
@@ -106,7 +106,7 @@ class StandaloneWindowsAgentRuntime:
         memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
         ports: tuple[int, ...] = DEFAULT_PORTS,
         capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
-        process_reader: Callable[..., dict] = connected_processes,
+        process_reader: Callable[..., dict] = agent_processes,
         route_change_confirmations: int = 2,
         route_restart_cooldown_seconds: float = 4.0,
     ) -> None:
@@ -152,7 +152,7 @@ class StandaloneWindowsAgentRuntime:
         memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
         local_api_port: int = 17621,
         capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
-        process_reader: Callable[..., dict] = connected_processes,
+        process_reader: Callable[..., dict] = agent_processes,
         route_change_confirmations: int = 2,
         route_restart_cooldown_seconds: float = 4.0,
         **service_options: Any,
@@ -191,7 +191,7 @@ class StandaloneWindowsAgentRuntime:
         memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
         local_api_port: int = 17621,
         capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
-        process_reader: Callable[..., dict] = connected_processes,
+        process_reader: Callable[..., dict] = agent_processes,
         route_change_confirmations: int = 2,
         route_restart_cooldown_seconds: float = 4.0,
         **service_options: Any,
@@ -281,6 +281,7 @@ class StandaloneWindowsAgentRuntime:
             }
             self._capture_restarts = 0
             self.live_events.clear()
+            self.live_events.set_transport_ports(capture_ports)
             self.live_events.start()
             self.service.start_session(session_id)
             live = self.capture_factory(None, capture_ports)
@@ -319,9 +320,7 @@ class StandaloneWindowsAgentRuntime:
             return False
         self._accumulate_capture_metrics(previous)
         previous.stop()
-        self.live_events.stop()
-        self.live_events.clear()
-        self.live_events.start()
+        self.live_events.set_transport_ports(capture_ports)
 
         replacement = self.capture_factory(None, capture_ports)
         if hasattr(replacement, "set_packet_sink"):
@@ -333,10 +332,12 @@ class StandaloneWindowsAgentRuntime:
             if hasattr(fallback, "set_packet_sink"):
                 fallback.set_packet_sink(self.live_events.feed)
             try:
+                self.live_events.set_transport_ports(previous_ports)
                 fallback.start()
             except Exception as fallback_error:
                 self.live_capture = None
                 self._capture_ports = ()
+                self.live_events.stop()
                 self.last_error = (
                     "Falha ao atualizar rotas e restaurar captura: "
                     f"{type(route_error).__name__}; "

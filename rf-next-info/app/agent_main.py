@@ -500,12 +500,11 @@ class AgentWindow(QtWidgets.QWidget):
         self.outbox_value.setText(
             f"{outbox_events:,} eventos · {outbox_bytes / 1024 / 1024:.1f} MiB".replace(",", ".")
         )
-        capture = dict(health.get("capture") or {})
         decoder = dict(health.get("decoder") or {})
-        received_packets = int(capture.get("received_packets") or 0)
+        processed_packets = int(decoder.get("processed_packets") or 0)
         decoded_events = int(decoder.get("decoded_events") or 0)
         self.traffic_value.setText(
-            f"{received_packets:,} pacotes · {decoded_events:,} eventos".replace(
+            f"{processed_packets:,} pacotes úteis · {decoded_events:,} eventos".replace(
                 ",", "."
             )
         )

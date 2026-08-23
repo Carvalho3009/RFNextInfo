@@ -367,7 +367,7 @@ class AgentLocalMonitorApi:
                     capture.get(key), minimum=0, maximum=2**63 - 1, default=0
                 )
                 for key in (
-                    "received_packets", "filtered_packets", "duplicate_packets",
+                    "packets", "received_packets", "filtered_packets", "duplicate_packets",
                     "missed_write", "missed_read", "sink_errors",
                     "route_restarts", "port_count",
                 )

@@ -19,6 +19,7 @@ from core.pktmon_realtime import (
     split_pcap_by_ports,
 )
 from core.connections import (
+    agent_processes,
     clients_for_executable,
     connected_processes,
     emulator_processes,
@@ -1325,6 +1326,29 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(events[0]["type"], "restore_hp_fp")
         self.assertEqual(events[0]["data"]["current_hp"], 800)
         self.assertEqual(events[0]["data"]["max_hp"], 1000)
+
+    def test_live_decoder_reads_exitlag_loopback_transport(self):
+        payload = struct.pack("<IQQQIIIB", 77, 800, 1000, 0, 10, 20, 0, 0)
+        frame = bytearray(6 + len(payload))
+        frame[1:3] = len(frame).to_bytes(2, "little")
+        frame[4:6] = (0x0311).to_bytes(2, "little")
+        frame[6:] = payload
+        tcp = struct.pack("!HHIIH", 50100, 30851, 100, 0, 0x5018) + b"\0" * 6 + frame
+        ip = bytearray(20)
+        ip[0] = 0x45
+        ip[2:4] = (20 + len(tcp)).to_bytes(2, "big")
+        ip[8] = 64
+        ip[9] = 6
+        ip[12:16] = bytes((127, 0, 0, 1))
+        ip[16:20] = bytes((127, 0, 0, 1))
+        packet = b"\0" * 12 + b"\x08\x00" + bytes(ip) + tcp
+
+        events = LiveEventDecoder(transport_ports=(50100,)).feed(
+            123_000_000_000, packet
+        )
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["type"], "restore_hp_fp")
 
     def test_combat_monitor_separates_pve_and_confirmed_pvp(self):
         events = [
@@ -3913,6 +3937,23 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(routes[0]["local_ports"], (50101,))
         self.assertEqual(routes[0]["remote_ports"], ())
         self.assertNotIn(50200, routes[0]["local_ports"])
+
+    def test_agent_routes_include_exitlag_relay_but_ignore_https(self):
+        game = r"C:\Games\ProjectRF.exe"
+        rows = [
+            (10, 50100, 30851),
+            (10, 50101, 443),
+            (10, 50102, 12020),
+        ]
+        with patch("core.connections._tcp_rows", return_value=rows), patch(
+            "core.connections._process_path", return_value=game
+        ):
+            processes = agent_processes((12000, 12010, 12020, 12040))
+
+        pids, local_ports, remote_ports = next(iter(processes.values()))
+        self.assertEqual(pids, {10})
+        self.assertEqual(local_ports, {50100, 50102})
+        self.assertEqual(remote_ports, {12020})
 
     def test_pc_and_bluestacks_connections_are_discovered_separately(self):
         paths = {

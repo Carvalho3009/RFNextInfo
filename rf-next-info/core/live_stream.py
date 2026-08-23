@@ -83,7 +83,10 @@ class _FlowState:
     timestamp_ns: int = 0
 
 
-def _tcp_payload(packet: bytes) -> tuple[str, int, int, bytes] | None:
+def _tcp_payload(
+    packet: bytes,
+    transport_ports: tuple[int, ...] = DEFAULT_PORTS,
+) -> tuple[str, int, int, bytes] | None:
     ethertype, network = decoder._network_payload(packet, 1)
     if ethertype != 0x0800 or len(network) < 40:
         return None
@@ -108,16 +111,24 @@ def _tcp_payload(packet: bytes) -> tuple[str, int, int, bytes] | None:
     payload = tcp[header_length:]
     if not payload:
         return None
+    accepted_ports = tuple(int(port) for port in transport_ports)
     server_port = next(
+        (port for port in (source_port, destination_port) if port in DEFAULT_PORTS),
+        0,
+    )
+    transport_port = server_port or next(
         (
             port
             for port in (source_port, destination_port)
-            if port in DEFAULT_PORTS
+            if port in accepted_ports
         ),
         0,
     )
-    if not server_port:
+    if not transport_port:
         return None
+    # ExitLag substitui a porta oficial por uma conexao loopback efemera. O
+    # zero faz o parser tentar os contratos conhecidos sem tratar a porta
+    # local como se fosse uma porta oficial do servidor.
     source = socket.inet_ntoa(network[12:16])
     destination = socket.inet_ntoa(network[16:20])
     flow = f"{source}:{source_port} -> {destination}:{destination_port}"
@@ -131,6 +142,7 @@ class LiveEventDecoder:
         self,
         max_flows: int = MAX_LIVE_FLOWS,
         *,
+        transport_ports: tuple[int, ...] = DEFAULT_PORTS,
         max_pending_segments: int = MAX_PENDING_SEGMENTS_PER_FLOW,
         max_pending_bytes: int = MAX_PENDING_BYTES_PER_FLOW,
         max_flow_buffer_bytes: int = MAX_FLOW_BUFFER_BYTES,
@@ -140,6 +152,14 @@ class LiveEventDecoder:
         self._max_pending_segments = max(1, int(max_pending_segments))
         self._max_pending_bytes = max(1, int(max_pending_bytes))
         self._max_flow_buffer_bytes = max(MAX_FRAME_BYTES, int(max_flow_buffer_bytes))
+        self._transport_ports = tuple(
+            dict.fromkeys(int(port) for port in transport_ports if int(port) > 0)
+        )
+
+    def set_transport_ports(self, ports: tuple[int, ...]) -> None:
+        self._transport_ports = tuple(
+            dict.fromkeys(int(port) for port in ports if int(port) > 0)
+        )
 
     @property
     def flow_count(self) -> int:
@@ -179,7 +199,7 @@ class LiveEventDecoder:
         }
 
     def feed(self, timestamp_ns: int, packet: bytes) -> list[dict[str, Any]]:
-        parsed = _tcp_payload(packet)
+        parsed = _tcp_payload(packet, self._transport_ports)
         if parsed is None:
             return []
         flow, server_port, sequence, payload = parsed
@@ -280,7 +300,21 @@ class LiveEventDecoder:
                 opcode = int(info["opcode"])
                 if opcode == SENSITIVE_OPCODE:
                     continue
-                result = _safe_parse(decoder, decoded, server_port)
+                candidate_ports = (
+                    (server_port,)
+                    if server_port
+                    else (12020, 12010, 12000, 12040)
+                )
+                result = next(
+                    (
+                        parsed
+                        for candidate_port in candidate_ports
+                        if (parsed := _safe_parse(
+                            decoder, decoded, candidate_port
+                        )) is not None
+                    ),
+                    None,
+                )
                 if result is None:
                     continue
                 events.append(
@@ -316,6 +350,7 @@ class LiveEventStream:
         max_pending_bytes_per_flow: int = MAX_PENDING_BYTES_PER_FLOW,
         max_flow_buffer_bytes: int = MAX_FLOW_BUFFER_BYTES,
         event_sink: Callable[[dict[str, Any]], bool] | None = None,
+        transport_ports: tuple[int, ...] = DEFAULT_PORTS,
     ) -> None:
         self._max_pending_packets = max(1, int(max_pending_packets))
         self._max_pending_packet_bytes = max(1, int(max_pending_packet_bytes))
@@ -350,6 +385,7 @@ class LiveEventStream:
             "max_flow_buffer_bytes": max(
                 MAX_FRAME_BYTES, int(max_flow_buffer_bytes)
             ),
+            "transport_ports": tuple(transport_ports),
         }
         self._boss_event_ns = max(1, int(boss_event_seconds)) * 1_000_000_000
         self._lock = threading.Lock()
@@ -369,6 +405,13 @@ class LiveEventStream:
         self.memory_compactions = 0
         self.last_received_ns = 0
         self.last_processed_ns = 0
+
+    def set_transport_ports(self, ports: tuple[int, ...]) -> None:
+        normalized = tuple(
+            dict.fromkeys(int(port) for port in ports if int(port) > 0)
+        )
+        self._decoder_kwargs["transport_ports"] = normalized
+        self._decoder.set_transport_ports(normalized)
 
     def set_event_sink(
         self, sink: Callable[[dict[str, Any]], bool] | None

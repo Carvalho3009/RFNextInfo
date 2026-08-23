@@ -77,7 +77,7 @@ class AgentWindowTest(unittest.TestCase):
                     "memory_budget_mb": 1024,
                     "outbox": {"events": 12, "bytes": 4096},
                     "capture": {"received_packets": 1234},
-                    "decoder": {"decoded_events": 56},
+                    "decoder": {"processed_packets": 1234, "decoded_events": 56},
                     "local_api": {"active": True, "port": 17621},
                 })
 
@@ -92,7 +92,7 @@ class AgentWindowTest(unittest.TestCase):
                     window.server_value.text(), "Modo local · envio desativado"
                 )
                 self.assertEqual(
-                    window.traffic_value.text(), "1.234 pacotes · 56 eventos"
+                    window.traffic_value.text(), "1.234 pacotes úteis · 56 eventos"
                 )
             finally:
                 window._exiting = True

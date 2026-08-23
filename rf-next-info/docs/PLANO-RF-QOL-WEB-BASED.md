@@ -19,9 +19,9 @@ Implementado localmente em 23 ago 2026:
   opcional e desativada por padrão;
 - limite de RAM configurável, com 1 GiB como padrão;
 - API local somente leitura para Boss/PvP e diagnóstico sanitizado;
-- beta.7 recria apenas a captura Pktmon, com confirmação e intervalo mínimo,
-  quando portas estáveis do cliente/ExitLag aparecem após o início; sessão,
-  identidade e outbox permanecem as mesmas;
+- beta.8 reconhece o transporte loopback do ExitLag, exclui HTTPS do filtro,
+  mantém o decoder e os eventos durante trocas de rota e diferencia pacotes
+  observados de pacotes úteis na interface;
 - seleção interna do modo online somente quando `AGENT_SERVER` apontar para um
   domínio HTTPS dedicado, explicitamente impedido de reutilizar o RF Next;
 - registro automático com prova de posse, espera de aprovação sem perda da

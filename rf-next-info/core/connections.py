@@ -178,6 +178,46 @@ def connected_processes(
     )
 
 
+def agent_processes(
+    allowed_remote_ports: tuple[int, ...] = (),
+) -> dict[str, tuple[set[int], set[int], set[int]]]:
+    """Rotas de jogo do Agent, incluindo o proxy local usado pelo ExitLag.
+
+    Conexoes HTTPS do cliente servem para login/telemetria e mudam com
+    frequencia. Elas nao carregam os frames do jogo e, se entrarem no filtro,
+    provocam reinicios e trabalho inutil no decoder.
+    """
+    allowed = set(allowed_remote_ports)
+    result: dict[str, tuple[set[int], set[int], set[int]]] = {}
+    paths: dict[int, str | None] = {}
+
+    def matching_path(pid: int) -> str | None:
+        if pid not in paths:
+            paths[pid] = _process_path(pid)
+        path = paths[pid]
+        if path and os.path.basename(path).casefold().startswith("projectrf"):
+            return path
+        return None
+
+    for pid, local_port, remote_port in _tcp_rows():
+        path = matching_path(pid)
+        if not path:
+            continue
+        is_direct_game = bool(allowed and remote_port in allowed)
+        is_relay_candidate = remote_port not in (0, 80, 443)
+        if not is_direct_game and not is_relay_candidate:
+            continue
+        key = os.path.normcase(os.path.abspath(path))
+        pids, local_ports, remote_ports = result.setdefault(
+            key, (set(), set(), set())
+        )
+        pids.add(pid)
+        local_ports.add(local_port)
+        if is_direct_game:
+            remote_ports.add(remote_port)
+    return result
+
+
 def emulator_processes(
     allowed_remote_ports: tuple[int, ...] = (),
 ) -> dict[str, tuple[set[int], set[int], set[int]]]:
