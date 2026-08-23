@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
+AGENT_ASSETS_DIR = SOURCE_ROOT / "assets"
 INSTALL_DIR = (
     Path(sys.executable).resolve().parent
     if getattr(sys, "frozen", False)

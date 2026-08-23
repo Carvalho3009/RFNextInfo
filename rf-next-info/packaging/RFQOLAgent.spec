@@ -7,6 +7,8 @@ assets = root / "assets"
 job1 = root.parent / "rf-next" / "analysis" / "1.28.5" / "job1"
 data_files = [
     (str(assets / "karvalho-symbol-gold.png"), "assets"),
+    (str(assets / "Saira.ttf"), "assets"),
+    (str(assets / "SairaSemiCondensed-Bold.ttf"), "assets"),
     (str(root / "core" / "boss_catalog.csv"), "core"),
     (str(job1 / "job1_pending_layouts.json"), "core"),
     (str(job1 / "job1_all_opcodes.csv"), "core"),

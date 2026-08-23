@@ -13,6 +13,7 @@ from typing import Any
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.agent_paths import (
+    AGENT_ASSETS_DIR,
     AGENT_DIAGNOSTIC_DIR,
     AGENT_LOG_PATH,
     AGENT_PREFERENCES_PATH,
@@ -131,7 +132,8 @@ class AgentWindow(QtWidgets.QWidget):
         self.poll_timer.timeout.connect(self._request_poll)
 
         self.setWindowTitle(f"RF QOL Agent · {APP_VERSION}")
-        self.setMinimumWidth(520)
+        self.setMinimumSize(620, 620)
+        self.resize(760, 720)
         self.setObjectName("agentWindow")
         self._build_ui()
         self._build_tray()
@@ -148,11 +150,12 @@ class AgentWindow(QtWidgets.QWidget):
 
     def _build_ui(self) -> None:
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(22, 20, 22, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
 
         header = QtWidgets.QHBoxLayout()
         title_box = QtWidgets.QVBoxLayout()
+        title_box.setSpacing(2)
         title = QtWidgets.QLabel("RF QOL Agent", objectName="title")
         subtitle = QtWidgets.QLabel(
             "Captura e decode no computador · processamento no site",
@@ -162,11 +165,23 @@ class AgentWindow(QtWidgets.QWidget):
         title_box.addWidget(subtitle)
         header.addLayout(title_box, 1)
         self.state_label = QtWidgets.QLabel("Ocioso", objectName="stateIdle")
+        self.state_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.state_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Fixed,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         header.addWidget(self.state_label)
+        header.setAlignment(
+            self.state_label,
+            QtCore.Qt.AlignmentFlag.AlignTop
+            | QtCore.Qt.AlignmentFlag.AlignRight,
+        )
         layout.addLayout(header)
 
         controls = QtWidgets.QHBoxLayout()
-        self.start_button = QtWidgets.QPushButton("Iniciar captura")
+        self.start_button = QtWidgets.QPushButton(
+            "Iniciar captura", objectName="primaryButton"
+        )
         self.start_button.clicked.connect(self._start_clicked)
         self.stop_button = QtWidgets.QPushButton("Pausar captura")
         self.stop_button.clicked.connect(self._stop_clicked)
@@ -178,12 +193,19 @@ class AgentWindow(QtWidgets.QWidget):
 
         status = QtWidgets.QFrame(objectName="card")
         status_layout = QtWidgets.QGridLayout(status)
-        self.capture_value = QtWidgets.QLabel("Desligada")
-        self.clients_value = QtWidgets.QLabel("Nenhum")
-        self.server_value = QtWidgets.QLabel("Modo local · envio desativado")
-        self.outbox_value = QtWidgets.QLabel("0 eventos")
-        self.memory_value = QtWidgets.QLabel("Limite 1.024 MiB")
-        self.api_value = QtWidgets.QLabel("Preparando")
+        status_layout.setContentsMargins(18, 16, 18, 16)
+        status_layout.setHorizontalSpacing(24)
+        status_layout.setVerticalSpacing(8)
+        self.capture_value = QtWidgets.QLabel("Desligada", objectName="statusValue")
+        self.clients_value = QtWidgets.QLabel("Nenhum", objectName="statusValue")
+        self.server_value = QtWidgets.QLabel(
+            "Modo local · envio desativado", objectName="statusValue"
+        )
+        self.outbox_value = QtWidgets.QLabel("0 eventos", objectName="statusValue")
+        self.memory_value = QtWidgets.QLabel(
+            "Limite 1.024 MiB", objectName="statusValue"
+        )
+        self.api_value = QtWidgets.QLabel("Preparando", objectName="statusValue")
         rows = (
             ("Captura", self.capture_value),
             ("Clientes", self.clients_value),
@@ -200,15 +222,20 @@ class AgentWindow(QtWidgets.QWidget):
 
         clients_card = QtWidgets.QFrame(objectName="card")
         clients_layout = QtWidgets.QVBoxLayout(clients_card)
+        clients_layout.setContentsMargins(18, 16, 18, 16)
+        clients_layout.setSpacing(10)
         clients_layout.addWidget(QtWidgets.QLabel("Personagens reconhecidos", objectName="section"))
         self.clients_list = QtWidgets.QListWidget()
-        self.clients_list.setMaximumHeight(112)
+        self.clients_list.setFixedHeight(70)
         self.clients_list.addItem("Aguardando captura")
         clients_layout.addWidget(self.clients_list)
         layout.addWidget(clients_card)
 
         settings = QtWidgets.QFrame(objectName="card")
         settings_layout = QtWidgets.QFormLayout(settings)
+        settings_layout.setContentsMargins(18, 16, 18, 16)
+        settings_layout.setHorizontalSpacing(28)
+        settings_layout.setVerticalSpacing(12)
         self.auto_capture = QtWidgets.QCheckBox("Iniciar ao reconhecer cliente")
         self.auto_capture.toggled.connect(self._preferences_changed)
         self.startup = QtWidgets.QCheckBox("Abrir com o Windows")
@@ -223,6 +250,7 @@ class AgentWindow(QtWidgets.QWidget):
         layout.addWidget(settings)
 
         actions = QtWidgets.QHBoxLayout()
+        actions.setSpacing(10)
         self.site_button = QtWidgets.QPushButton("Abrir site")
         self.site_button.setEnabled(False)
         self.site_button.setToolTip("Disponível quando o servidor de homologação for configurado.")
@@ -230,9 +258,16 @@ class AgentWindow(QtWidgets.QWidget):
         self.pair_button.clicked.connect(self._copy_pairing)
         self.diagnostic_button = QtWidgets.QPushButton("Exportar diagnóstico")
         self.diagnostic_button.clicked.connect(self._export_diagnostic)
-        actions.addWidget(self.site_button)
-        actions.addWidget(self.pair_button)
-        actions.addWidget(self.diagnostic_button)
+        for button in (
+            self.site_button,
+            self.pair_button,
+            self.diagnostic_button,
+        ):
+            button.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Ignored,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            actions.addWidget(button, 1)
         layout.addLayout(actions)
 
         self.message = QtWidgets.QLabel("Agent pronto para iniciar.", objectName="muted")
@@ -280,22 +315,120 @@ class AgentWindow(QtWidgets.QWidget):
 
     def _apply_style(self) -> None:
         self.setStyleSheet("""
-            QWidget#agentWindow { background: #08151b; color: #edf4f7; }
-            QLabel#title { font-size: 25px; font-weight: 600; }
-            QLabel#section { font-size: 16px; font-weight: 600; }
-            QLabel#muted { color: #9fb1bb; }
-            QLabel#stateIdle, QLabel#stateActive, QLabel#stateError {
-                padding: 7px 12px; border-radius: 7px; font-weight: 600;
+            QWidget {
+                color: #f4f2eb;
+                font-family: 'Saira';
+                font-size: 14px;
             }
-            QLabel#stateIdle { color: #f2b84b; background: #302819; }
-            QLabel#stateActive { color: #61d58a; background: #173224; }
-            QLabel#stateError { color: #ff8585; background: #3a1d22; }
-            QFrame#card { background: #0d1d24; border: 1px solid #29404b; border-radius: 9px; }
-            QPushButton, QComboBox { padding: 8px 11px; }
-            QPushButton { background: #14262f; border: 1px solid #38505b; border-radius: 7px; }
-            QPushButton:hover { background: #1b313b; }
-            QPushButton:disabled { color: #667780; background: #0b171d; }
-            QListWidget, QComboBox { background: #09171d; border: 1px solid #29404b; border-radius: 6px; }
+            QWidget#agentWindow {
+                background: #071218;
+            }
+            QLabel#title {
+                color: #ffffff;
+                font-family: 'Saira SemiCondensed';
+                font-size: 28px;
+                font-weight: 700;
+            }
+            QLabel#section {
+                color: #ffffff;
+                font-family: 'Saira SemiCondensed';
+                font-size: 17px;
+                font-weight: 700;
+            }
+            QLabel#muted { color: #a9bac3; }
+            QLabel#statusValue { color: #f4f2eb; font-weight: 500; }
+            QLabel#stateIdle, QLabel#stateActive, QLabel#stateError {
+                min-width: 88px;
+                padding: 8px 14px;
+                border-radius: 8px;
+                font-family: 'Saira SemiCondensed';
+                font-size: 15px;
+                font-weight: 700;
+            }
+            QLabel#stateIdle {
+                color: #ffc857;
+                background: #342915;
+                border: 1px solid #695126;
+            }
+            QLabel#stateActive {
+                color: #72e39a;
+                background: #153221;
+                border: 1px solid #285e3b;
+            }
+            QLabel#stateError {
+                color: #ff9696;
+                background: #3a1d22;
+                border: 1px solid #6f3038;
+            }
+            QFrame#card {
+                background: #0d1c23;
+                border: 1px solid #29434e;
+                border-radius: 10px;
+            }
+            QPushButton {
+                min-height: 22px;
+                padding: 9px 14px;
+                background: #132730;
+                border: 1px solid #3c5662;
+                border-radius: 7px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                color: #ffffff;
+                background: #1b343f;
+                border-color: #5d7b88;
+            }
+            QPushButton:pressed { background: #0d2028; }
+            QPushButton#primaryButton {
+                color: #18140c;
+                background: #e5b35c;
+                border-color: #f0c779;
+            }
+            QPushButton#primaryButton:hover { background: #f0c779; }
+            QPushButton:disabled {
+                color: #71838c;
+                background: #0a171d;
+                border-color: #263b44;
+            }
+            QListWidget,
+            QComboBox {
+                color: #f4f2eb;
+                background: #08161c;
+                border: 1px solid #304b56;
+                border-radius: 7px;
+                padding: 7px 10px;
+                selection-background-color: #34432b;
+                selection-color: #ffffff;
+            }
+            QListWidget::item { padding: 6px 5px; }
+            QListWidget::item:selected { background: #34432b; }
+            QComboBox:hover { border-color: #5b7681; }
+            QComboBox QAbstractItemView {
+                color: #f4f2eb;
+                background: #0d1c23;
+                border: 1px solid #3c5662;
+                selection-background-color: #3a321f;
+                selection-color: #ffffff;
+            }
+            QCheckBox { spacing: 9px; }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 1px solid #506b76;
+                border-radius: 4px;
+                background: #08161c;
+            }
+            QCheckBox::indicator:hover { border-color: #e5b35c; }
+            QCheckBox::indicator:checked {
+                background: #e5b35c;
+                border-color: #f0c779;
+            }
+            QToolTip {
+                color: #f4f2eb;
+                background: #14262f;
+                border: 1px solid #49616c;
+                padding: 5px;
+            }
         """)
 
     def _start_worker(self) -> None:
@@ -530,6 +663,10 @@ def create_application(arguments: list[str] | None = None) -> QtWidgets.QApplica
         app = QtWidgets.QApplication(arguments or sys.argv)
     app.setApplicationName("RF QOL Agent")
     app.setQuitOnLastWindowClosed(False)
+    for filename in ("Saira.ttf", "SairaSemiCondensed-Bold.ttf"):
+        font_path = AGENT_ASSETS_DIR / filename
+        if font_path.is_file():
+            QtGui.QFontDatabase.addApplicationFont(str(font_path))
     return app
 
 

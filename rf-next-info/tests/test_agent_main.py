@@ -92,6 +92,31 @@ class AgentWindowTest(unittest.TestCase):
                 window.deleteLater()
                 self.app.processEvents()
 
+    def test_dark_theme_sets_readable_foreground_for_every_control_family(self):
+        from app.agent_main import AgentWindow
+
+        with tempfile.TemporaryDirectory() as folder:
+            window = AgentWindow(
+                self._runtime(),
+                preferences_path=Path(folder) / "preferences.json",
+                start_worker=False,
+            )
+            try:
+                style = " ".join(window.styleSheet().lower().split())
+                self.assertIn("qwidget { color: #f4f2eb", style)
+                self.assertIn("qlabel#title { color: #ffffff", style)
+                self.assertIn("qpushbutton:disabled { color: #71838c", style)
+                self.assertIn("qlabel#statusvalue { color: #f4f2eb", style)
+                self.assertEqual(
+                    window.start_button.objectName(), "primaryButton"
+                )
+                self.assertGreaterEqual(window.clients_list.height(), 70)
+            finally:
+                window._exiting = True
+                window.close()
+                window.deleteLater()
+                self.app.processEvents()
+
     def test_preferences_and_pairing_are_explicit_user_actions(self):
         from PySide6 import QtWidgets
         from app.agent_main import AgentWindow
