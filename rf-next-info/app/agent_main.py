@@ -25,7 +25,7 @@ from app.agent_preferences import (
     load_agent_preferences,
     save_agent_preferences,
 )
-from app.build_profile import AGENT_SERVER, APP_VERSION
+from app.build_profile import AGENT_SERVER, AGENT_TRANSPORT_VERSION, APP_VERSION
 from core.windows_agent_capture import StandaloneWindowsAgentRuntime
 
 
@@ -708,7 +708,6 @@ def _configure_logging() -> None:
 
 def _create_runtime(preferences: dict[str, Any]) -> StandaloneWindowsAgentRuntime:
     options = {
-        "version": APP_VERSION,
         "memory_budget_mb": int(preferences["memory_limit_mb"]),
         "local_api_port": int(preferences["local_api_port"]),
         "max_outbox_bytes": int(preferences["storage_limit_mb"]) * 1024 * 1024,
@@ -719,11 +718,14 @@ def _create_runtime(preferences: dict[str, Any]) -> StandaloneWindowsAgentRuntim
             AGENT_RUNTIME_DIR,
             installation_id,
             AGENT_SERVER,
+            version=AGENT_TRANSPORT_VERSION,
+            decoder_version=APP_VERSION,
             **options,
         )
     return StandaloneWindowsAgentRuntime.create_offline(
         AGENT_RUNTIME_DIR,
         installation_id,
+        version=APP_VERSION,
         **options,
     )
 

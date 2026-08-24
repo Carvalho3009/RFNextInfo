@@ -6,14 +6,15 @@ from urllib.parse import urlsplit
 
 PROFILE_NAME = "beta"
 PROFILE_LABEL = "Beta"
-APP_VERSION = "2.0.0-beta.8"
-RELEASE_SEQUENCE = 18
+APP_VERSION = "2.0.0-beta.9"
+RELEASE_SEQUENCE = 19
 
 LICENSE_SERVER = "https://rflicenca.karvalho.dev.br"
 SITE_SERVER = "https://rfnext.karvalho.dev.br"
-# Receptor exclusivo do RF QOL Agent. Permanece vazio até existir um domínio
-# dedicado homologado; nunca reutilizar SITE_SERVER/RF Next para este fluxo.
-AGENT_SERVER = ""
+# Receptor exclusivo do RF QOL Agent; nunca reutilizar SITE_SERVER/RF Next.
+# A versao de transporte segue o contrato aceito pelo receptor publicado.
+AGENT_SERVER = "https://apirf.karvalho.dev.br"
+AGENT_TRANSPORT_VERSION = "2.0.0-beta.6"
 SITE_FEATURES = frozenset({
     "character",
     "market",
@@ -61,9 +62,9 @@ def validate_build_profile(*, release: bool = False) -> None:
     elif PROFILE_NAME == "beta":
         parsed = urlsplit(LICENSE_SERVER)
         if (
-            APP_VERSION != "2.0.0-beta.8"
+            APP_VERSION != "2.0.0-beta.9"
             or PROFILE_LABEL != "Beta"
-            or RELEASE_SEQUENCE != 18
+            or RELEASE_SEQUENCE != 19
             or parsed.scheme != "https"
             or parsed.hostname != "rflicenca.karvalho.dev.br"
             or parsed.path not in {"", "/"}
@@ -76,6 +77,8 @@ def validate_build_profile(*, release: bool = False) -> None:
             or MACHINE_STATE_NAME != "RF QOL Beta"
             or INSTANCE_SERVER_NAME != "RFQOL.Beta.App"
             or set(LEASE_V3_PUBLIC_KEYS) != {"lease-v3-beta-2026-08"}
+            or AGENT_SERVER != "https://apirf.karvalho.dev.br"
+            or AGENT_TRANSPORT_VERSION != "2.0.0-beta.6"
         ):
             raise RuntimeError("Perfil beta inconsistente")
     else:
@@ -118,3 +121,5 @@ def validate_build_profile(*, release: bool = False) -> None:
             or agent.hostname == "rfnext.karvalho.dev.br"
         ):
             raise RuntimeError("Servidor do Agent deve ser HTTPS e separado do RF Next")
+    if not AGENT_TRANSPORT_VERSION.startswith("2.0.0-beta."):
+        raise RuntimeError("Versao de transporte do Agent invalida")

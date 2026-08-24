@@ -2,13 +2,13 @@
 
 Data: 22 ago 2026  
 Branch: `feat/rf-qol-web-based`  
-Estado: Agent Windows funcional offline e caminho online preparado; receptor
-dedicado local separado, sem deploy
+Estado: Agent Windows funcional e receptor dedicado publicado separadamente;
+perfil beta.9 preparado para cadastro e envio automáticos
 Base preservada: `rf-qol-desktop-2.0.0-beta.6` / commit `795333d`  
 Autorizado em 22 ago 2026: avançar a base local do Agent Windows, incluindo
 identidade DPAPI, transporte HTTPS testável e testes locais sem servidor.
-Ainda não realizado: habilitar envio real, registrar instalação em produção,
-infraestrutura, DNS, deploy, publicação ou instalador.
+Ainda não realizado: aprovar e validar uma instalação real, processar os eventos
+recebidos ou publicar painel de domínio.
 
 Implementado localmente em 23 ago 2026:
 
@@ -22,6 +22,9 @@ Implementado localmente em 23 ago 2026:
 - beta.8 reconhece o transporte loopback do ExitLag, exclui HTTPS do filtro,
   mantém o decoder e os eventos durante trocas de rota e diferencia pacotes
   observados de pacotes úteis na interface;
+- beta.9 aponta exclusivamente para `https://apirf.karvalho.dev.br`, registra a
+  instalação automaticamente e usa o contrato de transporte beta.6 informado
+  pelo servidor, mantendo beta.9 como versão real do decoder;
 - seleção interna do modo online somente quando `AGENT_SERVER` apontar para um
   domínio HTTPS dedicado, explicitamente impedido de reutilizar o RF Next;
 - registro automático com prova de posse, espera de aprovação sem perda da

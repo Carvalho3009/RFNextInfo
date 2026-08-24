@@ -335,6 +335,12 @@ class AgentWindowTest(unittest.TestCase):
 
         online.assert_called_once()
         self.assertEqual(online.call_args.args[2], "https://qol.example.test")
+        self.assertEqual(
+            online.call_args.kwargs["version"], agent_main.AGENT_TRANSPORT_VERSION
+        )
+        self.assertEqual(
+            online.call_args.kwargs["decoder_version"], agent_main.APP_VERSION
+        )
         offline.assert_not_called()
 
 
