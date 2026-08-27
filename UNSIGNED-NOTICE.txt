@@ -1,12 +1,12 @@
-RF QOL Agent 2.0.0-beta.22
+RF Next Companion 2.0.0-beta.23
 
-Este projeto não utiliza Authenticode por decisão do proprietário.
-O Windows SmartScreen ou o antivírus podem exibir um aviso de reputação.
+Este projeto decidiu não usar Authenticode. O instalador e o executável não
+possuem assinatura Authenticode e o Windows ou o antivírus podem exibir avisos.
 
-O instalador não desativa o antivírus, não cria exclusões no Defender, não usa
-PowerShell remoto, não injeta código, não usa UPX e não substitui o executável
-silenciosamente. As atualizações são aceitas somente após validação Ed25519,
-tamanho e SHA-256; a aplicação exige confirmação visível do usuário.
+O pacote não cria exclusões no antivírus, não desativa proteções do Windows,
+não usa UPX e não executa scripts remotos. A atualização valida manifesto
+Ed25519, origem HTTPS, tamanho e SHA-256 antes de abrir o instalador, sempre
+com confirmação visível do usuário.
 
-Confirme o SHA-256 do instalador antes de executá-lo:
-76F0338D7418337CAA09E7397268E5DCA0242E4BC8E1CF5D4F93079DCBE61AD5
+SHA-256 do instalador:
+9DB1E1AA9658C9D958105D1007C76E4F209240E620029EE996F54C9F1EA681CD
