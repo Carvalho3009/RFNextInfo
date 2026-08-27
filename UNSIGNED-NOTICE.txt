@@ -1,4 +1,4 @@
-RF Next Companion 2.0.0-beta.23
+RF Next Companion 2.0.0-beta.24
 
 Este projeto decidiu não usar Authenticode. O instalador e o executável não
 possuem assinatura Authenticode e o Windows ou o antivírus podem exibir avisos.
@@ -9,4 +9,4 @@ Ed25519, origem HTTPS, tamanho e SHA-256 antes de abrir o instalador, sempre
 com confirmação visível do usuário.
 
 SHA-256 do instalador:
-9DB1E1AA9658C9D958105D1007C76E4F209240E620029EE996F54C9F1EA681CD
+FA4920AAFCEAAEC7ADE36474CAAC56DBEF5D1C42E5EB9CE8E3D136FA710E3116
