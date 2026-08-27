@@ -1,0 +1,12 @@
+RF QOL Agent 2.0.0-beta.22
+
+Este projeto não utiliza Authenticode por decisão do proprietário.
+O Windows SmartScreen ou o antivírus podem exibir um aviso de reputação.
+
+O instalador não desativa o antivírus, não cria exclusões no Defender, não usa
+PowerShell remoto, não injeta código, não usa UPX e não substitui o executável
+silenciosamente. As atualizações são aceitas somente após validação Ed25519,
+tamanho e SHA-256; a aplicação exige confirmação visível do usuário.
+
+Confirme o SHA-256 do instalador antes de executá-lo:
+76F0338D7418337CAA09E7397268E5DCA0242E4BC8E1CF5D4F93079DCBE61AD5
