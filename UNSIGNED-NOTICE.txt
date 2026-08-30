@@ -1,0 +1,12 @@
+RF Next Companion 2.0.0-beta.28
+
+Este projeto decidiu não usar Authenticode. O instalador e o executável não
+possuem assinatura Authenticode e o Windows ou o antivírus podem exibir avisos.
+
+O pacote não cria exclusões no antivírus, não desativa proteções do Windows,
+não usa UPX e não executa scripts remotos. A atualização valida manifesto
+Ed25519, origem HTTPS, tamanho e SHA-256 antes de abrir o instalador, sempre
+com confirmação visível do usuário.
+
+SHA-256 do instalador:
+16419FC7C65F1F6FDF838B148EB77AF074CE9361ED392DF5D59CE3E182B68046
