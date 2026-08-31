@@ -2062,6 +2062,11 @@ class SiteUploadEngineTest(unittest.TestCase):
             installation_id = "install-1"
             lease = "lease-1"
 
+        class Companion:
+            def submit_subsession(self, session_id, report):
+                self.sent = (session_id, report)
+                return True
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             started_ns = 1_780_000_000_000_000_000
@@ -2103,12 +2108,19 @@ class SiteUploadEngineTest(unittest.TestCase):
                 store.close()
 
             site = Site()
-            result = SiteUploadEngine(database, site, License()).send_subsessions(
+            companion = Companion()
+            result = SiteUploadEngine(
+                database, site, License(), companion
+            ).send_subsessions(
                 ["sub-1"], {"session_id": "session", "characters": []}, "pt"
             )
 
-            self.assertEqual(result, {"sent": 1, "failures": []})
+            self.assertEqual(result, {
+                "sent": 1, "companion_queued": 1, "failures": [],
+            })
             self.assertEqual(site.sent[1]["profiles"][0]["name"], "Alice")
+            self.assertEqual(companion.sent[0], "session")
+            self.assertEqual(companion.sent[1]["character_uid"], "101")
             store = CaptureStore(database, readonly=True)
             try:
                 self.assertEqual(store.subsessions("session")[0]["upload_state"], "sent")

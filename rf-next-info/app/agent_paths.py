@@ -22,6 +22,7 @@ AGENT_STATE_DIR = (
 AGENT_RUNTIME_DIR = AGENT_STATE_DIR / "runtime"
 AGENT_LOG_DIR = AGENT_STATE_DIR / "logs"
 AGENT_DIAGNOSTIC_DIR = AGENT_STATE_DIR / "diagnostics"
+AGENT_UPDATE_DIR = AGENT_STATE_DIR / "updates"
 AGENT_PREFERENCES_PATH = AGENT_STATE_DIR / "preferences.json"
 AGENT_LOG_PATH = AGENT_LOG_DIR / "rf-qol-agent.log"
 
@@ -32,6 +33,7 @@ def ensure_agent_layout() -> tuple[Path, ...]:
         AGENT_RUNTIME_DIR,
         AGENT_LOG_DIR,
         AGENT_DIAGNOSTIC_DIR,
+        AGENT_UPDATE_DIR,
     )
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)

@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import ctypes
+import os
 import threading
 import time
 import uuid
+from ctypes import wintypes
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from core.connections import agent_processes
+from core.connections import agent_connection_aliases, agent_processes
 from core.ingest import DEFAULT_PORTS
 from core.live_stream import LiveEventStream
 from core.pktmon_realtime import RealtimeCapture
+from core.remote_subsessions import RemoteSubsessionController
 from core.web_agent_service import WindowsAgentLocalService
+from core.web_agent_transport import AgentTransportError
 
 
 MIN_AGENT_MEMORY_MB = 256
@@ -23,6 +28,43 @@ CAPTURE_METRIC_NAMES = (
     "packets", "received_packets", "filtered_packets", "duplicate_packets",
     "missed_write", "missed_read", "sink_errors",
 )
+MEMORY_PRESSURE_COOLDOWN_SECONDS = 60.0
+
+
+class _ProcessMemoryCounters(ctypes.Structure):
+    _fields_ = (
+        ("cb", ctypes.c_ulong),
+        ("PageFaultCount", ctypes.c_ulong),
+        ("PeakWorkingSetSize", ctypes.c_size_t),
+        ("WorkingSetSize", ctypes.c_size_t),
+        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+        ("PagefileUsage", ctypes.c_size_t),
+        ("PeakPagefileUsage", ctypes.c_size_t),
+    )
+
+
+def process_memory_bytes() -> int | None:
+    """Lê o working set atual sem adicionar uma dependência externa."""
+    if os.name != "nt":
+        return None
+    counters = _ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    kernel32 = ctypes.windll.kernel32
+    psapi = ctypes.windll.psapi
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi.GetProcessMemoryInfo.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_ProcessMemoryCounters),
+        wintypes.DWORD,
+    )
+    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+    success = psapi.GetProcessMemoryInfo(
+        kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
+    )
+    return int(counters.WorkingSetSize) if success else None
 
 
 def agent_memory_limits(value: object) -> dict[str, int]:
@@ -57,19 +99,22 @@ def agent_memory_limits(value: object) -> dict[str, int]:
 class AgentClientRegistry:
     """Resumo mínimo e limitado dos personagens reconhecidos pelo Agent."""
 
-    def __init__(self, max_clients: int = 64) -> None:
+    def __init__(
+        self,
+        max_clients: int = 64,
+        *,
+        clock_ns: Callable[[], int] = time.monotonic_ns,
+    ) -> None:
         self.max_clients = max(1, int(max_clients))
+        self._clock_ns = clock_ns
         self._clients: dict[str, dict[str, Any]] = {}
+        self._session_started_ns: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def observe(self, event: dict[str, Any]) -> None:
         event_type = str(event.get("type") or "")
         payload = event.get("payload")
         payload = payload if isinstance(payload, dict) else {}
-        if event_type == "session.lifecycle" and payload.get("state") == "started":
-            with self._lock:
-                self._clients.clear()
-            return
         if event_type != "character.observed":
             return
         client_ref = str(event.get("client_ref") or "")
@@ -84,15 +129,50 @@ class AgentClientRegistry:
             ),
             "last_seen": str(event.get("occurred_at") or "")[:64],
         }
+        if isinstance(payload.get("character_uid"), (int, float)):
+            item["character_uid"] = int(payload["character_uid"])
         with self._lock:
+            self._session_started_ns.setdefault(
+                client_ref, max(0, int(self._clock_ns()))
+            )
             self._clients.pop(client_ref, None)
             self._clients[client_ref] = item
             while len(self._clients) > self.max_clients:
-                self._clients.pop(next(iter(self._clients)))
+                expired = next(iter(self._clients))
+                self._clients.pop(expired)
+                self._session_started_ns.pop(expired, None)
 
     def snapshot(self) -> list[dict[str, Any]]:
+        now_ns = max(0, int(self._clock_ns()))
         with self._lock:
-            return [dict(item) for item in self._clients.values()]
+            return [
+                {
+                    **item,
+                    "session_duration_seconds": max(
+                        0,
+                        (now_ns - self._session_started_ns.get(client_ref, now_ns))
+                        // 1_000_000_000,
+                    ),
+                }
+                for client_ref, item in self._clients.items()
+            ]
+
+    def reconcile_active_count(self, active_count: int) -> int:
+        """Descarta identidades antigas quando o número de processos diminui."""
+        limit = max(0, min(self.max_clients, int(active_count)))
+        removed = 0
+        with self._lock:
+            while len(self._clients) > limit:
+                expired = next(iter(self._clients))
+                self._clients.pop(expired, None)
+                self._session_started_ns.pop(expired, None)
+                removed += 1
+        return removed
+
+    def clear(self) -> None:
+        with self._lock:
+            self._clients.clear()
+            self._session_started_ns.clear()
 
 
 class StandaloneWindowsAgentRuntime:
@@ -103,32 +183,44 @@ class StandaloneWindowsAgentRuntime:
         service: WindowsAgentLocalService,
         registry: AgentClientRegistry,
         *,
+        remote_subsessions: RemoteSubsessionController | None = None,
         memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
         ports: tuple[int, ...] = DEFAULT_PORTS,
         capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
         process_reader: Callable[..., dict] = agent_processes,
+        route_alias_reader: Callable[..., dict[int, str]] = agent_connection_aliases,
         route_change_confirmations: int = 2,
         route_restart_cooldown_seconds: float = 4.0,
+        memory_reader: Callable[[], int | None] = process_memory_bytes,
     ) -> None:
         self.service = service
         self.registry = registry
+        self.remote_subsessions = remote_subsessions
         self.ports = tuple(dict.fromkeys(int(port) for port in ports))
         if not self.ports or any(not 1 <= port <= 65535 for port in self.ports):
             raise ValueError("Portas do Agent invalidas")
         self.capture_factory = capture_factory
         self.process_reader = process_reader
+        self.route_alias_reader = route_alias_reader
         self.route_change_confirmations = max(
             1, min(5, int(route_change_confirmations))
         )
         self.route_restart_cooldown_seconds = max(
             0.0, min(30.0, float(route_restart_cooldown_seconds))
         )
+        self.memory_reader = memory_reader
         self.memory_limits = agent_memory_limits(memory_budget_mb)
         self.live_events = self._new_event_stream()
         self.live_capture: RealtimeCapture | None = None
         self.session_id: str | None = None
         self.started_at_ns: int | None = None
         self.last_error = ""
+        self.remote_last_error = ""
+        self._last_remote_sync = 0.0
+        self.character_sync_last_error = ""
+        self._last_character_sync = 0.0
+        self._last_character_sync_attempt = 0.0
+        self._character_sync_changes = 0
         self._known_pids: tuple[int, ...] = ()
         self._capture_ports: tuple[int, ...] = ()
         self._pending_capture_ports: tuple[int, ...] = ()
@@ -136,6 +228,9 @@ class StandaloneWindowsAgentRuntime:
         self._last_capture_restart = 0.0
         self._capture_totals = {name: 0 for name in CAPTURE_METRIC_NAMES}
         self._capture_restarts = 0
+        self._memory_peak_bytes = 0
+        self._memory_compactions = 0
+        self._last_memory_compaction = 0.0
         self._closed = False
         self._lock = threading.RLock()
         # A API local passa a informar também a captura real, e não apenas o
@@ -153,8 +248,10 @@ class StandaloneWindowsAgentRuntime:
         local_api_port: int = 17621,
         capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
         process_reader: Callable[..., dict] = agent_processes,
+        route_alias_reader: Callable[..., dict[int, str]] = agent_connection_aliases,
         route_change_confirmations: int = 2,
         route_restart_cooldown_seconds: float = 4.0,
+        memory_reader: Callable[[], int | None] = process_memory_bytes,
         **service_options: Any,
     ) -> "StandaloneWindowsAgentRuntime":
         limits = agent_memory_limits(memory_budget_mb)
@@ -176,8 +273,10 @@ class StandaloneWindowsAgentRuntime:
             memory_budget_mb=memory_budget_mb,
             capture_factory=capture_factory,
             process_reader=process_reader,
+            route_alias_reader=route_alias_reader,
             route_change_confirmations=route_change_confirmations,
             route_restart_cooldown_seconds=route_restart_cooldown_seconds,
+            memory_reader=memory_reader,
         )
 
     @classmethod
@@ -192,12 +291,22 @@ class StandaloneWindowsAgentRuntime:
         local_api_port: int = 17621,
         capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
         process_reader: Callable[..., dict] = agent_processes,
+        route_alias_reader: Callable[..., dict[int, str]] = agent_connection_aliases,
         route_change_confirmations: int = 2,
         route_restart_cooldown_seconds: float = 4.0,
+        memory_reader: Callable[[], int | None] = process_memory_bytes,
         **service_options: Any,
     ) -> "StandaloneWindowsAgentRuntime":
         limits = agent_memory_limits(memory_budget_mb)
         registry = AgentClientRegistry()
+        remote_subsessions = RemoteSubsessionController(
+            Path(state_dir) / "remote-subsessions.json", registry.snapshot
+        )
+
+        def observe(event: dict[str, Any]) -> None:
+            registry.observe(event)
+            remote_subsessions.observe(event)
+
         service = WindowsAgentLocalService.create_online(
             Path(state_dir),
             installation_id,
@@ -207,17 +316,21 @@ class StandaloneWindowsAgentRuntime:
             max_monitor_events=limits["events"],
             max_monitor_bytes=limits["monitor_feed_bytes"],
             max_queue_events=limits["bridge_queue_events"],
-            event_observer=registry.observe,
+            event_observer=observe,
             **service_options,
         )
+        remote_subsessions.set_submitter(service.submit_subsession)
         return cls(
             service,
             registry,
+            remote_subsessions=remote_subsessions,
             memory_budget_mb=memory_budget_mb,
             capture_factory=capture_factory,
             process_reader=process_reader,
+            route_alias_reader=route_alias_reader,
             route_change_confirmations=route_change_confirmations,
             route_restart_cooldown_seconds=route_restart_cooldown_seconds,
+            memory_reader=memory_reader,
         )
 
     @property
@@ -226,7 +339,7 @@ class StandaloneWindowsAgentRuntime:
 
     def _new_event_stream(self) -> LiveEventStream:
         limits = self.memory_limits
-        return LiveEventStream(
+        stream = LiveEventStream(
             max_events=limits["events"],
             max_entity_anchors=limits["entity_anchors"],
             max_pending_packets=limits["pending_packets"],
@@ -238,6 +351,10 @@ class StandaloneWindowsAgentRuntime:
             max_flow_buffer_bytes=limits["flow_buffer_bytes"],
             event_sink=self.service.submit,
         )
+        stream.set_connection_alias_resolver(
+            lambda: self.route_alias_reader(self.ports)
+        )
+        return stream
 
     def detected_processes(self) -> dict[str, tuple[set[int], set[int], set[int]]]:
         result = self.process_reader(self.ports)
@@ -262,7 +379,36 @@ class StandaloneWindowsAgentRuntime:
     def start_local_api(self) -> int:
         port = self.service.start_local_api()
         self.service.start_delivery()
+        self._sync_character_profiles(force=True)
         return port
+
+    def _sync_character_profiles(self, *, force: bool = False) -> bool:
+        """Atualiza o histórico sem interromper o Agent se o site falhar."""
+        authorization = self.service.runtime.health().get("authorization", {})
+        if (
+            isinstance(authorization, dict)
+            and authorization.get("required")
+            and not authorization.get("authorized")
+        ):
+            return False
+        now = time.monotonic()
+        if not force:
+            if self._last_character_sync and now - self._last_character_sync < 30 * 60:
+                return False
+            if now - self._last_character_sync_attempt < 60:
+                return False
+        self._last_character_sync_attempt = now
+        try:
+            changed = int(self.service.sync_character_profiles())
+        except Exception as error:
+            self.character_sync_last_error = (
+                f"{type(error).__name__}: {error}"
+            )[:240]
+            return False
+        self._last_character_sync = now
+        self._character_sync_changes += max(0, changed)
+        self.character_sync_last_error = ""
+        return True
 
     def start_capture(self) -> dict[str, Any]:
         with self._lock:
@@ -270,6 +416,7 @@ class StandaloneWindowsAgentRuntime:
                 raise RuntimeError("Agent ja encerrado")
             if self.active:
                 return self.health()
+            self.service.require_capture_authorization()
             processes = self.detected_processes()
             pids, capture_ports = self._capture_routes(processes, self.ports)
             if not pids:
@@ -280,8 +427,12 @@ class StandaloneWindowsAgentRuntime:
                 name: 0 for name in CAPTURE_METRIC_NAMES
             }
             self._capture_restarts = 0
+            self.registry.clear()
             self.live_events.clear()
             self.live_events.set_transport_ports(capture_ports)
+            self.live_events.set_connection_aliases(
+                self.route_alias_reader(self.ports)
+            )
             self.live_events.start()
             self.service.start_session(session_id)
             live = self.capture_factory(None, capture_ports)
@@ -303,6 +454,8 @@ class StandaloneWindowsAgentRuntime:
             self.session_id = session_id
             self.started_at_ns = time.time_ns()
             self._known_pids = pids
+            if hasattr(self.service, "heartbeat"):
+                self.service.heartbeat("active", len(pids))
             return self.health()
 
     def _accumulate_capture_metrics(self, capture: object) -> None:
@@ -360,23 +513,37 @@ class StandaloneWindowsAgentRuntime:
 
     def refresh_routes(self) -> dict[str, Any]:
         with self._lock:
+            authorized = self.service.refresh_authorization()
+            if authorized:
+                self._sync_character_profiles()
+            if self.live_capture is not None and not authorized:
+                self.stop_capture(reason="authorization_expired")
             processes = self.detected_processes()
+            self.live_events.set_connection_aliases(
+                self.route_alias_reader(self.ports)
+            )
             pids, capture_ports = self._capture_routes(processes, self.ports)
             restarted = False
             if self.live_capture and capture_ports:
+                # Portas observadas permanecem válidas até o fim da captura.
+                # Conexões TCP desaparecem/reaparecem durante teleporte; reduzir
+                # o filtro nesse intervalo causava reinícios e perda de pacotes.
+                desired_ports = tuple(sorted(
+                    set(self._capture_ports).union(capture_ports)
+                ))
                 # add_ports amplia o filtro defensivo em memória, mas uma
                 # sessão Pktmon ativa não recebe novos filtros kernel. Quando
                 # a rota permanece estável por duas leituras, recriamos apenas
                 # a captura e mantemos a mesma sessão/outbox.
-                self.live_capture.add_ports(capture_ports)
-                if capture_ports == self._capture_ports:
+                self.live_capture.add_ports(desired_ports)
+                if desired_ports == self._capture_ports:
                     self._pending_capture_ports = ()
                     self._pending_route_observations = 0
                 else:
-                    if capture_ports == self._pending_capture_ports:
+                    if desired_ports == self._pending_capture_ports:
                         self._pending_route_observations += 1
                     else:
-                        self._pending_capture_ports = capture_ports
+                        self._pending_capture_ports = desired_ports
                         self._pending_route_observations = 1
                     cooldown_elapsed = (
                         time.monotonic() - self._last_capture_restart
@@ -388,19 +555,57 @@ class StandaloneWindowsAgentRuntime:
                         and cooldown_elapsed
                     ):
                         restarted = self._restart_capture_for_routes(
-                            capture_ports
+                            desired_ports
                         )
                         self._last_capture_restart = time.monotonic()
                         self._pending_capture_ports = ()
                         self._pending_route_observations = 0
             self._known_pids = pids
+            self.registry.reconcile_active_count(len(pids))
+            if hasattr(self.service, "heartbeat"):
+                try:
+                    self.service.heartbeat(
+                        "active" if self.live_capture is not None else "stopped",
+                        len(pids),
+                    )
+                except Exception as error:
+                    self.last_error = f"Heartbeat: {type(error).__name__}: {error}"[:240]
+            remote_commands = self._sync_remote_subsessions()
             return {
                 "client_processes": len(pids),
                 "client_pids": list(pids),
                 "no_clients": not pids,
                 "capture_restarted": restarted,
                 "capture_port_count": len(self._capture_ports),
+                "capture_authorized": authorized,
+                "remote_subsession_commands": remote_commands,
             }
+
+    def _sync_remote_subsessions(self) -> int:
+        controller = self.remote_subsessions
+        now = time.monotonic()
+        if controller is None or now - self._last_remote_sync < 5.0:
+            return 0
+        self._last_remote_sync = now
+        results = controller.pending_results()
+        progress = controller.progress_updates()
+        try:
+            commands = self.service.sync_subsession_commands(results, progress)
+            controller.acknowledge_results(results)
+            if any(command.get("action") == "stop" for command in commands):
+                self.service.runtime.bridge.wait_until_idle()
+            controller.apply_commands(
+                commands,
+                session_id=self.session_id,
+                capture_active=self.live_capture is not None,
+            )
+            self.remote_last_error = ""
+            return len(commands)
+        except AgentTransportError as error:
+            self.remote_last_error = str(error.code)[:64]
+        except Exception as error:
+            self.remote_last_error = type(error).__name__[:64]
+        return 0
 
     def stop_capture(self, *, reason: str = "paused") -> dict[str, Any]:
         with self._lock:
@@ -415,6 +620,8 @@ class StandaloneWindowsAgentRuntime:
                     failures.append(f"capture: {type(error).__name__}")
             self.live_events.stop()
             self.service.runtime.bridge.wait_until_idle()
+            if self.remote_subsessions is not None:
+                self.remote_subsessions.finish_all(session_id)
             if session_id:
                 try:
                     if reason == "paused":
@@ -429,6 +636,12 @@ class StandaloneWindowsAgentRuntime:
             self._capture_ports = ()
             self._pending_capture_ports = ()
             self._pending_route_observations = 0
+            self.registry.clear()
+            if hasattr(self.service, "heartbeat"):
+                try:
+                    self.service.heartbeat("stopped", 0)
+                except Exception as error:
+                    failures.append(f"heartbeat: {type(error).__name__}")
             if failures:
                 self.last_error = "; ".join(failures)
             return {"active": False, "failures": failures}
@@ -466,6 +679,21 @@ class StandaloneWindowsAgentRuntime:
             }
             capture_metrics["route_restarts"] = self._capture_restarts
             capture_metrics["port_count"] = len(self._capture_ports)
+            memory_bytes = self.memory_reader()
+            if memory_bytes is not None:
+                memory_bytes = max(0, int(memory_bytes))
+                self._memory_peak_bytes = max(self._memory_peak_bytes, memory_bytes)
+                pressure_bytes = self.memory_limits["budget_mb"] * 1024 * 1024
+                if (
+                    memory_bytes >= pressure_bytes
+                    and time.monotonic() - self._last_memory_compaction
+                    >= MEMORY_PRESSURE_COOLDOWN_SECONDS
+                ):
+                    self.live_events.compact(0.5)
+                    self._memory_compactions += 1
+                    self._last_memory_compaction = time.monotonic()
+            else:
+                pressure_bytes = self.memory_limits["budget_mb"] * 1024 * 1024
             return {
                 "state": "capturing" if capture else "idle",
                 "active": capture is not None,
@@ -474,14 +702,44 @@ class StandaloneWindowsAgentRuntime:
                 "clients": self.registry.snapshot(),
                 "uptime_seconds": round(uptime_seconds, 3),
                 "memory_budget_mb": self.memory_limits["budget_mb"],
+                "memory": {
+                    "working_set_bytes": memory_bytes,
+                    "peak_working_set_bytes": self._memory_peak_bytes,
+                    "limit_bytes": pressure_bytes,
+                    "pressure": bool(
+                        memory_bytes is not None and memory_bytes >= pressure_bytes
+                    ),
+                    "compactions": self._memory_compactions,
+                },
                 "capture": capture_metrics,
                 "decoder": stream,
+                "projection": service_health.get("capture_bridge", {}),
                 "local_api": service_health.get("local_api", {}),
                 "outbox": service_health.get("outbox", {}),
+                "throughput": service_health.get("throughput", {}),
                 "server": {
                     "mode": service_health.get("mode", "offline"),
                     "state": service_health.get("state", "offline_shadow"),
                     "delivery": service_health.get("delivery", {}),
+                    "authorization": service_health.get("authorization", {}),
+                },
+                "remote_subsessions": (
+                    {
+                        **self.remote_subsessions.health(),
+                        "last_error": self.remote_last_error or None,
+                    }
+                    if self.remote_subsessions is not None else {
+                        "active": 0,
+                        "pending_results": 0,
+                        "last_error": None,
+                    }
+                ),
+                "character_sync": {
+                    "automatic": True,
+                    "interval_seconds": 30 * 60,
+                    "last_success_monotonic": self._last_character_sync,
+                    "profiles_changed": self._character_sync_changes,
+                    "last_error": self.character_sync_last_error or None,
                 },
                 "last_error": self.last_error,
             }

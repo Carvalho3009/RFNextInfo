@@ -218,6 +218,30 @@ def agent_processes(
     return result
 
 
+def agent_connection_aliases(
+    allowed_remote_ports: tuple[int, ...] = (),
+) -> dict[int, str]:
+    """Agrupa portas TCP do mesmo processo somente durante a captura.
+
+    O alias contém o PID local porque nunca sai do processo: o projetor o
+    transforma em ``client_ref`` opaco antes de qualquer persistência remota.
+    """
+    allowed = set(int(port) for port in allowed_remote_ports)
+    aliases: dict[int, str] = {}
+    paths: dict[int, str | None] = {}
+    for pid, local_port, remote_port in _tcp_rows():
+        if pid not in paths:
+            paths[pid] = _process_path(pid)
+        path = paths[pid]
+        if not path or not os.path.basename(path).casefold().startswith("projectrf"):
+            continue
+        is_direct_game = bool(allowed and remote_port in allowed)
+        is_relay_candidate = remote_port not in (0, 80, 443)
+        if is_direct_game or is_relay_candidate:
+            aliases[int(local_port)] = f"process:{int(pid)}"
+    return aliases
+
+
 def emulator_processes(
     allowed_remote_ports: tuple[int, ...] = (),
 ) -> dict[str, tuple[set[int], set[int], set[int]]]:

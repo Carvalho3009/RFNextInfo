@@ -9,16 +9,27 @@ import time
 import unittest
 import urllib.request
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from core.web_agent import AgentOutbox, WebEventProjector
+from core.web_agent import (
+    DELIVERY_PRIORITY_HIGH,
+    DELIVERY_PRIORITY_IMMEDIATE,
+    DELIVERY_PRIORITY_REALTIME,
+    AgentOutbox,
+    WebEventProjector,
+)
 from core.web_agent_identity import (
     REGISTRATION_SIGNATURE_CONTEXT,
     SIGNATURE_CONTEXT,
     AgentIdentityStore,
+)
+from core.web_agent_authorization import (
+    AgentAuthorizationManager,
+    AgentAuthorizationStore,
 )
 from core.web_agent_runtime import (
     WebAgentOfflineRuntime,
@@ -36,6 +47,7 @@ from core.web_agent_transport import (
     InvalidTransportResponse,
     PermanentTransportError,
     TemporaryTransportError,
+    AuthorizationReceipt,
 )
 
 
@@ -151,6 +163,16 @@ class AgentTransportTest(unittest.TestCase):
                 _event(offset), "sessao-1"
             ))
 
+    def test_default_timeout_allows_receiver_to_finish_large_batches(self):
+        transport = AgentBatchTransport(
+            "https://qol.example.test",
+            self.identity,
+            version="test",
+            sender=self.accepted_sender,
+        )
+
+        self.assertEqual(transport.timeout_seconds, 20.0)
+
     @staticmethod
     def accepted_sender(request, _timeout, _limit):
         if request.full_url.endswith("/api/qol/v1/installations/register"):
@@ -220,6 +242,123 @@ class AgentTransportTest(unittest.TestCase):
         self.assertNotIn("lease", headers)
         self.assertEqual(receipt.accepted_through_sequence, batch["last_sequence"])
 
+    def test_subsession_command_sync_is_signed_and_strictly_validated(self):
+        captured: list[urllib.request.Request] = []
+
+        def sender(request, _timeout, _limit):
+            captured.append(request)
+            return 200, {}, json.dumps({
+                "schema": "rf-qol.subsession-commands/v1",
+                "commands": [{
+                    "command_id": "1" * 32,
+                    "subsession_ref": "2" * 32,
+                    "action": "start",
+                    "character_uid": 123456,
+                    "name": "Spot norte",
+                    "map_name": "",
+                    "spot_name": "",
+                    "mobs": [],
+                }],
+                "server_time": "2026-08-26T00:00:00Z",
+            }).encode()
+
+        transport = AgentBatchTransport(
+            "https://qol.example.test/base", self.identity,
+            version="2.0.0-web", sender=sender,
+        )
+        progress = [{
+            "subsession_ref": "2" * 32,
+            "occurred_at": "2026-08-26T00:00:01Z",
+            "duration_seconds": 60,
+            "level": 66,
+            "gained_exp": 500,
+            "gained_exp_percent": 0.1,
+            "gained_contribution": 20,
+            "gained_credits": 300,
+            "kill_count": 1,
+        }]
+        commands = transport.sync_subsession_commands([{
+            "command_id": "0" * 32,
+            "status": "applied",
+            "occurred_at": "2026-08-26T00:00:00Z",
+            "error_code": None,
+        }], progress)
+        self.assertEqual(commands[0]["subsession_ref"], "2" * 32)
+        request = captured[0]
+        body = bytes(request.data)
+        body_hash = hashlib.sha256(body).hexdigest()
+        signed = "\n".join((
+            "POST", "/base/api/qol/v1/agent/subsessions/sync",
+            request.get_header("Idempotency-key"),
+            request.get_header("X-rfqol-timestamp"),
+            request.get_header("X-rfqol-nonce"), body_hash,
+        )).encode()
+        Ed25519PublicKey.from_public_bytes(
+            _unb64(self.identity.public_key_b64url)
+        ).verify(
+            _unb64(request.get_header("X-rfqol-signature")),
+            SIGNATURE_CONTEXT + signed,
+        )
+        self.assertEqual(
+            request.full_url,
+            "https://qol.example.test/base/api/qol/v1/agent/subsessions/sync",
+        )
+        self.assertEqual(
+            json.loads(body)["schema"],
+            "rf-qol.subsession-command-sync/v2",
+        )
+        self.assertEqual(json.loads(body)["progress"], progress)
+
+    def test_character_profile_sync_is_signed_and_strictly_validated(self):
+        captured: list[urllib.request.Request] = []
+
+        def sender(request, _timeout, _limit):
+            captured.append(request)
+            return 200, {}, json.dumps({
+                "schema": "rf-qol.character-profiles/v1",
+                "characters": [{
+                    "character_uid": 123456,
+                    "name": "Personagem",
+                    "level": 66,
+                    "total_exp": 987654,
+                    "biosuit_item_index": 7001,
+                    "rover_item_index": 8001,
+                    "power": 456789,
+                    "last_seen_at": "2026-08-26T12:00:00Z",
+                }],
+                "server_time": "2026-08-26T12:01:00Z",
+            }).encode()
+
+        transport = AgentBatchTransport(
+            "https://qol.example.test/base", self.identity,
+            version="2.0.0-web", sender=sender,
+        )
+        profiles = transport.sync_character_profiles()
+
+        self.assertEqual(profiles[0]["character_uid"], 123456)
+        request = captured[0]
+        body = bytes(request.data)
+        body_hash = hashlib.sha256(body).hexdigest()
+        signed = "\n".join((
+            "POST", "/base/api/qol/v1/agent/characters/sync",
+            request.get_header("Idempotency-key"),
+            request.get_header("X-rfqol-timestamp"),
+            request.get_header("X-rfqol-nonce"), body_hash,
+        )).encode()
+        Ed25519PublicKey.from_public_bytes(
+            _unb64(self.identity.public_key_b64url)
+        ).verify(
+            _unb64(request.get_header("X-rfqol-signature")),
+            SIGNATURE_CONTEXT + signed,
+        )
+        self.assertEqual(
+            request.full_url,
+            "https://qol.example.test/base/api/qol/v1/agent/characters/sync",
+        )
+        self.assertEqual(
+            json.loads(body), {"schema": "rf-qol.character-profile-sync/v1"}
+        )
+
     def test_transport_rejects_non_https_and_inconsistent_receipt(self):
         for invalid_url in (
             "http://qol.example.test",
@@ -255,7 +394,10 @@ class AgentTransportTest(unittest.TestCase):
         self.assertEqual(self.outbox.metrics()["events"], 1)
 
     def test_delivery_acknowledges_partial_prefix_and_audits_rejection(self):
-        self.enqueue(2)
+        for offset in (2, 3):
+            self.outbox.enqueue(self.projector.project(
+                _event(offset), "sessao-1"
+            ))
 
         def partial_sender(request, _timeout, _limit):
             if request.full_url.endswith("/api/qol/v1/installations/register"):
@@ -298,6 +440,75 @@ class AgentTransportTest(unittest.TestCase):
             "server_schema_rejection",
         )
 
+    def test_weighted_priority_keeps_market_high_without_starving_realtime(self):
+        market = self.projector.project({
+            **_event(20),
+            "type": "market",
+            "opcode": 0x1D02,
+            "data": {
+                "ret": 0,
+                "exchange_server_type": 1,
+                "exchange_item_simple_infos": [{
+                    "item_index": 1000150,
+                    "enchant_level": 0,
+                    "lowest_price": 100,
+                    "highest_price": 100,
+                    "number_of_registered_items": 1,
+                }],
+            },
+        }, "sessao-1")
+        self.outbox.enqueue(market)
+        self.outbox.enqueue(self.projector.project(_event(21), "sessao-1"))
+        worker = AgentDeliveryWorker(
+            self.outbox,
+            AgentBatchTransport(
+                "https://qol.example.test", self.identity,
+                version="test", sender=self.accepted_sender,
+            ),
+        )
+
+        selected = [worker._next_priority() for _index in range(9)]
+        self.assertEqual(selected[:8], [DELIVERY_PRIORITY_HIGH] * 8)
+        self.assertEqual(selected[8], DELIVERY_PRIORITY_REALTIME)
+        heartbeat = self.projector.project_heartbeat(
+            capture_state="active", outbox_pending=2, client_count=1,
+            occurred_ns=1_700_000_000_000_000_030,
+        )
+        self.outbox.enqueue(heartbeat)
+        selected = [worker._next_priority() for _index in range(5)]
+        self.assertEqual(selected[:4], [DELIVERY_PRIORITY_IMMEDIATE] * 4)
+        self.assertEqual(selected[4], DELIVERY_PRIORITY_REALTIME)
+        self.assertEqual(worker._next_priority(), DELIVERY_PRIORITY_IMMEDIATE)
+
+    def test_worker_drains_multiple_batches_without_one_second_between_them(self):
+        for offset in range(2, 503):
+            self.outbox.enqueue(self.projector.project(
+                _event(offset), "sessao-1"
+            ))
+        worker = AgentDeliveryWorker(
+            self.outbox,
+            AgentBatchTransport(
+                "https://qol.example.test", self.identity,
+                version="test", sender=self.accepted_sender,
+            ),
+            flush_seconds=5.0,
+            max_burst_batches=4,
+            burst_pause_seconds=0.01,
+        )
+        worker.start()
+        try:
+            deadline = time.monotonic() + 2.0
+            while self.outbox.metrics()["events"] and time.monotonic() < deadline:
+                time.sleep(0.01)
+            metrics = worker.metrics()
+            self.assertEqual(self.outbox.metrics()["events"], 0)
+            self.assertEqual(metrics["sent_events"], 501)
+            self.assertEqual(metrics["sent_batches"], 3)
+            self.assertEqual(metrics["sent_events_last_minute"], 501)
+            self.assertEqual(metrics["max_burst_observed"], 3)
+        finally:
+            worker.stop()
+
     def test_temporary_and_permanent_failures_never_delete_outbox(self):
         self.enqueue()
 
@@ -329,6 +540,57 @@ class AgentTransportTest(unittest.TestCase):
         self.assertFalse(second.send_once())
         self.assertEqual(second.metrics()["state"], "blocked")
         self.assertEqual(second.metrics()["last_error_code"], "registration_required")
+        self.assertEqual(self.outbox.metrics()["events"], 1)
+
+    def test_recoverable_server_rejection_retries_after_receiver_is_updated(self):
+        self.enqueue()
+        conflict = True
+
+        def sender(request, timeout, limit):
+            nonlocal conflict
+            if request.full_url.endswith("/api/qol/v1/installations/register"):
+                return self.accepted_sender(request, timeout, limit)
+            if conflict:
+                raise PermanentTransportError(
+                    "sobreposição temporária", code="event_conflict"
+                )
+            return self.accepted_sender(request, timeout, limit)
+
+        worker = AgentDeliveryWorker(
+            self.outbox,
+            AgentBatchTransport(
+                "https://qol.example.test", self.identity,
+                version="test", sender=sender,
+            ),
+            jitter=lambda: 0.5,
+        )
+        self.assertFalse(worker.send_once())
+        self.assertEqual(worker.metrics()["state"], "backoff")
+        self.assertEqual(worker.metrics()["last_error_code"], "event_conflict")
+        self.assertEqual(self.outbox.metrics()["events"], 1)
+
+        conflict = False
+        self.assertTrue(worker.send_once())
+        self.assertEqual(worker.metrics()["state"], "idle")
+        self.assertEqual(self.outbox.metrics()["events"], 0)
+
+        self.enqueue()
+        too_large = AgentDeliveryWorker(
+            self.outbox,
+            AgentBatchTransport(
+                "https://qol.example.test", self.identity,
+                version="test",
+                sender=lambda *_args: (_ for _ in ()).throw(
+                    PermanentTransportError(
+                        "limite antigo", code="body_too_large"
+                    )
+                ),
+            ),
+            jitter=lambda: 0.5,
+        )
+        too_large._registration_state = "active"
+        self.assertFalse(too_large.send_once())
+        self.assertEqual(too_large.metrics()["state"], "backoff")
         self.assertEqual(self.outbox.metrics()["events"], 1)
 
     def test_unexpected_local_failure_blocks_worker_without_losing_event(self):
@@ -378,8 +640,180 @@ class AgentTransportTest(unittest.TestCase):
             "https://qol.example.test/api/qol/v1/installations/register"
         ])
 
+    def test_authorization_contract_returns_user_and_pairing_code(self):
+        responses = [
+            {
+                "installation_id": self.installation_id,
+                "status": "pending",
+                "username": None,
+                "pairing_code": "ABCD-EFGH",
+                "server_time": "2026-08-24T12:00:00Z",
+                "valid_for_seconds": 86400,
+            },
+            {
+                "installation_id": self.installation_id,
+                "status": "authorized",
+                "username": "carlos",
+                "pairing_code": None,
+                "server_time": "2026-08-24T12:01:00Z",
+                "valid_for_seconds": 86400,
+            },
+        ]
+
+        def sender(request, _timeout, _limit):
+            self.assertTrue(request.full_url.endswith(
+                "/api/qol/v1/installations/authorization"
+            ))
+            return 200, {}, json.dumps(responses.pop(0)).encode()
+
+        transport = AgentBatchTransport(
+            "https://qol.example.test", self.identity,
+            version="test", sender=sender,
+        )
+        pending = transport.authorize()
+        linked = transport.authorize()
+        self.assertEqual(pending.pairing_code, "ABCD-EFGH")
+        self.assertEqual(linked.username, "carlos")
+
+
+class AgentAuthorizationTest(unittest.TestCase):
+    def test_authorization_is_protected_and_expires_after_24_hours(self):
+        now = [datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)]
+        installation_id = str(uuid.uuid4())
+
+        class Transport:
+            def __init__(self):
+                self.calls = 0
+
+            def authorize(self):
+                self.calls += 1
+                return AuthorizationReceipt(
+                    installation_id=installation_id,
+                    status="authorized",
+                    username="carlos",
+                    pairing_code=None,
+                    server_time="2026-08-24T12:00:00Z",
+                    valid_for_seconds=86400,
+                )
+
+        with tempfile.TemporaryDirectory() as folder:
+            transport = Transport()
+            store = AgentAuthorizationStore(Path(folder), installation_id)
+            manager = AgentAuthorizationManager(
+                transport, store, clock=lambda: now[0]
+            )
+            self.assertTrue(manager.refresh(force=True))
+            self.assertEqual(manager.health()["username"], "carlos")
+            self.assertNotIn(b"carlos", store.path.read_bytes())
+
+            now[0] += timedelta(hours=23, minutes=59)
+            restored = AgentAuthorizationManager(
+                transport, store, clock=lambda: now[0]
+            )
+            self.assertTrue(restored.health()["authorized"])
+
+            now[0] += timedelta(minutes=2)
+            self.assertFalse(restored.health()["authorized"])
+
+    def test_pending_authorization_blocks_capture_with_short_code(self):
+        installation_id = str(uuid.uuid4())
+
+        class Transport:
+            def authorize(self):
+                return AuthorizationReceipt(
+                    installation_id=installation_id,
+                    status="pending",
+                    username=None,
+                    pairing_code="ABCD-EFGH",
+                    server_time="2026-08-24T12:00:00Z",
+                    valid_for_seconds=86400,
+                )
+
+        with tempfile.TemporaryDirectory() as folder:
+            manager = AgentAuthorizationManager(
+                Transport(), AgentAuthorizationStore(Path(folder), installation_id)
+            )
+            with self.assertRaisesRegex(RuntimeError, "ABCD-EFGH"):
+                manager.require_capture()
+
+    def test_pending_authorization_rechecks_quickly_after_site_link(self):
+        now = [datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)]
+        installation_id = str(uuid.uuid4())
+
+        class Transport:
+            def __init__(self):
+                self.calls = 0
+
+            def authorize(self):
+                self.calls += 1
+                if self.calls == 1:
+                    return AuthorizationReceipt(
+                        installation_id=installation_id,
+                        status="pending",
+                        username=None,
+                        pairing_code="ABCD-EFGH",
+                        server_time="2026-08-24T12:00:00Z",
+                        valid_for_seconds=86400,
+                    )
+                return AuthorizationReceipt(
+                    installation_id=installation_id,
+                    status="authorized",
+                    username="carvalho",
+                    pairing_code=None,
+                    server_time="2026-08-24T12:00:06Z",
+                    valid_for_seconds=86400,
+                )
+
+        with tempfile.TemporaryDirectory() as folder:
+            transport = Transport()
+            manager = AgentAuthorizationManager(
+                transport,
+                AgentAuthorizationStore(Path(folder), installation_id),
+                clock=lambda: now[0],
+            )
+            self.assertFalse(manager.refresh())
+            now[0] += timedelta(seconds=4)
+            self.assertFalse(manager.refresh())
+            self.assertEqual(transport.calls, 1)
+            now[0] += timedelta(seconds=2)
+            self.assertTrue(manager.refresh())
+            self.assertEqual(transport.calls, 2)
+            self.assertEqual(manager.health()["username"], "carvalho")
+
 
 class WebAgentRuntimeTest(unittest.TestCase):
+    def test_heartbeat_is_limited_per_minute_and_restart_id_stays_unique(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch(
+            "core.web_agent_runtime.time.time_ns",
+            return_value=120_000_000_001,
+        ):
+            runtime = WebAgentOfflineRuntime.create(
+                Path(folder), str(uuid.uuid4()), version="test"
+            )
+            try:
+                self.assertTrue(runtime.heartbeat("active", 1))
+                self.assertFalse(runtime.heartbeat("active", 1))
+                rows = runtime.bridge.outbox.conn.execute(
+                    "SELECT event_id FROM outbox_events WHERE event_type='agent.heartbeat'"
+                ).fetchall()
+                self.assertEqual(len(rows), 1)
+            finally:
+                runtime.close()
+
+        projector = WebEventProjector(
+            "install-publica", b"0123456789abcdef0123456789abcdef",
+            decoder_version="test",
+        )
+        first = projector.project_heartbeat(
+            capture_state="active", outbox_pending=0, client_count=1,
+            occurred_ns=120_000_000_001,
+        )
+        restarted = projector.project_heartbeat(
+            capture_state="active", outbox_pending=0, client_count=1,
+            occurred_ns=120_000_000_002,
+        )
+        self.assertNotEqual(first["event_id"], restarted["event_id"])
+
     def test_disabled_factory_creates_nothing(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder) / "nao-criar"
@@ -456,9 +890,10 @@ class WebAgentRuntimeTest(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertFalse(result["network_used"])
-            self.assertEqual(result["isolated_sessions"], 2)
-            self.assertGreaterEqual(result["isolated_clients"], 3)
-            self.assertEqual(result["session_lifecycle_events"], 6)
+            self.assertEqual(result["isolated_sessions"], 3)
+            self.assertEqual(result["isolated_clients"], 2)
+            self.assertEqual(result["equipped_loadout_items"], 1)
+            self.assertEqual(result["session_lifecycle_events"], 8)
             self.assertEqual(result["queue_errors"], 0)
             urlopen.assert_not_called()
 
@@ -478,7 +913,7 @@ class WebAgentRuntimeTest(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertFalse(result["network_used"])
-            self.assertEqual(result["events"], 498)
+            self.assertEqual(result["events"], 516)
             self.assertEqual(result["queue_errors"], 0)
             self.assertEqual(result["queue_dropped"], 0)
             self.assertLess(result["peak_traced_memory_bytes"], 64 * 1024 * 1024)

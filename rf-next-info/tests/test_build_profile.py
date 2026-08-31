@@ -16,8 +16,9 @@ class BetaBuildProfileTest(unittest.TestCase):
         build_profile.validate_build_profile(release=True)
         self.assertEqual(build_profile.PROFILE_NAME, "beta")
         self.assertEqual(build_profile.PROFILE_LABEL, "Beta")
-        self.assertEqual(build_profile.APP_VERSION, "2.0.0-beta.9")
-        self.assertEqual(build_profile.RELEASE_SEQUENCE, 19)
+        self.assertEqual(build_profile.PRODUCT_NAME, "RF Next Companion")
+        self.assertEqual(build_profile.APP_VERSION, "2.0.0-beta.31")
+        self.assertEqual(build_profile.RELEASE_SEQUENCE, 41)
         self.assertEqual(
             build_profile.LICENSE_SERVER, "https://rflicenca.karvalho.dev.br"
         )
@@ -28,6 +29,11 @@ class BetaBuildProfileTest(unittest.TestCase):
             build_profile.AGENT_SERVER, "https://apirf.karvalho.dev.br"
         )
         self.assertEqual(build_profile.AGENT_TRANSPORT_VERSION, "2.0.0-beta.6")
+        self.assertEqual(build_profile.AGENT_UPDATE_CHANNEL, "beta")
+        self.assertIn("download/rf-qol-agent-beta", build_profile.AGENT_UPDATE_FEED)
+        self.assertEqual(
+            set(build_profile.AGENT_UPDATE_PUBLIC_KEYS), {"update-agent-2026-08"}
+        )
         self.assertNotEqual(build_profile.AGENT_SERVER, build_profile.SITE_SERVER)
         self.assertEqual(
             build_profile.SITE_FEATURES,
@@ -103,6 +109,10 @@ class BetaBuildProfileTest(unittest.TestCase):
         build = (
             Path(__file__).resolve().parents[1] / "packaging" / "build.ps1"
         ).read_text(encoding="utf-8")
+        agent_spec = (
+            Path(__file__).resolve().parents[1]
+            / "packaging" / "RFQOLAgent.spec"
+        ).read_text(encoding="utf-8")
         installer = (
             Path(__file__).resolve().parents[1] / "packaging" / "installer.nsi"
         ).read_text(encoding="utf-8")
@@ -112,6 +122,10 @@ class BetaBuildProfileTest(unittest.TestCase):
         self.assertIn("/DAPP_FILE_VERSION=$FileVersion", build)
         self.assertIn("validate_build_profile(release=True)", build)
         self.assertIn("build_profile = $BuildProfile", build)
+        self.assertIn('"level_curve.json"', agent_spec)
+        self.assertIn('"rf-next-companion.png"', agent_spec)
+        self.assertIn('name="RF Next Companion"', agent_spec)
+        self.assertIn('"icuuc.dll", "icudt78.dll"', agent_spec)
         self.assertIn('!define APP_REGKEY "Software\\Karvalho\\RFQOLBeta"', installer)
         self.assertIn('!define APP_INSTALLDIR "$PROGRAMFILES64\\Karvalho\\RF QOL Beta"', installer)
         self.assertIn('!define APP_SHORTCUT_NAME "RF QOL 2.0 Beta"', installer)

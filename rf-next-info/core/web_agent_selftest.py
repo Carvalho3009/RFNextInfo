@@ -72,6 +72,33 @@ def run_offline_agent_self_test(
             flow=flow_a, opcode=0x0106,
         )), "identidade do primeiro cliente rejeitada")
         _require(runtime.submit(_event(
+            "player_profile_info", 20,
+            {"fields": {"active_equipment": {
+                "character_uid": 101,
+                "slots": [{
+                    "resolved": True,
+                    "item": {"item_uid": 987654, "item_index": 1000078},
+                }],
+            }}},
+            flow=flow_a, opcode=0x0401,
+        )), "perfil equipado do primeiro cliente rejeitado")
+        _require(runtime.submit(_event(
+            "inventory_snapshot", 21,
+            {
+                "container": "inventory", "item_kind": "equipment",
+                "items": [{
+                    "inventory_slot": 7, "item_uid": 987654,
+                    "item_index": 1000078, "count": 1,
+                    "enchant_level": 6, "lock": False,
+                }, {
+                    "inventory_slot": 8, "item_uid": 123,
+                    "item_index": 1000080, "count": 1,
+                    "enchant_level": 0, "lock": False,
+                }],
+            },
+            flow=flow_a, opcode=0x1C02,
+        )), "inventario equipado do primeiro cliente rejeitado")
+        _require(runtime.submit(_event(
             "update_exp", 2,
             {"level": 60, "exp": 1000, "gain_exp": 100},
             flow=flow_a, opcode=0x0307,
@@ -141,14 +168,27 @@ def run_offline_agent_self_test(
             event["client_ref"] for event in events if event["client_ref"]
         }
         expected_lifecycle = [
-            "started", "paused", "resumed", "finished", "started", "abandoned"
+            "started", "started", "paused", "paused",
+            "resumed", "finished", "started", "abandoned",
         ]
         _require(
             lifecycle == expected_lifecycle,
             f"ciclo de sessoes fora de ordem: {lifecycle!r}",
         )
-        _require(len(session_refs) == 2, "sessoes nao foram isoladas")
-        _require(len(client_refs) >= 3, "clientes nao foram isolados")
+        _require(len(session_refs) == 3, "sessoes por cliente nao foram isoladas")
+        _require(len(client_refs) == 2, "clientes fisicos nao foram isolados")
+        inventory_events = [
+            event for event in events if event["type"] == "inventory.snapshot"
+        ]
+        _require(len(inventory_events) == 1,
+                 "snapshot de inventario nao foi projetado")
+        inventory_items = inventory_events[0]["payload"]["inventory_items"]
+        equipped_items = [item for item in inventory_items if item["equipped"]]
+        _require(
+            len(equipped_items) == 1
+            and equipped_items[0]["item_index"] == 1000078,
+            "loadout equipado nao foi correlacionado pelo UID do item",
+        )
         _require(session_a not in serialized and session_b not in serialized,
                  "identificador local de sessao vazou")
         _require("0x0101" not in serialized, "opcode sensivel persistido")
@@ -165,6 +205,7 @@ def run_offline_agent_self_test(
             "session_lifecycle_events": len(lifecycle),
             "isolated_sessions": len(session_refs),
             "isolated_clients": len(client_refs),
+            "equipped_loadout_items": len(equipped_items),
             "outbox_bytes": metrics["bytes"],
             "queue_errors": health_before_close["capture_bridge"]["errors"],
             "checked_at_ns": time.time_ns(),
@@ -192,7 +233,7 @@ def run_offline_agent_stress_test(
         raise ValueError("clients fora do limite de teste")
     if not 1 <= events_per_client <= 10_000:
         raise ValueError("events_per_client fora do limite de teste")
-    expected_events = sessions * (2 + clients * (1 + events_per_client))
+    expected_events = sessions * clients * (3 + events_per_client)
     if expected_events > 250_000:
         raise ValueError("teste excede o limite total de eventos")
 

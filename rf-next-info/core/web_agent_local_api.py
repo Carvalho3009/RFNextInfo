@@ -16,6 +16,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from app.protected_state import protect_for_current_user, unprotect
+from core.web_agent_boss_api import LOCAL_BOSS_ENCOUNTERS_SCHEMA
 
 
 LOCAL_MONITOR_SCHEMA = "rf-qol.local-monitor-events/v1"
@@ -43,11 +44,17 @@ _COMBAT_TYPES = {
 }
 _PVP_TYPES = _COMMON_TYPES | _COMBAT_TYPES | {
     "world.players_appeared",
+    "world.guilds_observed",
 }
 _BOSS_TYPES = _COMMON_TYPES | _COMBAT_TYPES | {
     "boss.position_observed",
+    "boss.status_observed",
+    "boss.hp_synced",
+    "boss.contribution_observed",
     "boss.result_observed",
     "world.monsters_appeared",
+    "world.players_appeared",
+    "world.guilds_observed",
 }
 MONITOR_DOMAINS = frozenset({"pvp", "boss"})
 MONITOR_EVENT_TYPES = {
@@ -66,8 +73,42 @@ def _integer(
     return number if minimum <= number <= maximum else default
 
 
-def _event_domains(event_type: object) -> tuple[str, ...]:
-    value = str(event_type or "")
+def _public_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(name)[:96]: _integer(
+            count, minimum=0, maximum=2**63 - 1, default=0
+        )
+        for name, count in list(value.items())[:64]
+        if str(name).strip()
+    }
+
+
+def _public_messages(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(name)[:96]: str(message)[:240]
+        for name, message in list(value.items())[:64]
+        if str(name).strip()
+    }
+
+
+def _event_domains(event: dict[str, Any]) -> tuple[str, ...]:
+    value = str(event.get("type") or "")
+    # Combate confirmado é entregue apenas ao monitor correspondente. PvE é
+    # remoto e não pertence às APIs locais de Boss/PvP.
+    if value in _COMBAT_TYPES:
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        domain = payload.get("combat_domain")
+        if domain == "pve":
+            return ()
+        if domain == "pvp":
+            return ("pvp",)
+        if domain == "boss":
+            return ("boss",)
+        return ("pvp", "boss")
     domains = []
     if value in _PVP_TYPES:
         domains.append("pvp")
@@ -141,7 +182,7 @@ class AgentMonitorFeed:
             self._trim_locked()
 
     def add(self, event: dict[str, Any]) -> bool:
-        domains = _event_domains(event.get("type"))
+        domains = _event_domains(event)
         if not domains:
             with self._condition:
                 self.ignored += 1
@@ -285,6 +326,7 @@ class AgentLocalMonitorApi:
         token: str,
         *,
         health_provider: Callable[[], object] | None = None,
+        boss_provider: Callable[[], object] | None = None,
         host: str = "127.0.0.1",
         port: int = LOCAL_API_DEFAULT_PORT,
     ) -> None:
@@ -297,6 +339,11 @@ class AgentLocalMonitorApi:
         self.feed = feed
         self.token = token
         self.health_provider = health_provider or (lambda: {})
+        self.boss_provider = boss_provider or (lambda: {
+            "schema": LOCAL_BOSS_ENCOUNTERS_SCHEMA,
+            "encounter_count": 0,
+            "encounters": [],
+        })
         self.host = host
         self.port = int(port)
         self.server: _LoopbackServer | None = None
@@ -325,10 +372,10 @@ class AgentLocalMonitorApi:
         source = self.health_provider()
         source = source if isinstance(source, dict) else {}
         outbox = source.get("outbox") if isinstance(source.get("outbox"), dict) else {}
-        bridge = (
-            source.get("capture_bridge")
-            if isinstance(source.get("capture_bridge"), dict) else {}
-        )
+        bridge_source = source.get("capture_bridge")
+        if not isinstance(bridge_source, dict):
+            bridge_source = source.get("projection")
+        bridge = bridge_source if isinstance(bridge_source, dict) else {}
         capture = (
             source.get("capture")
             if isinstance(source.get("capture"), dict) else {}
@@ -337,12 +384,34 @@ class AgentLocalMonitorApi:
             source.get("decoder")
             if isinstance(source.get("decoder"), dict) else {}
         )
+        server = (
+            source.get("server")
+            if isinstance(source.get("server"), dict) else {}
+        )
+        delivery = (
+            source.get("delivery")
+            if isinstance(source.get("delivery"), dict) else {}
+        )
+        throughput = (
+            source.get("throughput")
+            if isinstance(source.get("throughput"), dict) else {}
+        )
+        if not delivery and isinstance(server.get("delivery"), dict):
+            delivery = server["delivery"]
         return {
             "schema": LOCAL_HEALTH_SCHEMA,
             "ok": True,
             "mode": "local",
             "capture_state": str(source.get("state") or "unknown")[:32],
             "session_active": source.get("session_active") is True,
+            "server": {
+                "mode": str(
+                    server.get("mode") or source.get("mode") or "offline"
+                )[:32],
+                "state": str(
+                    server.get("state") or source.get("state") or "unknown"
+                )[:32],
+            },
             "feed": self.feed.metrics(),
             "outbox": {
                 "events": _integer(
@@ -359,7 +428,18 @@ class AgentLocalMonitorApi:
                 )
                 for key in (
                     "queue_depth", "queue_limit", "accepted", "ignored",
-                    "dropped", "errors", "observer_errors",
+                    "dropped", "errors", "observer_errors", "projected",
+                    "skipped", "local_only", "enqueued", "duplicates",
+                )
+            } | {
+                key: _public_counts(bridge.get(key))
+                for key in (
+                    "accepted_by_type", "ignored_by_type", "projected_by_type",
+                    "skipped_by_type", "local_only_by_type", "errors_by_type",
+                )
+            } | {
+                "last_errors_by_type": _public_messages(
+                    bridge.get("last_errors_by_type")
                 )
             },
             "capture": {
@@ -380,7 +460,75 @@ class AgentLocalMonitorApi:
                     "processed_packets", "decoded_events", "ignored_events",
                     "dropped_events", "dropped_packets", "decode_errors",
                     "event_sink_accepted", "event_sink_rejected",
-                    "event_sink_errors", "flow_count",
+                    "event_sink_errors", "flow_count", "pending_tcp_segments",
+                    "pending_tcp_bytes", "stalled_tcp_flows", "tcp_gap_recoveries",
+                    "tcp_recovered_gap_bytes", "tcp_discarded_partial_bytes",
+                    "last_gap_recovery_ns", "alias_resolution_attempts",
+                    "alias_resolution_hits", "alias_resolution_errors",
+                    "last_decoded_ns",
+                )
+            } | {
+                key: _public_counts(decoder.get(key))
+                for key in (
+                    "decoded_by_type", "event_sink_accepted_by_type",
+                    "event_sink_rejected_by_type", "event_sink_errors_by_type",
+                )
+            },
+            "delivery": {
+                "state": str(delivery.get("state") or "unavailable")[:32],
+                "worker_alive": delivery.get("worker_alive") is True,
+                "registration_state": str(
+                    delivery.get("registration_state") or "unknown"
+                )[:32],
+                "last_error_code": (
+                    str(delivery["last_error_code"])[:64]
+                    if delivery.get("last_error_code") else None
+                ),
+                "last_attempt_at": (
+                    str(delivery["last_attempt_at"])[:64]
+                    if delivery.get("last_attempt_at") else None
+                ),
+                "last_ack_at": (
+                    str(delivery["last_ack_at"])[:64]
+                    if delivery.get("last_ack_at") else None
+                ),
+                "sent_batches": _integer(
+                    delivery.get("sent_batches"),
+                    minimum=0, maximum=2**63 - 1, default=0,
+                ),
+                "sent_events": _integer(
+                    delivery.get("sent_events"),
+                    minimum=0, maximum=2**63 - 1, default=0,
+                ),
+                "temporary_errors": _integer(
+                    delivery.get("temporary_errors"),
+                    minimum=0, maximum=2**63 - 1, default=0,
+                ),
+                "permanent_errors": _integer(
+                    delivery.get("permanent_errors"),
+                    minimum=0, maximum=2**63 - 1, default=0,
+                ),
+                "retry_seconds": round(
+                    max(0.0, min(300.0, float(delivery.get("retry_seconds") or 0))),
+                    3,
+                ),
+            },
+            "throughput": {
+                key: _integer(
+                    throughput.get(key),
+                    minimum=0, maximum=2**63 - 1, default=0,
+                )
+                for key in (
+                    "enqueued_events_last_minute",
+                    "sent_events_last_minute",
+                )
+            } | {
+                "outbox_growth_events_last_minute": max(
+                    -(2**63),
+                    min(
+                        2**63 - 1,
+                        int(throughput.get("outbox_growth_events_last_minute") or 0),
+                    ),
                 )
             },
         }
@@ -434,8 +582,27 @@ class AgentLocalMonitorApi:
                             "delivery": "long-poll",
                             "max_events": LOCAL_API_MAX_EVENTS,
                             "max_wait_ms": LOCAL_API_MAX_WAIT_MS,
+                            "snapshots": {
+                                "boss_encounters": {
+                                    "path": "/api/agent/v1/boss/encounters",
+                                    "schema": LOCAL_BOSS_ENCOUNTERS_SCHEMA,
+                                },
+                            },
                             "read_only": True,
                         })
+                        return
+                    if parsed.path == "/api/agent/v1/boss/encounters":
+                        if parsed.query:
+                            self._send(400, {"error": "Parametro local invalido."})
+                            return
+                        snapshot = owner.boss_provider()
+                        if (
+                            not isinstance(snapshot, dict)
+                            or snapshot.get("schema") != LOCAL_BOSS_ENCOUNTERS_SCHEMA
+                        ):
+                            self._send(503, {"error": "Estado de Boss indisponivel."})
+                            return
+                        self._send(200, snapshot)
                         return
                     if parsed.path == "/api/agent/v1/monitor/events":
                         query = parse_qs(parsed.query, keep_blank_values=True)

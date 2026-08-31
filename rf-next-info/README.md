@@ -5,14 +5,21 @@ e exportação JSON/CSV para o site RF NEXT.
 
 Suporte: [Discord oficial](https://discord.gg/D3hhdMgkj) · `carvalho@tuta.com`
 
-> Este checkout está configurado como `2.0.0-rc1 (Homologação)`: usa o emissor
-> v3 local em `127.0.0.1:8788`, estado de máquina separado e acessa o site
-> remoto somente para validar o Profile e enviar capturas do Mercado. Build de
-> release e instalador permanecem bloqueados.
+## RF Next Companion beta
+
+O executável independente do Companion captura e decodifica no Windows, envia ao
+receptor exclusivo `apirf.karvalho.dev.br` e mantém Boss/PvP somente na API
+local. A partir da beta.12, ele mostra o uso real de RAM e exige vínculo com um
+usuário do site: copie o código exibido, abra **Usuário > Agentes** no site e
+confirme o vínculo. A autorização protegida vale offline por até 24 horas.
+
+> Este checkout está configurado como `2.0.0-beta.31`. O transporte mantém o
+> identificador compatível do Agent e usa exclusivamente o receptor dedicado;
+> publicação no canal beta continua sendo uma etapa separada.
 
 ## Recursos atuais
 
-- executável autônomo com identidade visual Karvalho e instalador padrão;
+- executável autônomo com identidade RF Next Companion e instalador próprio;
 - seleção única do executável e detecção automática das conexões TCP atuais;
 - lista limitada aos executáveis `ProjectRF*`;
 - captura nativa Pktmon limitada às portas conhecidas do RF NEXT e às portas
@@ -20,6 +27,11 @@ Suporte: [Discord oficial](https://discord.gg/D3hhdMgkj) · `carvalho@tuta.com`
 - SQLite WAL para recuperação e reprocessamento incremental;
 - Codex/coleção, personagem, level, EXP, mercado e eventos de farm quando o
   decoder canônico possui semântica confirmada;
+- trocas de mapa confirmadas pelo servidor, deduplicadas por cliente e enviadas
+  com o horário UTC original do evento;
+- adaptador do servidor comunitário preparado para enviar somente observações
+  públicas sanitizadas de Mercado e snapshots completos do Ranking EXP Top
+  100; páginas parciais, conflitantes e campos privados não são enviados;
 - kill exibida apenas como estimativa por evento de recompensa;
 - sessões independentes, Profile e até dois personagens capturados
   automaticamente, sem seleção manual de processo;

@@ -1,4 +1,4 @@
-"""Preferências isoladas do executável RF QOL Agent."""
+"""Preferências isoladas do executável RF Next Companion."""
 
 from __future__ import annotations
 
@@ -17,7 +17,8 @@ from core.windows_agent_capture import (
 )
 
 
-AGENT_STARTUP_VALUE = "RF QOL Agent"
+AGENT_STARTUP_VALUE = "RF Next Companion"
+LEGACY_AGENT_STARTUP_VALUE = "RF QOL Agent"
 AGENT_STARTUP_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 DEFAULT_AGENT_STORAGE_MB = 512
 MIN_AGENT_STORAGE_MB = 128
@@ -103,6 +104,10 @@ def configure_agent_startup(enabled: bool) -> None:
     import winreg
 
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, AGENT_STARTUP_KEY) as key:
+        try:
+            winreg.DeleteValue(key, LEGACY_AGENT_STARTUP_VALUE)
+        except FileNotFoundError:
+            pass
         if enabled:
             winreg.SetValueEx(
                 key,

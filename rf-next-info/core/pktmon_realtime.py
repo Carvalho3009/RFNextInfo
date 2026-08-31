@@ -14,6 +14,19 @@ from typing import Callable
 
 API_VERSION = 0x00010000
 FILETIME_UNIX_EPOCH = 116_444_736_000_000_000
+MIN_UNIX_TIMESTAMP_NS = 946_684_800_000_000_000
+MAX_FUTURE_TIMESTAMP_NS = 86_400_000_000_000
+
+
+def _normalized_timestamp_ns(value: object, now_ns: int | None = None) -> int:
+    current = time.time_ns() if now_ns is None else int(now_ns)
+    try:
+        timestamp = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return current
+    if not MIN_UNIX_TIMESTAMP_NS <= timestamp <= current + MAX_FUTURE_TIMESTAMP_NS:
+        return current
+    return timestamp
 PKTMON_PAYLOAD_ETHERNET = 1
 TCP_PROTOCOL = 6
 MAX_WRITE_QUEUE_PACKETS = 8192
@@ -493,7 +506,9 @@ class RealtimeCapture:
             packet_address,
             descriptor.packet_length,
         )
-        timestamp_ns = (metadata.timestamp - FILETIME_UNIX_EPOCH) * 100
+        timestamp_ns = _normalized_timestamp_ns(
+            (metadata.timestamp - FILETIME_UNIX_EPOCH) * 100
+        )
         self.packets += 1
         self.bytes += len(packet)
         if self.packet_sink is not None:
@@ -596,11 +611,7 @@ class RealtimeCapture:
                     already_counted = False
                 if queue_counted:
                     self._release_write_packet(len(packet))
-                now_ns = time.time_ns()
-                if not 946_684_800_000_000_000 <= timestamp_ns <= (
-                    now_ns + 86_400_000_000_000
-                ):
-                    timestamp_ns = now_ns
+                timestamp_ns = _normalized_timestamp_ns(timestamp_ns)
                 seconds, fraction = divmod(timestamp_ns, 1_000_000_000)
                 record = (
                     struct.pack(

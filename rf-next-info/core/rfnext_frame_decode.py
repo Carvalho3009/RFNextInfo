@@ -614,6 +614,51 @@ EXP_RANK_MESSAGES = {
 }
 
 
+PLAYER_STAT_LAYOUTS = {
+    0x0401: {
+        "type": "player_stat",
+        "message": "FG2C_player_stat_Message",
+        "payload_length": 786,
+        "combat_power_offset": 772,
+    },
+    0x0423: {
+        "type": "lobby_stat",
+        "message": "FG2C_lobby_stat_Message",
+        "payload_length": 762,
+        "combat_power_offset": 752,
+    },
+}
+
+
+def parse_player_stat_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
+    """Decodifica snapshots de Power confirmados no serviço TCP 12010."""
+    if port != 12010 or len(decoded) < HEADER_SIZE:
+        return None
+    opcode = int.from_bytes(decoded[4:6], "little")
+    layout = PLAYER_STAT_LAYOUTS.get(opcode)
+    if layout is None:
+        return None
+    payload = decoded[HEADER_SIZE:]
+    if len(payload) != layout["payload_length"]:
+        return None
+    combat_power_offset = layout["combat_power_offset"]
+    combat_power = struct.unpack_from("<Q", payload, combat_power_offset)[0]
+    return {
+        "type": layout["type"],
+        "opcode": f"0x{opcode:04x}",
+        "message": layout["message"],
+        "direction": "FG2C",
+        "character_scope": "local_session_character",
+        "character_identity_source": "tcp_flow",
+        "confidence": "alto-5-estados-captura-marcada-20260826",
+        "payload_length": len(payload),
+        "fields": {
+            "combat_power": combat_power,
+            "combat_power_offset": combat_power_offset,
+        },
+    }
+
+
 def parse_exp_rank_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
     """Decodifica o ranking de EXP observado no serviço de jogo TCP 12020."""
     if port != 12020 or len(decoded) < HEADER_SIZE:
@@ -1926,9 +1971,110 @@ def parse_nmssw_payload(decoded: bytes) -> dict[str, Any] | None:
     return result
 
 
+SYSTEM_ITEM_RECORD_TAIL_SIZES = (65, 73)
+
+
+def _parse_system_loot_record(
+    payload: bytes, start: int, tail_size: int
+) -> tuple[dict[str, Any], int] | None:
+    if start + 10 > len(payload):
+        return None
+    character_uid = struct.unpack_from("<Q", payload, start)[0]
+    name_length = struct.unpack_from("<H", payload, start + 8)[0]
+    name_start = start + 10
+    name_end = name_start + name_length * 2
+    record_end = name_end + tail_size
+    if name_length > 64 or record_end > len(payload):
+        return None
+    try:
+        player_name = payload[name_start:name_end].decode("utf-16le")
+    except UnicodeDecodeError:
+        return None
+    tail = payload[name_end:record_end]
+    if tail[21] not in (2, 3) or tail[27] != 1:
+        return None
+    item_index = struct.unpack_from("<I", tail, 37)[0]
+    count = struct.unpack_from("<I", tail, 41)[0]
+    if character_uid == 0 or item_index == 0 or count == 0:
+        return None
+    return ({
+        "character_uid": character_uid,
+        "player_name": player_name,
+        "item_index": item_index,
+        "count": count,
+        "message_kind": tail[21],
+    }, record_end)
+
+
+def _parse_system_loot_records(
+    payload: bytes, start: int, count: int
+) -> list[dict[str, Any]] | None:
+    memo: dict[tuple[int, int], list[dict[str, Any]] | None] = {}
+
+    def visit(cursor: int, remaining: int) -> list[dict[str, Any]] | None:
+        key = (cursor, remaining)
+        if key in memo:
+            return memo[key]
+        if remaining == 0:
+            result = [] if cursor == len(payload) else None
+            memo[key] = result
+            return result
+        solutions = []
+        for tail_size in SYSTEM_ITEM_RECORD_TAIL_SIZES:
+            parsed = _parse_system_loot_record(payload, cursor, tail_size)
+            if parsed is None:
+                continue
+            record, next_cursor = parsed
+            following = visit(next_cursor, remaining - 1)
+            if following is not None:
+                solutions.append([record, *following])
+        result = solutions[0] if len(solutions) == 1 else None
+        memo[key] = result
+        return result
+
+    return visit(start, count)
+
+
+def _parse_system_loot_announcement(decoded: bytes) -> dict[str, Any] | None:
+    opcode = int.from_bytes(decoded[4:6], "little")
+    payload = decoded[HEADER_SIZE:]
+    if opcode == 0x0E09:
+        records = _parse_system_loot_records(payload, 0, 1)
+        message = "FL2C_system_msg_Message"
+    elif opcode == 0x0E0A and len(payload) >= 2:
+        count = struct.unpack_from("<H", payload)[0]
+        minimum = 10 + min(SYSTEM_ITEM_RECORD_TAIL_SIZES)
+        if count == 0 or count > (len(payload) - 2) // minimum:
+            return None
+        records = _parse_system_loot_records(payload, 2, count)
+        message = "FL2C_system_msg_list_Message"
+    else:
+        return None
+    if records is None:
+        return None
+    # message_kind=3 é aprimoramento/prime e não é loot.
+    announcements = [
+        record for record in records
+        if record["message_kind"] == SYSTEM_MESSAGE_LOOT_KIND
+    ]
+    if not announcements:
+        return None
+    return {
+        "type": "loot_announcement",
+        "message": message,
+        "direction": "FL2C",
+        "confidence": "alto-layout-captura-multi-registro-20260820",
+        "source": "server_system_message",
+        "announcements": announcements,
+    }
+
+
 def parse_observation_payload(decoded: bytes) -> dict[str, Any] | None:
     opcode = int.from_bytes(decoded[4:6], "little")
     payload = decoded[HEADER_SIZE:]
+    system_loot = _parse_system_loot_announcement(decoded)
+    if system_loot is not None:
+        return system_loot
     if opcode in {0x0E09, 0x0E0A}:
         announcement_count = 1
         cursor = 0
@@ -2559,6 +2705,12 @@ def add_collection_catalog(
     if not requirements:
         return
     values = collection["slot_values"]
+    collection["completed_slots"] = [
+        slot_index
+        for slot_index, slot in sorted(requirements.items())
+        if slot_index < len(values)
+        and values[slot_index] >= slot["required_quantity"]
+    ]
     collection["item_complete"] = (
         catalog is not None
         and collection["updated_slot_value"] >= catalog["required_quantity"]

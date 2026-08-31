@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -9,10 +11,13 @@ from core.web_agent import (
     DEFAULT_OUTBOX_BYTES,
     DEFAULT_OUTBOX_EVENTS,
     AgentOutbox,
+    LOCAL_ONLY_EVENT_TYPES,
     WebAgentBridge,
     WebEventProjector,
 )
 from core.web_agent_identity import AgentIdentity, AgentIdentityStore
+from core.web_agent_authorization import AgentAuthorizationManager, AgentAuthorizationStore
+from core.web_agent_character_history import AgentCharacterHistory
 from core.web_agent_transport import AgentBatchTransport, AgentDeliveryWorker
 
 
@@ -24,12 +29,16 @@ class WebAgentRuntime:
         identity: AgentIdentity,
         bridge: WebAgentBridge,
         delivery: AgentDeliveryWorker,
+        authorization: AgentAuthorizationManager,
     ) -> None:
         self.identity = identity
         self.bridge = bridge
         self.delivery = delivery
+        self.authorization = authorization
         self._session_active = False
         self._closed = False
+        self._heartbeat_lock = threading.Lock()
+        self._last_heartbeat_signature: tuple[int, str, int] | None = None
 
     @classmethod
     def create(
@@ -54,10 +63,18 @@ class WebAgentRuntime:
             max_bytes=max_outbox_bytes,
             max_events=max_outbox_events,
         )
+        outbox.quarantine_event_types(
+            LOCAL_ONLY_EVENT_TYPES, reason="local_only_policy"
+        )
         projector = WebEventProjector(
             identity.installation_id,
             identity.pseudonym_key,
             decoder_version=decoder_version or version,
+            character_history=AgentCharacterHistory(
+                state_dir / "agent-character-history.dat",
+                identity.installation_id,
+                identity.pseudonym_key,
+            ),
         )
         bridge = WebAgentBridge(
             projector,
@@ -72,7 +89,18 @@ class WebAgentRuntime:
             server_url, identity, version=version, **transport_options
         )
         delivery = AgentDeliveryWorker(outbox, transport)
-        return cls(identity, bridge, delivery)
+        bridge.set_delivery_notifier(delivery.notify)
+        authorization = AgentAuthorizationManager(
+            transport,
+            AgentAuthorizationStore(state_dir, identity.installation_id),
+        )
+        return cls(identity, bridge, delivery, authorization)
+
+    def refresh_authorization(self, *, force: bool = False) -> bool:
+        return self.authorization.refresh(force=force)
+
+    def require_capture_authorization(self) -> None:
+        self.authorization.require_capture()
 
     def start_session(self, session_id: str, *, resumed: bool = False) -> None:
         if self._closed:
@@ -107,6 +135,50 @@ class WebAgentRuntime:
         # por pacote; a fila da captura continua sendo nao bloqueante.
         return self.bridge.submit(event)
 
+    def submit_subsession(self, session_id: str, report: dict) -> bool:
+        if self._closed:
+            return False
+        queued = self.bridge.submit_subsession(session_id, report)
+        self.delivery.notify()
+        return queued
+
+    def sync_subsession_commands(
+        self, results: list[dict[str, object]],
+        progress: list[dict[str, object]] | None = None,
+    ) -> list[dict[str, object]]:
+        if self._closed:
+            return []
+        return self.delivery.transport.sync_subsession_commands(results, progress)
+
+    def sync_character_profiles(self) -> int:
+        if self._closed:
+            return 0
+        profiles = self.delivery.transport.sync_character_profiles()
+        return self.bridge.projector.merge_remote_character_profiles(profiles)
+
+    def heartbeat(self, capture_state: str, client_count: int) -> bool:
+        if self._closed:
+            return False
+        now_ns = time.time_ns()
+        signature = (
+            now_ns // 60_000_000_000,
+            str(capture_state),
+            int(client_count),
+        )
+        with self._heartbeat_lock:
+            if signature == self._last_heartbeat_signature:
+                return False
+            event = self.bridge.projector.project_heartbeat(
+                capture_state=capture_state,
+                outbox_pending=int(self.bridge.outbox.metrics()["events"]),
+                client_count=client_count,
+                occurred_ns=now_ns,
+            )
+            queued = self.bridge.outbox.enqueue(event)
+            self.bridge.record_direct_enqueue(event["type"], queued)
+            self._last_heartbeat_signature = signature
+        return queued
+
     def registration(self) -> dict[str, str]:
         return self.identity.registration()
 
@@ -120,6 +192,10 @@ class WebAgentRuntime:
         bridge = self.bridge.metrics()
         delivery = self.delivery.metrics()
         outbox = self.bridge.outbox.metrics()
+        enqueued_last_minute = int(
+            bridge.get("enqueued_events_last_minute") or 0
+        )
+        sent_last_minute = int(delivery.get("sent_events_last_minute") or 0)
         state = (
             "storage_full" if outbox["full"] else
             "registration_pending" if delivery["state"] == "registration_pending" else
@@ -138,6 +214,14 @@ class WebAgentRuntime:
             "capture_bridge": bridge,
             "delivery": delivery,
             "outbox": outbox,
+            "throughput": {
+                "enqueued_events_last_minute": enqueued_last_minute,
+                "sent_events_last_minute": sent_last_minute,
+                "outbox_growth_events_last_minute": (
+                    enqueued_last_minute - sent_last_minute
+                ),
+            },
+            "authorization": self.authorization.health(),
         }
 
     def close(self) -> None:
@@ -160,6 +244,8 @@ class WebAgentOfflineRuntime:
         self.bridge = bridge
         self._session_active = False
         self._closed = False
+        self._heartbeat_lock = threading.Lock()
+        self._last_heartbeat_signature: tuple[int, str, int] | None = None
 
     @classmethod
     def create(
@@ -182,10 +268,18 @@ class WebAgentOfflineRuntime:
             max_bytes=max_outbox_bytes,
             max_events=max_outbox_events,
         )
+        outbox.quarantine_event_types(
+            LOCAL_ONLY_EVENT_TYPES, reason="local_only_policy"
+        )
         projector = WebEventProjector(
             identity.installation_id,
             identity.pseudonym_key,
             decoder_version=decoder_version or version,
+            character_history=AgentCharacterHistory(
+                state_dir / "agent-character-history.dat",
+                identity.installation_id,
+                identity.pseudonym_key,
+            ),
         )
         bridge = WebAgentBridge(
             projector,
@@ -200,6 +294,12 @@ class WebAgentOfflineRuntime:
             raise RuntimeError("Agent ja encerrado")
         self.bridge.start_session(session_id, resumed=resumed)
         self._session_active = True
+
+    def refresh_authorization(self, *, force: bool = False) -> bool:
+        return True
+
+    def require_capture_authorization(self) -> None:
+        return None
 
     def start_delivery(self) -> None:
         """Mantém uma interface comum sem criar rede no modo offline."""
@@ -221,6 +321,43 @@ class WebAgentOfflineRuntime:
     def submit(self, event: dict) -> bool:
         return False if self._closed else self.bridge.submit(event)
 
+    def submit_subsession(self, session_id: str, report: dict) -> bool:
+        return False if self._closed else self.bridge.submit_subsession(
+            session_id, report
+        )
+
+    def sync_subsession_commands(
+        self, results: list[dict[str, object]],
+        progress: list[dict[str, object]] | None = None,
+    ) -> list[dict[str, object]]:
+        return []
+
+    def sync_character_profiles(self) -> int:
+        return 0
+
+    def heartbeat(self, capture_state: str, client_count: int) -> bool:
+        if self._closed:
+            return False
+        now_ns = time.time_ns()
+        signature = (
+            now_ns // 60_000_000_000,
+            str(capture_state),
+            int(client_count),
+        )
+        with self._heartbeat_lock:
+            if signature == self._last_heartbeat_signature:
+                return False
+            event = self.bridge.projector.project_heartbeat(
+                capture_state=capture_state,
+                outbox_pending=int(self.bridge.outbox.metrics()["events"]),
+                client_count=client_count,
+                occurred_ns=now_ns,
+            )
+            queued = self.bridge.outbox.enqueue(event)
+            self.bridge.record_direct_enqueue(event["type"], queued)
+            self._last_heartbeat_signature = signature
+            return queued
+
     def health(self) -> dict[str, object]:
         if self._closed:
             return {
@@ -230,6 +367,10 @@ class WebAgentOfflineRuntime:
                 "session_active": False,
             }
         outbox = self.bridge.outbox.metrics()
+        bridge = self.bridge.metrics()
+        enqueued_last_minute = int(
+            bridge.get("enqueued_events_last_minute") or 0
+        )
         return {
             "enabled": True,
             "mode": "offline",
@@ -237,8 +378,18 @@ class WebAgentOfflineRuntime:
             "session_active": self._session_active,
             "installation_id": self.identity.installation_id,
             "key_id": self.identity.key_id,
-            "capture_bridge": self.bridge.metrics(),
+            "capture_bridge": bridge,
             "outbox": outbox,
+            "throughput": {
+                "enqueued_events_last_minute": enqueued_last_minute,
+                "sent_events_last_minute": 0,
+                "outbox_growth_events_last_minute": enqueued_last_minute,
+            },
+            "authorization": {
+                "required": False,
+                "authorized": True,
+                "status": "offline",
+            },
         }
 
     def close(self) -> None:

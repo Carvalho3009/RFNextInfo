@@ -1,5 +1,254 @@
 # Changelog
 
+## 2.0.0-beta.31 — 2026-08-31
+
+- melhora a fotografia de Inventário, evitando classificar como empilháveis os
+  equipamentos do tipo 27 e preservando a correlação de aparência e loadout;
+- amplia Coleção/Códex com tipo e slots concluídos ou ausentes, sem enviar
+  identidade de sessão ou misturar personagens e instalações;
+- mantém a fotografia pendente para nova tentativa quando a fila offline falha
+  durante a gravação, em vez de perder silenciosamente parte do snapshot.
+
+## 2.0.0-beta.30 — 2026-08-30
+
+- resolve a identidade da rota TCP já no primeiro pacote, antes de fixar o fluxo
+  lógico, inclusive quando a conexão surge entre duas verificações periódicas;
+- impede que subsessões continuem apenas com o cronômetro enquanto EXP,
+  contribuição, créditos e kills passam a usar outra referência de cliente.
+- envia a lista completa de anúncios pessoais como fotografia autoritativa,
+  inclusive quando não existe anúncio ativo;
+- permite ao Companion encerrar anúncios vendidos, removidos ou republicados
+  que deixaram de aparecer na lista atual, sem apagar o histórico.
+- reconhece mensagens explícitas de estado, HP, contribuição e resultado de
+  World Boss na prioridade local do Monitor de Boss.
+
+## 2.0.0-beta.29 — 2026-08-29
+
+- dá prioridade máxima no processamento local aos eventos explícitos de Boss,
+  ao combate classificado como Boss e ao contexto necessário de aparição e
+  desaparecimento, sem liberar esses eventos para envio ao site;
+- inclui `world.players_appeared` no domínio local de Boss e associa cada
+  personagem do encontro a `guild_id` e `guild_name`, mantendo `guild` como
+  alias compatível;
+- preserva a separação por cliente e sessão, evita duplicação durante a
+  confirmação de identidade e mantém o processamento normal e os ciclos da
+  sessão sem regressão.
+
+## 2.0.0-beta.28 — 2026-08-29
+
+- preserva no envio automático do Mercado as linhas em que o jogo informa
+  `highest_price = 0`, usando o menor preço válido como limite superior, como a
+  exportação manual já fazia;
+- evita que itens válidos desapareçam antes de chegar ao site, incluindo o caso
+  observado de `Pioneer's Erebus Blade +5`;
+- adiciona regressão específica para item épico refinado e mantém o contrato do
+  site inalterado.
+
+## 2.0.0-beta.27 — 2026-08-29
+
+- adiciona a rota local autenticada `GET /api/agent/v1/boss/encounters` para o
+  Monitor de Boss e o painel do Discord;
+- consolida por encontro o nome e o HP do Boss, além do nome, UID permanente,
+  guilda e dano total acumulado de cada personagem;
+- mantém encontros separados por cliente, ignora eventos duplicados antes da
+  soma e remove o Boss somente por desaparecimento, morte, resultado confirmado
+  ou encerramento da sessão;
+- anuncia o novo contrato em `capabilities`, preservando o feed genérico para
+  compatibilidade com versões anteriores do Monitor de Boss.
+
+## 2.0.0-beta.26 — 2026-08-28
+
+- exige UID público, nome de personagem e resposta válida antes de confirmar a
+  identidade inicial de uma conexão;
+- impede que outro UID direto substitua o personagem já confirmado na mesma
+  conexão, sem bloquear uma confirmação direta que corrija recuperação histórica;
+- mantém atualizações parciais de equipamento e Power somente para o UID já
+  confirmado e expõe contadores para eventos diretos inválidos ou conflitantes;
+- envia ao site cada mapa confirmado pelo retorno bem-sucedido do teleporte,
+  com o horário UTC do pacote, referência do mapa anterior e deduplicação por
+  cliente; posição e repetição do mesmo mapa não criam novas trocas;
+- separa snapshots de equipamentos e itens empilháveis sem descartar uma das
+  categorias no site, recompõe o inventário completo após cada delta e evita
+  reenfileirar estados idênticos;
+- aceita a remoção do último item de uma categoria, isola o estado por cliente
+  e atualiza o loadout por UID exato após trocas de slot confirmadas;
+- publica o perfil de equipamentos somente quando o UID correlacionado pertence
+  ao personagem confirmado da conexão, bloqueando contaminação por jogadores
+  próximos.
+
+## 2.0.0-beta.25 — 2026-08-28
+
+- elimina observações idênticas e repetidas de personagem/power antes que elas
+  ocupem a fila offline;
+- mantém eventos imediatos à frente, mas limita rajadas consecutivas para que
+  Mercado, Ranking, eventos em tempo real e dados de volume continuem sendo
+  drenados mesmo quando há atualizações imediatas contínuas;
+- preserva os eventos pendentes e o ACK idempotente; a correção não exige
+  alteração do contrato do servidor.
+
+## 2.0.0-beta.24 — 2026-08-27
+
+- impede que atualizações de equipamento de jogadores próximos sejam tratadas
+  como identidade do personagem local;
+- mantém o personagem confirmado vinculado à sessão e ignora perfis remotos
+  sem nome confirmado, evitando abas e sessões falsas no site;
+- preserva a separação entre clientes e permite que o servidor repare, de
+  forma não ambígua, sessões legadas vinculadas a UIDs sem nome.
+
+## 2.0.0-beta.23 — 2026-08-27
+
+- adota o nome RF Next Companion e o logo do Companion na janela, bandeja,
+  executável e instalador, preservando o diretório de dados e a instalação
+  anterior durante a atualização;
+- reduz falsos personagens reconhecidos ao remover conexões antigas quando as
+  rotas de captura mudam;
+- envia kills PvE somente depois da confirmação do personagem e mantém a
+  atribuição separada por cliente;
+- correlaciona o UID do equipamento ativo com o inventário, marcando como
+  equipados somente os itens que realmente compõem o loadout;
+- mantém drops próprios e anúncios públicos em contratos separados, sem enviar
+  aprimoramentos ou primagens como loot;
+- sincroniza sessões e subsessões remotas sem misturar clientes e preserva a
+  fila local até a confirmação do servidor.
+
+## 2.0.0-beta.22 — 2026-08-26
+
+- adiciona instalador NSIS próprio do Agent, com atualização sobre a instalação
+  existente e preservação do estado em `LocalAppData`;
+- adiciona canal beta de atualização automática com manifesto Ed25519, origem
+  HTTPS restrita, tamanho e SHA-256 obrigatórios e escrita atômica;
+- mantém a aplicação visível e condicionada à confirmação do usuário antes de
+  encerrar a captura, reiniciar e abrir o instalador;
+- registra a decisão de não usar Authenticode, sem criar exceções no Defender,
+  executar scripts remotos, usar UPX ou trocar silenciosamente o executável;
+- gera chave Ed25519 exclusiva do Agent, protegida por DPAPI fora do pacote.
+
+## 2.0.0-beta.21 — 2026-08-26
+
+- Mostra na janela as taxas reais por segundo de eventos gerados, enviados e
+  de crescimento ou redução da fila offline.
+- Mantém golpes, skills e alterações de HP/FP somente na API local e remove da
+  fila legada esses eventos sem consumidor no site; kills PvE, EXP,
+  contribuição, drops, Mercado e Ranking continuam remotos.
+- Expõe também o fluxo do último minuto na saúde sanitizada da API local.
+- Amplia para 20 segundos a espera por lotes grandes já aceitos pelo receptor,
+  evitando retentativas prematuras que reduziam a vazão da fila.
+
+## 2.0.0-beta.20 — 2026-08-26
+
+- Adiciona entrega durável por prioridade: eventos imediatos primeiro, Mercado
+  e Ranking de EXP em prioridade alta, eventos em tempo real e, por último,
+  dados de volume.
+- Acelera a drenagem da fila com acionamento após cada evento e rajadas de até
+  oito lotes, mantendo o limite seguro de 250 eventos ou 224 KiB por lote.
+- Preserva retries idênticos e ACK parcial ao enviar sequências não contíguas;
+  a migração da outbox existente é aditiva e não remove eventos pendentes.
+- Expõe volume enfileirado/enviado no último minuto, crescimento da fila,
+  contagem por prioridade e métricas das rajadas no diagnóstico local.
+- Mostra na lista de personagens a duração da sessão atual de cada cliente,
+  iniciada no reconhecimento individual e sem reiniciar os demais clientes.
+
+## 2.0.0-beta.19 — 2026-08-26
+
+- Inclui a curva de EXP no pacote independente do Agent, permitindo projetar e
+  enviar ao site as posições decodificadas do ranking sem exigir rolagem.
+- Faz o autoteste do executável falhar quando a curva de EXP obrigatória não
+  estiver disponível, evitando distribuir novamente um pacote incompleto.
+
+## 2.0.0-beta.18 — 2026-08-26
+
+- Recupera automaticamente somente o fluxo TCP que permaneceu bloqueado por um
+  segmento ausente, sem reiniciar a captura, os demais clientes, a sessão ou a
+  fila offline.
+- Expõe contadores sanitizados de fluxos bloqueados/recuperados e o horário do
+  último evento decodificado na saúde local do Agent.
+- Corrige a leitura do worker de entrega na API local e mostra na janela o
+  último decode e a última confirmação de lote recebida do servidor.
+
+## 2.0.0-beta.17 — 2026-08-25
+
+- Só envia ao site dados privados e ações do personagem depois que um UID
+  público válido confirmou o vínculo daquela conexão.
+- Mantém eventos ainda não confirmados disponíveis aos monitores pela API local,
+  sem colocá-los na fila offline nem misturar clientes.
+- Limita o heartbeat remoto e usa identificadores únicos após reinício, evitando
+  que uma confirmação repetida deixe o último evento preso na fila.
+
+## 2.0.0-beta.16 — 2026-08-25
+
+- Corrige o acúmulo da fila offline causado por envelopes que ultrapassavam por
+  poucos KiB o limite descompactado do receptor.
+- Reduz o tamanho-alvo dos lotes futuros, reservando espaço para o envelope, e
+  trata o limite antigo do servidor como recuperável sem apagar eventos.
+
+## 2.0.0-beta.15 — 2026-08-25
+
+- Retoma automaticamente a entrega depois que um receptor antigo recusou uma
+  sobreposição recuperável de lote, sem apagar ou remontar a fila offline.
+- Expõe na API local somente o estado sanitizado do worker de entrega, incluindo
+  backoff, último código de erro e contadores, sem credenciais ou conteúdo.
+
+## 2.0.0-beta.14 — 2026-08-24
+
+- Torna o reenvio da fila offline estável entre tentativas e reinicializações,
+  com recuperação segura quando o servidor já recebeu parte do lote.
+- Separa identidades e sessões por conexão para impedir mistura entre dois ou
+  mais clientes, inclusive antes de o personagem ser reconhecido.
+- Mantém Boss e PvP somente na API local; envia ao site apenas combate PvE
+  confirmado, com atribuição de kill ao próprio cliente.
+- Atualiza o decode dos eventos atuais de Boss e dos anúncios de loot com
+  múltiplos registros, ignorando mensagens de aprimoramento e primagem.
+- Envia Mercado em blocos sem truncar snapshots, além de inventário, coleção,
+  Rover e heartbeat sanitizados.
+- Filtra EXP, contribuição e moedas reservadas do histórico de drops; consolida
+  anúncios públicos iguais vistos simultaneamente por clientes diferentes.
+- Preserva eventos de EXP até o vínculo tardio do personagem e adiciona staging
+  durável para observações de mapa e proximidade.
+- Evita reiniciar a captura por desaparecimento transitório de rotas do jogo.
+
+## 2.0.0-beta.13 — 2026-08-24
+
+- Corrige o vínculo que permanecia pendente no Agent depois de o usuário
+  confirmar o código no site. Enquanto aguarda vínculo, o Agent consulta o
+  servidor novamente em até 5 segundos; depois de autorizado, volta ao
+  intervalo normal de 30 minutos.
+
+## 2.0.0-beta.12 — 2026-08-24
+
+- Corrige as cores do menu da bandeja, incluindo itens normais, selecionados,
+  desativados e separadores, preservando a leitura no tema escuro.
+- Mostra o consumo real de RAM junto ao limite configurado e reduz estado
+  efêmero quando o processo atinge o teto, sem descartar a outbox persistida.
+- Adiciona vínculo do Agent à conta do site por código curto. O nome do usuário
+  vinculado aparece no Agent e novas capturas exigem autorização válida.
+- Revalida a autorização ao abrir e periodicamente; a cópia local protegida por
+  DPAPI vale no máximo 24 horas e é invalidada na primeira resposta de revogação.
+- Mantém Boss, PvP e combate exclusivamente na API local, sem incluí-los no
+  contrato remoto de autorização ou na outbox do site.
+
+## 2.0.0-beta.11 — 2026-08-24
+
+- Mantém eventos de combate, PvP e Boss exclusivamente na API local usada
+  pelos programas de monitoramento separados; esses eventos não entram na
+  outbox e nunca são enviados ao site.
+- Coloca em quarentena eventos locais que tenham ficado pendentes na outbox de
+  versões anteriores, registrando somente o identificador e o motivo da
+  remoção, sem preservar ou transmitir o conteúdo.
+
+## 2.0.0-beta.10 — 2026-08-24
+
+- Envia ao receptor dedicado os eventos sanitizados já confirmados de sessão,
+  personagem, level/EXP, contribuição, recompensas, combate, PvP, Boss, mapa e
+  proximidade, sem pacotes brutos, credenciais ou UID de sessão.
+- Publica observações de Mercado e apenas snapshots completos e consistentes do
+  Ranking EXP Top 100; páginas parciais e duplicadas ficam locais.
+- Mantém a identidade confirmada ao pausar e continuar a captura na mesma
+  conexão, mas a remove ao encerrar para impedir atribuição indevida.
+- Limita posições contínuas a uma atualização por segundo, preservando todos os
+  eventos de teleporte e reduzindo o volume que ocultava dados úteis.
+- Adiciona diagnóstico limitado por tipo para separar eventos decodificados,
+  aceitos, projetados, ignorados e rejeitados sem expor o conteúdo capturado.
+
 ## 2.0.0-beta.6 — 2026-08-21
 
 - Corrige os travamentos causados pela abertura do banco de captura em modo de

@@ -9423,6 +9423,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ),
                 web_agent=web_agent,
             )
+            self.site_uploader.companion_sink = web_agent
             if not self.capture_recovery_attempted:
                 self.capture_recovery_attempted = True
                 try:

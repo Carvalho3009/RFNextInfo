@@ -8,7 +8,7 @@ import socket
 import struct
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +26,7 @@ MAX_PENDING_PACKETS = 8192
 MAX_PENDING_PACKET_BYTES = 32 * 1024 * 1024
 MAX_PENDING_SEGMENTS_PER_FLOW = 256
 MAX_PENDING_BYTES_PER_FLOW = 2 * 1024 * 1024
+TCP_GAP_RECOVERY_SECONDS = 5
 MAX_BOSS_EVENTS = 4096
 MAX_BOSS_DAMAGE_BUCKETS = 2048
 BOSS_ENCOUNTER_RETENTION_SECONDS = 6 * 60 * 60
@@ -42,6 +43,10 @@ COMBAT_EVENT_TYPES = frozenset({
     "use_normal_skill_result",
     "FG2C_ans_boss_position_Message",
     "FG2C_notify_boss_result_Message",
+    "FG2C_notify_boss_status_list_Message",
+    "FG2C_worldboss_hp_sync_Message",
+    "FG2C_worldboss_personal_contribution_update_Message",
+    "FG2C_noti_worldboss_result_Message",
 })
 APPEARANCE_EVENT_TYPES = frozenset({"appear_player_list", "appear_monster_list"})
 GUILD_RELATION_EVENT_TYPES = frozenset({"enemy_guild_list", "amity_guild_list"})
@@ -55,7 +60,9 @@ MAP_EVENT_TYPES = frozenset({
     "warp_player",
     "end_warp_player",
 })
-BOSS_EVENT_OPCODES = frozenset({0x031C, 0x031D, 0x031F, 0x0331, 0x0C05, 0x0C0A})
+BOSS_EVENT_OPCODES = frozenset({
+    0x031C, 0x031D, 0x031F, 0x0331, 0x0C05, 0x0C07, 0x0C08, 0x0C0A,
+})
 
 
 @lru_cache(maxsize=1)
@@ -73,14 +80,28 @@ def _boss_indexes() -> frozenset[int]:
         return frozenset()
 
 
+@lru_cache(maxsize=1)
+def _collection_slots() -> dict[tuple[int, int], dict[str, Any]]:
+    catalog = Path(__file__).with_name("collection_requirements.csv")
+    try:
+        return decoder.load_collection_slots(catalog if catalog.is_file() else None)
+    except (OSError, TypeError, ValueError, csv.Error):
+        return {}
+
+
 @dataclass
 class _FlowState:
+    event_flow: str = ""
     next_sequence: int | None = None
     stream_offset: int = 0
     buffer: bytearray = field(default_factory=bytearray)
     pending: dict[int, tuple[bytes, int]] = field(default_factory=dict)
     pending_bytes: int = 0
     timestamp_ns: int = 0
+    gap_started_ns: int | None = None
+    equipment_appearances: deque[dict[str, Any]] = field(
+        default_factory=lambda: deque(maxlen=64)
+    )
 
 
 def _tcp_payload(
@@ -146,20 +167,82 @@ class LiveEventDecoder:
         max_pending_segments: int = MAX_PENDING_SEGMENTS_PER_FLOW,
         max_pending_bytes: int = MAX_PENDING_BYTES_PER_FLOW,
         max_flow_buffer_bytes: int = MAX_FLOW_BUFFER_BYTES,
+        gap_recovery_seconds: float = TCP_GAP_RECOVERY_SECONDS,
     ) -> None:
         self._flows: dict[str, _FlowState] = {}
         self._max_flows = max(1, int(max_flows))
         self._max_pending_segments = max(1, int(max_pending_segments))
         self._max_pending_bytes = max(1, int(max_pending_bytes))
         self._max_flow_buffer_bytes = max(MAX_FRAME_BYTES, int(max_flow_buffer_bytes))
+        self._gap_recovery_ns = max(
+            100_000_000, int(float(gap_recovery_seconds) * 1_000_000_000)
+        )
         self._transport_ports = tuple(
             dict.fromkeys(int(port) for port in transport_ports if int(port) > 0)
         )
+        self._collection_slots = _collection_slots()
+        self._connection_aliases: dict[int, str] = {}
+        self._connection_alias_resolver: Callable[[], dict[int, str]] | None = None
+        self.alias_resolution_attempts = 0
+        self.alias_resolution_hits = 0
+        self.alias_resolution_errors = 0
+        self.gap_recoveries = 0
+        self.recovered_gap_bytes = 0
+        self.discarded_partial_bytes = 0
+        self.last_gap_recovery_ns = 0
 
     def set_transport_ports(self, ports: tuple[int, ...]) -> None:
         self._transport_ports = tuple(
             dict.fromkeys(int(port) for port in ports if int(port) > 0)
         )
+
+    def set_connection_aliases(self, aliases: dict[int, str]) -> None:
+        self._connection_aliases = {
+            int(port): str(alias)[:96]
+            for port, alias in dict(aliases).items()
+            if 0 < int(port) <= 65535 and str(alias)
+        }
+
+    def set_connection_alias_resolver(
+        self, resolver: Callable[[], dict[int, str]] | None,
+    ) -> None:
+        self._connection_alias_resolver = resolver
+
+    def _connection_alias(self, flow: str) -> str:
+        ports: list[int] = []
+        for endpoint in str(flow).split(" -> ", 1):
+            try:
+                port = int(endpoint.rsplit(":", 1)[1])
+            except (IndexError, TypeError, ValueError):
+                continue
+            ports.append(port)
+            alias = self._connection_aliases.get(port)
+            if alias:
+                return f"client-route:{alias}"
+        # Uma rota TCP nova pode surgir entre duas leituras periódicas do
+        # Windows. Resolva-a no primeiro pacote, antes de fixar event_flow;
+        # assim as conexões 12010/12020 do mesmo cliente não viram personagens
+        # distintos durante teleporte ou reconexão.
+        resolver = self._connection_alias_resolver
+        if ports and resolver is not None:
+            self.alias_resolution_attempts += 1
+            try:
+                aliases = resolver()
+                resolved = {
+                    int(port): str(alias)[:96]
+                    for port, alias in dict(aliases).items()
+                    if 0 < int(port) <= 65535 and str(alias)
+                }
+            except Exception:
+                self.alias_resolution_errors += 1
+            else:
+                self._connection_aliases.update(resolved)
+                for port in ports:
+                    alias = self._connection_aliases.get(port)
+                    if alias:
+                        self.alias_resolution_hits += 1
+                        return f"client-route:{alias}"
+        return flow
 
     @property
     def flow_count(self) -> int:
@@ -172,6 +255,13 @@ class LiveEventDecoder:
     @property
     def pending_bytes(self) -> int:
         return sum(state.pending_bytes for state in self._flows.values())
+
+    @property
+    def stalled_flow_count(self) -> int:
+        return sum(
+            1 for state in self._flows.values()
+            if state.gap_started_ns is not None and state.pending
+        )
 
     def compact(self, fraction: float = 0.5) -> dict[str, int]:
         """Reduz contextos antigos sem interromper o fluxo TCP mais recente."""
@@ -203,14 +293,44 @@ class LiveEventDecoder:
         if parsed is None:
             return []
         flow, server_port, sequence, payload = parsed
+        # Cada socket TCP conserva seu próprio espaço de sequência. O alias do
+        # processo serve apenas como identidade lógica nos eventos decodificados;
+        # usá-lo como chave do reagrupador misturaria as conexões 12010/12020.
         state = self._flows.pop(flow, None)
         if state is None:
             while len(self._flows) >= self._max_flows:
                 self._flows.pop(next(iter(self._flows)))
-            state = _FlowState()
+            # A relação porta -> processo pode aparecer depois dos primeiros
+            # pacotes. Fixar a identidade lógica na criação evita que o mesmo
+            # socket troque de client_ref no meio da sessão e perca métricas de
+            # subsessão já vinculadas ao personagem.
+            state = _FlowState(event_flow=self._connection_alias(flow))
         self._flows[flow] = state
         self._append_segment(state, sequence, payload, timestamp_ns)
-        return self._decode_available(state, flow, server_port)
+        return self._decode_available(state, state.event_flow or flow, server_port)
+
+    def _recover_gap(self, state: _FlowState, timestamp_ns: int) -> None:
+        """Descarta apenas o prefixo incompleto do fluxo TCP bloqueado."""
+        if not state.pending or state.next_sequence is None:
+            state.gap_started_ns = None
+            return
+        next_sequence = min(state.pending)
+        expected = int(state.next_sequence)
+        if next_sequence <= expected:
+            state.gap_started_ns = None
+            return
+        partial_bytes = len(state.buffer)
+        missing_bytes = next_sequence - expected
+        state.buffer.clear()
+        state.stream_offset += partial_bytes + missing_bytes
+        state.next_sequence = next_sequence
+        state.gap_started_ns = None
+        self.gap_recoveries += 1
+        self.recovered_gap_bytes += missing_bytes
+        self.discarded_partial_bytes += partial_bytes
+        self.last_gap_recovery_ns = max(
+            self.last_gap_recovery_ns, int(timestamp_ns)
+        )
 
     def _append_segment(
         self, state: _FlowState, sequence: int, payload: bytes, timestamp_ns: int
@@ -235,9 +355,12 @@ class LiveEventDecoder:
                 state.buffer.extend(payload)
                 state.next_sequence = sequence + len(payload)
                 state.timestamp_ns = timestamp_ns
+                state.gap_started_ns = None
             elif sequence not in state.pending:
                 state.pending[sequence] = (payload, timestamp_ns)
                 state.pending_bytes += len(payload)
+                if state.gap_started_ns is None:
+                    state.gap_started_ns = int(timestamp_ns)
                 while (
                     len(state.pending) > self._max_pending_segments
                     or state.pending_bytes > self._max_pending_bytes
@@ -247,6 +370,13 @@ class LiveEventDecoder:
                     state.pending_bytes = max(
                         0, state.pending_bytes - len(removed)
                     )
+                if (
+                    state.pending
+                    and state.gap_started_ns is not None
+                    and int(timestamp_ns) - state.gap_started_ns
+                    >= self._gap_recovery_ns
+                ):
+                    self._recover_gap(state, timestamp_ns)
         while state.pending:
             next_sequence = min(state.pending)
             pending, pending_time = state.pending[next_sequence]
@@ -261,6 +391,12 @@ class LiveEventDecoder:
                 state.buffer.extend(tail)
                 state.next_sequence = expected + len(tail)
                 state.timestamp_ns = pending_time
+        if state.pending:
+            state.gap_started_ns = min(
+                pending_time for _pending, pending_time in state.pending.values()
+            )
+        else:
+            state.gap_started_ns = None
         if len(state.buffer) > self._max_flow_buffer_bytes:
             overflow = len(state.buffer) - self._max_flow_buffer_bytes
             del state.buffer[:overflow]
@@ -310,13 +446,26 @@ class LiveEventDecoder:
                         parsed
                         for candidate_port in candidate_ports
                         if (parsed := _safe_parse(
-                            decoder, decoded, candidate_port
+                            decoder, decoded, candidate_port,
+                            self._collection_slots,
                         )) is not None
                     ),
                     None,
                 )
                 if result is None:
                     continue
+                if (
+                    result.get("type") == "appear_player_prefix"
+                    and result.get("fields", {}).get("equipment_refs")
+                ):
+                    state.equipment_appearances.append(result)
+                elif result.get("type") == "player_profile_info":
+                    correlated = decoder.correlate_active_equipment(
+                        result, list(state.equipment_appearances)
+                    )
+                    if correlated is not None:
+                        active_equipment, _appearance = correlated
+                        result["fields"]["active_equipment"] = active_equipment
                 events.append(
                     {
                         "source": "memory://pktmon-live",
@@ -349,6 +498,7 @@ class LiveEventStream:
         max_pending_segments_per_flow: int = MAX_PENDING_SEGMENTS_PER_FLOW,
         max_pending_bytes_per_flow: int = MAX_PENDING_BYTES_PER_FLOW,
         max_flow_buffer_bytes: int = MAX_FLOW_BUFFER_BYTES,
+        tcp_gap_recovery_seconds: float = TCP_GAP_RECOVERY_SECONDS,
         event_sink: Callable[[dict[str, Any]], bool] | None = None,
         transport_ports: tuple[int, ...] = DEFAULT_PORTS,
     ) -> None:
@@ -385,11 +535,18 @@ class LiveEventStream:
             "max_flow_buffer_bytes": max(
                 MAX_FRAME_BYTES, int(max_flow_buffer_bytes)
             ),
+            "gap_recovery_seconds": max(
+                0.1, float(tcp_gap_recovery_seconds)
+            ),
             "transport_ports": tuple(transport_ports),
         }
         self._boss_event_ns = max(1, int(boss_event_seconds)) * 1_000_000_000
         self._lock = threading.Lock()
+        self._metrics_lock = threading.Lock()
         self._decoder = LiveEventDecoder(**self._decoder_kwargs)
+        self._connection_alias_resolver: Callable[
+            [], dict[int, str]
+        ] | None = None
         self._event_sink = event_sink
         self._thread: threading.Thread | None = None
         self._worker_stop = threading.Event()
@@ -402,9 +559,14 @@ class LiveEventStream:
         self.event_sink_accepted = 0
         self.event_sink_rejected = 0
         self.event_sink_errors = 0
+        self.decoded_by_type: Counter[str] = Counter()
+        self.event_sink_accepted_by_type: Counter[str] = Counter()
+        self.event_sink_rejected_by_type: Counter[str] = Counter()
+        self.event_sink_errors_by_type: Counter[str] = Counter()
         self.memory_compactions = 0
         self.last_received_ns = 0
         self.last_processed_ns = 0
+        self.last_decoded_ns = 0
 
     def set_transport_ports(self, ports: tuple[int, ...]) -> None:
         normalized = tuple(
@@ -412,6 +574,15 @@ class LiveEventStream:
         )
         self._decoder_kwargs["transport_ports"] = normalized
         self._decoder.set_transport_ports(normalized)
+
+    def set_connection_aliases(self, aliases: dict[int, str]) -> None:
+        self._decoder.set_connection_aliases(aliases)
+
+    def set_connection_alias_resolver(
+        self, resolver: Callable[[], dict[int, str]] | None,
+    ) -> None:
+        self._connection_alias_resolver = resolver
+        self._decoder.set_connection_alias_resolver(resolver)
 
     def set_event_sink(
         self, sink: Callable[[dict[str, Any]], bool] | None
@@ -551,7 +722,15 @@ class LiveEventStream:
                 and key[2] not in active_player_uids
             ):
                 self._anchors.pop(key, None)
-    def metrics(self) -> dict[str, int | float | bool]:
+    @staticmethod
+    def _bounded_counts(values: Counter[str]) -> dict[str, int]:
+        return {
+            name: int(count)
+            for name, count in values.most_common(64)
+            if name
+        }
+
+    def metrics(self) -> dict[str, object]:
         try:
             queued = self._items.qsize()
         except NotImplementedError:
@@ -568,6 +747,17 @@ class LiveEventStream:
             map_events = len(self._map_events)
             identity_contexts = len(self._identities)
             guild_contexts = len(self._guild_relations)
+        with self._metrics_lock:
+            decoded_by_type = self._bounded_counts(self.decoded_by_type)
+            sink_accepted_by_type = self._bounded_counts(
+                self.event_sink_accepted_by_type
+            )
+            sink_rejected_by_type = self._bounded_counts(
+                self.event_sink_rejected_by_type
+            )
+            sink_errors_by_type = self._bounded_counts(
+                self.event_sink_errors_by_type
+            )
         return {
             "worker_alive": bool(self._thread and self._thread.is_alive()),
             "queue_depth": queued,
@@ -583,6 +773,10 @@ class LiveEventStream:
             "event_sink_accepted": self.event_sink_accepted,
             "event_sink_rejected": self.event_sink_rejected,
             "event_sink_errors": self.event_sink_errors,
+            "decoded_by_type": decoded_by_type,
+            "event_sink_accepted_by_type": sink_accepted_by_type,
+            "event_sink_rejected_by_type": sink_rejected_by_type,
+            "event_sink_errors_by_type": sink_errors_by_type,
             "retained_events": retained,
             "event_limit": int(self._events.maxlen or 0),
             "entity_anchors": anchors,
@@ -611,6 +805,31 @@ class LiveEventStream:
             "flow_buffer_byte_limit": int(
                 self._decoder_kwargs["max_flow_buffer_bytes"]
             ),
+            "stalled_tcp_flows": int(
+                getattr(self._decoder, "stalled_flow_count", 0)
+            ),
+            "tcp_gap_recoveries": int(
+                getattr(self._decoder, "gap_recoveries", 0)
+            ),
+            "tcp_recovered_gap_bytes": int(
+                getattr(self._decoder, "recovered_gap_bytes", 0)
+            ),
+            "tcp_discarded_partial_bytes": int(
+                getattr(self._decoder, "discarded_partial_bytes", 0)
+            ),
+            "last_gap_recovery_ns": int(
+                getattr(self._decoder, "last_gap_recovery_ns", 0)
+            ),
+            "alias_resolution_attempts": int(
+                getattr(self._decoder, "alias_resolution_attempts", 0)
+            ),
+            "alias_resolution_hits": int(
+                getattr(self._decoder, "alias_resolution_hits", 0)
+            ),
+            "alias_resolution_errors": int(
+                getattr(self._decoder, "alias_resolution_errors", 0)
+            ),
+            "last_decoded_ns": int(self.last_decoded_ns),
         }
 
     def clear(self) -> None:
@@ -624,6 +843,9 @@ class LiveEventStream:
             self._guild_relations.clear()
             self._map_events.clear()
         self._decoder = LiveEventDecoder(**self._decoder_kwargs)
+        self._decoder.set_connection_alias_resolver(
+            self._connection_alias_resolver
+        )
         self.decode_errors = 0
         self.processed_packets = 0
         self.decoded_events = 0
@@ -633,9 +855,15 @@ class LiveEventStream:
         self.event_sink_accepted = 0
         self.event_sink_rejected = 0
         self.event_sink_errors = 0
+        with self._metrics_lock:
+            self.decoded_by_type.clear()
+            self.event_sink_accepted_by_type.clear()
+            self.event_sink_rejected_by_type.clear()
+            self.event_sink_errors_by_type.clear()
         self.memory_compactions = 0
         self.last_received_ns = 0
         self.last_processed_ns = 0
+        self.last_decoded_ns = 0
 
     def compact(self, fraction: float = 0.5) -> dict[str, int]:
         """Descarta somente estado efêmero antigo sob pressão de memória."""
@@ -705,29 +933,49 @@ class LiveEventStream:
                 self.processed_packets += 1
                 self.last_processed_ns = max(self.last_processed_ns, int(item[0]))
             if events:
-                self._dispatch_events(events)
                 try:
                     self._remember(events)
                 except Exception:
                     self.decode_errors += 1
+                self._dispatch_events(events)
 
     def _dispatch_events(self, events: list[dict[str, Any]]) -> None:
         """Entrega opcional fora do estado local; falhas nunca param a captura."""
         sink = self._event_sink
         if sink is None:
             return
+        accepted_by_type: Counter[str] = Counter()
+        rejected_by_type: Counter[str] = Counter()
+        errors_by_type: Counter[str] = Counter()
         for event in events:
+            kind = str(event.get("type") or "unknown")[:96]
             try:
                 accepted = sink(event)
             except Exception:
                 self.event_sink_errors += 1
+                errors_by_type[kind] += 1
                 continue
             if accepted:
                 self.event_sink_accepted += 1
+                accepted_by_type[kind] += 1
             else:
                 self.event_sink_rejected += 1
+                rejected_by_type[kind] += 1
+        with self._metrics_lock:
+            self.event_sink_accepted_by_type.update(accepted_by_type)
+            self.event_sink_rejected_by_type.update(rejected_by_type)
+            self.event_sink_errors_by_type.update(errors_by_type)
 
     def _remember(self, events: list[dict[str, Any]]) -> None:
+        self.last_decoded_ns = max(
+            self.last_decoded_ns,
+            max(int(event.get("ts_ns") or 0) for event in events),
+        )
+        decoded_by_type = Counter(
+            str(event.get("type") or "unknown")[:96] for event in events
+        )
+        with self._metrics_lock:
+            self.decoded_by_type.update(decoded_by_type)
         with self._lock:
             for event in events:
                 kind = str(event.get("type") or "")
@@ -749,6 +997,7 @@ class LiveEventStream:
                 if kind in APPEARANCE_EVENT_TYPES:
                     entity_type = "player" if kind == "appear_player_list" else "monster"
                     opposite = "monster" if entity_type == "player" else "player"
+                    contains_boss = False
                     for unit in (event.get("data") or {}).get("units") or []:
                         uid = unit.get("uid")
                         if not isinstance(uid, (int, float)):
@@ -768,18 +1017,29 @@ class LiveEventStream:
                             and int(npc_index) in self._boss_indexes
                             else self._anchors
                         )
+                        if target is self._boss_anchors:
+                            contains_boss = True
                         key = (flow, entity_type, uid)
                         target.pop(key, None)
                         target[key] = anchor
                         if len(target) > self._max_entity_anchors:
                             target.pop(next(iter(target)))
+                    if contains_boss:
+                        event["data"] = {
+                            **(event.get("data") or {}),
+                            "_contains_boss": True,
+                        }
                     continue
                 if kind == "disappear_unit_list":
                     fields = (event.get("data") or {}).get("fields") or {}
+                    contains_boss = False
                     for uid in fields.get("entity_uids") or []:
                         if not isinstance(uid, (int, float)):
                             continue
                         uid = int(uid)
+                        contains_boss = contains_boss or (
+                            (flow, "monster", uid) in self._boss_anchors
+                        )
                         self._anchors.pop((flow, "player", uid), None)
                         self._anchors.pop((flow, "monster", uid), None)
                         self._boss_anchors.pop((flow, "player", uid), None)
@@ -789,6 +1049,11 @@ class LiveEventStream:
                         self._boss_anchors.pop((flow, "monster", uid), None)
                         self._map_events.pop((flow, "entity", uid), None)
                         self._map_events.pop((flow, "warp", uid), None)
+                    if contains_boss:
+                        event["data"] = {
+                            **(event.get("data") or {}),
+                            "_contains_boss": True,
+                        }
                     continue
                 if kind in MAP_EVENT_TYPES:
                     fields = (event.get("data") or {}).get("fields") or {}
@@ -814,6 +1079,7 @@ class LiveEventStream:
                         self._map_events.pop(next(iter(self._map_events)))
                     continue
                 if kind == "dying_unit":
+                    self._enrich_combat_context(event, flow)
                     uid = (event.get("data") or {}).get("uid")
                     if isinstance(uid, (int, float)):
                         uid = int(uid)
@@ -822,12 +1088,12 @@ class LiveEventStream:
                             monster_key in self._anchors
                             or monster_key in self._boss_anchors
                         ):
-                            event = {
-                                **event,
-                                "data": {
-                                    **(event.get("data") or {}),
-                                    "_known_entity_kind": "monster",
-                                },
+                            event["data"] = {
+                                **(event.get("data") or {}),
+                                "_known_entity_kind": "monster",
+                                "_combat_domain": (
+                                    "boss" if monster_key in self._boss_anchors else "pve"
+                                ),
                             }
                         self._anchors.pop(monster_key, None)
                         self._boss_anchors.pop(monster_key, None)
@@ -856,12 +1122,71 @@ class LiveEventStream:
                     ):
                         self._forget_boss_damage(flow, int(dead_uid))
                     continue
+                # A morte já foi enriquecida antes de remover a âncora do
+                # monstro. Reclassificá-la aqui perderia essa evidência e
+                # transformaria uma morte PvE em domínio desconhecido.
+                if kind in COMBAT_EVENT_TYPES and kind != "dying_unit":
+                    self._enrich_combat_context(event, flow)
                 if kind not in COMBAT_EVENT_TYPES:
                     self.ignored_events += 1
                     continue
                 if self._events.maxlen and len(self._events) == self._events.maxlen:
                     self.dropped_events += 1
                 self._events.append(event)
+
+    def _local_combat_uids(self, flow: str) -> set[int]:
+        identity = self._identities.get(flow)
+        identity_fields = ((identity or {}).get("data") or {}).get("fields") or {}
+        character_uid = identity_fields.get("character_uid")
+        if character_uid is None:
+            return set()
+        local_uids: set[int] = set()
+        for (anchor_flow, entity_kind, entity_uid), anchor in self._anchors.items():
+            if anchor_flow != flow or entity_kind != "player":
+                continue
+            units = (anchor.get("data") or {}).get("units") or []
+            if any(
+                unit.get("character_uid") is not None
+                and str(unit.get("character_uid")) == str(character_uid)
+                for unit in units
+                if isinstance(unit, dict)
+            ):
+                local_uids.add(int(entity_uid))
+        return local_uids
+
+    def _enrich_combat_context(self, event: dict[str, Any], flow: str) -> None:
+        data = event.get("data")
+        if not isinstance(data, dict):
+            data = {}
+            event["data"] = data
+        related = self._related_uids(event)
+        boss_uids = {
+            key[2] for key in self._boss_anchors
+            if key[0] == flow and key[1] == "monster"
+        }
+        monster_uids = {
+            key[2] for key in self._anchors
+            if key[0] == flow and key[1] == "monster"
+        }
+        player_uids = {
+            key[2] for key in self._anchors
+            if key[0] == flow and key[1] == "player"
+        }
+        if related.intersection(boss_uids) or event.get("opcode") in BOSS_EVENT_OPCODES:
+            domain = "boss"
+        elif related.intersection(monster_uids):
+            domain = "pve"
+        elif related.intersection(player_uids):
+            domain = "pvp"
+        else:
+            domain = "unknown"
+        data["_combat_domain"] = domain
+
+        killer_uid = data.get("killer_uid")
+        if isinstance(killer_uid, (int, float)):
+            local_uids = self._local_combat_uids(flow)
+            if local_uids:
+                data["_killer_is_client"] = int(killer_uid) in local_uids
 
     def _accumulate_boss_damage(self, event: dict[str, Any]) -> None:
         if event.get("type") not in {"use_skill_result", "use_normal_skill_result"}:
@@ -932,6 +1257,10 @@ class LiveEventStream:
         if event.get("opcode") in BOSS_EVENT_OPCODES or event.get("type") in {
             "FG2C_ans_boss_position_Message",
             "FG2C_notify_boss_result_Message",
+            "FG2C_notify_boss_status_list_Message",
+            "FG2C_worldboss_hp_sync_Message",
+            "FG2C_worldboss_personal_contribution_update_Message",
+            "FG2C_noti_worldboss_result_Message",
         }:
             return True
         data = event.get("data") or {}

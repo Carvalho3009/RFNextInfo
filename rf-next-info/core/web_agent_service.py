@@ -12,6 +12,7 @@ from core.web_agent_local_api import (
     AgentLocalMonitorApi,
     AgentMonitorFeed,
 )
+from core.web_agent_boss_api import AgentBossEncounterState
 from core.web_agent_runtime import WebAgentOfflineRuntime, WebAgentRuntime
 
 
@@ -22,11 +23,13 @@ class WindowsAgentLocalService:
         self,
         runtime: WebAgentOfflineRuntime | WebAgentRuntime,
         feed: AgentMonitorFeed,
+        boss_encounters: AgentBossEncounterState,
         api: AgentLocalMonitorApi,
         token: str,
     ) -> None:
         self.runtime = runtime
         self.feed = feed
+        self.boss_encounters = boss_encounters
         self.api = api
         self._token = token
         self._session_id: str | None = None
@@ -50,8 +53,10 @@ class WindowsAgentLocalService:
             max_events=max_monitor_events,
             max_bytes=max_monitor_bytes,
         )
+        boss_encounters = AgentBossEncounterState()
         def observe(event: dict) -> None:
-            feed.add(event)
+            if feed.add(event):
+                boss_encounters.observe(event)
             if event_observer is not None:
                 event_observer(event)
 
@@ -70,12 +75,13 @@ class WindowsAgentLocalService:
                 feed,
                 token,
                 health_provider=runtime.health,
+                boss_provider=boss_encounters.snapshot,
                 port=local_api_port,
             )
         except Exception:
             runtime.close()
             raise
-        return cls(runtime, feed, api, token)
+        return cls(runtime, feed, boss_encounters, api, token)
 
     @classmethod
     def create_online(
@@ -96,9 +102,11 @@ class WindowsAgentLocalService:
             max_events=max_monitor_events,
             max_bytes=max_monitor_bytes,
         )
+        boss_encounters = AgentBossEncounterState()
 
         def observe(event: dict) -> None:
-            feed.add(event)
+            if feed.add(event):
+                boss_encounters.observe(event)
             if event_observer is not None:
                 event_observer(event)
 
@@ -118,12 +126,13 @@ class WindowsAgentLocalService:
                 feed,
                 token,
                 health_provider=runtime.health,
+                boss_provider=boss_encounters.snapshot,
                 port=local_api_port,
             )
         except Exception:
             runtime.close()
             raise
-        return cls(runtime, feed, api, token)
+        return cls(runtime, feed, boss_encounters, api, token)
 
     def start_local_api(self) -> int:
         if self._closed:
@@ -134,6 +143,12 @@ class WindowsAgentLocalService:
         if self._closed:
             raise RuntimeError("Agent ja encerrado")
         self.runtime.start_delivery()
+
+    def refresh_authorization(self, *, force: bool = False) -> bool:
+        return self.runtime.refresh_authorization(force=force)
+
+    def require_capture_authorization(self) -> None:
+        self.runtime.require_capture_authorization()
 
     def pairing_credentials(self) -> dict[str, object]:
         """Credencial explícita para o usuário copiar ao programa autorizado."""
@@ -167,6 +182,21 @@ class WindowsAgentLocalService:
     def submit(self, event: dict) -> bool:
         return self.runtime.submit(event)
 
+    def submit_subsession(self, session_id: str, report: dict) -> bool:
+        return self.runtime.submit_subsession(session_id, report)
+
+    def sync_subsession_commands(
+        self, results: list[dict[str, object]],
+        progress: list[dict[str, object]] | None = None,
+    ) -> list[dict[str, object]]:
+        return self.runtime.sync_subsession_commands(results, progress)
+
+    def sync_character_profiles(self) -> int:
+        return self.runtime.sync_character_profiles()
+
+    def heartbeat(self, capture_state: str, client_count: int) -> bool:
+        return self.runtime.heartbeat(capture_state, client_count)
+
     def health(self) -> dict[str, object]:
         health = dict(self.runtime.health())
         health["local_api"] = {
@@ -178,6 +208,7 @@ class WindowsAgentLocalService:
             ),
             "domains": ["boss", "pvp"],
             "feed": self.feed.metrics(),
+            "boss_encounters": self.boss_encounters.snapshot()["encounter_count"],
         }
         return health
 

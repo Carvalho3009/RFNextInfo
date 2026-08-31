@@ -16,6 +16,10 @@ from core.web_agent_local_api import (
     AgentLocalMonitorApi,
     AgentMonitorFeed,
 )
+from core.web_agent_boss_api import (
+    LOCAL_BOSS_ENCOUNTERS_SCHEMA,
+    AgentBossEncounterState,
+)
 from core.web_agent_runtime import WebAgentOfflineRuntime
 from core.web_agent_service import WindowsAgentLocalService
 
@@ -145,7 +149,213 @@ class AgentMonitorFeedTest(unittest.TestCase):
         self.assertLess(elapsed, 0.5)
 
 
+class AgentBossEncounterStateTest(unittest.TestCase):
+    def test_snapshot_accumulates_damage_and_exposes_only_public_player_uid(self):
+        state = AgentBossEncounterState()
+        rows = [
+            _public_event("1", "character.observed", {
+                "character_uid": 100, "name": "Observador",
+            }),
+            _public_event("2", "world.players_appeared", {"entities": [
+                {
+                    "entity_ref": "player-a", "character_uid": 200,
+                    "name": "Alice", "guild_id": 10,
+                },
+                {
+                    "entity_ref": "player-b", "character_uid": 300,
+                    "name": "Bob", "guild_id": 20,
+                },
+            ]}),
+            _public_event("3", "world.guilds_observed", {"guilds": [
+                {"guild_id": 10, "guild_name": "Blood"},
+                {"guild_id": 20, "guild_name": "Nova"},
+            ]}),
+            _public_event("4", "world.monsters_appeared", {"entities": [{
+                "entity_ref": "boss-a", "npc_index": 845,
+                "current_hp": 1000, "max_hp": 1000,
+            }]}),
+            _public_event("5", "combat.skill_resolved", {
+                "result": 0, "caster_ref": "player-a", "combat_domain": "boss",
+                "effects": [{
+                    "entity_ref": "boss-a", "hp_damage": 300, "final_hp": 700,
+                }],
+            }),
+            _public_event("6", "combat.normal_attack_resolved", {
+                "result": 0, "caster_ref": "player-a", "combat_domain": "boss",
+                "effects": [{
+                    "entity_ref": "boss-a", "hp_damage": 100, "final_hp": 600,
+                }],
+            }),
+            _public_event("7", "combat.skill_resolved", {
+                "result": 0, "caster_ref": "player-b", "combat_domain": "boss",
+                "effects": [{
+                    "entity_ref": "boss-a", "hp_damage": 200, "final_hp": 400,
+                }],
+            }),
+        ]
+        for row in rows:
+            state.observe(row)
+
+        payload = state.snapshot()
+        encounter = payload["encounters"][0]
+
+        self.assertEqual(payload["schema"], LOCAL_BOSS_ENCOUNTERS_SCHEMA)
+        self.assertEqual(encounter["boss"]["name"], "Guardião Tyrant Origin")
+        self.assertEqual(encounter["boss"]["current_hp"], 400)
+        self.assertEqual(encounter["boss"]["hp_percent"], 40.0)
+        self.assertEqual(encounter["damage_total"], 600)
+        self.assertEqual(
+            [(row["name"], row["uid"], row["guild_id"], row["guild_name"],
+              row["guild"], row["damage"])
+             for row in encounter["players"]],
+            [
+                ("Alice", 200, 10, "Blood", "Blood", 400),
+                ("Bob", 300, 20, "Nova", "Nova", 200),
+            ],
+        )
+        self.assertNotIn("session_ref", json.dumps(payload))
+        self.assertNotIn("player-a", json.dumps(encounter["players"]))
+
+    def test_encounters_are_isolated_per_client_and_removed_explicitly(self):
+        state = AgentBossEncounterState()
+        for client, boss_ref in (("client-a", "boss-a"), ("client-b", "boss-b")):
+            row = _public_event(client, "boss.position_observed", {
+                "boss_ref": boss_ref, "npc_index": 845,
+            })
+            row["client_ref"] = client
+            state.observe(row)
+        self.assertEqual(state.snapshot()["encounter_count"], 2)
+
+        removed = _public_event("gone", "world.entities_disappeared", {
+            "entity_refs": ["boss-a"],
+        })
+        removed["client_ref"] = "client-a"
+        state.observe(removed)
+
+        snapshot = state.snapshot()
+        self.assertEqual(snapshot["encounter_count"], 1)
+        self.assertEqual(snapshot["encounters"][0]["client_ref"], "client-b")
+
+    def test_player_guild_association_is_isolated_per_client(self):
+        state = AgentBossEncounterState()
+        for client, guild_id, guild_name in (
+            ("client-a", 10, "Blood"),
+            ("client-b", 20, "Nova"),
+        ):
+            for event_type, payload in (
+                ("world.players_appeared", {"entities": [{
+                    "entity_ref": "same-player-ref",
+                    "character_uid": 100 + guild_id,
+                    "name": f"Player {client}",
+                    "guild_id": guild_id,
+                }]}),
+                ("world.guilds_observed", {"guilds": [{
+                    "guild_id": guild_id,
+                    "guild_name": guild_name,
+                }]}),
+                ("boss.position_observed", {
+                    "boss_ref": "same-boss-ref", "npc_index": 845,
+                }),
+                ("combat.skill_resolved", {
+                    "result": 0,
+                    "caster_ref": "same-player-ref",
+                    "combat_domain": "boss",
+                    "effects": [{
+                        "entity_ref": "same-boss-ref",
+                        "hp_damage": guild_id,
+                    }],
+                }),
+            ):
+                event = _public_event(client, event_type, payload)
+                event["client_ref"] = client
+                state.observe(event)
+
+        encounters = {
+            row["client_ref"]: row for row in state.snapshot()["encounters"]
+        }
+        self.assertEqual(
+            encounters["client-a"]["players"][0]["guild_name"], "Blood"
+        )
+        self.assertEqual(
+            encounters["client-b"]["players"][0]["guild_name"], "Nova"
+        )
+        self.assertEqual(
+            encounters["client-a"]["players"][0]["guild_id"], 10
+        )
+        self.assertEqual(
+            encounters["client-b"]["players"][0]["guild_id"], 20
+        )
+
+
 class AgentLocalMonitorApiTest(unittest.TestCase):
+    def test_health_exposes_sanitized_decoder_types_and_projection(self):
+        api = AgentLocalMonitorApi(
+            AgentMonitorFeed(),
+            "h" * 43,
+            health_provider=lambda: {
+                "state": "capturing",
+                "projection": {
+                    "accepted": 12,
+                    "errors": 1,
+                    "errors_by_type": {"market": 1},
+                    "last_errors_by_type": {
+                        "market": "WebEventContractError: snapshot inválido",
+                    },
+                },
+                "decoder": {
+                    "decoded_events": 20,
+                    "last_decoded_ns": 1_787_719_000_000_000_000,
+                    "stalled_tcp_flows": 1,
+                    "tcp_gap_recoveries": 2,
+                    "decoded_by_type": {
+                        "FL2C_respond_purchase_list_on_exchange_Message": 3,
+                    },
+                    "event_sink_accepted_by_type": {
+                        "FL2C_respond_purchase_list_on_exchange_Message": 3,
+                    },
+                },
+                "server": {
+                    "mode": "online",
+                    "state": "online",
+                    "delivery": {
+                        "state": "idle",
+                        "worker_alive": True,
+                        "registration_state": "active",
+                        "last_attempt_at": "2026-08-26T04:40:00Z",
+                        "last_ack_at": "2026-08-26T04:40:01Z",
+                        "sent_batches": 12,
+                        "sent_events": 345,
+                        "retry_seconds": 1.0,
+                    },
+                },
+            },
+            port=0,
+        )
+
+        health = api._health()
+
+        self.assertEqual(health["capture_bridge"]["accepted"], 12)
+        self.assertEqual(health["capture_bridge"]["errors_by_type"], {"market": 1})
+        self.assertIn(
+            "snapshot inválido",
+            health["capture_bridge"]["last_errors_by_type"]["market"],
+        )
+        self.assertEqual(
+            health["decoder"]["decoded_by_type"]
+            ["FL2C_respond_purchase_list_on_exchange_Message"],
+            3,
+        )
+        self.assertEqual(health["decoder"]["tcp_gap_recoveries"], 2)
+        self.assertEqual(health["decoder"]["stalled_tcp_flows"], 1)
+        self.assertEqual(health["server"], {
+            "mode": "online", "state": "online",
+        })
+        self.assertEqual(health["delivery"]["state"], "idle")
+        self.assertTrue(health["delivery"]["worker_alive"])
+        self.assertEqual(health["delivery"]["sent_events"], 345)
+        self.assertEqual(
+            health["delivery"]["last_ack_at"], "2026-08-26T04:40:01Z"
+        )
     def test_agent_service_composes_runtime_api_and_explicit_pairing(self):
         with tempfile.TemporaryDirectory() as folder:
             service = WindowsAgentLocalService.create_offline(
@@ -177,6 +387,14 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
                     "boss.position_observed",
                     {event["type"] for event in events["events"]},
                 )
+                bosses, _headers = _request(
+                    port,
+                    str(pairing["token"]),
+                    "/api/agent/v1/boss/encounters",
+                )
+                self.assertEqual(bosses["schema"], LOCAL_BOSS_ENCOUNTERS_SCHEMA)
+                self.assertEqual(bosses["encounter_count"], 1)
+                self.assertEqual(bosses["encounters"][0]["boss"]["npc_index"], 845)
             finally:
                 service.close()
 
@@ -218,18 +436,34 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
                     opcode=0x0305,
                 )))
                 self.assertTrue(runtime.submit(_decoded(
-                    "FG2C_ans_boss_position_Message", 3,
+                    "enemy_guild_list", 3,
+                    {"guilds": [{
+                        "guild_id": 77,
+                        "guild_name": "Blood",
+                    }]},
+                    opcode=0x0D3F,
+                )))
+                self.assertTrue(runtime.submit(_decoded(
+                    "FG2C_ans_boss_position_Message", 4,
                     {"uid": 777, "npc_index": 845, "fields": {
                         "position_x": 1, "position_y": 2, "position_z": 3,
                     }},
                     opcode=0x031C,
                 )))
                 self.assertTrue(runtime.submit(_decoded(
-                    "update_exp", 4,
+                    "update_exp", 5,
                     {"level": 66, "exp": 1000, "gain_exp": 100},
                     opcode=0x0307,
                 )))
                 runtime.bridge.wait_until_idle()
+
+                remote_batch = runtime.bridge.outbox.next_batch()
+                remote_types = {
+                    event["type"] for event in remote_batch["events"]
+                }
+                self.assertNotIn("boss.position_observed", remote_types)
+                self.assertNotIn("combat.skill_resolved", remote_types)
+                self.assertNotIn("world.guilds_observed", remote_types)
 
                 with self.assertRaises(urllib.error.HTTPError) as denied:
                     urllib.request.urlopen(
@@ -256,11 +490,20 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
                 pvp_types = {event["type"] for event in pvp["events"]}
                 boss_types = {event["type"] for event in boss["events"]}
                 self.assertIn("world.players_appeared", pvp_types)
+                self.assertIn("world.guilds_observed", pvp_types)
                 self.assertNotIn("boss.position_observed", pvp_types)
                 self.assertIn("boss.position_observed", boss_types)
-                self.assertNotIn("world.players_appeared", boss_types)
+                self.assertIn("world.guilds_observed", boss_types)
+                self.assertIn("world.players_appeared", boss_types)
                 self.assertNotIn("character.exp_changed", pvp_types | boss_types)
                 self.assertEqual(capabilities["domains"], ["boss", "pvp"])
+                self.assertEqual(
+                    capabilities["snapshots"]["boss_encounters"],
+                    {
+                        "path": "/api/agent/v1/boss/encounters",
+                        "schema": LOCAL_BOSS_ENCOUNTERS_SCHEMA,
+                    },
+                )
                 self.assertIn(
                     "world.players_appeared",
                     capabilities["event_types"]["pvp"],
@@ -269,14 +512,29 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
                     "boss.position_observed",
                     capabilities["event_types"]["boss"],
                 )
+                self.assertIn(
+                    "world.players_appeared",
+                    capabilities["event_types"]["boss"],
+                )
                 self.assertTrue(capabilities["read_only"])
-                self.assertEqual(health["feed"]["events"], 4)
+                self.assertEqual(health["feed"]["events"], 5)
+                self.assertIn("delivery", health)
+                self.assertEqual(health["delivery"]["state"], "unavailable")
+                self.assertEqual(
+                    health["throughput"],
+                    {
+                        "enqueued_events_last_minute": 4,
+                        "sent_events_last_minute": 0,
+                        "outbox_growth_events_last_minute": 4,
+                    },
+                )
                 serialized = json.dumps(
                     {"pvp": pvp, "boss": boss, "health": health},
                     ensure_ascii=False,
                 )
                 self.assertIn('"character_uid": 123456', serialized)
                 self.assertIn('"character_uid": 999', serialized)
+                self.assertIn('"guild_name": "Blood"', serialized)
                 for forbidden in (
                     "sessao-local", "installation_id", "key_id",
                     "memory://", "10.0.0.1", '"opcode"',
@@ -361,7 +619,7 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
                     row for row in payload["events"]
                     if row["type"] == "combat.normal_attack_resolved"
                 ]
-                self.assertEqual(len({row["session_ref"] for row in observed}), 2)
+                self.assertEqual(len({row["session_ref"] for row in observed}), 4)
                 self.assertEqual(len({row["client_ref"] for row in observed}), 2)
                 self.assertEqual(len(combat), 4)
                 for row in combat:

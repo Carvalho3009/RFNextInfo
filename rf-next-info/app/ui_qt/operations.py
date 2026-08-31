@@ -47,6 +47,9 @@ class WebAgentSink(Protocol):
     def pause_session(self, session_id: str, *, reason: str = "paused") -> None: ...
     def finish_session(self, session_id: str, *, reason: str = "finished") -> None: ...
     def submit(self, event: dict[str, object]) -> bool: ...
+    def submit_subsession(
+        self, session_id: str, report: dict[str, object]
+    ) -> bool: ...
 
 
 DEFAULT_GLOBAL_SHORTCUTS = {
@@ -153,10 +156,14 @@ def _site_loot_rows(raw: object) -> list[dict[str, object]]:
 
 
 class SiteUploadEngine:
-    def __init__(self, database_path: Path, site_profile, license_client) -> None:
+    def __init__(
+        self, database_path: Path, site_profile, license_client,
+        companion_sink: WebAgentSink | None = None,
+    ) -> None:
         self.database_path = Path(database_path)
         self.site_profile = site_profile
         self.license = license_client
+        self.companion_sink = companion_sink
 
     def _metadata(self, mode: str, character: str = "") -> dict[str, object]:
         return {
@@ -347,7 +354,7 @@ class SiteUploadEngine:
         if not session_id or not identifiers:
             raise ValueError("Selecione ao menos uma subsessão encerrada")
         store = CaptureStore(self.database_path)
-        sent, failures = 0, []
+        sent, companion_queued, failures = 0, 0, []
         try:
             selected = {
                 item["id"]: item
@@ -451,6 +458,9 @@ class SiteUploadEngine:
                 ).hexdigest()
                 try:
                     self.site_profile.upload_live("subsession", payload, key)
+                    if self.companion_sink is not None:
+                        if self.companion_sink.submit_subsession(session_id, report):
+                            companion_queued += 1
                     store.set_subsession_upload_state(item["id"], "sent")
                     sent += 1
                 except Exception as error:
@@ -462,7 +472,11 @@ class SiteUploadEngine:
                     failures.append(f"{item['name']}: {error}")
         finally:
             store.close()
-        return {"sent": sent, "failures": failures}
+        return {
+            "sent": sent,
+            "companion_queued": companion_queued,
+            "failures": failures,
+        }
 
     def send_observations(
         self, session_id: str, knowledge_path: Path

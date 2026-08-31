@@ -8,11 +8,13 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+import core.rfnext_frame_decode as rfnext_decoder
 from core.capture import PktmonCapture, _pktmon_running, _pktmon_state
 from core.pktmon_realtime import (
     RealtimeCapture,
+    _normalized_timestamp_ns,
     _DataSourceList,
     _data_source_pointers,
     _matches_tcp_port,
@@ -56,6 +58,7 @@ from core.rfnext_frame_decode import (
     parse_inventory_payload,
     parse_marked_gameplay_payload,
     parse_observation_payload,
+    parse_player_stat_payload,
     pcap_tcp_streams,
 )
 from core.store import CaptureStore, exp_rank_level_progress
@@ -69,6 +72,80 @@ class CoreTest(unittest.TestCase):
         frame[6:] = payload
         return bytes(frame)
 
+    def test_latest_decoder_extracts_combat_power_from_player_and_lobby_stats(self):
+        player_payload = bytearray(786)
+        struct.pack_into("<Q", player_payload, 772, 987_654)
+        player = parse_player_stat_payload(
+            self._decoder_frame(0x0401, bytes(player_payload)), 12010
+        )
+        self.assertEqual(player["type"], "player_stat")
+        self.assertEqual(player["fields"]["combat_power"], 987_654)
+
+        lobby_payload = bytearray(762)
+        struct.pack_into("<Q", lobby_payload, 752, 123_456)
+        lobby = parse_player_stat_payload(
+            self._decoder_frame(0x0423, bytes(lobby_payload)), 12010
+        )
+        self.assertEqual(lobby["type"], "lobby_stat")
+        self.assertEqual(lobby["fields"]["combat_power"], 123_456)
+        self.assertIsNone(parse_player_stat_payload(
+            self._decoder_frame(0x0401, bytes(player_payload)), 12020
+        ))
+
+    def test_ingest_keeps_27_stackable_snapshot_distinct_from_player_stat(self):
+        items = [
+            struct.pack(
+                "<H6sIQBQ",
+                slot,
+                (slot + 1).to_bytes(6, "little"),
+                158_003 + slot,
+                slot + 1,
+                0,
+                0,
+            )
+            for slot in range(27)
+        ]
+        inventory = self._decoder_frame(
+            0x0401, struct.pack("<BH", 1, len(items)) + b"".join(items)
+        )
+        player_stat = self._decoder_frame(0x0401, bytes(786))
+        ambiguous_stat = bytearray(786)
+        ambiguous_stat[1:3] = (27).to_bytes(2, "little")
+        for slot in range(27):
+            record_offset = 3 + slot * 29
+            struct.pack_into("<I", ambiguous_stat, record_offset + 8, 1)
+            struct.pack_into("<Q", ambiguous_stat, record_offset + 12, 2**40)
+
+        parsed_inventory = _safe_parse(
+            rfnext_decoder, inventory, 12010,
+        )
+        parsed_player = _safe_parse(
+            rfnext_decoder, player_stat, 12010,
+        )
+        parsed_ambiguous_stat = _safe_parse(
+            rfnext_decoder,
+            self._decoder_frame(0x0401, bytes(ambiguous_stat)),
+            12010,
+        )
+
+        self.assertEqual(len(inventory) - HEADER_SIZE, 786)
+        self.assertEqual(parsed_inventory["type"], "inventory_snapshot")
+        self.assertEqual(parsed_inventory["item_kind"], "stackable")
+        self.assertEqual(parsed_inventory["item_count"], 27)
+        self.assertEqual(parsed_player["type"], "player_stat")
+        self.assertEqual(parsed_ambiguous_stat["type"], "player_stat")
+
+    def test_pktmon_timestamp_normalizer_rejects_invalid_filetime_values(self):
+        now_ns = 1_800_000_000_000_000_000
+
+        self.assertEqual(
+            _normalized_timestamp_ns(1_700_000_000_000_000_000, now_ns),
+            1_700_000_000_000_000_000,
+        )
+        self.assertEqual(_normalized_timestamp_ns(-(2**80), now_ns), now_ns)
+        self.assertEqual(_normalized_timestamp_ns(2**80, now_ns), now_ns)
+        self.assertEqual(_normalized_timestamp_ns("invalido", now_ns), now_ns)
+
     def test_server_chat_loot_announcements_decode_single_and_list(self):
         def record(
             uid: int, name: str, item_index: int, count: int, kind: int = 2
@@ -76,6 +153,7 @@ class CoreTest(unittest.TestCase):
             encoded_name = name.encode("utf-16le")
             tail = bytearray(65)
             tail[21] = kind
+            tail[27] = 1
             struct.pack_into("<I", tail, 37, item_index)
             struct.pack_into("<I", tail, 41, count)
             return (
@@ -90,7 +168,9 @@ class CoreTest(unittest.TestCase):
         listed = parse_observation_payload(
             self._decoder_frame(
                 0x0E0A,
-                struct.pack("<H", 1) + record(12, "Bob", 1000323, 2),
+                struct.pack("<H", 2)
+                + record(13, "Carol", 1000156, 1, kind=3)
+                + record(12, "Bob", 1000323, 2),
             )
         )
 
@@ -1326,6 +1406,106 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(events[0]["type"], "restore_hp_fp")
         self.assertEqual(events[0]["data"]["current_hp"], 800)
         self.assertEqual(events[0]["data"]["max_hp"], 1000)
+
+    def test_live_decoder_applies_collection_catalog(self):
+        payload = (
+            struct.pack("<BBH", 1, 1, 1)
+            + struct.pack("<IB10Q", 1015, 1, 1, 1, *([0] * 8))
+        )
+        frame = bytearray(6 + len(payload))
+        frame[1:3] = len(frame).to_bytes(2, "little")
+        frame[4:6] = (0x0419).to_bytes(2, "little")
+        frame[6:] = payload
+        tcp = (
+            struct.pack("!HHIIH", 12020, 50000, 100, 0, 0x5018)
+            + b"\0" * 6 + frame
+        )
+        ip = bytearray(20)
+        ip[0] = 0x45
+        ip[2:4] = (20 + len(tcp)).to_bytes(2, "big")
+        ip[8] = 64
+        ip[9] = 6
+        ip[12:16] = bytes((10, 0, 0, 1))
+        ip[16:20] = bytes((10, 0, 0, 2))
+        packet = b"\0" * 12 + b"\x08\x00" + bytes(ip) + tcp
+
+        events = LiveEventDecoder().feed(123_000_000_000, packet)
+
+        self.assertEqual(len(events), 1)
+        record = events[0]["data"]["records"][0]
+        self.assertEqual(record["completed_slots"], [0])
+        self.assertEqual(record["incomplete_slots"], [1])
+        self.assertIs(record["collection_complete"], False)
+
+    def test_live_decoder_correlates_equipment_only_within_same_connection(self):
+        equipped_uid = bytes.fromhex("a0250838d001")
+        player_name = "Carvalho"
+        player_prefix = (
+            struct.pack("<QH", 7, len(player_name))
+            + player_name.encode("utf-16le")
+            + struct.pack("<H", 66)
+            + bytes(36)
+            + struct.pack("<Q", 3753)
+        )
+        appearance_payload = bytearray(player_prefix[:26] + bytes(1042))
+        struct.pack_into("<Q", appearance_payload, 26 + 38, 3753)
+        refs_offset = len(appearance_payload) - 203
+        struct.pack_into("<I", appearance_payload, refs_offset - 10, 2_075_041)
+        struct.pack_into("<I", appearance_payload, refs_offset - 5, 4_400_008)
+        struct.pack_into("<H", appearance_payload, refs_offset, 15)
+        appearance_payload[refs_offset + 2:refs_offset + 8] = equipped_uid
+        profile_item = (
+            struct.pack("<H", 15)
+            + equipped_uid
+            + struct.pack("<IQBH", 1_002_279, 1, 1, 8)
+            + struct.pack("<HIIH", 2, 161_049, 160_948, 0)
+            + struct.pack("<BQ", 0, 0)
+        )
+        profile_payload = struct.pack("<BH", 1, 1) + profile_item
+
+        def wire_frame(opcode: int, payload: bytes) -> bytes:
+            value = bytearray(HEADER_SIZE + len(payload))
+            value[1:3] = len(value).to_bytes(2, "little")
+            value[4:6] = opcode.to_bytes(2, "little")
+            value[6:] = payload
+            return bytes(value)
+
+        def packet(frame: bytes, sequence: int, client_port: int) -> bytes:
+            tcp = (
+                struct.pack(
+                    "!HHIIH", 12020, client_port, sequence, 0, 0x5018
+                )
+                + b"\0" * 6
+                + frame
+            )
+            ip = bytearray(20)
+            ip[0] = 0x45
+            ip[2:4] = (20 + len(tcp)).to_bytes(2, "big")
+            ip[8] = 64
+            ip[9] = 6
+            ip[12:16] = bytes((10, 0, 0, 1))
+            ip[16:20] = bytes((10, 0, 0, 2))
+            return b"\0" * 12 + b"\x08\x00" + bytes(ip) + tcp
+
+        appearance = wire_frame(0x0305, bytes(appearance_payload))
+        profile = wire_frame(0x0403, profile_payload)
+        live = LiveEventDecoder()
+        appeared = live.feed(1, packet(appearance, 100, 50000))
+        unrelated = live.feed(2, packet(profile, 100, 50001))
+        correlated = live.feed(
+            3, packet(profile, 100 + len(appearance), 50000)
+        )
+
+        self.assertEqual(appeared[0]["type"], "appear_player_prefix")
+        self.assertNotIn(
+            "active_equipment", unrelated[0]["data"]["fields"]
+        )
+        active = correlated[0]["data"]["fields"]["active_equipment"]
+        self.assertEqual(active["character_uid"], 7)
+        self.assertTrue(active["complete"])
+        self.assertEqual(
+            active["slots"][0]["item"]["item_index"], 1_002_279
+        )
 
     def test_live_decoder_reads_exitlag_loopback_transport(self):
         payload = struct.pack("<IQQQIIIB", 77, 800, 1000, 0, 10, 20, 0, 0)
@@ -2687,6 +2867,87 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(decoder.flow_count, 2)
         self.assertNotIn("flow-1", decoder._flows)
 
+    def test_live_decoder_groups_events_by_process_without_merging_tcp_sequences(self):
+        decoder = LiveEventDecoder(max_flows=4)
+        decoder.set_connection_aliases({50001: "process:77", 50002: "process:77"})
+        packets = [
+            ("10.0.0.1:50001 -> 10.0.0.2:12020", 12020, 100, b"a"),
+            ("10.0.0.1:50002 -> 10.0.0.2:12010", 12010, 900, b"b"),
+        ]
+        with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
+            decoder, "_decode_available", return_value=[]
+        ) as decode:
+            decoder.feed(1, b"packet")
+            decoder.feed(2, b"packet")
+
+        self.assertEqual(decoder.flow_count, 2)
+        self.assertEqual(
+            [call.args[1] for call in decode.call_args_list],
+            ["client-route:process:77", "client-route:process:77"],
+        )
+        self.assertEqual(
+            {state.next_sequence for state in decoder._flows.values()},
+            {101, 901},
+        )
+
+    def test_live_decoder_keeps_flow_identity_when_route_alias_arrives_late(self):
+        decoder = LiveEventDecoder(max_flows=2)
+        flow = "10.0.0.1:50001 -> 10.0.0.2:12020"
+        packets = [
+            (flow, 12020, 100, b"a"),
+            (flow, 12020, 101, b"b"),
+        ]
+        with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
+            decoder, "_decode_available", return_value=[]
+        ) as decode:
+            decoder.feed(1, b"packet")
+            decoder.set_connection_aliases({50001: "process:77"})
+            decoder.feed(2, b"packet")
+
+        self.assertEqual(
+            [call.args[1] for call in decode.call_args_list],
+            [flow, flow],
+        )
+
+    def test_live_decoder_resolves_new_route_before_fixing_flow_identity(self):
+        decoder = LiveEventDecoder(max_flows=2)
+        resolver = Mock(return_value={50001: "process:77"})
+        decoder.set_connection_alias_resolver(resolver)
+        flow = "10.0.0.1:50001 -> 10.0.0.2:12020"
+        packets = [
+            (flow, 12020, 100, b"a"),
+            (flow, 12020, 101, b"b"),
+        ]
+        with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
+            decoder, "_decode_available", return_value=[]
+        ) as decode:
+            decoder.feed(1, b"packet")
+            decoder.feed(2, b"packet")
+
+        resolver.assert_called_once_with()
+        self.assertEqual(
+            [call.args[1] for call in decode.call_args_list],
+            ["client-route:process:77", "client-route:process:77"],
+        )
+        self.assertEqual(decoder.alias_resolution_attempts, 1)
+        self.assertEqual(decoder.alias_resolution_hits, 1)
+        self.assertEqual(decoder.alias_resolution_errors, 0)
+
+    def test_live_decoder_alias_resolver_failure_keeps_capture_running(self):
+        decoder = LiveEventDecoder(max_flows=2)
+        decoder.set_connection_alias_resolver(
+            Mock(side_effect=OSError("rota indisponivel"))
+        )
+        flow = "10.0.0.1:50001 -> 10.0.0.2:12020"
+        with patch(
+            "core.live_stream._tcp_payload",
+            return_value=(flow, 12020, 100, b"a"),
+        ), patch.object(decoder, "_decode_available", return_value=[]) as decode:
+            decoder.feed(1, b"packet")
+
+        self.assertEqual(decode.call_args.args[1], flow)
+        self.assertEqual(decoder.alias_resolution_errors, 1)
+
     def test_live_decoder_bounds_out_of_order_tcp_segments_and_bytes(self):
         decoder = LiveEventDecoder(
             max_pending_segments=3,
@@ -2704,6 +2965,54 @@ class CoreTest(unittest.TestCase):
 
         self.assertLessEqual(decoder.pending_segment_count, 3)
         self.assertLessEqual(decoder.pending_bytes, 12)
+
+    def test_live_decoder_recovers_only_stalled_tcp_flow_after_gap_timeout(self):
+        decoder = LiveEventDecoder(gap_recovery_seconds=5)
+        packets = [
+            ("flow-a", 12020, 100, b"head"),
+            ("flow-b", 12020, 500, b"safe"),
+            ("flow-a", 12020, 108, b"next"),
+            ("flow-a", 12020, 112, b"tail"),
+        ]
+        timestamps = (1, 2, 1_000_000_000, 6_100_000_000)
+
+        with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
+            decoder, "_decode_available", return_value=[]
+        ):
+            for timestamp in timestamps:
+                decoder.feed(timestamp, b"packet")
+
+        stalled = decoder._flows["flow-a"]
+        untouched = decoder._flows["flow-b"]
+        self.assertEqual(decoder.gap_recoveries, 1)
+        self.assertEqual(decoder.recovered_gap_bytes, 4)
+        self.assertEqual(decoder.discarded_partial_bytes, 4)
+        self.assertEqual(decoder.last_gap_recovery_ns, 6_100_000_000)
+        self.assertEqual(stalled.next_sequence, 116)
+        self.assertEqual(bytes(stalled.buffer), b"nexttail")
+        self.assertFalse(stalled.pending)
+        self.assertEqual(bytes(untouched.buffer), b"safe")
+
+    def test_live_decoder_accepts_late_missing_segment_without_recovery(self):
+        decoder = LiveEventDecoder(gap_recovery_seconds=5)
+        packets = [
+            ("flow", 12020, 100, b"head"),
+            ("flow", 12020, 108, b"tail"),
+            ("flow", 12020, 104, b"miss"),
+        ]
+
+        with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
+            decoder, "_decode_available", return_value=[]
+        ):
+            decoder.feed(1, b"packet")
+            decoder.feed(1_000_000_000, b"packet")
+            decoder.feed(7_000_000_000, b"packet")
+
+        state = decoder._flows["flow"]
+        self.assertEqual(decoder.gap_recoveries, 0)
+        self.assertEqual(state.next_sequence, 112)
+        self.assertEqual(bytes(state.buffer), b"headmisstail")
+        self.assertFalse(state.pending)
 
     def test_knowledge_store_pages_and_filters_large_pvp_bank(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -1171,7 +1171,8 @@ class CaptureStore:
 
     def latest_session(self) -> str | None:
         row = self.conn.execute(
-            "SELECT session_id FROM captures ORDER BY imported_at DESC LIMIT 1"
+            """SELECT session_id FROM captures
+               ORDER BY imported_at DESC, rowid DESC LIMIT 1"""
         ).fetchone()
         return row[0] if row else None
 

@@ -25,7 +25,7 @@ try {
     & $Python -m PyInstaller --clean --noconfirm '.\packaging\RFQOLAgent.spec'
     if ($LASTEXITCODE) { throw 'Falha ao gerar o executável separado do Agent.' }
 
-    $Executable = Join-Path $Project 'dist\RF QOL Agent\RF QOL Agent.exe'
+    $Executable = Join-Path $Project 'dist\RF Next Companion\RF Next Companion.exe'
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
         throw 'O executável do Agent não foi encontrado após o build.'
     }

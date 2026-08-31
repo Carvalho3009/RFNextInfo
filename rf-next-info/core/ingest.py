@@ -14,7 +14,7 @@ from typing import Any, Iterator
 
 SENSITIVE_OPCODE = 0x0101
 DEFAULT_PORTS = (12000, 12010, 12020, 12040)
-INGESTION_VERSION = 3
+INGESTION_VERSION = 4
 
 
 def _decoder_file(path: Path | None = None) -> Path:
@@ -150,6 +150,21 @@ def _safe_parse(
     collection_slots: dict | None = None,
 ) -> dict[str, Any] | None:
     try:
+        inventory_candidate = getattr(
+            decoder, "parse_inventory_payload", lambda _value: None
+        )(decoded)
+        stackable_inventory = (
+            inventory_candidate
+            if inventory_candidate
+            and inventory_candidate.get("container") == "inventory"
+            and inventory_candidate.get("item_kind") == "stackable"
+            and all(
+                1 <= int(item.get("item_index") or 0) <= 2**31 - 1
+                and 0 <= int(item.get("count") or 0) <= 2**31 - 1
+                for item in inventory_candidate.get("items") or []
+            )
+            else None
+        )
         parsed = (
             decoder.parse_exchange_payload(decoded)
             or decoder.parse_collection_payload(decoded)
@@ -161,11 +176,18 @@ def _safe_parse(
                 "parse_exp_rank_payload",
                 lambda _value, _port: None,
             )(decoded, port)
+            # 0x0401 tambem carrega o snapshot de stackables. Com exatamente
+            # 27 itens ele tem os mesmos 786 bytes do player_stat; o layout
+            # exato do inventario precisa vencer essa colisao de tamanho.
+            or stackable_inventory
+            or getattr(
+                decoder,
+                "parse_player_stat_payload",
+                lambda _value, _port: None,
+            )(decoded, port)
             or decoder.parse_observation_payload(decoded)
             or decoder.parse_marked_gameplay_payload(decoded, port)
-            or getattr(decoder, "parse_inventory_payload", lambda _value: None)(
-                decoded
-            )
+            or inventory_candidate
             or decoder.parse_job1_payload(decoded)
         )
         if parsed is None and port == 12000:

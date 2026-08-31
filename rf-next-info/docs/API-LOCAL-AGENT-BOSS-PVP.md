@@ -36,6 +36,41 @@ compatibilidade futura.
 Informa estado sanitizado da captura, sessão, feed local e outbox. O token e os
 identificadores da instalação nunca fazem parte da resposta.
 
+## Encontros consolidados para o Monitor de Boss e Discord
+
+### `GET /api/agent/v1/boss/encounters`
+
+Retorna o estado atual dos encontros que o Agent já confirmou. Esta é a rota
+preferencial para o Monitor de Boss e seu painel de Discord: não exige que o
+consumidor reconstrua o combate a partir do ring buffer e não pisca quando não
+há um novo pacote entre duas consultas.
+
+Cada encontro contém:
+
+- `boss`: nome, índice, level, HP atual, HP máximo e percentual;
+- `players`: nome, UID permanente do personagem, `guild_id`, `guild_name` e
+  dano total acumulado naquele Boss; o campo legado `guild` continua como alias
+  de `guild_name` para consumidores anteriores;
+- `damage_total`, `started_at` e `updated_at`;
+- `client_ref` e `encounter_ref` opacos para separar clientes e encontros.
+
+O dano é acumulado por encontro, não calculado apenas sobre os últimos
+segundos. Eventos repetidos com o mesmo `event_id` são ignorados antes da soma.
+O estado de um Boss é removido somente por desaparecimento, morte, resultado
+confirmado ou encerramento da sessão correspondente; ausência momentânea de
+novos eventos não apaga o painel.
+
+Exemplo:
+
+```http
+GET /api/agent/v1/boss/encounters
+Authorization: Bearer <token>
+```
+
+O contrato atual é `rf-qol.local-boss-encounters/v1` e aparece em
+`capabilities.snapshots.boss_encounters`. Agentes anteriores continuam
+compatíveis pelo feed genérico descrito abaixo.
+
 ## Leitura dos eventos
 
 ### `GET /api/agent/v1/monitor/events`
@@ -69,8 +104,17 @@ transforma automaticamente um jogador próximo em inimigo e não classifica dano
 ambíguo como PvP. O consumidor deve correlacionar aparições, referências e
 relações confirmadas antes de exibir uma classificação.
 
+O domínio `boss` também inclui `world.players_appeared` e
+`world.guilds_observed`. Assim, consumidores do feed genérico conseguem
+relacionar cada `character_uid` ao `guild_id` e ao respectivo `guild_name`, sem
+misturar personagens de clientes ou sessões diferentes.
+
 ## Limites operacionais
 
+- Boss possui prioridade máxima no processamento interno do Agent. A regra
+  abrange eventos explícitos, combate classificado como Boss e aparição ou
+  desaparecimento necessário para manter HP e DPS consistentes;
+- essa prioridade é exclusivamente local e não envia eventos de Boss ao site;
 - ring buffer padrão: até 10.000 eventos e 16 MiB, valendo o primeiro limite;
 - resposta: até 256 KiB;
 - concorrência: até 4 requisições;

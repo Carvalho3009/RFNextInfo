@@ -56,8 +56,10 @@ obrigatória. Alertas de Boss, PvP e drops não fazem parte desta regra geral.
   e sessões.
 - Beta somente por convite.
 - Limitações comerciais, planos e módulos são aplicados no site, não no Agent.
-- Sem validação, o Agent continua por até sete dias; depois pausa novos
-  registros até revalidar.
+- A autorização de captura é revalidada ao abrir e periodicamente. Sem conexão,
+  a última autorização protegida continua por no máximo 24 horas; depois o
+  Agent pausa novas capturas até revalidar. A retenção da outbox continua com
+  sua regra independente de até sete dias.
 - Pelo site, o proprietário pode desvincular uma instalação perdida. Quando ela
   voltar a conectar, deve apagar dados locais e revogar todos os pareamentos da
   API local.
@@ -265,7 +267,9 @@ drops será pública sem tornar público o histórico pessoal de drops.
 
 Mitigações obrigatórias para Windows/antivírus:
 
-- executável e instalador assinados;
+- o projeto não usará Authenticode; avisos de reputação do Windows são risco
+  conhecido e devem ser informados sem recomendar exclusões no antivírus;
+- manifesto de atualização assinado por chave Ed25519 exclusiva do Agent;
 - download HTTPS;
 - verificação de assinatura e SHA-256;
 - sem scripts remotos, injeção, hook, ofuscação agressiva ou troca silenciosa do

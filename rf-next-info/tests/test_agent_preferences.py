@@ -9,6 +9,7 @@ from unittest import mock
 
 from app.agent_preferences import (
     AGENT_STARTUP_VALUE,
+    LEGACY_AGENT_STARTUP_VALUE,
     agent_startup_command,
     configure_agent_startup,
     load_agent_preferences,
@@ -74,9 +75,10 @@ class AgentPreferencesTest(unittest.TestCase):
         fake_winreg.SetValueEx.assert_called_once()
         self.assertEqual(fake_winreg.SetValueEx.call_args.args[1], AGENT_STARTUP_VALUE)
         self.assertIn("--background", fake_winreg.SetValueEx.call_args.args[4])
-        fake_winreg.DeleteValue.assert_called_once_with(
-            registry_key, AGENT_STARTUP_VALUE
-        )
+        self.assertEqual(AGENT_STARTUP_VALUE, "RF Next Companion")
+        deleted_values = [call.args[1] for call in fake_winreg.DeleteValue.call_args_list]
+        self.assertIn(LEGACY_AGENT_STARTUP_VALUE, deleted_values)
+        self.assertIn(AGENT_STARTUP_VALUE, deleted_values)
 
     def test_development_startup_command_uses_agent_module(self):
         command = agent_startup_command()

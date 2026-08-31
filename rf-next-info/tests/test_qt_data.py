@@ -72,6 +72,14 @@ class QtReadOnlyDataTest(unittest.TestCase):
                     store.add_events(
                         source, events, session_id, client_ports=((port,),)
                     )
+                # O relógio do Windows pode atribuir o mesmo instante a
+                # importações consecutivas. A última gravação ainda deve
+                # representar a sessão corrente.
+                with store.conn:
+                    store.conn.execute(
+                        "UPDATE captures SET imported_at=?",
+                        ("2026-01-01T00:00:00+00:00",),
+                    )
             finally:
                 store.close()
 

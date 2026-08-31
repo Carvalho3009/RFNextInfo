@@ -6,6 +6,7 @@ import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 from core.web_agent import AgentOutbox
 from core.windows_agent_capture import (
@@ -94,7 +95,10 @@ class AgentMemoryLimitsTest(unittest.TestCase):
 
 class AgentClientRegistryTest(unittest.TestCase):
     def test_registry_keeps_only_projected_client_identity(self):
-        registry = AgentClientRegistry(max_clients=1)
+        now_ns = [10_000_000_000]
+        registry = AgentClientRegistry(
+            max_clients=1, clock_ns=lambda: now_ns[0]
+        )
         registry.observe({
             "type": "character.observed",
             "client_ref": "client-a",
@@ -113,10 +117,75 @@ class AgentClientRegistryTest(unittest.TestCase):
             "name": "Segundo",
             "level": 61,
             "last_seen": "2026-08-23T12:00:01Z",
+            "session_duration_seconds": 0,
         }])
+        registry.clear()
+        self.assertEqual(registry.snapshot(), [])
+
+    def test_registry_tracks_each_client_session_duration_independently(self):
+        now_ns = [100 * 1_000_000_000]
+        registry = AgentClientRegistry(clock_ns=lambda: now_ns[0])
         registry.observe({
-            "type": "session.lifecycle", "payload": {"state": "started"}
+            "type": "character.observed", "client_ref": "client-a",
+            "occurred_at": "2026-08-23T12:00:00Z",
+            "payload": {"name": "Alice", "level": 66},
         })
+        now_ns[0] += 65 * 1_000_000_000
+        registry.observe({
+            "type": "character.observed", "client_ref": "client-a",
+            "occurred_at": "2026-08-23T12:01:05Z",
+            "payload": {"name": "Alice", "level": 67},
+        })
+        registry.observe({
+            "type": "character.observed", "client_ref": "client-b",
+            "occurred_at": "2026-08-23T12:01:05Z",
+            "payload": {"name": "Bob", "level": 64},
+        })
+        now_ns[0] += 60 * 1_000_000_000
+
+        clients = registry.snapshot()
+
+        self.assertEqual(clients[0]["session_duration_seconds"], 125)
+        self.assertEqual(clients[1]["session_duration_seconds"], 60)
+        self.assertEqual(clients[0]["level"], 67)
+
+    def test_per_client_lifecycle_does_not_clear_other_durations(self):
+        now_ns = [10_000_000_000]
+        registry = AgentClientRegistry(clock_ns=lambda: now_ns[0])
+        registry.observe({
+            "type": "character.observed", "client_ref": "client-a",
+            "payload": {"name": "Alice"},
+        })
+        now_ns[0] += 30 * 1_000_000_000
+
+        registry.observe({
+            "type": "session.lifecycle", "client_ref": "client-b",
+            "payload": {"state": "started"},
+        })
+
+        self.assertEqual(
+            registry.snapshot()[0]["session_duration_seconds"], 30
+        )
+
+    def test_registry_reconciles_history_with_active_process_count(self):
+        registry = AgentClientRegistry()
+        for client_ref, name in (
+            ("client-old", "Personagem antigo"),
+            ("client-a", "Alice"),
+            ("client-b", "Bob"),
+        ):
+            registry.observe({
+                "type": "character.observed",
+                "client_ref": client_ref,
+                "payload": {"name": name},
+            })
+
+        self.assertEqual(registry.reconcile_active_count(2), 1)
+        self.assertEqual(
+            [item["name"] for item in registry.snapshot()],
+            ["Alice", "Bob"],
+        )
+        self.assertEqual(registry.reconcile_active_count(0), 2)
         self.assertEqual(registry.snapshot(), [])
 
 
@@ -160,6 +229,7 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 self.assertFalse(stopped["active"])
                 self.assertTrue(capture.stopped)
                 self.assertFalse(runtime.health()["active"])
+                self.assertEqual(runtime.health()["clients"], [])
             finally:
                 runtime.close()
 
@@ -230,9 +300,52 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 self.assertEqual(
                     health["server"]["state"], "registration_pending"
                 )
+                api_health = runtime.service.api._health()
+                self.assertEqual(api_health["server"]["mode"], "online")
+                self.assertEqual(
+                    api_health["delivery"]["state"], "registration_pending"
+                )
+                self.assertTrue(api_health["delivery"]["worker_alive"])
                 self.assertEqual(calls, [
                     "https://qol.example.test/api/qol/v1/installations/register"
                 ])
+            finally:
+                runtime.close()
+
+    def test_online_capture_is_blocked_until_site_link(self):
+        def sender(request, _timeout, _limit):
+            registration = json.loads(bytes(request.data))
+            if request.full_url.endswith("/authorization"):
+                return 200, {}, json.dumps({
+                    "installation_id": registration["installation_id"],
+                    "status": "pending",
+                    "username": None,
+                    "pairing_code": "ABCD-EFGH",
+                    "server_time": "2026-08-24T12:00:00Z",
+                    "valid_for_seconds": 86400,
+                }).encode()
+            return 202, {}, json.dumps({
+                "installation_id": registration["installation_id"],
+                "status": "pending",
+                "duplicate": False,
+                "server_time": "2026-08-24T12:00:00Z",
+            }).encode()
+
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = StandaloneWindowsAgentRuntime.create_online(
+                Path(folder), str(uuid.uuid4()), "https://qol.example.test",
+                version="test", local_api_port=0, transport_sender=sender,
+                capture_factory=_FakeCapture,
+                process_reader=lambda _ports: _processes(1),
+            )
+            try:
+                with self.assertRaisesRegex(RuntimeError, "ABCD-EFGH"):
+                    runtime.start_capture()
+                self.assertFalse(runtime.active)
+                self.assertEqual(
+                    runtime.health()["server"]["authorization"]["status"],
+                    "pending",
+                )
             finally:
                 runtime.close()
 
@@ -256,7 +369,7 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 self.assertIn("falha simulada", runtime.health()["last_error"])
                 self.assertFalse(runtime.live_events.metrics()["worker_alive"])
                 self.assertEqual(
-                    runtime.service.runtime.bridge.metrics()["outbox_events"], 2
+                    runtime.service.runtime.bridge.metrics()["outbox_events"], 0
                 )
             finally:
                 runtime.close()
@@ -282,6 +395,51 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 refreshed = runtime.refresh_routes()
                 self.assertEqual(refreshed["client_processes"], 2)
                 self.assertTrue(runtime.live_capture.added_ports)
+            finally:
+                runtime.close()
+
+    def test_route_refresh_removes_stale_recognized_characters(self):
+        current = {"value": _processes(10, 20)}
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = self._runtime(folder, lambda _ports: current["value"])
+            try:
+                runtime.start_capture()
+                for client_ref, name in (
+                    ("client-old", "Personagem antigo"),
+                    ("client-a", "Alice"),
+                    ("client-b", "Bob"),
+                ):
+                    runtime.registry.observe({
+                        "type": "character.observed",
+                        "client_ref": client_ref,
+                        "payload": {"name": name},
+                    })
+
+                self.assertEqual(len(runtime.health()["clients"]), 3)
+                runtime.refresh_routes()
+                self.assertEqual(
+                    [item["name"] for item in runtime.health()["clients"]],
+                    ["Alice", "Bob"],
+                )
+            finally:
+                runtime.close()
+
+    def test_health_monitors_working_set_and_compacts_at_limit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = self._runtime(
+                folder,
+                lambda _ports: {},
+                memory_budget_mb=256,
+                memory_reader=lambda: 300 * 1024 * 1024,
+            )
+            try:
+                with mock.patch.object(runtime.live_events, "compact") as compact:
+                    health = runtime.health()
+                    self.assertTrue(health["memory"]["pressure"])
+                    self.assertEqual(
+                        health["memory"]["working_set_bytes"], 300 * 1024 * 1024
+                    )
+                    compact.assert_called_once_with(0.5)
             finally:
                 runtime.close()
 

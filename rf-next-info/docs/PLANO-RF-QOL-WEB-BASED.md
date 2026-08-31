@@ -3,7 +3,10 @@
 Data: 22 ago 2026  
 Branch: `feat/rf-qol-web-based`  
 Estado: Agent Windows funcional e receptor dedicado publicado separadamente;
-perfil beta.9 preparado para cadastro e envio automáticos
+beta.19 empacotada e aprovada nos testes automáticos locais com a correção do
+recurso de ranking ausente na beta.18; beta.20 empacotada e validada localmente
+com prioridade, aceleração da entrega e duração individual por cliente, ainda
+sem instalação ou publicação
 Base preservada: `rf-qol-desktop-2.0.0-beta.6` / commit `795333d`  
 Autorizado em 22 ago 2026: avançar a base local do Agent Windows, incluindo
 identidade DPAPI, transporte HTTPS testável e testes locais sem servidor.
@@ -17,8 +20,23 @@ Implementado localmente em 23 ago 2026:
 - início manual por padrão e modo automático opcional ao reconhecer cliente;
 - múltiplas conexões detectadas, janela compacta, bandeja e abertura com Windows
   opcional e desativada por padrão;
+- duração da sessão atual exibida individualmente para cada personagem, iniciada
+  no primeiro reconhecimento daquele cliente e atualizada sem reiniciar os
+  contadores dos demais;
 - limite de RAM configurável, com 1 GiB como padrão;
+- curva de EXP incluída e validada pelo autoteste do pacote, para que o ranking
+  decodificado seja projetado e enviado sem depender de rolagem manual;
+- outbox classificada em imediato, alta, tempo real e volume; Mercado e Ranking
+  de EXP usam prioridade alta, abaixo apenas dos eventos imediatos;
+- envio acionado após a persistência e drenado em rajadas limitadas, com
+  métricas por minuto, crescimento da fila e distribuição por prioridade;
 - API local somente leitura para Boss/PvP e diagnóstico sanitizado;
+- eventos explícitos de Boss, combate já classificado como Boss e o contexto de
+  aparição/desaparecimento do chefe usam a prioridade máxima da fila de
+  processamento local; essa prioridade não libera envio de Boss ao site;
+- recuperação isolada de fluxo TCP bloqueado por segmento ausente, preservando
+  captura, demais clientes, sessão e outbox; horários do último decode e da
+  última confirmação do servidor permanecem visíveis na janela e no diagnóstico;
 - beta.8 reconhece o transporte loopback do ExitLag, exclui HTTPS do filtro,
   mantém o decoder e os eventos durante trocas de rota e diferencia pacotes
   observados de pacotes úteis na interface;
@@ -132,6 +150,10 @@ O mesmo evento sanitizado também pode alimentar uma fila efêmera e limitada da
 API loopback. Essa fila é independente da outbox destinada ao site: outbox cheia
 ou servidor indisponível não podem interromper o monitor local.
 
+Na fila interna anterior à API loopback, Boss tem prioridade máxima. A ordem é
+estável entre eventos da mesma prioridade, e o contexto de presença do chefe é
+promovido junto com HP, dano, contribuição e resultado do encontro.
+
 ## 5. Evento normalizado no computador
 
 O limite do Agent é um evento já decodificado, tipado e sanitizado. Exemplo
@@ -207,13 +229,15 @@ Resposta mínima:
 
 Limites iniciais de homologação:
 
-- até 250 eventos ou 256 KiB descompactados por lote;
-- flush a cada 1 segundo quando houver eventos;
-- no máximo dois lotes simultâneos por instalação;
+- até 250 eventos ou 224 KiB descompactados por lote;
+- acionamento imediato após persistência e flush de segurança a cada 1 segundo;
+- até oito lotes sequenciais por rajada, sempre com um único lote em voo;
 - timeout curto e reenvio com espera progressiva e variação aleatória;
 - resposta parcial mantém somente os registros não confirmados na outbox;
-- lotes fora de ordem podem ser armazenados, mas não promovidos para estado
-  autoritativo até a lacuna ser resolvida ou expirar por política explícita.
+- lotes de prioridade podem conter sequências não contíguas; cada ACK remove
+  somente os IDs efetivamente emitidos, sem apagar lacunas intermediárias;
+- ordem ponderada: alta recebe oito oportunidades, tempo real quatro e volume
+  uma; eventos imediatos sempre antecedem as demais classes.
 
 Os valores serão recalibrados por medição; não são cotas comerciais.
 
@@ -426,6 +450,8 @@ Regras:
 
 - RAM contém somente lote em formação e lotes em voo;
 - eventos confirmados são removidos/compactados da outbox;
+- prioridade é persistida junto ao evento e migrada de forma aditiva nas filas
+  existentes, sem modificar o contrato sanitizado enviado ao servidor;
 - estados substituíveis podem colapsar para o mais recente sob pressão;
 - finalização de sessão, drops confirmados e eventos Boss duráveis não são
   descartados silenciosamente;
@@ -499,7 +525,8 @@ Nunca enviar ou persistir remotamente:
   `abandoned`, mantendo uma referência opaca comum da sessão;
 - [x] executar corpus sintético local com múltiplos clientes e sessões,
   reinício da outbox e prova de que nenhuma chamada de rede foi feita;
-- [x] revisar a lista de eventos e prioridades do produto com o owner;
+- [x] revisar e implementar as prioridades aprovadas pelo owner, com Mercado e
+  Ranking de EXP abaixo somente dos eventos imediatos;
 - [ ] medir volume real e completar corpus permitido sem incluir dados brutos.
 
 Gate: revisão dos contratos e dados permitidos.
