@@ -4,4 +4,4 @@
 
 Este canal não contém código-fonte nem chave privada.
 
-Versão atual: `2.0.0-beta.29`.
+Versão atual: `2.0.0-beta.30`.
