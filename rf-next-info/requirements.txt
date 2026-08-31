@@ -1,0 +1,4 @@
+cryptography==46.0.7
+Pillow==12.3.0
+pystray==0.19.5
+PySide6-Essentials==6.10.1
