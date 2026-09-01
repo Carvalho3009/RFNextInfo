@@ -65,6 +65,7 @@ DELIVERY_PRIORITY_NAMES = {
 }
 IMMEDIATE_EVENT_TYPES = frozenset({
     "agent.heartbeat",
+    "boss.encounter_snapshot",
     "character.observed",
 })
 HIGH_PRIORITY_EVENT_TYPES = frozenset({
@@ -317,6 +318,10 @@ _PAYLOAD_FIELDS = {
         "boss_ref", "npc_index", "position", "result", "values", "boss_records",
         "count",
     },
+    "boss.encounter_snapshot": {
+        "encounter_id", "started_at", "observed_at", "npc_index", "boss_name",
+        "boss_level", "current_hp", "max_hp", "players",
+    },
     "session.lifecycle": {"state", "reason"},
     "farm.subsession_completed": {
         "source_ref", "control_ref", "character_uid", "name", "level", "started_at",
@@ -377,6 +382,10 @@ _NESTED_FIELDS = {
         "level", "level_percent",
     },
     "boss_records": {"values"},
+    "players": {
+        "player_ref", "character_uid", "name", "guild_id", "guild_name",
+        "damage_total",
+    },
     "inventory_items": {
         "slot", "item_index", "name", "enhance", "quantity", "equipped", "bound",
     },
@@ -633,6 +642,18 @@ def _validate_event_contract(event: dict[str, Any]) -> None:
         "pve", "pvp", "boss", "unknown",
     }:
         raise WebEventContractError("Dominio de combate nao aprovado")
+    if event_type == "boss.encounter_snapshot":
+        required = _PAYLOAD_FIELDS["boss.encounter_snapshot"]
+        players = payload.get("players")
+        if (
+            set(payload) != required
+            or not isinstance(payload.get("encounter_id"), str)
+            or len(payload["encounter_id"]) != 64
+            or any(char not in "0123456789abcdef" for char in payload["encounter_id"])
+            or not isinstance(players, list)
+            or len(players) > 512
+        ):
+            raise WebEventContractError("Snapshot de Boss invalido")
     if event_type == "progress.collection_snapshot":
         collection_type = payload.get("collection_type")
         if collection_type is not None and (
@@ -1095,6 +1116,115 @@ class WebEventProjector:
             "type": "agent.heartbeat",
             "payload": payload,
             "evidence": {"confidence": "agent", "decoder_version": self.decoder_version},
+        }
+        _validate_event_contract(result)
+        return result
+
+    def project_boss_encounter(self, encounter: dict[str, Any]) -> dict[str, Any]:
+        """Consolida Boss para envio sem liberar golpes brutos ou referencias locais."""
+        if not isinstance(encounter, dict) or not isinstance(encounter.get("boss"), dict):
+            raise WebEventContractError("Encontro de Boss invalido")
+        session_ref = _text(encounter.get("_session_ref"), 64) or ""
+        client_ref = _text(encounter.get("client_ref"), 64) or ""
+        encounter_ref = _text(encounter.get("encounter_ref"), 128) or ""
+        started_at = _text(encounter.get("started_at"), 40) or ""
+        observed_at = _text(encounter.get("updated_at"), 40) or ""
+        if (
+            len(session_ref) != 32
+            or any(char not in "0123456789abcdef" for char in session_ref)
+            or len(client_ref) != 32
+            or any(char not in "0123456789abcdef" for char in client_ref)
+            or not encounter_ref
+        ):
+            raise WebEventContractError("Identidade do encontro de Boss invalida")
+        try:
+            started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise WebEventContractError("Horario do encontro de Boss invalido") from error
+        if not started_at.endswith("Z") or not observed_at.endswith("Z") or observed < started:
+            raise WebEventContractError("Horario do encontro de Boss invalido")
+
+        encounter_id = self._opaque(
+            "boss-encounter",
+            f"{client_ref}:{encounter_ref}:{started_at}",
+            size=64,
+        )
+        players = []
+        for row in encounter.get("players") or []:
+            if not isinstance(row, dict):
+                continue
+            local_ref = _text(row.get("_player_ref"), 128)
+            name = _text(row.get("name"), 96)
+            damage = _integer(row.get("damage"), 0)
+            if not local_ref or not name or damage is None or damage < 0:
+                continue
+            uid = _character_uid(row.get("uid"))
+            guild_id = _integer(row.get("guild_id"))
+            if guild_id is not None and not 0 < guild_id <= 2**64 - 1:
+                guild_id = None
+            players.append({
+                "player_ref": self._opaque(
+                    "boss-player", f"{encounter_id}:{local_ref}", size=32,
+                ),
+                "character_uid": uid,
+                "name": name,
+                "guild_id": guild_id,
+                "guild_name": _text(row.get("guild_name"), 96),
+                "damage_total": min(damage, 2**63 - 1),
+            })
+            if len(players) >= 512:
+                break
+        players.sort(key=lambda row: (
+            -row["damage_total"], row["name"].casefold(), row["player_ref"],
+        ))
+
+        boss = encounter["boss"]
+        maximum = _integer(boss.get("max_hp"))
+        maximum = (
+            min(maximum, 2**63 - 1)
+            if maximum is not None and maximum > 0 else None
+        )
+        current = _integer(boss.get("current_hp"))
+        current = min(max(0, current), 2**63 - 1) if current is not None else None
+        if current is not None and maximum is not None:
+            current = min(current, maximum)
+        npc_index = _integer(boss.get("npc_index"))
+        if npc_index is not None and not 0 <= npc_index <= 2**32 - 1:
+            npc_index = None
+        boss_level = _integer(boss.get("level"))
+        if boss_level is not None and not 1 <= boss_level <= 999:
+            boss_level = None
+        payload = {
+            "encounter_id": encounter_id,
+            "started_at": started_at,
+            "observed_at": observed_at,
+            "npc_index": npc_index,
+            "boss_name": _text(boss.get("name"), 96) or "Boss confirmado",
+            "boss_level": boss_level,
+            "current_hp": current,
+            "max_hp": maximum,
+            "players": players,
+        }
+        identity = _canonical_json({
+            "encounter_id": encounter_id,
+            "observed_at": observed_at,
+            "payload": payload,
+        })
+        result = {
+            "schema": DECODED_EVENT_SCHEMA,
+            "event_id": self._opaque("event", identity.hex(), size=48),
+            "installation_id": self.installation_id,
+            "session_ref": session_ref,
+            "stream_id": self._opaque("stream", f"boss:{encounter_id}", size=32),
+            "occurred_at": observed_at,
+            "client_ref": client_ref,
+            "type": "boss.encounter_snapshot",
+            "payload": payload,
+            "evidence": {
+                "confidence": "agent",
+                "decoder_version": self.decoder_version,
+            },
         }
         _validate_event_contract(result)
         return result

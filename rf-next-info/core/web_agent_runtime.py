@@ -142,6 +142,15 @@ class WebAgentRuntime:
         self.delivery.notify()
         return queued
 
+    def submit_boss_encounter(self, encounter: dict) -> bool:
+        if self._closed:
+            return False
+        event = self.bridge.projector.project_boss_encounter(encounter)
+        queued = self.bridge.outbox.enqueue(event)
+        self.bridge.record_direct_enqueue(event["type"], queued)
+        self.delivery.notify()
+        return queued
+
     def sync_subsession_commands(
         self, results: list[dict[str, object]],
         progress: list[dict[str, object]] | None = None,
@@ -325,6 +334,9 @@ class WebAgentOfflineRuntime:
         return False if self._closed else self.bridge.submit_subsession(
             session_id, report
         )
+
+    def submit_boss_encounter(self, encounter: dict) -> bool:
+        return False
 
     def sync_subsession_commands(
         self, results: list[dict[str, object]],

@@ -97,6 +97,31 @@ class WebEventProjectorTest(unittest.TestCase):
             opcode=0x0106,
         )
 
+    def test_consolidated_boss_snapshot_has_maximum_delivery_priority(self):
+        event = self.projector.project_boss_encounter({
+            "_session_ref": "1" * 32,
+            "encounter_ref": "boss-local-ref",
+            "client_ref": "2" * 32,
+            "started_at": "2026-08-31T20:00:00.000Z",
+            "updated_at": "2026-08-31T20:00:01.000Z",
+            "boss": {
+                "npc_index": 845, "name": "Guardião Tyrant Origin", "level": 80,
+                "current_hp": 900, "max_hp": 1000,
+            },
+            "players": [{
+                "_player_ref": "player-local-ref", "uid": 61500000000000001,
+                "name": "Carlos", "guild_id": 10, "guild_name": "Blood",
+                "damage": 100,
+            }],
+        })
+
+        self.assertEqual(event["type"], "boss.encounter_snapshot")
+        self.assertEqual(delivery_priority(event["type"]), DELIVERY_PRIORITY_IMMEDIATE)
+        self.assertEqual(event["payload"]["players"][0]["guild_name"], "Blood")
+        self.assertNotIn("encounter_ref", json.dumps(event))
+        self.assertNotIn("player-local-ref", json.dumps(event))
+        _validate_event_contract(event)
+
     def test_projects_identity_and_reuses_opaque_client_reference(self):
         identity = self.projector.project(self.identity_event(), "sessao-1")
         exp = self.projector.project(decoded_event(

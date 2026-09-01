@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import csv
+import json
 import threading
+import time
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -69,6 +71,7 @@ class AgentBossEncounterState:
         self._clients: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
         self._processed_events = 0
+        self._uploaded: dict[str, tuple[str, int]] = {}
 
     @staticmethod
     def _new_client(client_ref: str, session_ref: str) -> dict[str, Any]:
@@ -311,62 +314,114 @@ class AgentBossEncounterState:
                 boss["current_hp"] = max(0, final_hp)
             boss["updated_at"] = max(boss["updated_at"], occurred_at)
 
+    def _encounters(self, *, transport: bool) -> list[dict[str, Any]]:
+        encounters = []
+        catalog = _boss_catalog()
+        for state in self._clients.values():
+            for boss in state["bosses"].values():
+                npc_index = _integer(boss.get("npc_index"))
+                metadata = catalog.get(npc_index or 0) or {}
+                current_hp = _integer(boss.get("current_hp"))
+                max_hp = _integer(boss.get("max_hp"))
+                hp_percent = (
+                    round(max(0.0, min(100.0, current_hp * 100 / max_hp)), 3)
+                    if current_hp is not None and max_hp and max_hp > 0
+                    else None
+                )
+                players = []
+                for player_ref, damage in boss["damage_by_player"].items():
+                    profile = state["players"].get(player_ref) or {}
+                    guild_id = _integer(profile.get("guild_id"))
+                    guild_name = str(profile.get("guild_name") or "")[:96] or None
+                    player = {
+                        "name": str(profile.get("name") or "Desconhecido")[:96],
+                        "uid": profile.get("character_uid"),
+                        # ``guild`` permanece como alias para consumidores anteriores.
+                        "guild": guild_name,
+                        "guild_id": guild_id,
+                        "guild_name": guild_name,
+                        "damage": max(0, int(damage or 0)),
+                    }
+                    if transport:
+                        player["_player_ref"] = player_ref
+                    players.append(player)
+                players.sort(key=lambda row: (-row["damage"], row["name"].casefold()))
+                encounter = {
+                    "encounter_ref": boss["encounter_ref"],
+                    "client_ref": state["client_ref"],
+                    "observer": {
+                        "name": state["observer_name"] or None,
+                        "uid": state["observer_uid"],
+                    },
+                    "boss": {
+                        "npc_index": npc_index,
+                        "name": metadata.get("name")
+                        or (f"Boss #{npc_index}" if npc_index else "Boss confirmado"),
+                        "level": metadata.get("level"),
+                        "current_hp": current_hp,
+                        "max_hp": max_hp,
+                        "hp_percent": hp_percent,
+                    },
+                    "players": players,
+                    "damage_total": sum(row["damage"] for row in players),
+                    "started_at": _iso(boss["started_at"]),
+                    "updated_at": _iso(boss["updated_at"]),
+                }
+                if transport:
+                    encounter["_session_ref"] = state["session_ref"]
+                encounters.append(encounter)
+        encounters.sort(key=lambda row: (row["client_ref"], row["encounter_ref"]))
+        return encounters
+
+    @staticmethod
+    def _upload_identity(encounter: dict[str, Any]) -> tuple[str, str]:
+        key = "|".join((
+            str(encounter.get("client_ref") or ""),
+            str(encounter.get("encounter_ref") or ""),
+            str(encounter.get("started_at") or ""),
+        ))
+        fingerprint = json.dumps(
+            encounter, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        return key, fingerprint
+
+    def upload_candidates(
+        self, *, now_ns: int | None = None, min_interval_ns: int = 1_000_000_000,
+    ) -> list[dict[str, Any]]:
+        """Retorna apenas fotografias alteradas, no máximo uma por segundo/encontro."""
+        current_ns = int(now_ns if now_ns is not None else time.time_ns())
+        interval = max(0, int(min_interval_ns))
+        with self._lock:
+            encounters = self._encounters(transport=True)
+            active_keys = {self._upload_identity(row)[0] for row in encounters}
+            self._uploaded = {
+                key: value for key, value in self._uploaded.items()
+                if key in active_keys
+            }
+            result = []
+            for encounter in encounters:
+                key, fingerprint = self._upload_identity(encounter)
+                previous = self._uploaded.get(key)
+                if previous is not None and previous[0] == fingerprint:
+                    continue
+                if previous is not None and 0 <= current_ns - previous[1] < interval:
+                    continue
+                result.append(encounter)
+            return result
+
+    def mark_uploaded(
+        self, encounter: dict[str, Any], *, now_ns: int | None = None,
+    ) -> None:
+        key, fingerprint = self._upload_identity(encounter)
+        with self._lock:
+            self._uploaded[key] = (
+                fingerprint,
+                int(now_ns if now_ns is not None else time.time_ns()),
+            )
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            encounters = []
-            catalog = _boss_catalog()
-            for state in self._clients.values():
-                for boss in state["bosses"].values():
-                    npc_index = _integer(boss.get("npc_index"))
-                    metadata = catalog.get(npc_index or 0) or {}
-                    current_hp = _integer(boss.get("current_hp"))
-                    max_hp = _integer(boss.get("max_hp"))
-                    hp_percent = (
-                        round(max(0.0, min(100.0, current_hp * 100 / max_hp)), 3)
-                        if current_hp is not None and max_hp and max_hp > 0
-                        else None
-                    )
-                    players = []
-                    for player_ref, damage in boss["damage_by_player"].items():
-                        profile = state["players"].get(player_ref) or {}
-                        guild_id = _integer(profile.get("guild_id"))
-                        guild_name = str(
-                            profile.get("guild_name") or ""
-                        )[:96] or None
-                        players.append({
-                            "name": str(profile.get("name") or "Desconhecido")[:96],
-                            "uid": profile.get("character_uid"),
-                            # ``guild`` permanece como alias para consumidores
-                            # anteriores; os campos explícitos permitem associar
-                            # cada personagem sem depender de texto de exibição.
-                            "guild": guild_name,
-                            "guild_id": guild_id,
-                            "guild_name": guild_name,
-                            "damage": max(0, int(damage or 0)),
-                        })
-                    players.sort(key=lambda row: (-row["damage"], row["name"].casefold()))
-                    encounters.append({
-                        "encounter_ref": boss["encounter_ref"],
-                        "client_ref": state["client_ref"],
-                        "observer": {
-                            "name": state["observer_name"] or None,
-                            "uid": state["observer_uid"],
-                        },
-                        "boss": {
-                            "npc_index": npc_index,
-                            "name": metadata.get("name")
-                            or (f"Boss #{npc_index}" if npc_index else "Boss confirmado"),
-                            "level": metadata.get("level"),
-                            "current_hp": current_hp,
-                            "max_hp": max_hp,
-                            "hp_percent": hp_percent,
-                        },
-                        "players": players,
-                        "damage_total": sum(row["damage"] for row in players),
-                        "started_at": _iso(boss["started_at"]),
-                        "updated_at": _iso(boss["updated_at"]),
-                    })
-            encounters.sort(key=lambda row: (row["client_ref"], row["encounter_ref"]))
+            encounters = self._encounters(transport=False)
             return {
                 "schema": LOCAL_BOSS_ENCOUNTERS_SCHEMA,
                 "generated_at": _iso(),
