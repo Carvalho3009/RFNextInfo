@@ -216,6 +216,23 @@ class AgentBossEncounterStateTest(unittest.TestCase):
         self.assertNotIn("session_ref", json.dumps(payload))
         self.assertNotIn("player-a", json.dumps(encounter["players"]))
 
+        candidate = state.upload_candidates(now_ns=1_000_000_000)[0]
+        self.assertEqual(candidate["_session_ref"], "session-ref")
+        self.assertEqual(candidate["players"][0]["_player_ref"], "player-a")
+        state.mark_uploaded(candidate, now_ns=1_000_000_000)
+        self.assertEqual(state.upload_candidates(now_ns=2_000_000_000), [])
+
+        state.observe(_public_event("8", "combat.skill_resolved", {
+            "result": 0, "caster_ref": "player-a", "combat_domain": "boss",
+            "effects": [{
+                "entity_ref": "boss-a", "hp_damage": 50, "final_hp": 350,
+            }],
+        }))
+        self.assertEqual(state.upload_candidates(now_ns=1_500_000_000), [])
+        self.assertEqual(
+            state.upload_candidates(now_ns=2_100_000_000)[0]["damage_total"], 650,
+        )
+
     def test_encounters_are_isolated_per_client_and_removed_explicitly(self):
         state = AgentBossEncounterState()
         for client, boss_ref in (("client-a", "boss-a"), ("client-b", "boss-b")):
@@ -285,6 +302,64 @@ class AgentBossEncounterStateTest(unittest.TestCase):
         self.assertEqual(
             encounters["client-b"]["players"][0]["guild_id"], 20
         )
+
+    def test_online_service_enqueues_consolidated_boss_without_publisher(self):
+        with tempfile.TemporaryDirectory() as folder:
+            service = WindowsAgentLocalService.create_online(
+                Path(folder), str(uuid.uuid4()), "https://qol.example.test",
+                version="test", local_api_port=0,
+                transport_sender=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("transporte nao deveria iniciar")
+                ),
+            )
+            try:
+                def event(identifier: str, event_type: str, payload: dict) -> dict:
+                    value = _public_event(identifier, event_type, payload)
+                    value["session_ref"] = "1" * 32
+                    value["client_ref"] = "2" * 32
+                    return value
+
+                observer = service.runtime.bridge.event_observer
+                observer(event("1", "world.players_appeared", {"entities": [{
+                    "entity_ref": "player-a", "character_uid": 200,
+                    "name": "Alice", "guild_id": 10, "guild_name": "Blood",
+                }]}))
+                with mock.patch(
+                    "core.web_agent_boss_api.time.time_ns", return_value=1_000_000_000
+                ):
+                    observer(event("2", "boss.position_observed", {
+                        "boss_ref": "boss-a", "npc_index": 845,
+                    }))
+                with mock.patch(
+                    "core.web_agent_boss_api.time.time_ns", return_value=2_100_000_000
+                ):
+                    observer(event("3", "combat.skill_resolved", {
+                        "result": 0, "caster_ref": "player-a",
+                        "combat_domain": "boss", "effects": [{
+                            "entity_ref": "boss-a", "hp_damage": 300,
+                            "final_hp": 700,
+                        }],
+                    }))
+
+                batches = []
+                while batch := service.runtime.bridge.outbox.next_batch():
+                    batches.extend(batch["events"])
+                    service.runtime.bridge.outbox.acknowledge(
+                        batch["batch_id"], batch["last_sequence"]
+                    )
+                snapshots = [
+                    row for row in batches
+                    if row["type"] == "boss.encounter_snapshot"
+                ]
+                self.assertEqual(len(snapshots), 2)
+                self.assertEqual(
+                    snapshots[-1]["payload"]["players"][0]["damage_total"], 300
+                )
+                self.assertEqual(
+                    snapshots[-1]["payload"]["players"][0]["guild_name"], "Blood"
+                )
+            finally:
+                service.close()
 
 
 class AgentLocalMonitorApiTest(unittest.TestCase):

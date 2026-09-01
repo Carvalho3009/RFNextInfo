@@ -103,10 +103,15 @@ class WindowsAgentLocalService:
             max_bytes=max_monitor_bytes,
         )
         boss_encounters = AgentBossEncounterState()
+        runtime_holder: list[WebAgentRuntime] = []
 
         def observe(event: dict) -> None:
             if feed.add(event):
                 boss_encounters.observe(event)
+                if runtime_holder:
+                    for encounter in boss_encounters.upload_candidates():
+                        runtime_holder[0].submit_boss_encounter(encounter)
+                        boss_encounters.mark_uploaded(encounter)
             if event_observer is not None:
                 event_observer(event)
 
@@ -118,6 +123,7 @@ class WindowsAgentLocalService:
             event_observer=observe,
             **runtime_options,
         )
+        runtime_holder.append(runtime)
         try:
             token = AgentLocalApiTokenStore(
                 state_dir / "local-monitor-api.dat"

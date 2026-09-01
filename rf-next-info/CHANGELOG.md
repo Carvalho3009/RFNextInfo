@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-beta.32 — 2026-08-31
+
+- envia ao site fotografias consolidadas de encontros de Boss pela fila
+  assinada do Agent, com prioridade imediata, deduplicação e limite de uma
+  atualização por segundo por encontro;
+- inclui Chefe, HP e dano total por personagem, com UID público e guilda
+  quando disponíveis, sem enviar golpes brutos, referências locais ou PvP;
+- preserva a API local de Boss para monitores externos.
+
 ## 2.0.0-beta.31 — 2026-08-31
 
 - melhora a fotografia de Inventário, evitando classificar como empilháveis os
