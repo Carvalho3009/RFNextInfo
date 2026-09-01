@@ -1,0 +1,491 @@
+{
+  "version": "1.28.5",
+  "rovers": {
+    "4000000": {
+      "name": "Sirius",
+      "name_en": "Sirius",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Sirius_001.Card_Rover_Comm_Sirius_001"
+    },
+    "4000001": {
+      "name": "Canopus",
+      "name_en": "Canopus",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Canopus_001.Card_Rover_Comm_Canopus_001"
+    },
+    "4000002": {
+      "name": "Arcturus",
+      "name_en": "Arcturus",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Acturus_001.Card_Rover_Comm_Acturus_001"
+    },
+    "4000003": {
+      "name": "Graffias",
+      "name_en": "Graffias",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Graffias_001.Card_Rover_Comm_Graffias_001"
+    },
+    "4000004": {
+      "name": "Kochab",
+      "name_en": "Kochab",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Kochab_001.Card_Rover_Comm_Kochab_001"
+    },
+    "4000005": {
+      "name": "Revati",
+      "name_en": "Revati",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Revati_001.Card_Rover_Comm_Revati_001"
+    },
+    "4000006": {
+      "name": "Sadr",
+      "name_en": "Sadr",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Sadr_001.Card_Rover_Comm_Sadr_001"
+    },
+    "4000007": {
+      "name": "Pleione",
+      "name_en": "Pleione",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Pleione_001.Card_Rover_Comm_Pleione_001"
+    },
+    "4000008": {
+      "name": "Nunki",
+      "name_en": "Nunki",
+      "grade": 1,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Comm_Nunki_001.Card_Rover_Comm_Nunki_001"
+    },
+    "4100000": {
+      "name": "Vega",
+      "name_en": "Vega",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Vega_001.Card_Rover_Unco_Vega_001"
+    },
+    "4100001": {
+      "name": "Capella",
+      "name_en": "Capella",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Capella_001.Card_Rover_Unco_Capella_001"
+    },
+    "4100002": {
+      "name": "Rigel",
+      "name_en": "Rigel",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Rigel_001.Card_Rover_Unco_Rigel_001"
+    },
+    "4100003": {
+      "name": "Alcyone",
+      "name_en": "Alcyone",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Alcyone_001.Card_Rover_Unco_Alcyone_001"
+    },
+    "4100004": {
+      "name": "Dubhe",
+      "name_en": "Dubhe",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Dubhe_001.Card_Rover_Unco_Dubhe_001"
+    },
+    "4100005": {
+      "name": "Edasich",
+      "name_en": "Edasich",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Edasich_001.Card_Rover_Unco_Edasich_001"
+    },
+    "4100006": {
+      "name": "Fulu",
+      "name_en": "Fulu",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Fulu_001.Card_Rover_Unco_Fulu_001"
+    },
+    "4100007": {
+      "name": "Izar",
+      "name_en": "Izar",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Izar_001.Card_Rover_Unco_Izar_001"
+    },
+    "4100008": {
+      "name": "Keid",
+      "name_en": "Keid",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Keid_001.Card_Rover_Unco_Keid_001"
+    },
+    "4100009": {
+      "name": "Avior",
+      "name_en": "Avior",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Naos_001.Card_Rover_Epic_Naos_001"
+    },
+    "4100010": {
+      "name": "Sargas",
+      "name_en": "Sargas",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Pollux_001.Card_Rover_Epic_Pollux_001"
+    },
+    "4100101": {
+      "name": "Huey",
+      "name_en": "Huey",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Wei_001.Card_Rover_Unco_Wei_001"
+    },
+    "4100102": {
+      "name": "Louie",
+      "name_en": "Louie",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Wei_002.Card_Rover_Unco_Wei_002"
+    },
+    "4100103": {
+      "name": "Dewey",
+      "name_en": "Dewey",
+      "grade": 2,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Unco_Wei_003.Card_Rover_Unco_Wei_003"
+    },
+    "4200000": {
+      "name": "Procyon",
+      "name_en": "Procyon",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Procyon_001.Card_Rover_Rare_Procyon_001"
+    },
+    "4200001": {
+      "name": "Achernar",
+      "name_en": "Achernar",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Achenar_001.Card_Rover_Rare_Achenar_001"
+    },
+    "4200002": {
+      "name": "Hadar",
+      "name_en": "Hadar",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Hadar_001.Card_Rover_Rare_Hadar_001"
+    },
+    "4200003": {
+      "name": "Altair",
+      "name_en": "Altair",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Artair_001.Card_Rover_Rare_Artair_001"
+    },
+    "4200004": {
+      "name": "Acrux",
+      "name_en": "Acrux",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Acrux_001.Card_Rover_Rare_Acrux_001"
+    },
+    "4200005": {
+      "name": "Ain",
+      "name_en": "Ain",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Ain_001.Card_Rover_Rare_Ain_001"
+    },
+    "4200006": {
+      "name": "Botein",
+      "name_en": "Botein",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Botein_001.Card_Rover_Rare_Botein_001"
+    },
+    "4200007": {
+      "name": "Cursa",
+      "name_en": "Cursa",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Cursa_001.Card_Rover_Rare_Cursa_001"
+    },
+    "4200008": {
+      "name": "Diadem",
+      "name_en": "Diadem",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Diadem_001.Card_Rover_Rare_Diadem_001"
+    },
+    "4200009": {
+      "name": "Grumium",
+      "name_en": "Grumium",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Grumium_001.Card_Rover_Rare_Grumium_001"
+    },
+    "4200010": {
+      "name": "Megrez",
+      "name_en": "Megrez",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Megrez_001.Card_Rover_Rare_Megrez_001"
+    },
+    "4200011": {
+      "name": "Rana",
+      "name_en": "Rana",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Rana_001.Card_Rover_Rare_Rana_001"
+    },
+    "4200012": {
+      "name": "Fawaris",
+      "name_en": "Fawaris",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Fawaris_001.Card_Rover_Rare_Fawaris_001"
+    },
+    "4200013": {
+      "name": "Electra",
+      "name_en": "Electra",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Electra_001.Card_Rover_Rare_Electra_001"
+    },
+    "4200014": {
+      "name": "Maia",
+      "name_en": "Maia",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Maia_001.Card_Rover_Rare_Maia_001"
+    },
+    "4200015": {
+      "name": "Mirach",
+      "name_en": "Mirach",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Anci_Mirach_001.Card_Rover_Anci_Mirach_001"
+    },
+    "4200016": {
+      "name": "Ascella",
+      "name_en": "Ascella",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Ascella_001.Card_Rover_Lege_Ascella_001"
+    },
+    "4200017": {
+      "name": "Meissa",
+      "name_en": "Meissa",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Meissa_001.Card_Rover_Rare_Meissa_001"
+    },
+    "4200018": {
+      "name": "Jabbah",
+      "name_en": "Jabbah",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Jabbah_001.Card_Rover_Rare_Jabbah_001"
+    },
+    "4200019": {
+      "name": "Caph",
+      "name_en": "Caph",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Caph_001.Card_Rover_Rare_Caph_001"
+    },
+    "4200020": {
+      "name": "Venera",
+      "name_en": "Venera",
+      "grade": 3,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Rare_Venera_001.Card_Rover_Rare_Venera_001"
+    },
+    "4300000": {
+      "name": "Spica",
+      "name_en": "Spica",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Spica_001.Card_Rover_Epic_Spica_001"
+    },
+    "4300001": {
+      "name": "Deneb",
+      "name_en": "Deneb",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Deneb_001.Card_Rover_Epic_Deneb_001"
+    },
+    "4300002": {
+      "name": "Castor",
+      "name_en": "Castor",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Castor_001.Card_Rover_Epic_Castor_001"
+    },
+    "4300003": {
+      "name": "Alioth",
+      "name_en": "Alioth",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Alioth_001.Card_Rover_Epic_Alioth_001"
+    },
+    "4300004": {
+      "name": "Bellatrix",
+      "name_en": "Bellatrix",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Bellatrix_001.Card_Rover_Epic_Bellatrix_001"
+    },
+    "4300005": {
+      "name": "Elnath",
+      "name_en": "Elnath",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Elnath_001.Card_Rover_Epic_Elnath_001"
+    },
+    "4300006": {
+      "name": "Antares",
+      "name_en": "Antares",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Antares_001.Card_Rover_Epic_Antares_001"
+    },
+    "4300007": {
+      "name": "Toliman",
+      "name_en": "Toliman",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Toliman_001.Card_Rover_Epic_Toliman_001"
+    },
+    "4300008": {
+      "name": "Regulus",
+      "name_en": "Regulus",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Regulus_001.Card_Rover_Epic_Regulus_001"
+    },
+    "4300009": {
+      "name": "Alphecca",
+      "name_en": "Alphecca",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Alphecca_001.Card_Rover_Epic_Alphecca_001"
+    },
+    "4300010": {
+      "name": "Naos",
+      "name_en": "Naos",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Avior_001.Card_Rover_Epic_Avior_001"
+    },
+    "4300011": {
+      "name": "Pollux",
+      "name_en": "Pollux",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Sargas_001.Card_Rover_Epic_Sargas_001"
+    },
+    "4300012": {
+      "name": "Alhena",
+      "name_en": "Alhena",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Alhena_001.Card_Rover_Epic_Alhena_001"
+    },
+    "4300013": {
+      "name": "Polaris",
+      "name_en": "Polaris",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Polaris_001.Card_Rover_Epic_Polaris_001"
+    },
+    "4300014": {
+      "name": "Flora",
+      "name_en": "Flora",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Arneb_001.Card_Rover_Epic_Arneb_001"
+    },
+    "4300015": {
+      "name": "Hamal",
+      "name_en": "Hamal",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Hamal_001.Card_Rover_Epic_Hamal_001"
+    },
+    "4300016": {
+      "name": "Menkent",
+      "name_en": "Menkent",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Menkent_001.Card_Rover_Epic_Menkent_001"
+    },
+    "4300017": {
+      "name": "Aldevaran",
+      "name_en": "Aldebaran",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Aldebaran_001.Card_Rover_Epic_Aldebaran_001"
+    },
+    "4300018": {
+      "name": "Denevola",
+      "name_en": "Denebola",
+      "grade": 4,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Denebola_001.Card_Rover_Epic_Denebola_001"
+    },
+    "4400000": {
+      "name": "Wezen",
+      "name_en": "Wezen",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Wezen_001.Card_Rover_Lege_Wezen_001"
+    },
+    "4400001": {
+      "name": "Mirfak",
+      "name_en": "Mirfak",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Mirfak_001.Card_Rover_Lege_Mirfak_001"
+    },
+    "4400002": {
+      "name": "Gacrux",
+      "name_en": "Gacrux",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Gacrux_001.Card_Rover_Lege_Gacrux_001"
+    },
+    "4400003": {
+      "name": "Shaula",
+      "name_en": "Shaula",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Shaula_001.Card_Rover_Lege_Shaula_001"
+    },
+    "4400004": {
+      "name": "Atria",
+      "name_en": "Atria",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Atria_001.Card_Rover_Lege_Atria_001"
+    },
+    "4400005": {
+      "name": "Taygeta",
+      "name_en": "Taygeta",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Taygeta_001.Card_Rover_Lege_Taygeta_001"
+    },
+    "4400006": {
+      "name": "Schedar",
+      "name_en": "Schedar",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Schedar_001.Card_Rover_Lege_Schedar_001"
+    },
+    "4400007": {
+      "name": "Enif",
+      "name_en": "Enif",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Enif_001.Card_Rover_Lege_Enif_001"
+    },
+    "4400008": {
+      "name": "Leo",
+      "name_en": "Leo",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Epic_Leo_001.Card_Rover_Epic_Leo_001"
+    },
+    "4400009": {
+      "name": "Eltanin",
+      "name_en": "Eltanin",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Eltanin_001.Card_Rover_Lege_Eltanin_001"
+    },
+    "4400010": {
+      "name": "Alphratz",
+      "name_en": "Alpheratz",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Alpheratz_001.Card_Rover_Lege_Alpheratz_001"
+    },
+    "4400011": {
+      "name": "Saiph",
+      "name_en": "Saiph",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Saiph_001.Card_Rover_Lege_Saiph_001"
+    },
+    "4490000": {
+      "name": "Carta de Rover Lendário Prime",
+      "name_en": "Prime Legendary Rover Card",
+      "grade": 5,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Lege_Mat.Card_Rover_Lege_Mat"
+    },
+    "4500000": {
+      "name": "Anka",
+      "name_en": "Anka",
+      "grade": 6,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Myth_Anka_001.Card_Rover_Myth_Anka_001"
+    },
+    "4500001": {
+      "name": "Phecda",
+      "name_en": "Phecda",
+      "grade": 6,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Myth_Phecda_001.Card_Rover_Myth_Phecda_001"
+    },
+    "4500002": {
+      "name": "Sabik",
+      "name_en": "Sabik",
+      "grade": 6,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Myth_Sabik_001.Card_Rover_Myth_Sabik_001"
+    },
+    "4500003": {
+      "name": "Menkar",
+      "name_en": "Menkar",
+      "grade": 6,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Myth_Menkar_001.Card_Rover_Myth_Menkar_001"
+    },
+    "4500004": {
+      "name": "Roth",
+      "name_en": "Roth",
+      "grade": 6,
+      "icon_asset": "/Game/Streaming/ArtAsset/UI/UIResource/UITexture/Card/Card_Rover/Card_Rover_Myth_Ross_001.Card_Rover_Myth_Ross_001"
+    }
+  }
+}

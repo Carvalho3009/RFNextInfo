@@ -1,0 +1,2546 @@
+{
+  "schema_version": 1,
+  "source_version": "1.28.5",
+  "entries": {
+    "1": {
+      "key": "Map_Name_1",
+      "pt": "",
+      "en": "..."
+    },
+    "2": {
+      "key": "Map_Name_2",
+      "pt": "",
+      "en": "..."
+    },
+    "3": {
+      "key": "Map_Name_3",
+      "pt": "",
+      "en": "..."
+    },
+    "4": {
+      "key": "Map_Name_1",
+      "pt": "",
+      "en": "..."
+    },
+    "7": {
+      "key": "Map_Name_7",
+      "pt": "",
+      "en": "..."
+    },
+    "101": {
+      "key": "Map_Name_101",
+      "pt": "Mundo Novus",
+      "en": "Novus World"
+    },
+    "102": {
+      "key": "Map_Name_102",
+      "pt": "Arsenal de Beltran",
+      "en": "Beltran Armory"
+    },
+    "103": {
+      "key": "Map_Name_103",
+      "pt": "Novus Mundo 2",
+      "en": "Novus World"
+    },
+    "201": {
+      "key": "Map_Name_201",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "202": {
+      "key": "Map_Name_202",
+      "pt": "Mina de Somora",
+      "en": "Somora Mine"
+    },
+    "203": {
+      "key": "Map_Name_203",
+      "pt": "Mercado Negro",
+      "en": "Black Market"
+    },
+    "204": {
+      "key": "Map_Name_204",
+      "pt": "Akvaran",
+      "en": "Akvaran"
+    },
+    "205": {
+      "key": "Map_Name_205",
+      "pt": "Mansão do Duque Oz",
+      "en": "Duke Oz's Residence"
+    },
+    "206": {
+      "key": "Map_Name_206",
+      "pt": "Interior da Mansão Oz",
+      "en": "Inside Duke Oz's Residence"
+    },
+    "207": {
+      "key": "Map_Name_207",
+      "pt": "Laboratório Kairax",
+      "en": "Kairax Laboratory"
+    },
+    "208": {
+      "key": "Map_Name_208",
+      "pt": "Laboratório Kairax",
+      "en": "Kairax Laboratory"
+    },
+    "209": {
+      "key": "Map_Name_209",
+      "pt": "Pátio Frontal de Kairax",
+      "en": "Kairax Front Yard"
+    },
+    "210": {
+      "key": "Map_Name_210",
+      "pt": "Floresta de Mayazar",
+      "en": "Mayazar Forest"
+    },
+    "211": {
+      "key": "Map_Name_215",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "212": {
+      "key": "Map_Name_212",
+      "pt": "Torre Mental",
+      "en": "Mind Tower"
+    },
+    "213": {
+      "key": "Map_Name_213",
+      "pt": "Terras Submersas de Galio",
+      "en": "Galio Sunken Lands"
+    },
+    "214": {
+      "key": "Map_Name_214",
+      "pt": "Colina de Cauldron",
+      "en": "Cauldron Hill"
+    },
+    "215": {
+      "key": "Map_Name_215",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "216": {
+      "key": "Map_Name_216",
+      "pt": "Acampamento Oásis",
+      "en": "Oasis Camp"
+    },
+    "218": {
+      "key": "Map_Name_218",
+      "pt": "Assalto à Bellato City",
+      "en": "Bellato City Assault"
+    },
+    "219": {
+      "key": "Map_Name_219",
+      "pt": "Estação Anakade",
+      "en": "Anakade Station"
+    },
+    "220": {
+      "key": "Map_Name_220",
+      "pt": "Costa de Beltran 1",
+      "en": "Beltran Coast 1"
+    },
+    "221": {
+      "key": "Map_Name_221",
+      "pt": "Costa de Beltran 2",
+      "en": "Beltran Coast 2"
+    },
+    "222": {
+      "key": "Map_Name_222",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "223": {
+      "key": "Map_Name_223",
+      "pt": "Vila dos Exilados",
+      "en": "Settlement of Exiles"
+    },
+    "224": {
+      "key": "Map_Name_224",
+      "pt": "Floresta dos Mortos",
+      "en": "Forest of the Dead"
+    },
+    "225": {
+      "key": "Map_Name_225",
+      "pt": "Campo de Mineração Crag",
+      "en": "Crag Mining Field"
+    },
+    "226": {
+      "key": "Map_Name_226",
+      "pt": "Ferro-Velho de Seth",
+      "en": "Seth Landfill"
+    },
+    "227": {
+      "key": "Map_Name_227",
+      "pt": "Colônia Saura",
+      "en": "Saura Colony"
+    },
+    "228": {
+      "key": "Map_Name_228",
+      "pt": "Ruínas Corroídas",
+      "en": "Corroded Ruins"
+    },
+    "229": {
+      "key": "Map_Name_229",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "230": {
+      "key": "Map_Name_230",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "231": {
+      "key": "Map_Name_231",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "232": {
+      "key": "Map_Name_232",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "233": {
+      "key": "Map_Name_233",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "234": {
+      "key": "Map_Name_234",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "235": {
+      "key": "Map_Name_235",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "236": {
+      "key": "Map_Name_236",
+      "pt": "Ruínas Despedaçadas",
+      "en": "Broken Ruins"
+    },
+    "237": {
+      "key": "Map_Name_237",
+      "pt": "Posto Avançado de Lowed",
+      "en": "Lowed Outpost"
+    },
+    "238": {
+      "key": "Map_Name_238",
+      "pt": "Arsenal de Beltran",
+      "en": "Beltran Armory"
+    },
+    "239": {
+      "key": "Map_Name_Beginning",
+      "pt": "Reiniciar",
+      "en": "Restart"
+    },
+    "240": {
+      "key": "Map_Name_Beginning",
+      "pt": "Reiniciar",
+      "en": "Restart"
+    },
+    "241": {
+      "key": "Map_Name_Beginning",
+      "pt": "Reiniciar",
+      "en": "Restart"
+    },
+    "242": {
+      "key": "Map_Name_Beginning",
+      "pt": "Reiniciar",
+      "en": "Restart"
+    },
+    "243": {
+      "key": "Map_Name_Beginning",
+      "pt": "Reiniciar",
+      "en": "Restart"
+    },
+    "244": {
+      "key": "Map_Name_204",
+      "pt": "Akvaran",
+      "en": "Akvaran"
+    },
+    "245": {
+      "key": "Map_Name_245",
+      "pt": "Floresta dos Exilados",
+      "en": "Forest of Exiles"
+    },
+    "246": {
+      "key": "Map_Name_246",
+      "pt": "Posto Avançado de Lowed",
+      "en": "Lowed Outpost"
+    },
+    "247": {
+      "key": "Map_Name_247",
+      "pt": "Arsenal de Beltran",
+      "en": "Beltran Armory"
+    },
+    "248": {
+      "key": "Map_Name_248",
+      "pt": "Arsenal de Beltran",
+      "en": "Beltran Armory"
+    },
+    "249": {
+      "key": "Map_Name_249",
+      "pt": "Esconderijo Secreto de Soma",
+      "en": "Soma Secret Stash"
+    },
+    "250": {
+      "key": "Map_Name_250",
+      "pt": "Floresta de Mayazar",
+      "en": "Mayazar Forest"
+    },
+    "251": {
+      "key": "Map_Name_251",
+      "pt": "Floresta de Lowed",
+      "en": "Lowed Forest"
+    },
+    "252": {
+      "key": "Map_Name_252",
+      "pt": "Floresta de Lowed",
+      "en": "Lowed Forest"
+    },
+    "253": {
+      "key": "Map_Name_253",
+      "pt": "Velha Fronteira",
+      "en": "Old Frontier"
+    },
+    "254": {
+      "key": "Map_Name_254",
+      "pt": "Velha Fronteira",
+      "en": "Old Frontier"
+    },
+    "255": {
+      "key": "Map_Name_255",
+      "pt": "Velha Fronteira",
+      "en": "Old Frontier"
+    },
+    "256": {
+      "key": "Map_Name_256",
+      "pt": "Bellato City",
+      "en": "Bellato City"
+    },
+    "257": {
+      "key": "Map_Name_Beginning",
+      "pt": "Reiniciar",
+      "en": "Restart"
+    },
+    "258": {
+      "key": "Map_Name_258",
+      "pt": "Base Horizon",
+      "en": "Horizon Base"
+    },
+    "259": {
+      "key": "Map_Name_259",
+      "pt": "Covil Ferinky",
+      "en": "Ferinky Den"
+    },
+    "260": {
+      "key": "Map_Name_260",
+      "pt": "Colina dos Predadores",
+      "en": "Hill of Predators"
+    },
+    "261": {
+      "key": "Map_Name_261",
+      "pt": "Planaltos de Numerus",
+      "en": "Numerus Plateau"
+    },
+    "262": {
+      "key": "Map_Name_262",
+      "pt": "Floresta Sul de Dorian",
+      "en": "South Dorian Forest"
+    },
+    "263": {
+      "key": "Map_Name_263",
+      "pt": "Templo da Recordação",
+      "en": "Temple of Remembrance"
+    },
+    "264": {
+      "key": "Map_Name_264",
+      "pt": "Templo da Reflexão",
+      "en": "Temple of Reflection"
+    },
+    "265": {
+      "key": "Map_Name_265",
+      "pt": "Templo da Iluminação",
+      "en": "Temple of Enlightenment"
+    },
+    "266": {
+      "key": "Map_Name_266",
+      "pt": "Laboratório de Reserva Mineral",
+      "en": "Mineral Reserve Laboratory"
+    },
+    "267": {
+      "key": "Map_Name_267",
+      "pt": "Casa de Oração de Numerus",
+      "en": "Numerus Prayer House"
+    },
+    "268": {
+      "key": "Map_Name_268",
+      "pt": "Pântano da Névoa",
+      "en": "Misty Swamp"
+    },
+    "269": {
+      "key": "Map_Name_269",
+      "pt": "Interior do Portão de Numerus",
+      "en": "Numerus Gate Interior"
+    },
+    "270": {
+      "key": "Map_Name_270",
+      "pt": "Covil Ferinky",
+      "en": "Ferinky Den"
+    },
+    "271": {
+      "key": "Map_Name_271",
+      "pt": "Cânion Atlas",
+      "en": "Atlas Canyon"
+    },
+    "272": {
+      "key": "Map_Name_272",
+      "pt": "Cânion Atlas",
+      "en": "Atlas Canyon"
+    },
+    "273": {
+      "key": "Map_Name_273",
+      "pt": "Cânion Atlas",
+      "en": "Atlas Canyon"
+    },
+    "274": {
+      "key": "Map_Name_274",
+      "pt": "Laboratório Secreto",
+      "en": "Secret Lab"
+    },
+    "275": {
+      "key": "Map_Name_275",
+      "pt": "Contrafortes da Montanha Nevada",
+      "en": "Snowy Mountain Foothills"
+    },
+    "276": {
+      "key": "Map_Name_276",
+      "pt": "Mercado Negro Invadido",
+      "en": "Raided Black Market"
+    },
+    "277": {
+      "key": "Map_Name_277",
+      "pt": "Habitat Krator",
+      "en": "Krator Habitat"
+    },
+    "278": {
+      "key": "Map_Name_278",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "279": {
+      "key": "Map_Name_279",
+      "pt": "Posto Avançado Cinzento",
+      "en": "Ashen Outpost"
+    },
+    "280": {
+      "key": "Map_Name_280",
+      "pt": "Ruínas de Anteros",
+      "en": "Anteros Ruins"
+    },
+    "281": {
+      "key": "Map_Name_281",
+      "pt": "Abismo da Luz Poluído",
+      "en": "Polluted Light Abyss"
+    },
+    "282": {
+      "key": "Map_Name_282",
+      "pt": "Abismo da Luz Restaurado",
+      "en": "Restored Light Abyss"
+    },
+    "283": {
+      "key": "Map_Name_283",
+      "pt": "Caverna de Gelo",
+      "en": "Ice Cavern"
+    },
+    "284": {
+      "key": "Map_Name_284",
+      "pt": "Base Paleon",
+      "en": "Paleon Base"
+    },
+    "285": {
+      "key": "Map_Name_285",
+      "pt": "Mina Diamant",
+      "en": "Diamant Mine"
+    },
+    "286": {
+      "key": "Map_Name_286",
+      "pt": "Base de Radar",
+      "en": "Radar Base"
+    },
+    "287": {
+      "key": "Map_Name_287",
+      "pt": "Jardim da Mansão Invadida",
+      "en": "Raided Manor Garden"
+    },
+    "288": {
+      "key": "Map_Name_288",
+      "pt": "O Vale Intransponível",
+      "en": "The Impassable Valley"
+    },
+    "289": {
+      "key": "Map_Name_289",
+      "pt": "Túnel Desativado",
+      "en": "Decommissioned Tunnel"
+    },
+    "290": {
+      "key": "Map_Name_290",
+      "pt": "Interior da Mansão Invadida",
+      "en": "Raided Manor Interior"
+    },
+    "291": {
+      "key": "Map_Name_291",
+      "pt": "Camada Superficial da Caverna de Lava",
+      "en": "Lava Cavern Surface Layer"
+    },
+    "292": {
+      "key": "Map_Name_292",
+      "pt": "Camada Profunda da Caverna de Lava",
+      "en": "Lava Cavern Deep Layer"
+    },
+    "293": {
+      "key": "Map_Name_293",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "294": {
+      "key": "Map_Name_294",
+      "pt": "Floresta Sul de Dorian",
+      "en": "South Dorian Forest"
+    },
+    "295": {
+      "key": "Map_Name_295",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "296": {
+      "key": "Map_Name_296",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "297": {
+      "key": "Map_Name_297",
+      "pt": "Jardim dos Deuses",
+      "en": "Garden of the Gods"
+    },
+    "298": {
+      "key": "Map_Name_298",
+      "pt": "Ruínas Corroídas",
+      "en": "Corroded Ruins"
+    },
+    "299": {
+      "key": "Map_Name_299",
+      "pt": "Colina de Cauldron",
+      "en": "Cauldron Hill"
+    },
+    "300": {
+      "key": "Map_Name_300",
+      "pt": "Terras Submersas de Galio",
+      "en": "Galio Sunken Lands"
+    },
+    "301": {
+      "key": "Map_Name_301",
+      "pt": "Esconderijo do Vagabundo",
+      "en": "Vagabond Hideout"
+    },
+    "302": {
+      "key": "Map_Name_302",
+      "pt": "Rootvein",
+      "en": "Rootvein"
+    },
+    "303": {
+      "key": "Map_Name_303",
+      "pt": "Salão da Harmonia",
+      "en": "Hall of Harmony"
+    },
+    "304": {
+      "key": "Map_Name_304",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "305": {
+      "key": "Map_Name_305",
+      "pt": "Campo de aviação",
+      "en": "Airfield"
+    },
+    "306": {
+      "key": "Map_Name_306",
+      "pt": "Santuário Antigo de Lutherus",
+      "en": "Old Lutherus Sanctuary"
+    },
+    "307": {
+      "key": "Map_Name_307",
+      "pt": "Ermo Credo",
+      "en": "Credo Wasteland"
+    },
+    "308": {
+      "key": "Map_Name_235",
+      "pt": "Abismo da Luz",
+      "en": "Light Abyss"
+    },
+    "309": {
+      "key": "Map_Name_309",
+      "pt": "Penhascos de Limen",
+      "en": "Limen Cliffs"
+    },
+    "310": {
+      "key": "Map_Name_310",
+      "pt": "",
+      "en": "..."
+    },
+    "311": {
+      "key": "Map_Name_311",
+      "pt": "",
+      "en": ""
+    },
+    "314": {
+      "key": "Map_Name_314",
+      "pt": "",
+      "en": "..."
+    },
+    "316": {
+      "key": "Map_Name_316",
+      "pt": "",
+      "en": "..."
+    },
+    "317": {
+      "key": "Map_Name_317",
+      "pt": "Ruínas do Templo Abandonado",
+      "en": "Abandoned Temple Ruins"
+    },
+    "318": {
+      "key": "Map_Name_318",
+      "pt": "Ermo Credo",
+      "en": "Credo Wasteland"
+    },
+    "501": {
+      "key": "Map_Name_StoneWorm",
+      "pt": "Coração das Montanhas",
+      "en": "Heart of the Mountains"
+    },
+    "502": {
+      "key": "Map_Name_Curator",
+      "pt": "Krator",
+      "en": "Krator"
+    },
+    "503": {
+      "key": "Map_Name_Gleba",
+      "pt": "Cânion do Labirinto",
+      "en": "Maze Canyon"
+    },
+    "504": {
+      "key": "Map_Name_Vritra",
+      "pt": "Lago Boray",
+      "en": "Lake Boray"
+    },
+    "601": {
+      "key": "Map_Name_601",
+      "pt": "Base Secreta Nemesis 1º Andar",
+      "en": "Secret Nemesis Base 1F"
+    },
+    "602": {
+      "key": "Map_Name_602",
+      "pt": "Base Secreta Nemesis 2º Andar",
+      "en": "Secret Nemesis Base 2F"
+    },
+    "605": {
+      "key": "Map_Name_605",
+      "pt": "Base Secreta Nemesis 3º Andar",
+      "en": "Secret Nemesis Base 3F"
+    },
+    "606": {
+      "key": "Map_Name_606",
+      "pt": "Base Secreta Nemesis 4F",
+      "en": "Secret Nemesis Base 4F"
+    },
+    "607": {
+      "key": "Map_Name_607",
+      "pt": "Base Secreta Nemesis 5F",
+      "en": "Secret Nemesis Base 5F"
+    },
+    "610": {
+      "key": "Map_Name_610",
+      "pt": "Campo de Mineração Exclusivo 1F",
+      "en": "Exclusive Mining Field 1F"
+    },
+    "611": {
+      "key": "Map_Name_611",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F"
+    },
+    "612": {
+      "key": "Map_Name_612",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F"
+    },
+    "613": {
+      "key": "Map_Name_613",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F"
+    },
+    "614": {
+      "key": "Map_Name_614",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F"
+    },
+    "615": {
+      "key": "Map_Name_615",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F"
+    },
+    "616": {
+      "key": "Map_Name_616",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F"
+    },
+    "617": {
+      "key": "Map_Name_617",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F"
+    },
+    "618": {
+      "key": "Map_Name_618",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F"
+    },
+    "619": {
+      "key": "Map_Name_619",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F"
+    },
+    "620": {
+      "key": "Map_Name_620",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F"
+    },
+    "621": {
+      "key": "Map_Name_621",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F"
+    },
+    "622": {
+      "key": "Map_Name_622",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F"
+    },
+    "623": {
+      "key": "Map_Name_623",
+      "pt": "Campo de Mineração Público 1º Andar",
+      "en": "Public Mining Field 1F"
+    },
+    "624": {
+      "key": "Map_Name_624",
+      "pt": "Campo de Mineração Público 2º Andar",
+      "en": "Public Mining Field 2F"
+    },
+    "625": {
+      "key": "Map_Name_625",
+      "pt": "Campo de Mineração Público 3º Andar",
+      "en": "Public Mining Field 3F"
+    },
+    "626": {
+      "key": "Map_Name_626",
+      "pt": "Campo de Mineração Público 4F",
+      "en": "Public Mining Field 4F"
+    },
+    "630": {
+      "key": "Map_Name_630",
+      "pt": "Campo de Mineração Exclusivo 2F",
+      "en": "Exclusive Mining Field 2F"
+    },
+    "631": {
+      "key": "Map_Name_631",
+      "pt": "Ferro-Velho de Androides 1º Andar",
+      "en": "Android Junkyard 1F"
+    },
+    "632": {
+      "key": "Map_Name_632",
+      "pt": "Ferro-Velho de Androides 2º Andar",
+      "en": "Android Junkyard 2F"
+    },
+    "633": {
+      "key": "Map_Name_633",
+      "pt": "Ferro-Velho de Androides 3º Andar",
+      "en": "Android Junkyard 3F"
+    },
+    "634": {
+      "key": "Map_Name_634",
+      "pt": "Ferro-Velho de Androides 4º Andar",
+      "en": "Android Junkyard 4F"
+    },
+    "635": {
+      "key": "Map_Name_635",
+      "pt": "Ferro-Velho de Androides 5F",
+      "en": "Android Junkyard 5F"
+    },
+    "636": {
+      "key": "Map_Name_636",
+      "pt": "Ferro-Velho de Androides 6F",
+      "en": "Android Junkyard 6F"
+    },
+    "637": {
+      "key": "Map_Name_637",
+      "pt": "Ferro-Velho de Androides 7F",
+      "en": "Android Junkyard 7F"
+    },
+    "638": {
+      "key": "Map_Name_638",
+      "pt": "Ferro-Velho de Androides 8F",
+      "en": "Android Junkyard 8F"
+    },
+    "639": {
+      "key": "Map_Name_639",
+      "pt": "Ferro-Velho de Androides 9F",
+      "en": "Android Junkyard 9F"
+    },
+    "640": {
+      "key": "Map_Name_640",
+      "pt": "Ferro-Velho de Androides 10F",
+      "en": "Android Junkyard 10F"
+    },
+    "641": {
+      "key": "Map_Name_641",
+      "pt": "Cânion Atlas",
+      "en": "Atlas Canyon"
+    },
+    "642": {
+      "key": "Map_Name_642",
+      "pt": "Elevador Orbital Crag",
+      "en": "Crag Orbital Lift"
+    },
+    "643": {
+      "key": "Map_Name_643",
+      "pt": "Base de Lançamento em Órbita Alta",
+      "en": "High-Orbit Launch Base"
+    },
+    "644": {
+      "key": "Map_Name_643",
+      "pt": "Base de Lançamento em Órbita Alta",
+      "en": "High-Orbit Launch Base"
+    },
+    "711": {
+      "key": "Map_Name_battle_simulation",
+      "pt": "Laboratório de Estratégia",
+      "en": "Strategy Lab"
+    },
+    "720": {
+      "key": "Map_Name_battle_simulation",
+      "pt": "Laboratório de Estratégia",
+      "en": "Strategy Lab"
+    },
+    "730": {
+      "key": "Map_Name_battle_simulation",
+      "pt": "Laboratório de Estratégia",
+      "en": "Strategy Lab"
+    },
+    "751": {
+      "key": "Map_Name_751",
+      "pt": "Área 1 da Cratera Albern",
+      "en": "Albern Crater Area 1"
+    },
+    "752": {
+      "key": "Map_Name_752",
+      "pt": "Área 2 da Cratera Albern",
+      "en": "Albern Crater Area 2"
+    },
+    "753": {
+      "key": "Map_Name_753",
+      "pt": "Área 3 da Cratera Albern",
+      "en": "Albern Crater Area 3"
+    },
+    "754": {
+      "key": "Map_Name_751",
+      "pt": "Área 1 da Cratera Albern",
+      "en": "Albern Crater Area 1"
+    },
+    "755": {
+      "key": "Map_Name_752",
+      "pt": "Área 2 da Cratera Albern",
+      "en": "Albern Crater Area 2"
+    },
+    "756": {
+      "key": "Map_Name_753",
+      "pt": "Área 3 da Cratera Albern",
+      "en": "Albern Crater Area 3"
+    },
+    "760": {
+      "key": "Map_Name_760",
+      "pt": "Zona de Guerra Albern",
+      "en": "Albern Warzone"
+    },
+    "761": {
+      "key": "Map_Name_761",
+      "pt": "Zona de Guerra Albern",
+      "en": "Albern Warzone"
+    },
+    "764": {
+      "key": "Map_Name_760",
+      "pt": "Zona de Guerra Albern",
+      "en": "Albern Warzone"
+    },
+    "765": {
+      "key": "Map_Name_761",
+      "pt": "Zona de Guerra Albern",
+      "en": "Albern Warzone"
+    },
+    "770": {
+      "key": "Map_Name_770",
+      "pt": "Fortaleza Albern",
+      "en": "Albern Fortress"
+    },
+    "780": {
+      "key": "Map_Name_780",
+      "pt": "Núcleo Novus: Covil de Krator",
+      "en": "Novus Core: Krator's Lair"
+    },
+    "781": {
+      "key": "Map_Name_780",
+      "pt": "Núcleo Novus: Covil de Krator",
+      "en": "Novus Core: Krator's Lair"
+    },
+    "801": {
+      "key": "Map_Name_GuildRaid_Step1",
+      "pt": "Raid de Guilda",
+      "en": "Guild Raid"
+    },
+    "802": {
+      "key": "Map_Name_GuildRaid_Step2",
+      "pt": "Raid de Guilda",
+      "en": "Guild Raid"
+    },
+    "803": {
+      "key": "Map_Name_GuildRaid_Step3",
+      "pt": "Raid de Guilda",
+      "en": "Guild Raid"
+    },
+    "804": {
+      "key": "Map_Name_804",
+      "pt": "Raid de Guilda",
+      "en": "Guild Raid"
+    },
+    "810": {
+      "key": "Map_Name_Elysium",
+      "pt": "Elysium",
+      "en": "Elysium"
+    },
+    "811": {
+      "key": "Map_Name_STEEL_BATTLEFIELD",
+      "pt": "Campo de Batalha de Aço",
+      "en": "Battlefield of Steel"
+    },
+    "812": {
+      "key": "Map_Name_Elysium",
+      "pt": "Elysium",
+      "en": "Elysium"
+    },
+    "813": {
+      "key": "Map_Name_STEEL_BATTLEFIELD",
+      "pt": "Campo de Batalha de Aço",
+      "en": "Battlefield of Steel"
+    },
+    "820": {
+      "key": "Map_Name_820",
+      "pt": "Nave-Mãe da Guilda",
+      "en": "Guild Mothership"
+    },
+    "831": {
+      "key": "Map_Name_831",
+      "pt": "Instalação de Produção Abandonada",
+      "en": "Abandoned Production Facility"
+    },
+    "832": {
+      "key": "Map_Name_832",
+      "pt": "Instalação de Produção Abandonada",
+      "en": "Abandoned Production Facility"
+    },
+    "833": {
+      "key": "Map_Name_833",
+      "pt": "Instalação de Produção Abandonada",
+      "en": "Abandoned Production Facility"
+    },
+    "901": {
+      "key": "Map_Name_CragMine",
+      "pt": "Mina Crag",
+      "en": "Crag Mine"
+    },
+    "902": {
+      "key": "Map_Name_CragSkirmishA",
+      "pt": "Campo de Escaramuça Accretia",
+      "en": "Accretia Skirmish Field"
+    },
+    "903": {
+      "key": "Map_Name_CragSkirmishB",
+      "pt": "Campo de Escaramuça Bellato",
+      "en": "Bellato Skirmish Field"
+    },
+    "904": {
+      "key": "Map_Name_CragSkirmishC",
+      "pt": "Campo de Escaramuça Cora",
+      "en": "Cora Skirmish Field"
+    },
+    "951": {
+      "key": "Map_Name_951",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 1F",
+      "en": "Ferinky Rice Cake Factory 1F"
+    },
+    "952": {
+      "key": "Map_Name_952",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 2F",
+      "en": "Ferinky Rice Cake Factory 2F"
+    },
+    "953": {
+      "key": "Map_Name_953",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 3F",
+      "en": "Ferinky Rice Cake Factory 3F"
+    },
+    "954": {
+      "key": "Map_Name_954",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 4F",
+      "en": "Ferinky Rice Cake Factory 4F"
+    },
+    "955": {
+      "key": "Map_Name_955",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 5F",
+      "en": "Ferinky Rice Cake Factory 5F"
+    },
+    "956": {
+      "key": "Map_Name_956",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 6F",
+      "en": "Ferinky Rice Cake Factory 6F"
+    },
+    "957": {
+      "key": "Map_Name_957",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 7F",
+      "en": "Ferinky Rice Cake Factory 7F"
+    },
+    "958": {
+      "key": "Map_Name_958",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 8F",
+      "en": "Ferinky Rice Cake Factory 8F"
+    },
+    "959": {
+      "key": "Map_Name_959",
+      "pt": "Fábrica de Bolos de Arroz Ferinky 9F",
+      "en": "Ferinky Rice Cake Factory 9F"
+    },
+    "1001": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1002": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1003": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1004": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1005": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1006": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1007": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1008": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1009": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1010": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1011": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1012": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1013": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1014": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1015": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1016": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1017": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1018": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1019": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1020": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1021": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1022": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1023": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1024": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1025": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1026": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1027": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1028": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1029": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1030": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1031": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1032": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1033": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1034": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1035": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1036": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1037": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1038": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1039": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1040": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1041": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1042": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1043": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1044": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1045": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1046": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1047": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1048": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1049": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1050": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1051": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1052": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1053": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1054": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1055": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1056": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1057": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1058": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1059": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1060": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1061": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1062": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1063": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1064": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1065": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1066": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1067": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1068": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1069": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1070": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1071": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1072": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1073": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1074": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1075": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1076": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1077": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1078": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1079": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1080": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1081": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1082": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1083": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1084": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1085": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1086": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1087": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1088": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1089": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1090": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1091": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1092": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1093": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1094": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1095": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1096": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1097": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1098": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1099": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1100": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1101": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1102": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1103": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1104": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1105": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1106": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1107": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1108": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1109": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1110": {
+      "key": "Map_Name_ScionTraning_Biosuit_Step",
+      "pt": "Estágio de Treinamento de Biosuit {0}",
+      "en": "Biosuit Training Stage {0}"
+    },
+    "1501": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1502": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1503": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1504": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1505": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1506": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1507": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1508": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1509": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1510": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1511": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1512": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1513": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1514": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1515": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1516": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1517": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1518": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1519": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1520": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1521": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1522": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1523": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1524": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1525": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1526": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1527": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1528": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1529": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1530": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1531": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1532": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1533": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1534": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1535": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1536": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1537": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1538": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1539": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1540": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1541": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1542": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1543": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1544": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1545": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1546": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1547": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1548": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1549": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1550": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1551": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1552": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1553": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1554": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1555": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1556": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1557": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1558": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1559": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1560": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1561": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1562": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1563": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1564": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1565": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1566": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1567": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1568": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1569": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1570": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1571": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1572": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1573": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1574": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1575": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1576": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1577": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1578": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1579": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1580": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1581": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1582": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1583": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1584": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1585": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1586": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1587": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1588": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1589": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1590": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1591": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1592": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1593": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1594": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1595": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1596": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1597": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1598": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1599": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1600": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1601": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1602": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1603": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1604": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1605": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1606": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1607": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1608": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1609": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "1610": {
+      "key": "Map_Name_ScionTraning_UG_Step",
+      "pt": "Treinamento de Arma Sagrada Estágio {0}",
+      "en": "Sacred Weapon Training Stage {0}"
+    },
+    "4211": {
+      "key": "Map_Name_4211",
+      "pt": "Ferro-Velho de Androides 11F",
+      "en": "Android Junkyard 11F"
+    },
+    "4212": {
+      "key": "Map_Name_4212",
+      "pt": "Ferro-Velho de Androides 12F",
+      "en": "Android Junkyard 12F"
+    },
+    "4213": {
+      "key": "Map_Name_4213",
+      "pt": "Ferro-Velho de Androides 13F",
+      "en": "Android Junkyard 13F"
+    },
+    "4214": {
+      "key": "Map_Name_4214",
+      "pt": "Ferro-Velho de Androides 14F",
+      "en": "Android Junkyard 14F"
+    },
+    "4301": {
+      "key": "Map_Name_4301",
+      "pt": "Área 1 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 1"
+    },
+    "4302": {
+      "key": "Map_Name_4302",
+      "pt": "Área 2 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 2"
+    },
+    "4303": {
+      "key": "Map_Name_4303",
+      "pt": "Área 3 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 3"
+    },
+    "4304": {
+      "key": "Map_Name_4304",
+      "pt": "Cidade Arruinada da Babilônia Área 4",
+      "en": "Ruined City of Babylon Area 4"
+    },
+    "4351": {
+      "key": "Map_Name_4301",
+      "pt": "Área 1 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 1"
+    },
+    "4352": {
+      "key": "Map_Name_4302",
+      "pt": "Área 2 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 2"
+    },
+    "4353": {
+      "key": "Map_Name_4303",
+      "pt": "Área 3 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 3"
+    },
+    "4354": {
+      "key": "Map_Name_4304",
+      "pt": "Cidade Arruinada da Babilônia Área 4",
+      "en": "Ruined City of Babylon Area 4"
+    },
+    "4401": {
+      "key": "Map_Name_4301",
+      "pt": "Área 1 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 1"
+    },
+    "4402": {
+      "key": "Map_Name_4302",
+      "pt": "Área 2 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 2"
+    },
+    "4403": {
+      "key": "Map_Name_4303",
+      "pt": "Área 3 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 3"
+    },
+    "4404": {
+      "key": "Map_Name_4304",
+      "pt": "Cidade Arruinada da Babilônia Área 4",
+      "en": "Ruined City of Babylon Area 4"
+    },
+    "4451": {
+      "key": "Map_Name_4301",
+      "pt": "Área 1 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 1"
+    },
+    "4452": {
+      "key": "Map_Name_4302",
+      "pt": "Área 2 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 2"
+    },
+    "4453": {
+      "key": "Map_Name_4303",
+      "pt": "Área 3 da Cidade Arruinada da Babilônia",
+      "en": "Ruined City of Babylon Area 3"
+    },
+    "4454": {
+      "key": "Map_Name_4304",
+      "pt": "Cidade Arruinada da Babilônia Área 4",
+      "en": "Ruined City of Babylon Area 4"
+    },
+    "4504": {
+      "key": "Map_Name_4504",
+      "pt": "Instalação de Defesa Orbital",
+      "en": "Orbital Defense Facility"
+    },
+    "4505": {
+      "key": "Map_Name_4505",
+      "pt": "Instalação de Suprimento Orbital",
+      "en": ""
+    },
+    "4554": {
+      "key": "Map_Name_4504",
+      "pt": "Instalação de Defesa Orbital",
+      "en": "Orbital Defense Facility"
+    },
+    "4603": {
+      "key": "Map_Name_4603",
+      "pt": "Campo de Mineração Exclusivo 3F",
+      "en": "Exclusive Mining Field 3F"
+    },
+    "4625": {
+      "key": "Map_Name_4625",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F"
+    },
+    "4645": {
+      "key": "Map_Name_4645",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F"
+    },
+    "4665": {
+      "key": "Map_Name_4665",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F"
+    },
+    "4685": {
+      "key": "Map_Name_4685",
+      "pt": "Campo de Mineração Público 5F",
+      "en": "Public Mining Field 5F"
+    },
+    "5001": {
+      "key": "Map_Name_5001",
+      "pt": "Lago Boray",
+      "en": "Lake Boray"
+    },
+    "5002": {
+      "key": "Map_Name_5002",
+      "pt": "Vale do Labirinto",
+      "en": "Labyrinth Valley"
+    },
+    "5003": {
+      "key": "Map_Name_5003",
+      "pt": "",
+      "en": "..."
+    },
+    "5004": {
+      "key": "Map_Name_5004",
+      "pt": "Ilha Vulcânica de Chaldea",
+      "en": "Chaldea Volcanic Island"
+    },
+    "5005": {
+      "key": "Map_Name_5005",
+      "pt": "Ruínas Corroídas",
+      "en": "Corroded Ruins"
+    },
+    "5051": {
+      "key": "Map_Name_5051",
+      "pt": "Provas Arcanas (Fácil)",
+      "en": "Arcane Trials (Easy)"
+    },
+    "5052": {
+      "key": "Map_Name_5052",
+      "pt": "Provas Arcanas (Normal)",
+      "en": "Arcane Trials (Normal)"
+    },
+    "5053": {
+      "key": "Map_Name_5053",
+      "pt": "Provas Arcanas (Difícil)",
+      "en": "Arcane Trials (Hard)"
+    },
+    "5054": {
+      "key": "Map_Name_5054",
+      "pt": "Provas Arcanas (Inferno)",
+      "en": "Arcane Trials (Hell)"
+    },
+    "5061": {
+      "key": "Map_Name_5061",
+      "pt": "Defesa da Pedra Sagrada",
+      "en": "Holy Stone Defense"
+    },
+    "5071": {
+      "key": "Map_Name_5071",
+      "pt": "Raid de Guilda",
+      "en": "Guild Raid"
+    },
+    "5081": {
+      "key": "Map_Name_5081",
+      "pt": "Templo dos Buscadores da Verdade Caídos",
+      "en": "Fallen Truth-Seekers' Temple"
+    },
+    "5082": {
+      "key": "Map_Name_5082",
+      "pt": "Templo dos Buscadores da Verdade Caídos",
+      "en": "Fallen Truth-Seekers' Temple"
+    },
+    "5083": {
+      "key": "Map_Name_5083",
+      "pt": "Templo dos Buscadores da Verdade Caídos",
+      "en": "Fallen Truth-Seekers' Temple"
+    },
+    "5084": {
+      "key": "Map_Name_5084",
+      "pt": "Templo dos Buscadores da Verdade Caídos",
+      "en": "Fallen Truth-Seekers' Temple"
+    },
+    "5091": {
+      "key": "Map_Name_5091",
+      "pt": "Campo de Batalha da Memória (Fácil)",
+      "en": "Battlefield of Memory (Easy)"
+    },
+    "5092": {
+      "key": "Map_Name_5092",
+      "pt": "Campo de Batalha da Memória (Normal)",
+      "en": "Battlefield of Memory (Normal)"
+    },
+    "5093": {
+      "key": "Map_Name_5093",
+      "pt": "Campo de Batalha da Memória (Difícil)",
+      "en": "Battlefield of Memory (Hard)"
+    },
+    "5094": {
+      "key": "Map_Name_5094",
+      "pt": "Campo de Batalha da Memória (Inferno)",
+      "en": "Battlefield of Memory (Hell)"
+    },
+    "5099": {
+      "key": "Map_Name_5099",
+      "pt": "Campo de Batalha da Memória (Desafio)",
+      "en": "Battlefield of Memory (Challenge)"
+    },
+    "5101": {
+      "key": "Map_Name_5101",
+      "pt": "",
+      "en": ""
+    },
+    "5111": {
+      "key": "Map_Name_5111",
+      "pt": "",
+      "en": ""
+    },
+    "6511": {
+      "key": "Map_Name_6511",
+      "pt": "Área de Enxame Ushas 1",
+      "en": "Ushas Swarm Area 1"
+    },
+    "6521": {
+      "key": "Map_Name_6511",
+      "pt": "Área de Enxame Ushas 1",
+      "en": "Ushas Swarm Area 1"
+    },
+    "9101": {
+      "key": "Map_Name_9101",
+      "pt": "Armazém do Papai Noel Lv. 1",
+      "en": "Santa's Warehouse Lv. 1"
+    },
+    "9102": {
+      "key": "Map_Name_9102",
+      "pt": "Armazém do Papai Noel Nv. 2",
+      "en": "Santa's Warehouse Lv. 2"
+    },
+    "9103": {
+      "key": "Map_Name_9103",
+      "pt": "Armazém do Papai Noel Nv. 3",
+      "en": "Santa's Warehouse Lv. 3"
+    },
+    "9104": {
+      "key": "Map_Name_9104",
+      "pt": "Armazém do Papai Noel Nv. 4",
+      "en": "Santa's Warehouse Lv. 4"
+    },
+    "9105": {
+      "key": "Map_Name_9105",
+      "pt": "Armazém do Papai Noel Lv. 5",
+      "en": "Santa's Warehouse Lv. 5"
+    },
+    "9106": {
+      "key": "Map_Name_9106",
+      "pt": "Armazém do Papai Noel Lv. 6",
+      "en": "Santa's Warehouse Lv. 6"
+    },
+    "9107": {
+      "key": "Map_Name_9107",
+      "pt": "Armazém do Papai Noel Lv. 7",
+      "en": "Santa's Warehouse Lv. 7"
+    },
+    "9108": {
+      "key": "Map_Name_9108",
+      "pt": "Armazém do Papai Noel Lv. 8",
+      "en": "Santa's Warehouse Lv. 8"
+    },
+    "9109": {
+      "key": "Map_Name_9109",
+      "pt": "Armazém do Papai Noel Lv. 9",
+      "en": "Santa's Warehouse Lv. 9"
+    },
+    "9110": {
+      "key": "Map_Name_9110",
+      "pt": "Armazém do Papai Noel Nv. 10",
+      "en": "Santa's Warehouse Lv. 10"
+    },
+    "9111": {
+      "key": "Map_Name_9111",
+      "pt": "Armazém do Papai Noel Nv. 11",
+      "en": "Santa's Warehouse Lv. 11"
+    },
+    "9201": {
+      "key": "Map_Name_9201",
+      "pt": "Ruínas Corroídas Nv. 1",
+      "en": "Corroded Ruins Lv. 1"
+    },
+    "9202": {
+      "key": "Map_Name_9202",
+      "pt": "Ruínas Corroídas Nv. 2",
+      "en": "Corroded Ruins Lv. 2"
+    },
+    "9203": {
+      "key": "Map_Name_9203",
+      "pt": "Ruínas Corroídas Nv. 3",
+      "en": "Corroded Ruins Lv. 3"
+    },
+    "9204": {
+      "key": "Map_Name_9204",
+      "pt": "Ruínas Corroídas Nv. 4",
+      "en": "Corroded Ruins Lv. 4"
+    },
+    "9205": {
+      "key": "Map_Name_9205",
+      "pt": "Ruínas Corroídas Nv. 5",
+      "en": "Corroded Ruins Lv. 5"
+    },
+    "9206": {
+      "key": "Map_Name_9206",
+      "pt": "Ruínas Corroídas Nv. 6",
+      "en": "Corroded Ruins Lv. 6"
+    },
+    "9207": {
+      "key": "Map_Name_9207",
+      "pt": "Ruínas Corroídas Nv. 7",
+      "en": "Corroded Ruins Lv. 7"
+    },
+    "9301": {
+      "key": "Map_Name_9301",
+      "pt": "Costa do Navio do Tesouro Nv. 1",
+      "en": "Treasure Ship Coast Lv. 1"
+    },
+    "9302": {
+      "key": "Map_Name_9302",
+      "pt": "Costa do Navio do Tesouro Lv. 2",
+      "en": "Treasure Ship Coast Lv. 2"
+    },
+    "9303": {
+      "key": "Map_Name_9303",
+      "pt": "Costa do Navio do Tesouro Lv. 3",
+      "en": "Treasure Ship Coast Lv. 3"
+    },
+    "9304": {
+      "key": "Map_Name_9304",
+      "pt": "Costa do Navio do Tesouro Nv. 4",
+      "en": "Treasure Ship Coast Lv. 4"
+    },
+    "9305": {
+      "key": "Map_Name_9305",
+      "pt": "Costa do Navio do Tesouro Lv. 5",
+      "en": "Treasure Ship Coast Lv. 5"
+    },
+    "9306": {
+      "key": "Map_Name_9306",
+      "pt": "Costa do Navio do Tesouro Lv. 6",
+      "en": "Treasure Ship Coast Lv. 6"
+    },
+    "9307": {
+      "key": "Map_Name_9307",
+      "pt": "Costa do Navio do Tesouro Lv. 7",
+      "en": "Treasure Ship Coast Lv. 7"
+    },
+    "9308": {
+      "key": "Map_Name_9308",
+      "pt": "Costa do Navio do Tesouro Lv. 8",
+      "en": "Treasure Ship Coast Lv. 8"
+    },
+    "9401": {
+      "key": "Map_Name_9401",
+      "pt": "Memórias da Primavera Nv. 1",
+      "en": "Springtime Memories Lv. 1"
+    },
+    "9402": {
+      "key": "Map_Name_9402",
+      "pt": "Memórias de Primavera Nv. 2",
+      "en": "Springtime Memories Lv. 2"
+    },
+    "9403": {
+      "key": "Map_Name_9403",
+      "pt": "Memórias da Primavera Nv. 3",
+      "en": "Springtime Memories Lv. 3"
+    },
+    "9404": {
+      "key": "Map_Name_9404",
+      "pt": "Memórias da Primavera Nv. 4",
+      "en": "Springtime Memories Lv. 4"
+    },
+    "9405": {
+      "key": "Map_Name_9405",
+      "pt": "Memórias da Primavera Nv. 5",
+      "en": "Springtime Memories Lv. 5"
+    },
+    "9406": {
+      "key": "Map_Name_9406",
+      "pt": "Memórias da Primavera Nv. 6",
+      "en": "Springtime Memories Lv. 6"
+    }
+  }
+}

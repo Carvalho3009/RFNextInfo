@@ -1,0 +1,22 @@
+{
+  "verification_time": "2026-08-09T12:00:00+00:00",
+  "public_keys": {
+    "lease-test-vector-2026-01": "3yu8ECjvXSAz5BdgoXB-W-vxQNg_3FyrQtbg0PqRvr8"
+  },
+  "lease": "eyJhdWQiOiJyZi1xb2wtd2luZG93cyIsImVudGl0bGVtZW50X2V4cGlyZXNfYXQiOiIyMDI2LTA5LTA5VDA4OjAwOjAwKzAwOjAwIiwiZmVhdHVyZXMiOlsiYmFzZSIsIm1vbml0b3ItcHZlIiwibW9uaXRvci1wdnAiLCJtb25pdG9yLWJvc3MiXSwiaW5zdGFsbGF0aW9uX2lkIjoiNGZkYjZkMjQtZGM5ZC00ZTc0LTk3ZDQtYWExYWU2YzNiMDIxIiwiaXNzIjoicmZsaWNlbmNhLmthcnZhbGhvLmRldi5iciIsImlzc3VlZF9hdCI6IjIwMjYtMDgtMDlUMDg6MDA6MDArMDA6MDAiLCJrZXlfaWQiOiJsZWFzZS10ZXN0LXZlY3Rvci0yMDI2LTAxIiwibGVhc2VfaWQiOiJ2ZWN0b3ItbGVhc2UtMDAxIiwibGljZW5zZV9pZCI6InZlY3Rvci1saWNlbnNlLTAwMSIsIm5leHRfY2hlY2tfYXQiOiIyMDI2LTA4LTA5VDE0OjAwOjAwKzAwOjAwIiwicHJvZHVjdCI6InJmLXFvbCIsInYiOjIsInZhbGlkX3VudGlsIjoiMjAyNi0wOC0xMFQwODowMDowMCswMDowMCJ9.Z-PjaWLOLqvt2T6XFDEWqDC1VDNyztmzD3L33Bw9cAkFPoQWBCwPS4b0hv0WVn1KB5m1SEBZGhjXP9L8ISeWCQ",
+  "expected_claims": {
+    "v": 2,
+    "iss": "rflicenca.karvalho.dev.br",
+    "product": "rf-qol",
+    "aud": "rf-qol-windows",
+    "key_id": "lease-test-vector-2026-01",
+    "lease_id": "vector-lease-001",
+    "license_id": "vector-license-001",
+    "installation_id": "4fdb6d24-dc9d-4e74-97d4-aa1ae6c3b021",
+    "issued_at": "2026-08-09T08:00:00+00:00",
+    "next_check_at": "2026-08-09T14:00:00+00:00",
+    "valid_until": "2026-08-10T08:00:00+00:00",
+    "entitlement_expires_at": "2026-09-09T08:00:00+00:00",
+    "features": ["base", "monitor-pve", "monitor-pvp", "monitor-boss"]
+  }
+}

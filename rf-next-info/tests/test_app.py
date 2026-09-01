@@ -1,0 +1,2631 @@
+import base64
+import ast
+import json
+import logging
+import inspect
+import sqlite3
+import struct
+import tempfile
+import threading
+import time
+import unittest
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from io import BytesIO
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from app.license import (
+    LicenseClient,
+    _activation_error,
+    validate_release_configuration as validate_license_release,
+    verify_lease,
+)
+from app.main import (
+    App,
+    FARM_CATALOG,
+    FARM_CATALOG_EN,
+    LEVEL_CURVE,
+    _capture_prefix,
+    _capture_summary,
+    _collection_marks,
+    _configured_capture_dir,
+    _filter_subsessions,
+    _market_rows,
+    _merge_client_routes,
+    _safe_error_code,
+    _session_elapsed,
+)
+from app.site_profile import SiteProfileClient
+from app.support_log import (
+    LOGGER_NAME,
+    configure,
+    install_exception_hooks,
+    recent_lines,
+    set_detailed,
+)
+import app.support_log as support_log_module
+from app.updater import (
+    ROLLBACK_MANIFEST_NAME,
+    UPDATE_SIGNATURE_CONTEXT,
+    backup_database,
+    cached_rollback,
+    download_release_with_rollback,
+    download_verified,
+    verify_downloaded,
+    verify_manifest,
+)
+import app.main as main_module
+from tools import generate_update_key, sign_provenance, sign_update_manifest
+
+
+def b64(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+
+
+class AppLogicTest(unittest.TestCase):
+    def test_production_lease_public_key_is_configured(self):
+        validate_license_release()
+
+    def test_manual_update_mode_blocks_network_checks(self):
+        from app.updater import UPDATE_MODE, latest
+
+        self.assertEqual(UPDATE_MODE, "manual")
+        with patch("app.updater.urllib.request.urlopen") as request:
+            with self.assertRaisesRegex(RuntimeError, "automáticas estão desativadas"):
+                latest()
+        request.assert_not_called()
+
+    def test_legacy_manual_update_action_never_starts_network_operation(self):
+        app = Mock()
+
+        App.check_update(app)
+
+        app._run.assert_not_called()
+        app.update_status.configure.assert_called_once_with(
+            text="Atualização automática desativada. Use o Discord oficial."
+        )
+
+    def test_manual_update_mode_never_launches_downloaded_installer(self):
+        app = Mock()
+        with patch("app.main.os.startfile") as launch:
+            App._update_downloaded(app, Path("setup.exe"), None)
+        launch.assert_not_called()
+        app.update_status.configure.assert_called_once_with(
+            text="Instalação automática desativada."
+        )
+
+    def test_previous_public_lease_without_connection_limits_is_rejected(self):
+        fixture = json.loads(
+            (Path(__file__).parent / "fixtures" / "lease-v2-valid.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        with self.assertRaises(ValueError):
+            verify_lease(
+                fixture["lease"],
+                fixture["public_keys"],
+                installation_id=fixture["expected_claims"]["installation_id"],
+                now=datetime.fromisoformat(fixture["verification_time"]),
+            )
+
+    def test_legacy_send_hotkeys_are_removed(self):
+        source = inspect.getsource(App)
+        self.assertNotIn("_bind_shortcuts", source)
+        self.assertNotIn("_register_global_hotkeys", source)
+        self.assertNotIn("_quick_shortcut", source)
+
+    def test_subsession_view_filters(self):
+        items = [
+            {"client_key": "client:a", "ended_ns": None, "upload_state": "pending"},
+            {"client_key": "client:b", "ended_ns": 2, "upload_state": "sent"},
+        ]
+        self.assertEqual(_filter_subsessions(items, "Todas"), items)
+        self.assertEqual(_filter_subsessions(items, "Cliente A"), [items[0]])
+        self.assertEqual(_filter_subsessions(items, "Cliente B"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Em andamento"), [items[0]])
+        self.assertEqual(_filter_subsessions(items, "Encerradas"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Enviadas"), [items[1]])
+        self.assertEqual(_filter_subsessions(items, "Não enviadas"), [items[0]])
+
+    def test_subsession_autofit_reads_rows_by_tree_item_id(self):
+        source = inspect.getsource(App._refresh_subsessions)
+        self.assertIn('self.subsession_table.set(row["id"], column)', source)
+        self.assertIn("summary.get('kills') or 0", source)
+        self.assertIn('"☑" if item["id"]', source)
+        report_source = inspect.getsource(App._subsession_report)
+        self.assertIn('"mob_kills_estimated": int(summary.get("kills") or 0)', report_source)
+
+    def test_subsession_checkbox_updates_persistent_selection(self):
+        app = Mock()
+        app._selected_subsession_ids = set()
+        app.subsession_table.identify_column.return_value = "#1"
+        app.subsession_table.identify_row.return_value = "sub-1"
+        app._render_subsession_checks = Mock()
+        self.assertEqual(App._toggle_subsession_checkbox(app, Mock(x=1, y=1)), "break")
+        self.assertEqual(app._selected_subsession_ids, {"sub-1"})
+        app.subsession_table.selection_add.assert_called_once_with("sub-1")
+        App._toggle_subsession_checkbox(app, Mock(x=1, y=1))
+        self.assertEqual(app._selected_subsession_ids, set())
+        app.subsession_table.selection_remove.assert_called_once_with("sub-1")
+
+    def test_incremental_summary_matches_full_summary(self):
+        events = [
+            {
+                "type": "update_exp",
+                "character_uid": "uid-1",
+                "data": {"fields": {"level": 10, "exp": 100, "gain_exp": 25}},
+            },
+            {
+                "type": "drop_item_field",
+                "character_uid": "uid-1",
+                "data": {
+                    "results": [
+                        {"item_index": 900, "count": 40},
+                        {"item_index": 1, "count": 12},
+                    ]
+                },
+            },
+            {
+                "type": "update_exp",
+                "character_uid": "uid-1",
+                "data": {"fields": {"level": 10, "exp": 140, "gain_exp": 40}},
+            },
+        ]
+        full, full_marks = _capture_summary({"events": events}, "uid-1")
+        _first, _marks, state = _capture_summary(
+            {"events": events[:1]},
+            "uid-1",
+            _state={"loot_limit": 100},
+            _return_state=True,
+        )
+        incremental, incremental_marks, _state = _capture_summary(
+            {"events": events[1:]},
+            "uid-1",
+            _state=state,
+            _return_state=True,
+        )
+        self.assertEqual(incremental, full)
+        self.assertEqual(incremental_marks, full_marks)
+
+    def test_summary_starts_session_clock_at_client_recognition_and_classifies_epic(self):
+        summary, _marks = _capture_summary({"events": [{
+            "ts_ns": 12_000_000_000,
+            "type": "world_info_prefix",
+            "character_uid": "uid-1",
+            "data": {"fields": {"character_name": "Alice", "level": 70}},
+        }, {
+            "ts_ns": 13_000_000_000,
+            "type": "drop_item_field",
+            "character_uid": "uid-1",
+            "data": {"results": [{
+                "ret": 0, "item_index": 240005, "count": 2,
+            }]},
+        }]}, "uid-1")
+
+        self.assertEqual(summary["recognized_at_ns"], 12_000_000_000)
+        self.assertEqual(summary["epic_by_category"]["blueprint_mau"], 2)
+
+    def test_stale_info_result_is_discarded(self):
+        app = Mock()
+        app._info_refresh_running = True
+        app._info_refresh_pending = False
+        app._info_refresh_generation = 2
+
+        App._info_refresh_finished(app, 1, {"session_id": "old"}, None)
+
+        app._apply_info_snapshot.assert_not_called()
+        app._start_info_refresh.assert_called_once()
+
+    def test_poll_never_scans_event_store(self):
+        source = inspect.getsource(App._poll)
+        self.assertNotIn("self.store.", source)
+        self.assertNotIn("capture.status()", source)
+        self.assertNotIn("packet_count()", source)
+
+    def test_configured_capture_dir_uses_saved_absolute_path(self):
+        with tempfile.TemporaryDirectory() as folder:
+            preferences = Path(folder) / "preferences.json"
+            target = Path(folder) / "capturas"
+            preferences.write_text(
+                json.dumps({"capture_directory": str(target)}),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_configured_capture_dir(preferences), target)
+
+    def test_choose_capture_directory_persists_and_rebuilds_capture(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "capturas"
+            app = Mock()
+            app.capture_dir = Path(folder)
+            app.prefs = {}
+            app._capture_is_active.return_value = False
+
+            with patch(
+                "app.main.filedialog.askdirectory", return_value=str(target)
+            ), patch("app.main.PktmonCapture") as capture:
+                App._choose_capture_directory(app)
+
+            self.assertEqual(app.capture_dir, target.resolve())
+            capture.assert_called_once_with(target.resolve())
+            app._save_preferences.assert_called_once()
+            app.capture_directory_state.configure.assert_called_once_with(
+                text=str(target.resolve())
+            )
+
+    def test_scroll_ignores_native_combobox_popup(self):
+        canvas = Mock()
+        app = Mock(
+            _page_canvases=[canvas],
+            _active_page_index=0,
+        )
+        app.winfo_containing.side_effect = KeyError("combobox popdown")
+        event = Mock(x_root=1, y_root=1, delta=120, state=0)
+
+        self.assertIsNone(App._scroll_active_page(app, event))
+        canvas.yview_scroll.assert_not_called()
+
+    def test_main_has_every_uppercase_global_it_uses(self):
+        tree = ast.parse(Path(main_module.__file__).read_text(encoding="utf-8"))
+        used = {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name)
+            and isinstance(node.ctx, ast.Load)
+            and node.id.isupper()
+            and len(node.id) == 1
+        }
+        self.assertEqual(
+            {name for name in used if not hasattr(main_module, name)},
+            set(),
+        )
+
+    def test_site_profile_token_is_protected_and_reused_for_upload(self):
+        with tempfile.TemporaryDirectory() as folder:
+            response = Mock()
+            response.__enter__ = Mock(return_value=response)
+            response.__exit__ = Mock(return_value=False)
+            response.read.return_value = json.dumps(
+                {"profile": "CarvalhoRF", "ok": True}
+            ).encode()
+            with patch(
+                "app.site_profile.protect",
+                side_effect=lambda value: bytes(byte ^ 0xA5 for byte in value),
+            ), patch(
+                "app.site_profile.unprotect",
+                side_effect=lambda value: bytes(byte ^ 0xA5 for byte in value),
+            ), patch(
+                "app.site_profile.urllib.request.urlopen", return_value=response
+            ) as urlopen:
+                client = SiteProfileClient(Path(folder))
+                client.connect("CarvalhoRF", "token-" + "a" * 32)
+                capture = Path(folder) / "capture.json"
+                capture.write_text(
+                    json.dumps(
+                        {
+                            "metadata": {},
+                            "profiles": [],
+                            "capture": {},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                client = SiteProfileClient(Path(folder))
+                client.upload(capture, "capture-1")
+                client.upload_live("market", {"rows": []}, "a" * 64)
+                client.upload_live(
+                    "memory_chips",
+                    {"profiles": []},
+                    "b" * 64,
+                )
+                client.upload_live(
+                    "character",
+                    {"profiles": []},
+                    "c" * 64,
+                )
+                client.upload_live(
+                    "subsession",
+                    {"profiles": []},
+                    "d" * 64,
+                )
+                client.upload_exp_rank(
+                    {"metadata": {}, "exp_rank": {"records": []}},
+                    "e" * 64,
+                )
+                client.upload_pve_observations(
+                    {"schema": "rf-qol.pve-observations.delta", "observations": []},
+                    "f" * 64,
+                )
+
+            self.assertEqual(urlopen.call_count, 8)
+            self.assertTrue(client.connected)
+            requests = [call.args[0] for call in urlopen.call_args_list]
+            self.assertTrue(
+                any(
+                    request.full_url.endswith("/api/import/market")
+                    for request in requests
+                )
+            )
+            self.assertTrue(
+                any(
+                    request.full_url.endswith("/api/import/pve-observations")
+                    for request in requests
+                )
+            )
+            self.assertEqual(
+                {
+                    request.get_header("Authorization")
+                    for request in requests
+                },
+                {"Bearer token-" + "a" * 32},
+            )
+            self.assertNotIn(
+                ("token-" + "a" * 32).encode(),
+                (Path(folder) / "site-profile.dat").read_bytes(),
+            )
+
+    def test_site_profile_reports_access_page_instead_of_json(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = b"<html>login</html>"
+        with tempfile.TemporaryDirectory() as folder, patch(
+            "app.site_profile.urllib.request.urlopen", return_value=response
+        ):
+            client = SiteProfileClient(Path(folder))
+            with self.assertRaisesRegex(ValueError, "página de acesso"):
+                client.connect("CarvalhoRF", "token-" + "a" * 32)
+
+    def test_site_profile_downloads_pvp_final_with_get(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.read.return_value = b'{"revision":2,"characters":[]}'
+        with tempfile.TemporaryDirectory() as folder, patch(
+            "app.site_profile.urllib.request.urlopen", return_value=response
+        ) as urlopen:
+            client = SiteProfileClient(Path(folder))
+            client.state = {"profile": "Carvalho", "token": "token"}
+            result = client.download_observations()
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(result["revision"], 2)
+        self.assertEqual(request.get_method(), "GET")
+        self.assertIsNone(request.data)
+        self.assertTrue(request.full_url.endswith("/api/pvp-sync/final"))
+
+    def test_site_profile_downloads_pvp_final_larger_than_64k(self):
+        payload = json.dumps({
+            "revision": 3,
+            "characters": [
+                {"character_uid": str(index), "name": "Personagem " + "x" * 80}
+                for index in range(1000)
+            ],
+        }).encode()
+        self.assertGreater(len(payload), 64 * 1024)
+        with tempfile.TemporaryDirectory() as folder, patch(
+            "app.site_profile.urllib.request.urlopen", return_value=BytesIO(payload)
+        ):
+            client = SiteProfileClient(Path(folder))
+            client.state = {"profile": "Carvalho", "token": "token"}
+            result = client.download_observations()
+
+        self.assertEqual(result["revision"], 3)
+        self.assertEqual(len(result["characters"]), 1000)
+
+    def test_site_profile_preserves_detail_from_http_error(self):
+        error = urllib.error.HTTPError(
+            "https://site/api/import/market", 422, "Unprocessable", {},
+            BytesIO(b'{"detail":"mercado invalido"}'),
+        )
+        client = SiteProfileClient(Path("."))
+        with patch("app.site_profile.urllib.request.urlopen", side_effect=error):
+            with self.assertRaisesRegex(ValueError, "mercado invalido"):
+                client._request("/api/import/market", b"{}", "token", "application/json")
+
+    def test_site_profile_reports_uncertain_timeout_without_claiming_rejection(self):
+        client = SiteProfileClient(Path("."))
+        with patch(
+            "app.site_profile.urllib.request.urlopen", side_effect=TimeoutError
+        ):
+            with self.assertRaisesRegex(ValueError, "podem ter sido recebidos"):
+                client._request(
+                    "/api/import/market", b"{}", "token", "application/json"
+                )
+
+    def test_market_upload_is_split_by_server_type(self):
+        client = SiteProfileClient(Path("."))
+        client.state = {"profile": "Carvalho", "token": "token"}
+        with patch.object(
+            client,
+            "_request",
+            side_effect=({"receipt": "local"}, {"receipt": "global"}),
+        ) as request:
+            result = client.upload_live(
+                "market",
+                {
+                    "metadata": {"profile": "Carvalho"},
+                    "rows": [
+                        {"ServerType": 1, "ItemIndex": 10},
+                        {"ServerType": 0, "ItemIndex": 11},
+                        {"ServerType": 1, "ItemIndex": 12},
+                    ],
+                },
+                "a" * 64,
+            )
+
+        self.assertEqual(result["server_types"], [0, 1])
+        payloads = [json.loads(call.args[1]) for call in request.call_args_list]
+        self.assertEqual(
+            [(item["metadata"]["market_server_type"], len(item["rows"])) for item in payloads],
+            [(0, 1), (1, 2)],
+        )
+
+    def test_quick_capture_accepts_app_live_session(self):
+        app = Mock()
+        app.current_session = "Profile-20260729-120000-001"
+        app._live_capture = object()
+        app.capture.status.return_value.active = False
+
+        self.assertTrue(App._capture_is_active(app))
+
+    def test_quick_capture_uses_configured_duration(self):
+        app = Mock()
+        app.quick_mode_labels = {"market": Mock()}
+        app._active_quick_mode = None
+        app._capture_is_active.return_value = True
+        app._quick_capture_duration.return_value = 45
+
+        App.quick_capture(app, "market")
+
+        app.quick_mode_labels["market"].configure.assert_called_once_with(
+            text="Capturando · 45 s"
+        )
+        app.after.assert_called_once()
+
+    def test_send_button_uses_existing_session_instead_of_timed_capture(self):
+        app = Mock()
+        app.quick_mode_labels = {"market": Mock()}
+        app._send_uploading = False
+        app._pending_send_mode = None
+        app.site_profile.connected = True
+        app.current_session = "Profile-20260729-120000-001"
+        app._capture_is_active.return_value = False
+
+        App.send_mode_now(app, "market")
+
+        app._send_mode_snapshot.assert_called_once_with("market", notify=True)
+        app.after.assert_not_called()
+
+    @patch("app.main.messagebox.showwarning")
+    def test_global_hotkey_failure_does_not_take_focus_with_dialog(self, warning):
+        app = Mock()
+        app.quick_mode_labels = {"market": Mock()}
+        app._send_uploading = False
+        app._pending_send_mode = None
+        app.site_profile.connected = False
+
+        App.send_mode_now(app, "market", notify=False)
+
+        warning.assert_not_called()
+        app.quick_mode_labels["market"].configure.assert_called_once_with(
+            text="Token não validado"
+        )
+
+    def test_character_send_includes_detected_equipment(self):
+        app = Mock()
+        app.current_session = "Profile-20260730-120000-001"
+        app.site_profile.profile = "CarvalhoRF"
+        app.site_profile.upload_live.return_value = {"receipt": "ok"}
+        app.license.installation_id = "installation"
+        app.license.lease = {"valid": True}
+        app.active_character_uid = "101"
+        app._active_client_index = 0
+        app._character_exports.return_value = [
+            {
+                "uid": "101",
+                "name": "Carvalho",
+                "client_key": "client:a",
+                "include_unassigned": False,
+                "only_unassigned": False,
+            }
+        ]
+        app.store.session_envelope.return_value = {
+            "events": [
+                {
+                    "type": "player_profile_info",
+                    "character_uid": "101",
+                    "data": {
+                        "fields": {
+                            "active_equipment": {
+                                "slots": [
+                                    {
+                                        "equip_part_type": 1,
+                                        "resolved": True,
+                                        "item": {
+                                            "item_index": 1000078,
+                                            "enchant_level": 7,
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                }
+            ]
+        }
+        app.quick_mode_labels = {"character": Mock()}
+        app.queue_mode_times = {"character": Mock()}
+        app._capture_summary_for_language.side_effect = _capture_summary
+        app._run.side_effect = lambda job, done: done(job(), None)
+
+        App._send_mode_snapshot(app, "character", 0)
+
+        payload = app.site_profile.upload_live.call_args.args[1]
+        equipment = [
+            {"item_index": 1000078, "slot": 1, "refinement": 7}
+        ]
+        self.assertEqual(
+            payload["profiles"][0]["loadout"]["equipment"], equipment
+        )
+        self.assertEqual(payload["loadout"]["equipment"], equipment)
+
+    def test_summary_uses_equipment_uid_when_event_route_is_missing(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "player_profile_info",
+                    "character_uid": None,
+                    "data": {"fields": {"active_equipment": {
+                        "character_uid": "101",
+                        "slots": [{
+                            "equip_part_type": 1,
+                            "resolved": True,
+                            "item": {
+                                "item_index": 1000078,
+                                "enchant_level": 7,
+                            },
+                        }],
+                    }}},
+                }]
+            },
+            character_uid="101",
+        )
+
+        self.assertEqual(summary["equipment"], [{
+            "item_index": 1000078,
+            "slot": 1,
+            "refinement": 7,
+        }])
+
+    def test_client_tab_switch_does_not_ask_for_name(self):
+        app = Mock()
+        app._current_profiles = []
+        with patch("app.main.simpledialog.askstring") as ask:
+            App._select_character(app, 1)
+        ask.assert_not_called()
+        self.assertEqual(app._active_client_index, 1)
+        self.assertIsNone(app.active_character_uid)
+
+    def test_client_label_keeps_manual_alias_separate_from_captured_name(self):
+        app = Mock()
+        app.character1.get.return_value = "Farm principal"
+        profiles = [
+            {
+                "uid": "101",
+                "name": "FernanTorres",
+                "client_key": "client:a",
+            }
+        ]
+
+        self.assertEqual(
+            App._client_display_name(app, 0, profiles),
+            "Farm principal · FernanTorres",
+        )
+
+    def test_summary_calculates_missing_exp_and_own_diamonds(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "update_exp",
+                        "data": {
+                            "fields": {
+                                "level": 67,
+                                "exp": 100,
+                                "gain_exp": 50,
+                            }
+                        },
+                    },
+                    {
+                        "type": "appear_player_prefix",
+                        "data": {
+                            "fields": {
+                                "character_uid": 101,
+                                "character_name": "Alice",
+                                "diamonds": 3753,
+                            }
+                        },
+                    },
+                ]
+            },
+            "101",
+            "Alice",
+        )
+        self.assertGreater(summary["exp_missing"], 0)
+        self.assertEqual(summary["diamonds"], 3753)
+
+    def test_summary_calculates_total_exp_percent_by_event_level(self):
+        required = LEVEL_CURVE[68]
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "update_exp",
+                        "data": {
+                            "fields": {
+                                "level": 67,
+                                "gain_exp": required / 10,
+                            }
+                        },
+                    }
+                ]
+            }
+        )
+        self.assertAlmostEqual(summary["exp_gained_percent"], 10.0)
+
+    def test_reward_packets_drive_farm_totals_without_bonus_duplication(self):
+        events = []
+        contribution_total = 100_000_000
+        for index in range(257):
+            contribution_total += 6_050
+            events.extend(
+                [
+                    {
+                        "type": "drop_item_field",
+                        "data": {
+                            "results": [
+                                {
+                                    "item_index": 900,
+                                    "count": (
+                                        265_840 if index < 9 else 26_584
+                                    ),
+                                    "action_code": (
+                                        1006 if index < 9 else 1001
+                                    ),
+                                },
+                                {"item_index": 1, "count": 574},
+                                {"item_index": 1701, "count": 6_050},
+                            ]
+                        },
+                    },
+                    {
+                        "type": "update_exp",
+                        "data": {
+                            "action_code": 1006 if index < 9 else 1001,
+                            "gain_exp": 265_840 if index < 9 else 26_584,
+                            "level": 67,
+                        },
+                    },
+                    {
+                        "type": "realm_contribution_update",
+                        "data": {"contribution_total": contribution_total},
+                    },
+                ]
+            )
+
+        summary, _ = _capture_summary({"events": events})
+
+        self.assertEqual(summary["kills"], 257)
+        self.assertEqual(summary["exp_gained"], 6_832_088)
+        self.assertEqual(summary["credits"], 147_518)
+        self.assertEqual(summary["contribution"], 1_554_850)
+        self.assertEqual(summary["finalizations"], 9)
+        self.assertEqual(
+            round(summary["contribution"] / (23 / 60)),
+            4_056_130,
+        )
+        self.assertEqual(summary["loot"], [])
+
+    def test_reward_credit_exposes_current_total_and_session_gain(self):
+        summary, _ = _capture_summary({
+            "events": [{
+                "type": "drop_item_field",
+                "data": {"results": [{
+                    "item_index": 1,
+                    "count": 574,
+                    "gain_total": 9_876_543,
+                }]},
+            }],
+        })
+
+        self.assertEqual(summary["credits_total"], 9_876_543)
+        self.assertEqual(summary["credits"], 574)
+
+    def test_loot_is_grouped_by_item_rarity(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "drop_item_field",
+                        "data": {
+                            "results": [
+                                {"item_index": 149158, "count": 2},
+                                {"item_index": 149159, "count": 3},
+                                {"item_index": 149160, "count": 4},
+                                {"item_index": 154058, "count": 5},
+                            ]
+                        },
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(
+            summary["loot_by_rarity"],
+            {
+                "common": 2,
+                "uncommon": 3,
+                "rare": 4,
+                "epic": 5,
+            },
+        )
+        self.assertEqual(
+            [item["rarity"] for item in summary["loot"]],
+            ["Comum", "Incomum", "Raro", "Épico"],
+        )
+        self.assertEqual(summary["kills"], 0)
+
+    def test_farm_catalog_links_map_spot_mob_and_level(self):
+        self.assertEqual(len(FARM_CATALOG), 25)
+        self.assertEqual(
+            sum(len(spots) for spots in FARM_CATALOG.values()), 281
+        )
+        self.assertEqual(
+            FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"][
+                "Arremessador Carmesim"
+            ],
+            (98,),
+        )
+        self.assertEqual(
+            FARM_CATALOG_EN["Ruined City of Babylon"]["Area 4"][
+                "Crimson Thrower"
+            ],
+            (98,),
+        )
+
+    def test_subsession_map_and_spot_filter_the_next_choices(self):
+        app = Mock()
+        app.subsession_map.get.return_value = (
+            "Cidade Arruinada da Babilônia"
+        )
+        app.subsession_spot.get.return_value = "Área 4"
+        app._selected_farm_catalog.return_value = FARM_CATALOG
+
+        App._subsession_map_changed(app, preferred_spot="Área 4")
+
+        expected_spots = tuple(
+            sorted(
+                FARM_CATALOG["Cidade Arruinada da Babilônia"],
+                key=str.casefold,
+            )
+        )
+        app.subsession_spot.configure.assert_called_once_with(
+            values=expected_spots
+        )
+        app.subsession_spot.set.assert_called_once_with("Área 4")
+
+        app._subsession_spot_changed = App._subsession_spot_changed.__get__(app)
+        app._subsession_spot_changed()
+        app._set_subsession_mob_choices.assert_called_once_with(
+            FARM_CATALOG["Cidade Arruinada da Babilônia"]["Área 4"]
+        )
+
+    def test_retained_capture_recovers_character_uid(self):
+        app = Mock()
+        app.current_session = "profile-20260731-001"
+        app.prefs = {"capture_decode_ports": [12010]}
+        app.store.session_profiles.side_effect = [[], [{"uid": "123"}]]
+        app._ingest_files.return_value = (3, [], 0)
+        app._run.side_effect = lambda job, done: done(job(), None)
+
+        App._recover_pending_character_uid(app, (Path("retained.etl"),))
+
+        app._ingest_files.assert_called_once_with(
+            (Path("retained.etl"),),
+            "profile-20260731-001",
+            (12000, 12010, 12020, 12040),
+            append_only=True,
+        )
+        app.capture_state.configure.assert_called_once()
+        app._refresh_info.assert_called_once()
+
+    def test_subsession_form_toggle_hides_and_restores_form(self):
+        app = Mock()
+        app._subsession_form_visible = True
+
+        App._toggle_subsession_form(app)
+        self.assertFalse(app._subsession_form_visible)
+        app.subsession_form.pack_forget.assert_called_once()
+        app.subsession_form_toggle.configure.assert_called_once_with(text="▶")
+
+        App._toggle_subsession_form(app)
+        self.assertTrue(app._subsession_form_visible)
+        app.subsession_form.pack.assert_called_once_with(
+            side="left",
+            before=app.subsession_history,
+            fill="y",
+            padx=(0, 8),
+        )
+
+    def test_english_language_updates_map_and_spot_choices(self):
+        app = Mock()
+        app.item_name_language.get.return_value = "pt"
+        app.subsession_map.get.return_value = (
+            "Cidade Arruinada da Babilônia"
+        )
+        app.subsession_spot.get.return_value = "Área 4"
+
+        App._item_language_changed(app, "English")
+
+        app.item_name_language.set.assert_called_once_with("en")
+        app._refresh_farm_choices.assert_called_once_with(
+            "Ruined City of Babylon", "Area 4"
+        )
+
+    def test_market_window_builds_site_rows(self):
+        rows = _market_rows(
+            {
+                "events": [
+                    {
+                        "data": {
+                            "message": (
+                                "FL2C_respond_purchase_list_on_exchange_Message"
+                            ),
+                            "ret": 0,
+                            "is_end": True,
+                            "exchange_server_type": 2,
+                            "exchange_item_simple_infos": [
+                                {
+                                    "item_index": 1000150,
+                                    "enchant_level": 7,
+                                    "lowest_price": 100,
+                                    "highest_price": 0,
+                                    "number_of_registered_items": 3,
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {"1000150": "English market item"},
+        )
+        self.assertEqual(rows[0]["ItemIndex"], 1000150)
+        self.assertEqual(rows[0]["ServerType"], 2)
+        self.assertEqual(rows[0]["Name"], "English market item")
+        self.assertEqual(rows[0]["PricePerUnit"], 100)
+        self.assertEqual(rows[0]["HighestPrice"], 100)
+
+    def test_summary_resolves_biosuit_name_and_class(self):
+        for item_index, name, class_name in (
+            (2075041, "Revenant Caelum", "Arbiter"),
+            (2085031, "Destilador Terminator", "Demolisher"),
+        ):
+            summary, _ = _capture_summary(
+                {
+                    "events": [
+                        {
+                            "type": "world_info_prefix",
+                            "data": {
+                                "fields": {
+                                    "character_name": "Teste",
+                                    "level": 67,
+                                    "biosuit_item_index": item_index,
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+            self.assertEqual(summary["biosuit_name"], name)
+            self.assertEqual(summary["character_class"], class_name)
+            self.assertEqual(summary["biosuit_grade"], 5)
+
+    def test_game_data_language_uses_primary_catalog_and_fallback(self):
+        portuguese = main_module.item_names_for_language("pt")
+        english = main_module.item_names_for_language("en")
+        self.assertEqual(portuguese["1000150"], "Machado Pallacia do Executor")
+        self.assertEqual(english["1000150"], "Executor's Pallacia Axe")
+        self.assertEqual(portuguese["270004"], "Greater Metal Plate")
+        self.assertEqual(main_module.game_data_language("invalid"), "pt")
+
+    def test_inventory_categories_follow_official_game_metadata(self):
+        self.assertEqual(len(main_module.ITEM_CATEGORIES), 8231)
+        self.assertEqual(
+            set(main_module.ITEM_CATEGORIES.values()),
+            {
+                "equipment",
+                "consumables",
+                "materials",
+                "talics",
+                "rover_parts",
+                "other",
+            },
+        )
+        expected = {
+            1000078: "equipment",
+            901: "consumables",
+            270004: "materials",
+            161000: "talics",
+            310000: "rover_parts",
+            279500: "rover_parts",
+            1: "other",
+        }
+        self.assertEqual(
+            {
+                item_index: main_module.inventory_category(item_index)
+                for item_index in expected
+            },
+            expected,
+        )
+        self.assertEqual(
+            main_module.inventory_category(999999999, "equipment"),
+            "equipment",
+        )
+        self.assertEqual(main_module.inventory_category(999999999), "other")
+
+    def test_drop_alert_categories_follow_official_game_metadata(self):
+        self.assertEqual(main_module.drop_alert_category(1000156), "weapon")
+        self.assertEqual(main_module.drop_alert_category(1000200), "armor")
+        self.assertEqual(main_module.drop_alert_category(1000400), "accessory")
+        self.assertEqual(main_module.drop_alert_category(1002001), "expansion")
+        self.assertEqual(main_module.drop_alert_category(4209), "skill")
+        self.assertEqual(main_module.drop_alert_category(240000), "blueprint_mau")
+        self.assertEqual(
+            main_module.drop_alert_category(250000), "blueprint_launcher"
+        )
+        self.assertEqual(main_module.drop_alert_category(999999999), "other")
+
+    def test_summary_localizes_biosuit_and_rover_game_names(self):
+        biosuit, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "world_info_prefix",
+                    "data": {"fields": {"biosuit_item_index": 2075041}},
+                }]
+            },
+            game_language="en",
+        )
+        rover_pt, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "change_rover_response",
+                    "data": {"fields": {
+                        "result": 0,
+                        "rover_item_index": 4300017,
+                    }},
+                }]
+            },
+        )
+        rover_en, _ = _capture_summary(
+            {
+                "events": [{
+                    "type": "change_rover_response",
+                    "data": {"fields": {
+                        "result": 0,
+                        "rover_item_index": 4300017,
+                    }},
+                }]
+            },
+            game_language="en",
+        )
+        self.assertEqual(biosuit["biosuit_name"], "Caelum Revenant")
+        self.assertEqual(rover_pt["rover_name"], "Aldevaran")
+        self.assertEqual(rover_en["rover_name"], "Aldebaran")
+
+    def test_summary_exports_correlated_equipment_and_collection_types(self):
+        envelope = {
+            "events": [
+                {
+                    "type": "player_profile_info",
+                    "data": {
+                        "fields": {
+                            "active_equipment": {
+                                "slots": [
+                                    {
+                                        "equip_part_type": 1,
+                                        "resolved": True,
+                                        "item": {
+                                            "item_index": 1000078,
+                                            "enchant_level": 7,
+                                        },
+                                    },
+                                    {
+                                        "equip_part_type": 2,
+                                        "resolved": False,
+                                    },
+                                ]
+                            }
+                        }
+                    },
+                },
+                {
+                    "type": "collection_snapshot_chunk",
+                    "data": {
+                        "collection_type": 1,
+                        "records": [
+                            {
+                                "collection_index": 1001,
+                                "collection_type": 1,
+                                "completed_slots": [0],
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "collection_snapshot_chunk",
+                    "data": {
+                        "collection_type": 2,
+                        "records": [
+                            {
+                                "collection_index": 2001,
+                                "collection_type": 2,
+                                "completed_slots": [1],
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "collection_add_response",
+                    "data": {
+                        "collection_type": 1,
+                        "collection_index": 1001,
+                        "slot_index": 1,
+                        "result_code": 0,
+                        "item_complete": True,
+                    },
+                },
+            ]
+        }
+
+        summary, marks = _capture_summary(envelope)
+        codex, types = _collection_marks(envelope, {1})
+        memory, _ = _collection_marks(envelope, {2})
+
+        self.assertEqual(
+            summary["loadout"]["equipment"],
+            [{"item_index": 1000078, "slot": 1, "refinement": 7}],
+        )
+        self.assertEqual(marks, {"1001": [1, 2], "2001": [2]})
+        self.assertEqual(codex, {"1001": [1, 2]})
+        self.assertEqual(memory, {"2001": [2]})
+        self.assertEqual(types, [1, 2])
+
+    def test_summary_changes_class_only_after_confirmed_biosuit_response(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "world_info_prefix",
+                        "data": {"fields": {"biosuit_item_index": 2075041}},
+                    },
+                    {
+                        "type": "change_biosuit_request",
+                        "data": {"fields": {"biosuit_item_index": 2085031}},
+                    },
+                    {
+                        "type": "change_biosuit_response",
+                        "data": {
+                            "fields": {
+                                "result": 1,
+                                "biosuit_item_index": 2085031,
+                            }
+                        },
+                    },
+                    {
+                        "type": "change_biosuit_response",
+                        "data": {
+                            "fields": {
+                                "result": 0,
+                                "biosuit_item_index": 2085031,
+                            }
+                        },
+                    },
+                ]
+            }
+        )
+
+        self.assertEqual(summary["biosuit_item_index"], 2085031)
+        self.assertEqual(summary["biosuit_name"], "Destilador Terminator")
+        self.assertEqual(summary["character_class"], "Demolisher")
+
+    def test_summary_uses_only_confirmed_rover_state(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "change_rover_request",
+                        "data": {"fields": {"rover_item_index": 4300017}},
+                    },
+                    {
+                        "type": "change_rover_response",
+                        "data": {
+                            "fields": {
+                                "result": 1,
+                                "rover_item_index": 4400011,
+                            }
+                        },
+                    },
+                    {
+                        "type": "player_equip_update",
+                        "data": {
+                            "fields": {
+                                "character_uid": 7,
+                                "rover_item_index": 4000002,
+                            }
+                        },
+                    },
+                ]
+            }
+        )
+
+        self.assertEqual(summary["rover_item_index"], 4000002)
+        self.assertEqual(summary["rover_name"], "Arcturus")
+        self.assertEqual(summary["rover_grade"], 1)
+
+    def test_summary_never_uses_nearby_characters_rover(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "player_equip_update",
+                        "character_uid": "101",
+                        "data": {
+                            "fields": {
+                                "character_uid": "101",
+                                "rover_item_index": 4000002,
+                            }
+                        },
+                    },
+                    {
+                        "type": "player_equip_update",
+                        "character_uid": "101",
+                        "data": {
+                            "fields": {
+                                "character_uid": "202",
+                                "rover_item_index": 4400011,
+                            }
+                        },
+                    },
+                ]
+            },
+            character_uid="101",
+        )
+
+        self.assertEqual(summary["rover_item_index"], 4000002)
+        self.assertEqual(summary["rover_name"], "Arcturus")
+
+    def test_summary_uses_rover_confirmed_in_own_entry(self):
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "appear_player_prefix",
+                        "data": {
+                            "fields": {
+                                "character_uid": 101,
+                                "character_name": "Carvalho",
+                                "rover_item_index": 4400008,
+                            }
+                        },
+                    }
+                ]
+            },
+            "101",
+            "Carvalho",
+        )
+
+        self.assertEqual(summary["rover_item_index"], 4400008)
+        self.assertEqual(summary["rover_name"], "Leo")
+        self.assertEqual(summary["rover_grade"], 5)
+
+    def test_stopped_session_does_not_keep_counting(self):
+        now = datetime(2026, 7, 29, 12, 30, 0)
+        session = "Profile-20260729-120000-001"
+
+        self.assertEqual(_session_elapsed(session, False, now), 0)
+        self.assertEqual(_session_elapsed(session, True, now), 1800)
+
+    def test_start_button_processes_recovered_capture_first(self):
+        app = Mock()
+        app._refresh_license.return_value = (True, "Licença válida")
+        app._ingesting = False
+        app.discard_previous.get.return_value = False
+        app.prefs = {"capture_pending": True}
+        app.capture.status.return_value.active = False
+        app.capture.segment_files.return_value = (Path("segment.etl"),)
+
+        App.start_capture(app)
+
+        app.stop_capture.assert_called_once()
+        self.assertTrue(app._start_after_ingest)
+
+    def test_discard_previous_removes_undecoded_file_and_pending_state(self):
+        with tempfile.TemporaryDirectory() as folder:
+            raw = Path(folder) / "pending.etl"
+            raw.write_bytes(b"undecoded")
+            app = Mock()
+            app.capture_dir = Path(folder)
+            app.current_session = "Profile-20260729-120000-001"
+            app.capture.segment_files.return_value = (raw,)
+            app.capture.status.return_value.active = False
+            app.store.session_sources.return_value = []
+            app._live_files = []
+            app.prefs = {
+                "capture_pending": True,
+                "last_session": app.current_session,
+            }
+            app._paused = False
+            app._paused_at = None
+            with patch(
+                "app.main.messagebox.askyesno", return_value=True
+            ), patch("app.main._recycle", return_value=True) as recycle:
+                self.assertTrue(App._discard_previous_capture(app))
+
+            recycle.assert_called_once_with([raw])
+            app.store.clear_session.assert_called_once_with(
+                "Profile-20260729-120000-001"
+            )
+            self.assertIsNone(app.current_session)
+            self.assertFalse(app.prefs["capture_pending"])
+            self.assertNotIn("last_session", app.prefs)
+
+    def test_discard_stale_session_without_files_does_not_query_pktmon(self):
+        app = Mock()
+        app.capture_dir = Path("missing-capture-dir")
+        app.current_session = "Profile-20260729-120000-001"
+        app._live_files = []
+        app.capture.segment_files.return_value = ()
+        app.store.session_sources.return_value = []
+        app.prefs = {
+            "capture_pending": False,
+            "last_session": app.current_session,
+        }
+        app._paused = False
+        app._paused_at = None
+        old_capture = app.capture
+
+        with patch("app.main.messagebox.askyesno") as confirmation:
+            self.assertTrue(App._discard_previous_capture(app))
+
+        confirmation.assert_not_called()
+        old_capture.status.assert_not_called()
+        app.store.clear_session.assert_called_once_with(
+            "Profile-20260729-120000-001"
+        )
+
+    def test_specific_subsession_duration_ends_without_creating_another(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.active_character_uid = "uid-1"
+        app.auto_subsession.get.return_value = False
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "started_ns": 1_000_000_000,
+                "duration_minutes": 1,
+                "ended_ns": None,
+            }
+        ]
+        with patch(
+            "app.main.time.time_ns", return_value=61_000_000_001
+        ):
+            App._rotate_auto_subsession(app)
+        app.store.end_subsession.assert_called_once_with(
+            "sub-1", 61_000_000_001
+        )
+        app.store.start_subsession.assert_not_called()
+
+    def test_expired_subsession_starts_next_when_auto_enabled(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "name": "Farm",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1_000_000_000,
+                "duration_minutes": 5,
+                "ended_ns": None,
+            },
+            {
+                "id": "sub-2",
+                "character_uid": "uid-2",
+                "name": "Farm B",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1_000_000_000,
+                "duration_minutes": 5,
+                "ended_ns": None,
+            },
+        ]
+
+        with patch(
+            "app.main.time.time_ns", return_value=301_000_000_001
+        ):
+            App._rotate_auto_subsession(app)
+
+        self.assertEqual(
+            [call.args for call in app.store.end_subsession.call_args_list],
+            [
+                ("sub-1", 301_000_000_001),
+                ("sub-2", 301_000_000_001),
+            ],
+        )
+        self.assertEqual(app.store.start_subsession.call_count, 2)
+        self.assertTrue(
+            all(
+                call.kwargs["duration_minutes"] == 10
+                for call in app.store.start_subsession.call_args_list
+            )
+        )
+
+    def test_auto_subsession_does_not_resume_after_manual_end(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "name": "Farm",
+                "location": "Mapa > Spot",
+                "map_name": "Mapa",
+                "spot_name": "Spot",
+                "mobs": ["Mob"],
+                "mob_levels": {"Mob": 60},
+                "started_ns": 1,
+                "duration_minutes": 5,
+                "ended_ns": 2,
+            }
+        ]
+
+        with patch("app.main.time.time_ns", return_value=10**18):
+            App._rotate_auto_subsession(app)
+
+        app.store.start_subsession.assert_not_called()
+
+    def test_zero_subsession_duration_waits_for_manual_end(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.active_character_uid = "uid-1"
+        app.auto_subsession.get.return_value = True
+        app.auto_subsession_minutes.get.return_value = 10
+        app.store.subsessions.return_value = [
+            {
+                "id": "sub-1",
+                "character_uid": "uid-1",
+                "started_ns": 1,
+                "duration_minutes": 0,
+                "ended_ns": None,
+            }
+        ]
+
+        with patch("app.main.time.time_ns", return_value=10**18):
+            App._rotate_auto_subsession(app)
+
+        app.store.end_subsession.assert_not_called()
+        app.store.start_subsession.assert_not_called()
+
+    def test_saved_license_check_updates_startup_ui(self):
+        app = Mock()
+        app._ingesting = False
+        app._apply_license_status.side_effect = (
+            lambda allowed, message: App._apply_license_status(
+                app, allowed, message
+            )
+        )
+
+        App._license_checked(app, (True, "Licença válida."), None)
+
+        self.assertTrue(app.capture_allowed)
+        app.top_license.configure.assert_called_with(
+            text="• Licença válida.",
+            style="TopbarOk.TLabel",
+        )
+        app.start_button.configure.assert_called_with(state="normal")
+
+    def test_capture_uses_all_detected_ports_without_character_process_choice(self):
+        app = Mock()
+        app._refresh_license.return_value = (True, "Licença válida")
+        app._decode_interval_seconds.return_value = 30
+        app._ingesting = False
+        app.capture.status.return_value.active = False
+        app.profile.get.return_value = "Profile"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app._selected_game_path = r"C:\Games\ProjectRF.exe"
+        app.prefs = {
+            "session_counter": 2,
+            "capture_pid_uids": {"10": "client:1"},
+            "capture_port_uids": {"50100": "client:1"},
+            "capture_character_names": {"client:1": "Alice"},
+        }
+        with patch(
+            "app.main.ports_for_executable",
+            return_value=((50100, 50200), (12010, 12020), 2),
+        ), patch(
+            "app.main.clients_for_executable",
+            return_value=[
+                {
+                    "pid": 10,
+                    "local_ports": (50100,),
+                    "remote_ports": (12010,),
+                },
+                {
+                    "pid": 20,
+                    "local_ports": (50200,),
+                    "remote_ports": (12020,),
+                },
+            ],
+        ), patch("app.main.RealtimeCapture"):
+            App.start_capture(app)
+        started_ports = app.capture.start_for_ports.call_args.args[1]
+        self.assertEqual(started_ports, (50100, 50200, 12010, 12020))
+        self.assertEqual(
+            app._live_ports,
+            (12000, 12010, 12020, 12040, 50100, 50200),
+        )
+        self.assertEqual(
+            app.prefs["capture_decode_ports"],
+            [12000, 12010, 12020, 12040],
+        )
+        self.assertNotIn("capture_pid_uids", app.prefs)
+        self.assertNotIn("capture_port_uids", app.prefs)
+        self.assertNotIn("capture_character_names", app.prefs)
+        self.assertEqual(app._client_ports, [(50100,), (50200,)])
+
+    def test_live_reconnection_updates_each_client_port_group(self):
+        app = Mock()
+        app._selected_game_path = r"C:\Games\ProjectRF.exe"
+        app._last_game_signature = None
+        app._client_ports = [(50100,), (50200,)]
+        app._client_pids = [10, 20]
+        app._live_ports = (50100, 50200, 12020)
+        app.prefs = {
+            "capture_ports": [50100, 50200, 12020],
+            "capture_decode_ports": [12020],
+        }
+        app.capture.add_ports.return_value = 1
+        App._apply_active_game_connections(
+            app,
+            (
+                (50100, 50101, 50200),
+                (12020,),
+                2,
+                [
+                {
+                    "pid": 10,
+                    "local_ports": (50100, 50101),
+                    "remote_ports": (12020,),
+                },
+                {
+                    "pid": 20,
+                    "local_ports": (50200,),
+                    "remote_ports": (12020,),
+                },
+                ],
+            ),
+        )
+        self.assertEqual(app._client_ports, [(50100, 50101), (50200,)])
+        self.assertEqual(
+            app.prefs["capture_client_ports"],
+            [[50100, 50101], [50200]],
+        )
+        app._live_capture.add_ports.assert_called_once_with(
+            (50100, 50101, 50200, 12020)
+        )
+
+    def test_client_route_history_survives_port_rotation(self):
+        pids, ports = _merge_client_routes(
+            [10, 20],
+            [(60470, 63175), (63188,)],
+            [
+                {
+                    "pid": 10,
+                    "local_ports": (10874, 63175),
+                    "remote_ports": (443, 12020),
+                },
+                {
+                    "pid": 20,
+                    "local_ports": (12506, 63188),
+                    "remote_ports": (12010, 12020),
+                },
+            ],
+        )
+        self.assertEqual(pids, [10, 20])
+        self.assertEqual(ports[0], (10874, 60470, 63175))
+        self.assertEqual(ports[1], (12506, 63188))
+
+    def test_restarted_client_keeps_its_route_history(self):
+        pids, ports = _merge_client_routes(
+            [10, 20],
+            [(60470,), (63188,)],
+            [
+                {
+                    "pid": 30,
+                    "local_ports": (63175,),
+                    "remote_ports": (12020,),
+                },
+                {
+                    "pid": 20,
+                    "local_ports": (63188,),
+                    "remote_ports": (12020,),
+                },
+            ],
+        )
+        self.assertEqual(pids, [30, 20])
+        self.assertEqual(ports, [(60470, 63175), (63188,)])
+
+    def test_empty_capture_is_safe_and_not_exportable(self):
+        self.assertEqual(
+            _safe_error_code(ValueError("PCAPNG sem pacotes utilizáveis")),
+            "empty_capture",
+        )
+        app = Mock()
+        app.current_session = "session-1"
+        app.store.session_stats.return_value = {
+            "recognized": 0,
+            "unknown": 0,
+        }
+        self.assertFalse(App._session_has_data(app))
+        app.store.session_stats.return_value["unknown"] = 1
+        self.assertTrue(App._session_has_data(app))
+
+    def test_stop_capture_is_idempotent_while_ingesting(self):
+        app = Mock()
+        app._ingesting = True
+        App.stop_capture(app)
+        app.capture.stop.assert_not_called()
+
+    def test_empty_capture_is_not_a_blocking_failure(self):
+        class EmptyStore:
+            def __init__(self, _path):
+                pass
+
+            def ingest(self, *_args, **_kwargs):
+                raise ValueError("PCAPNG sem pacotes utilizáveis")
+
+            def remove_sources(self, _sources):
+                pass
+
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "empty.etl"
+            raw.write_bytes(b"metadata")
+            app = Mock()
+            app._ingesting = False
+            app.current_session = "session-1"
+            app.capture.attached = True
+            app.capture.stop.return_value.files = (raw,)
+            app.prefs = {
+                "capture_pending": True,
+                "capture_decode_ports": [12010, 12020],
+            }
+            app.capture_allowed = True
+            app._live_files = []
+            app.auto_export.get.return_value = False
+            app._ingest_lock = threading.Lock()
+            app._ingest_files.side_effect = (
+                lambda files, session_id, ports, **kwargs: App._ingest_files(
+                    app, files, session_id, ports, **kwargs
+                )
+            )
+            app._run.side_effect = lambda job, done: done(job(), None)
+            with patch("app.main.CaptureStore", EmptyStore):
+                App.stop_capture(app)
+            self.assertFalse(app.prefs["capture_pending"])
+            self.assertFalse(app._ingesting)
+            self.assertIn(
+                "sem pacotes utilizáveis",
+                app.capture_state.configure.call_args.kwargs["text"],
+            )
+
+    def test_successful_segment_wins_over_empty_residual(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            main = Path(tmp) / "capture-1.etl"
+            residual = Path(tmp) / "capture-2.etl"
+            main.write_bytes(b"packets")
+            residual.write_bytes(b"metadata")
+            app = Mock()
+            app._ingesting = False
+            app.current_session = "session-1"
+            app.capture.attached = True
+            app.capture.stop.return_value.files = (main, residual)
+            app.prefs = {
+                "capture_pending": True,
+                "capture_decode_ports": [12010, 12020],
+            }
+            app.capture_allowed = True
+            app._live_files = []
+            app.auto_export.get.return_value = False
+            app._ingest_files.return_value = (3396, [], 1)
+            app._run.side_effect = lambda job, done: done(job(), None)
+
+            App.stop_capture(app)
+
+            self.assertFalse(app.prefs["capture_pending"])
+            text = app.capture_state.configure.call_args.kwargs["text"]
+            self.assertIn("3396 eventos novos", text)
+            self.assertIn("1 segmento(s) vazio(s)", text)
+
+    def test_failed_pending_reanalysis_does_not_restart_forever(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "capture.etl"
+            raw.write_bytes(b"broken")
+            app = Mock()
+            app._ingesting = False
+            app.current_session = "session-1"
+            app.capture.attached = True
+            app.capture.stop.return_value.files = (raw,)
+            app.prefs = {
+                "capture_pending": True,
+                "capture_decode_ports": [12010, 12020],
+            }
+            app.capture_allowed = True
+            app._live_files = []
+            app._start_after_ingest = True
+            app.auto_export.get.return_value = False
+            app._ingest_files.return_value = (0, ["capture.etl: erro"], 0)
+            app._run.side_effect = lambda job, done: done(job(), None)
+
+            App.stop_capture(app)
+
+            self.assertTrue(app.prefs["capture_pending"])
+            app.after.assert_not_called()
+
+    def test_live_preview_without_known_route_preserves_raw_pcap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "preview.pcap"
+            raw.write_bytes(
+                struct.pack(
+                    "<IHHIIII",
+                    0xA1B23C4D,
+                    2,
+                    4,
+                    0,
+                    0,
+                    0xFFFF,
+                    1,
+                )
+            )
+            capture = Mock()
+            capture.target = raw
+            capture.packets = 0
+            capture.received_packets = 0
+            capture.filtered_packets = 0
+            capture.missed_write = 0
+            capture.missed_read = 0
+            app = Mock()
+            app._live_capture = capture
+            app._client_ports = [(50100,)]
+            app._live_files = []
+            app._live_index = 1
+            app.current_session = "session-1"
+
+            with patch("app.main.CAPTURE_DIR", root):
+                files = App._close_live_preview(app)
+
+            self.assertEqual(files, (raw,))
+            self.assertTrue(raw.exists())
+
+    def test_live_decode_rotates_preview_before_ingest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            preview = Path(tmp) / "preview.pcap"
+            next_preview = Path(tmp) / "next.pcap"
+            preview.write_bytes(b"P" * 100)
+            app = Mock()
+            app._ingesting = False
+            app._live_ingesting = False
+            app._stop_after_live_ingest = False
+            app._exit_after_live_ingest = False
+            app._adaptive_live_interval = 180
+            app.current_session = "session-1"
+            app._next_live_decode = 0
+            app._decode_interval_seconds.return_value = 30
+            app.prefs = {
+                "capture_decode_ports": [12010, 12020],
+                "capture_ports": [50100],
+            }
+            app._live_files = []
+            app._live_capture = Mock()
+            app._next_live_target.return_value = next_preview
+            app._live_capture.rotate.return_value = preview
+            app._ingest_files.return_value = (4, [], 0)
+            app._run.side_effect = (
+                lambda job, done: done(job(), None)
+            )
+
+            App._maybe_decode_live(app)
+
+            app._live_capture.rotate.assert_called_once_with(next_preview)
+            self.assertEqual(app._live_files, [preview])
+            app._ingest_files.assert_called_once_with(
+                (preview,),
+                "session-1",
+                (12000, 12010, 12020, 12040),
+                append_only=True,
+            )
+            app.capture.stop.assert_not_called()
+            self.assertFalse(app._live_ingesting)
+            app._refresh_info.assert_called_once()
+            app._upload_pending_quick_captures.assert_called_once()
+            self.assertLessEqual(
+                app._next_live_decode - time.monotonic(),
+                31,
+            )
+
+    def test_capture_summary_can_use_official_english_item_names(self):
+        self.assertEqual(main_module.ITEM_NAMES_EN["1"], "Credit")
+        summary, _ = _capture_summary(
+            {
+                "events": [
+                    {
+                        "type": "drop_item_field",
+                        "data": {
+                            "results": [
+                                {"item_index": 123, "count": 2}
+                            ]
+                        },
+                    }
+                ]
+            },
+            item_names={"123": "English item"},
+        )
+
+        self.assertEqual(summary["loot"][0]["item"], "English item")
+
+    @patch("app.main.messagebox.showwarning")
+    def test_export_waits_for_complete_capture(self, warning):
+        app = Mock()
+        app.capture.status.return_value.active = True
+
+        App.export(app)
+
+        warning.assert_called_once()
+        app.store.latest_session.assert_not_called()
+
+    def test_two_names_without_uid_export_as_reviewable_combined_file(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app.prefs = {}
+        app.store.session_profiles.return_value = []
+        app.store.session_stats.return_value = {"unassigned": 10}
+        exports = App._character_exports(app)
+        self.assertEqual(len(exports), 1)
+        self.assertEqual(exports[0]["uid"], None)
+        self.assertEqual(exports[0]["identification_status"], "unresolved")
+        self.assertEqual(exports[0]["name"], "Nao-identificado")
+        self.assertEqual(exports[0]["requested_characters"], [])
+        self.assertTrue(exports[0]["warning"])
+
+    def test_automatic_client_routes_export_separately(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app.prefs = {}
+        app.store.session_profiles.return_value = [
+            {"uid": "client:a", "name": "FernanTorres"},
+            {"uid": "client:b", "name": "Carvalho"},
+        ]
+        app.store.session_stats.return_value = {"unassigned": 0}
+        exports = App._character_exports(app, prompt_exp=True)
+        self.assertEqual(
+            [item["name"] for item in exports],
+            ["FernanTorres", "Carvalho"],
+        )
+        self.assertTrue(
+            all(item["identification_status"] == "client_routed" for item in exports)
+        )
+        app.store.unidentified_exp_flows.assert_not_called()
+
+    def test_manual_aliases_do_not_identify_exported_characters(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = "Bob"
+        app.prefs = {}
+        app.store.session_profiles.return_value = []
+        app.store.session_stats.return_value = {"unassigned": 0}
+        with patch("app.main.simpledialog.askfloat") as ask:
+            exports = App._character_exports(app, prompt_exp=True)
+        ask.assert_not_called()
+        app.store.assign_unidentified_by_exp.assert_not_called()
+        self.assertEqual(exports[0]["name"], "Nao-identificado")
+
+    def test_export_prompts_exp_for_unassigned_events_with_one_uid(self):
+        app = Mock()
+        app.current_session = "session-1"
+        app.character1.get.return_value = "Alice"
+        app.character2.get.return_value = ""
+        app.prefs = {}
+        app.store.session_profiles.return_value = [
+            {"uid": "101", "name": "Alice"}
+        ]
+        app.store.unidentified_exp_flows.return_value = [
+            {"flow": "missing", "exp_percent": 61.0}
+        ]
+        app.store.session_stats.return_value = {"unassigned": 0}
+        with patch("app.main.simpledialog.askfloat", return_value=60.5):
+            exports = App._character_exports(app, prompt_exp=True)
+        app.store.assign_unidentified_to_uid_by_exp.assert_called_once_with(
+            "session-1", "101", 60.5
+        )
+        self.assertIsNone(exports[0]["warning"])
+
+    def test_update_launch_closes_current_app(self):
+        app = Mock()
+        app.capture.attached = False
+        app.tray = None
+        manifest = {"file": "setup.exe"}
+        with patch("app.main.UPDATE_MODE", "automatic"), patch(
+            "app.main.messagebox.askyesno", return_value=True
+        ), patch(
+            "app.main.verify_manifest", return_value=manifest
+        ), patch("app.main.verify_downloaded") as verify_file, patch(
+            "pathlib.Path.read_text", return_value="{}"
+        ), patch(
+            "app.main.os.startfile"
+        ) as launch:
+            App._update_downloaded(app, Path("setup.exe"), None)
+        verify_file.assert_called_once_with(Path("setup.exe"), manifest)
+        launch.assert_called_once_with(Path("setup.exe"))
+        app.store.close.assert_called_once()
+        app.destroy.assert_called_once()
+
+    def test_signed_rollback_reverifies_backs_up_and_closes_current_app(self):
+        app = Mock()
+        app.capture.attached = False
+        app.license.highest_release_sequence = 2
+        app.store.path = Path("capture.sqlite3")
+        app.tray = None
+        installer = Path("RF QOL Setup 1.0.0.exe")
+        with patch("app.main.UPDATE_MODE", "automatic"), patch(
+            "app.main.cached_rollback", side_effect=(installer, installer)
+        ) as cached, patch(
+            "app.main.backup_database"
+        ) as backup, patch(
+            "app.main.messagebox.askyesno", return_value=True
+        ), patch(
+            "app.main.os.startfile"
+        ) as launch:
+            App.rollback(app)
+        self.assertEqual(cached.call_count, 2)
+        backup.assert_called_once()
+        launch.assert_called_once_with(installer)
+        app.store.close.assert_called_once()
+        app.destroy.assert_called_once()
+
+    def test_unsafe_executable_copy_rollback_is_removed(self):
+        root = Path(__file__).resolve().parents[1]
+        sources = "\n".join(
+            (root / relative).read_text(encoding="utf-8")
+            for relative in ("app/updater.py", "app/main.py", "app/ui_qt/main.py")
+        )
+        self.assertNotIn("create_rollback", sources)
+        self.assertNotIn("updates/rollback/RFNextInfo.exe", sources)
+
+    def test_legacy_ingest_and_export_fail_before_side_effects_without_license(self):
+        app = Mock()
+        app.license.require.side_effect = PermissionError("licença obrigatória")
+        with patch("app.main.CaptureStore") as store:
+            with self.assertRaises(PermissionError):
+                App._ingest_files(app, (), "session-1", ())
+        store.assert_not_called()
+
+        target = Path("saida-nao-criada")
+        with self.assertRaises(PermissionError):
+            App._export_to(app, target)
+        self.assertFalse(target.exists())
+
+    def test_verified_download_reports_progress(self):
+        private = Ed25519PrivateKey.generate()
+        public = b64(private.public_key().public_bytes_raw())
+        installer = b"instalador-verificado" * 100
+        name = "RF QOL Setup 1.0.1.exe"
+        now = datetime.now(timezone.utc)
+        manifest = {
+            "manifest_version": 2,
+            "product": "rf-qol",
+            "channel": "stable",
+            "architecture": "windows-x64",
+            "version": "1.0.1",
+            "release_sequence": 2,
+            "published_at": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(days=1)).isoformat(),
+            "key_id": "update-test",
+            "file": name,
+            "size": len(installer),
+            "sha256": __import__("hashlib").sha256(installer).hexdigest(),
+            "rollback_compatible_from": ["1.0.0"],
+        }
+        canonical = json.dumps(
+            manifest, separators=(",", ":"), sort_keys=True
+        ).encode()
+        manifest["signature"] = b64(
+            private.sign(UPDATE_SIGNATURE_CONTEXT + canonical)
+        )
+
+        class Response(BytesIO):
+            def __init__(self, body: bytes):
+                super().__init__(body)
+                self.headers = {"Content-Length": str(len(body))}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                self.close()
+
+        release = {
+            "assets": [
+                {
+                    "name": "update-manifest.json",
+                    "browser_download_url": "https://example/manifest",
+                },
+                {
+                    "name": name,
+                    "browser_download_url": "https://example/installer",
+                },
+            ]
+        }
+        progress = []
+        with tempfile.TemporaryDirectory() as update_directory:
+            target = Path(update_directory) / name
+            with patch.object(
+                urllib.request,
+                "urlopen",
+                side_effect=[
+                    Response(json.dumps(manifest).encode()),
+                    Response(installer),
+                ],
+            ):
+                self.assertEqual(
+                    download_verified(
+                        release,
+                        lambda phase, done, total: progress.append(
+                            (phase, done, total)
+                        ),
+                        Path(update_directory),
+                        public_keys={"update-test": public},
+                        current_sequence=1,
+                    ),
+                    target,
+                )
+            self.assertEqual(target.read_bytes(), installer)
+            self.assertEqual(progress[0][0], "manifest")
+            self.assertEqual(progress[-1], ("verify", len(installer), len(installer)))
+
+    def test_release_bundle_caches_only_compatible_signed_rollback(self):
+        private = Ed25519PrivateKey.generate()
+        public = b64(private.public_key().public_bytes_raw())
+        now = datetime.now(timezone.utc)
+        old_installer = b"instalador-rc1"
+        new_installer = b"instalador-rc2"
+
+        def signed(version, sequence, name, body, compatible):
+            manifest = {
+                "manifest_version": 2,
+                "product": "rf-qol",
+                "channel": "stable",
+                "architecture": "windows-x64",
+                "version": version,
+                "release_sequence": sequence,
+                "published_at": (now - timedelta(minutes=1)).isoformat(),
+                "expires_at": (now + timedelta(days=1)).isoformat(),
+                "key_id": "update-test",
+                "file": name,
+                "size": len(body),
+                "sha256": __import__("hashlib").sha256(body).hexdigest(),
+                "rollback_compatible_from": compatible,
+            }
+            canonical = json.dumps(
+                manifest, separators=(",", ":"), sort_keys=True
+            ).encode()
+            manifest["signature"] = b64(
+                private.sign(UPDATE_SIGNATURE_CONTEXT + canonical)
+            )
+            return manifest
+
+        old_name = "RF QOL Setup 1.0.0.exe"
+        new_name = "RF QOL Setup 1.0.1.exe"
+        update_manifest = signed("1.0.1", 2, new_name, new_installer, ["1.0.0"])
+        rollback_manifest = signed("1.0.0", 1, old_name, old_installer, ["1.0.1"])
+        release = {"assets": [
+            {"name": "update-manifest.json", "browser_download_url": "https://example/update-manifest"},
+            {"name": ROLLBACK_MANIFEST_NAME, "browser_download_url": "https://example/rollback-manifest"},
+            {"name": new_name, "browser_download_url": "https://example/new-installer"},
+            {"name": old_name, "browser_download_url": "https://example/old-installer"},
+        ]}
+
+        class Response(BytesIO):
+            def __init__(self, body: bytes):
+                super().__init__(body)
+                self.headers = {"Content-Length": str(len(body))}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                self.close()
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            urllib.request,
+            "urlopen",
+            side_effect=[
+                Response(json.dumps(update_manifest).encode()),
+                Response(json.dumps(rollback_manifest).encode()),
+                Response(old_installer),
+                Response(new_installer),
+            ],
+        ):
+            root = Path(directory)
+            installed = download_release_with_rollback(
+                release,
+                None,
+                root,
+                current_version="1.0.0",
+                current_sequence=1,
+                public_keys={"update-test": public},
+            )
+            self.assertEqual(installed.read_bytes(), new_installer)
+            cached = cached_rollback(
+                root / "rollback",
+                current_version="1.0.1",
+                current_sequence=2,
+                public_keys={"update-test": public},
+            )
+            self.assertEqual(cached.read_bytes(), old_installer)
+            cached.write_bytes(b"alterado")
+            with self.assertRaisesRegex(ValueError, "não confere"):
+                cached_rollback(
+                    root / "rollback",
+                    current_version="1.0.1",
+                    current_sequence=2,
+                    public_keys={"update-test": public},
+                )
+
+        incompatible = signed("1.0.0", 1, old_name, old_installer, ["1.0.2"])
+        with self.assertRaisesRegex(ValueError, "Manifesto"):
+            verify_manifest(
+                incompatible,
+                {"update-test": public},
+                current_sequence=2,
+                rollback=True,
+                rollback_from_version="1.0.1",
+            )
+
+    def test_release_bundle_requires_rollback_asset_after_first_release(self):
+        private = Ed25519PrivateKey.generate()
+        body = b"instalador-rc2"
+        now = datetime.now(timezone.utc)
+        manifest = {
+            "manifest_version": 2,
+            "product": "rf-qol",
+            "channel": "stable",
+            "architecture": "windows-x64",
+            "version": "1.0.1",
+            "release_sequence": 2,
+            "published_at": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(days=1)).isoformat(),
+            "key_id": "update-test",
+            "file": "RF QOL Setup 1.0.1.exe",
+            "size": len(body),
+            "sha256": __import__("hashlib").sha256(body).hexdigest(),
+            "rollback_compatible_from": ["1.0.0"],
+        }
+        canonical = json.dumps(manifest, separators=(",", ":"), sort_keys=True).encode()
+        manifest["signature"] = b64(private.sign(UPDATE_SIGNATURE_CONTEXT + canonical))
+        release = {"assets": [
+            {"name": "update-manifest.json", "browser_download_url": "https://example/manifest"},
+            {"name": manifest["file"], "browser_download_url": "https://example/installer"},
+        ]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            urllib.request,
+            "urlopen",
+            return_value=BytesIO(json.dumps(manifest).encode()),
+        ):
+            with self.assertRaisesRegex(ValueError, ROLLBACK_MANIFEST_NAME):
+                download_release_with_rollback(
+                    release,
+                    None,
+                    Path(directory),
+                    current_version="1.0.0",
+                    current_sequence=1,
+                    public_keys={
+                        "update-test": b64(private.public_key().public_bytes_raw())
+                    },
+                )
+
+    def test_database_backup_is_consistent_and_hashed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "capture.sqlite3"
+            connection = sqlite3.connect(database)
+            try:
+                connection.execute("CREATE TABLE sample(value TEXT NOT NULL)")
+                connection.execute("INSERT INTO sample VALUES ('preservado')")
+                connection.commit()
+            finally:
+                connection.close()
+            backup, evidence = backup_database(database, root / "backups", "1.0.1")
+            record = json.loads(evidence.read_text(encoding="utf-8"))
+            self.assertEqual(record["integrity_check"], "ok")
+            self.assertEqual(record["size"], backup.stat().st_size)
+            self.assertEqual(record["sha256"], __import__("hashlib").sha256(backup.read_bytes()).hexdigest())
+            connection = sqlite3.connect(backup)
+            try:
+                self.assertEqual(
+                    connection.execute("SELECT value FROM sample").fetchone()[0],
+                    "preservado",
+                )
+            finally:
+                connection.close()
+
+    def test_offline_manifest_signer_matches_client_verifier(self):
+        private = Ed25519PrivateKey.generate()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            installer = root / "RF QOL Setup 1.0.1.exe"
+            installer.write_bytes(b"instalador-assinado-para-vetor")
+            key = root / "update-private.key"
+            key.write_text(b64(private.private_bytes_raw()), encoding="ascii")
+            output = root / "update-manifest.json"
+            arguments = [
+                "sign_update_manifest.py",
+                "--installer", str(installer),
+                "--version", "1.0.1",
+                "--sequence", "2",
+                "--key-id", "update-test",
+                "--private-key", str(key),
+                "--out", str(output),
+                "--rollback-compatible-from", "1.0.0",
+            ]
+            with patch("sys.argv", arguments):
+                self.assertEqual(sign_update_manifest.main(), 0)
+            manifest = verify_manifest(
+                json.loads(output.read_text(encoding="utf-8")),
+                {"update-test": b64(private.public_key().public_bytes_raw())},
+                current_sequence=1,
+            )
+            self.assertEqual(verify_downloaded(installer, manifest), installer)
+
+    def test_offline_signer_accepts_encrypted_private_key(self):
+        private = Ed25519PrivateKey.generate()
+        password = "senha-de-recuperacao-com-mais-de-vinte"
+        with tempfile.TemporaryDirectory() as directory:
+            key = Path(directory) / "update-private.pem"
+            key.write_bytes(private.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.BestAvailableEncryption(password.encode()),
+            ))
+            with patch(
+                "tools.sign_update_manifest.getpass.getpass", return_value=password
+            ):
+                restored = sign_update_manifest._private_key(key)
+            self.assertEqual(
+                restored.public_key().public_bytes_raw(),
+                private.public_key().public_bytes_raw(),
+            )
+
+    def test_update_key_ceremony_creates_two_recoverable_encrypted_copies(self):
+        password = "senha-de-recuperacao-com-mais-de-vinte"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copies = [root / "copy-one.pem", root / "copy-two.pem"]
+            with patch(
+                "tools.generate_update_key._storage_id", side_effect=("disk-one", "disk-two")
+            ):
+                evidence = generate_update_key.create_key(
+                    "update-test", copies, root / "public.b64",
+                    root / "evidence.json", password,
+                )
+            self.assertNotEqual(copies[0].read_bytes(), copies[1].read_bytes())
+            for copy in copies:
+                restored = serialization.load_pem_private_key(
+                    copy.read_bytes(), password=password.encode()
+                )
+                self.assertEqual(
+                    b64(restored.public_key().public_bytes_raw()),
+                    evidence["public_key_b64url"],
+                )
+            self.assertEqual(evidence["copy_restore_tests"], "passed")
+            with self.assertRaises((TypeError, ValueError)):
+                serialization.load_pem_private_key(
+                    copies[0].read_bytes(), password=b"senha-errada"
+                )
+
+    def test_update_key_ceremony_rejects_copies_on_the_same_drive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "unidades distintas"):
+                generate_update_key.create_key(
+                    "update-test", [root / "one.pem", root / "two.pem"],
+                    root / "public.b64", root / "evidence.json",
+                    "senha-de-recuperacao-com-mais-de-vinte",
+                )
+
+    def test_local_provenance_has_detached_update_key_signature(self):
+        private = Ed25519PrivateKey.generate()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provenance = root / "release-provenance.json"
+            provenance.write_text(
+                json.dumps({
+                    "product": "rf-qol",
+                    "release": True,
+                    "authenticode": False,
+                    "commit": "a" * 40,
+                    "installer_sha256": "b" * 64,
+                    "manifest_sha256": "c" * 64,
+                }),
+                encoding="utf-8",
+            )
+            key = root / "update-private.key"
+            key.write_text(b64(private.private_bytes_raw()), encoding="ascii")
+            signature = sign_provenance.create_signature(
+                provenance, "update-test", key
+            )
+            public = {"update-test": b64(private.public_key().public_bytes_raw())}
+            sign_provenance.verify_signature(provenance, signature, public)
+            provenance.write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "alterada"):
+                sign_provenance.verify_signature(provenance, signature, public)
+            provenance.write_text(
+                json.dumps({
+                    "product": "rf-qol",
+                    "release": True,
+                    "authenticode": True,
+                    "commit": "a" * 40,
+                    "installer_sha256": "b" * 64,
+                    "manifest_sha256": "c" * 64,
+                }),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "incompleta"):
+                sign_provenance.create_signature(provenance, "update-test", key)
+
+    def test_activation_diagnostics_and_local_format_check(self):
+        error = urllib.error.HTTPError(
+            "https://license", 403, "Forbidden", {"CF-Ray": "ray-test"}, BytesIO(
+                b'{"detail":"licenca invalida"}'
+            )
+        )
+        self.assertEqual(
+            _activation_error(error), "licenca invalida (HTTP 403, CF-Ray ray-test)"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            client = LicenseClient(Path(directory), version="test")
+            client._json = Mock()
+            with self.assertRaisesRegex(ValueError, "Formato inválido"):
+                client.activate("sem-hifens", "test")
+            client._json.assert_not_called()
+
+    def test_async_error_reaches_callback(self):
+        completed = threading.Event()
+        observed = []
+
+        class Scheduler:
+            def after(self, _delay, callback):
+                callback()
+
+        def fail():
+            raise RuntimeError("falhou")
+
+        App._run(Scheduler(), fail, lambda result, error: (
+            observed.append((result, str(error))), completed.set()
+        ))
+        self.assertTrue(completed.wait(1))
+        self.assertEqual(observed, [(None, "falhou")])
+        self.assertEqual(
+            _capture_prefix("Profile-20260728-010203-007"),
+            "rfnext-20260728-010203-007",
+        )
+
+    def test_support_log_is_sanitized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rfnext-info.log"
+            logger = configure(path, "test")
+            try:
+                logger.error(
+                    "RFQ-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA-AAAAA "
+                    "carvalho@tuta.com 192.168.0.10 "
+                    r"C:\Users\Carlos\Documents "
+                    "123e4567-e89b-12d3-a456-426614174000"
+                )
+                try:
+                    raise RuntimeError("PersonagemSecreto")
+                except RuntimeError:
+                    logger.exception("operation_failed")
+                lines = "\n".join(recent_lines(path))
+                self.assertRegex(
+                    lines.splitlines()[0],
+                    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4} ",
+                )
+                self.assertNotIn("RFQ-AAAAA", lines)
+                self.assertNotIn("carvalho@tuta.com", lines)
+                self.assertNotIn("192.168.0.10", lines)
+                self.assertNotIn(r"C:\Users\Carlos", lines)
+                self.assertNotIn("123e4567-e89b-12d3-a456-426614174000", lines)
+                self.assertNotIn("PersonagemSecreto", lines)
+                self.assertIn("<LICENCA>", lines)
+                logger.debug("hidden_debug")
+                self.assertNotIn("hidden_debug", "\n".join(recent_lines(path)))
+                set_detailed(logger, True)
+                logger.debug("detailed_event token=segredo")
+                detailed_lines = "\n".join(recent_lines(path))
+                self.assertIn("detailed_event", detailed_lines)
+                self.assertNotIn("segredo", detailed_lines)
+            finally:
+                for handler in list(logging.getLogger(LOGGER_NAME).handlers):
+                    logging.getLogger(LOGGER_NAME).removeHandler(handler)
+                    handler.close()
+
+    def test_unhandled_exception_hook_writes_to_support_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rfnext-info.log"
+            logger = configure(path, "test")
+            previous_installed = support_log_module._HOOKS_INSTALLED
+            support_log_module._HOOKS_INSTALLED = False
+            try:
+                with (
+                    patch.object(support_log_module.sys, "excepthook", Mock()),
+                    patch.object(support_log_module.threading, "excepthook", Mock()),
+                    patch.object(support_log_module.sys, "unraisablehook", Mock()),
+                ):
+                    install_exception_hooks(logger)
+                    try:
+                        raise RuntimeError("erro não tratado")
+                    except RuntimeError:
+                        support_log_module.sys.excepthook(
+                            *support_log_module.sys.exc_info()
+                        )
+                lines = "\n".join(recent_lines(path))
+                self.assertIn("unhandled_exception", lines)
+                self.assertIn("RuntimeError", lines)
+            finally:
+                support_log_module._HOOKS_INSTALLED = previous_installed
+                for handler in list(logging.getLogger(LOGGER_NAME).handlers):
+                    logging.getLogger(LOGGER_NAME).removeHandler(handler)
+                    handler.close()
+
+    def test_signed_lease_and_site_profile(self):
+        private = Ed25519PrivateKey.generate()
+        now = datetime.now(timezone.utc)
+        issued = now - timedelta(hours=1)
+        installation_id = "4fdb6d24-dc9d-4e74-97d4-aa1ae6c3b021"
+        claims = {
+            "v": 2,
+            "iss": "rflicenca.karvalho.dev.br",
+            "product": "rf-qol",
+            "aud": "rf-qol-windows",
+            "key_id": "lease-test",
+            "lease_id": "lease-1",
+            "license_id": "license-1",
+            "installation_id": installation_id,
+            "issued_at": issued.isoformat(),
+            "next_check_at": (issued + timedelta(minutes=30)).isoformat(),
+            "valid_until": (issued + timedelta(hours=24)).isoformat(),
+            "entitlement_expires_at": (now + timedelta(days=30)).isoformat(),
+            "features": ["base", "monitor-pvp"],
+            "connection_limits": {"pc": 2, "emulators": 1},
+        }
+        payload = json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
+        lease = f"{b64(payload)}.{b64(private.sign(payload))}"
+        public = b64(private.public_key().public_bytes_raw())
+        self.assertEqual(
+            verify_lease(
+                lease,
+                {"lease-test": public},
+                installation_id=installation_id,
+            )["installation_id"],
+            installation_id,
+        )
+        with self.assertRaises(ValueError):
+            verify_lease(
+                lease,
+                {"lease-test": public},
+                installation_id="outra-instalação",
+            )
+        for field, value in (
+            ("product", "rf-next-qol"),
+            ("key_id", "update-test"),
+            ("valid_until", (issued + timedelta(hours=24, seconds=1)).isoformat()),
+        ):
+            invalid = {**claims, field: value}
+            invalid_payload = json.dumps(
+                invalid, separators=(",", ":"), sort_keys=True
+            ).encode()
+            invalid_lease = (
+                f"{b64(invalid_payload)}.{b64(private.sign(invalid_payload))}"
+            )
+            with self.assertRaises(ValueError, msg=field):
+                verify_lease(
+                    invalid_lease,
+                    {"lease-test": public, "update-test": public},
+                )
+        for invalid_features in (
+            ["monitor-pvp"],
+            ["base", "base"],
+            ["monitor-pvp", "base"],
+            ["base", "unknown"],
+        ):
+            invalid = {**claims, "features": invalid_features}
+            invalid_payload = json.dumps(
+                invalid, separators=(",", ":"), sort_keys=True
+            ).encode()
+            with self.assertRaises(ValueError, msg=invalid_features):
+                verify_lease(
+                    f"{b64(invalid_payload)}.{b64(private.sign(invalid_payload))}",
+                    {"lease-test": public},
+                )
+        for invalid_limits in (
+            {"pc": 2, "emulators": 0},
+            {"pc": 1, "emulators": 1},
+            {"pc": 2, "emulators": 5, "extra": 1},
+            {"pc": True, "emulators": 1},
+        ):
+            invalid = {**claims, "connection_limits": invalid_limits}
+            invalid_payload = json.dumps(
+                invalid, separators=(",", ":"), sort_keys=True
+            ).encode()
+            with self.assertRaises(ValueError, msg=invalid_limits):
+                verify_lease(
+                    f"{b64(invalid_payload)}.{b64(private.sign(invalid_payload))}",
+                    {"lease-test": public},
+                )
+
+        summary, marks = _capture_summary({"events": [{
+            "type": "collection_snapshot_chunk",
+            "data": {
+                "fields": {"character_name": "Carvalho", "level": 66, "exp": 12.5},
+                "records": [{"collection_index": 1001, "completed_slots": [0, 2]}],
+            },
+        }]})
+        self.assertEqual(summary["character"], "Carvalho")
+        self.assertEqual(marks, {"1001": [1, 3]})
+
+        manifest = {
+            "manifest_version": 2,
+            "product": "rf-qol",
+            "channel": "stable",
+            "architecture": "windows-x64",
+            "version": "1.0.1",
+            "release_sequence": 2,
+            "published_at": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(days=1)).isoformat(),
+            "key_id": "update-test",
+            "file": "RF QOL Setup 1.0.1.exe",
+            "size": 123,
+            "sha256": "a" * 64,
+            "rollback_compatible_from": ["1.0.0"],
+        }
+        canonical = json.dumps(manifest, separators=(",", ":"), sort_keys=True).encode()
+        manifest["signature"] = b64(private.sign(UPDATE_SIGNATURE_CONTEXT + canonical))
+        self.assertEqual(
+            verify_manifest(manifest, {"update-test": public})["version"],
+            "1.0.1",
+        )
+        with self.assertRaises(ValueError):
+            verify_manifest(
+                manifest, {"update-test": public}, current_sequence=2
+            )
+        tampered_manifest = {**manifest, "version": "9.9.9"}
+        with self.assertRaises(ValueError):
+            verify_manifest(tampered_manifest, {"update-test": public})
+
+        with tempfile.TemporaryDirectory() as directory:
+            trusted = {"lease-test": public}
+            client = LicenseClient(Path(directory), trusted_public_keys=trusted)
+            client.state.update(
+                lease=lease,
+                public_key=b64(Ed25519PrivateKey.generate().public_key().public_bytes_raw()),
+                installation_id=installation_id,
+            )
+            client._save()
+            remembered = LicenseClient(
+                Path(directory), trusted_public_keys=trusted
+            )
+            self.assertEqual(remembered.lease, lease)
+            self.assertEqual(remembered.installation_id, installation_id)
+            self.assertEqual(remembered.license_state(), "ACTIVE_OFFLINE")
+            self.assertEqual(remembered.local_status()["state"], "ACTIVE_OFFLINE")
+            self.assertEqual(
+                remembered.local_status()["features"], ["base", "monitor-pvp"]
+            )
+            self.assertEqual(
+                remembered.local_status()["connection_limits"],
+                {},
+            )
+            remembered.require("captura")
+            remembered.require("Monitor PvP", "monitor-pvp")
+            with self.assertRaises(PermissionError):
+                remembered.require("Monitor Boss", "monitor-boss")
+            self.assertEqual(
+                remembered.state["license_expires_at"],
+                claims["entitlement_expires_at"],
+            )
+            self.assertNotIn("public_key", remembered.state)
+            self.assertNotIn(
+                lease.encode(), (Path(directory) / "license.dat").read_bytes()
+            )
+            protected = Path(directory) / "license.dat"
+            protected_bytes = protected.read_bytes()
+            protected.write_bytes(
+                protected_bytes[:-1] + bytes((protected_bytes[-1] ^ 1,))
+            )
+            recovered = LicenseClient(
+                Path(directory), trusted_public_keys=trusted
+            )
+            self.assertEqual(recovered.lease, lease)
+            self.assertEqual(recovered.load_status, "backup")
+            client._json = Mock(side_effect=urllib.error.HTTPError(
+                "https://license", 401, "revogada", {}, None
+            ))
+            allowed, _ = client.refresh_if_due("1.0.0")
+            self.assertFalse(allowed)
+            self.assertIsNone(client.lease)
+            self.assertEqual(client.license_state(), "REVOKED")
+            remembered.state["installation_id"] = "outra-instalacao"
+            with self.assertRaises(ValueError):
+                remembered.claims()
+
+            diagnostic = Path(directory) / "diagnostic.json"
+            diagnostic.write_text(
+                json.dumps(
+                    {
+                        "privacy": "sem payload",
+                        "events": [{"opcode": "0x7777", "decoded_size": 12}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            recovered._json = Mock(return_value={"receipt": "test-1"})
+            self.assertEqual(
+                recovered.upload_diagnostic(diagnostic, "1.0.0")["receipt"],
+                "test-1",
+            )
+
+            unactivated = LicenseClient(Path(directory) / "new")
+            self.assertEqual(unactivated.license_state(), "UNACTIVATED")
+            self.assertEqual(
+                unactivated.refresh_if_due("1.0.0")[0], False
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
