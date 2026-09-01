@@ -461,7 +461,13 @@ class LiveEventDecoder:
                     state.equipment_appearances.append(result)
                 elif result.get("type") == "player_profile_info":
                     correlated = decoder.correlate_active_equipment(
-                        result, list(state.equipment_appearances)
+                        result,
+                        [
+                            appearance
+                            for candidate in self._flows.values()
+                            if candidate.event_flow == state.event_flow
+                            for appearance in candidate.equipment_appearances
+                        ],
                     )
                     if correlated is not None:
                         active_equipment, _appearance = correlated
