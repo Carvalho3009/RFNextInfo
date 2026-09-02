@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0-beta.35 — 2026-09-02
+
+- distingue corretamente os rankings de contribuição das facções Accretia,
+  Bellato e Cora, preservando os identificadores brutos recebidos do servidor;
+- separa lista completa e posição própria nas respostas de ranking de facção.
+
 ## 2.0.0-beta.34 — 2026-09-02
 
 - atualiza o Agent com os decodes confirmados de Power na rota TCP 12040,
