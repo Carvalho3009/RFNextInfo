@@ -59,6 +59,9 @@ from core.rfnext_frame_decode import (
     parse_marked_gameplay_payload,
     parse_observation_payload,
     parse_player_stat_payload,
+    parse_realm_contribution_rank_payload,
+    parse_system_item_announcement_payload,
+    parse_ultimate_gear_payload,
     pcap_tcp_streams,
 )
 from core.store import CaptureStore, exp_rank_level_progress
@@ -91,6 +94,55 @@ class CoreTest(unittest.TestCase):
         self.assertIsNone(parse_player_stat_payload(
             self._decoder_frame(0x0401, bytes(player_payload)), 12020
         ))
+        self.assertIsNotNone(parse_player_stat_payload(
+            self._decoder_frame(0x0401, bytes(player_payload)), 12040
+        ))
+        self.assertIsNone(parse_player_stat_payload(
+            self._decoder_frame(0x0423, bytes(lobby_payload)), 12040
+        ))
+
+    def test_agent_routes_new_canonical_decoder_families(self):
+        ultimate = self._decoder_frame(
+            0x1508,
+            bytes.fromhex(
+                "59020201b110300001b265a061a00100000000000000000000"
+                "d2d88561a001000032168e61a00100000000"
+            ),
+        )
+        contribution = self._decoder_frame(0x240A, struct.pack("<H", 3))
+
+        tail = bytearray(65)
+        tail[21] = 3
+        tail[27] = 1
+        struct.pack_into("<II", tail, 37, 1_000_156, 1)
+        item_notice = self._decoder_frame(
+            0x0E09,
+            struct.pack("<QH", 123, 4) + "Test".encode("utf-16le") + tail,
+        )
+
+        self.assertEqual(
+            parse_ultimate_gear_payload(ultimate, 12020)["fields"]["ug_type_name"],
+            "launcher",
+        )
+        self.assertEqual(
+            parse_realm_contribution_rank_payload(contribution, 12020)["fields"][
+                "rank_type_name"
+            ],
+            "faction_contribution",
+        )
+        self.assertEqual(
+            parse_system_item_announcement_payload(item_notice, 12020)[
+                "announcements"
+            ][0]["recipient_name"],
+            "Test",
+        )
+        self.assertIsNone(parse_observation_payload(item_notice))
+        self.assertEqual(_safe_parse(rfnext_decoder, ultimate, 12020)["type"],
+                         "ultimate_gear_hangar_slot_update")
+        self.assertEqual(_safe_parse(rfnext_decoder, contribution, 12020)["type"],
+                         "realm_contribution_rank_list_request")
+        self.assertEqual(_safe_parse(rfnext_decoder, item_notice, 12020)["type"],
+                         "system_item_announcement_list")
 
     def test_ingest_keeps_27_stackable_snapshot_distinct_from_player_stat(self):
         items = [

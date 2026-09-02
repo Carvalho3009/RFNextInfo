@@ -618,12 +618,14 @@ PLAYER_STAT_LAYOUTS = {
     0x0401: {
         "type": "player_stat",
         "message": "FG2C_player_stat_Message",
+        "ports": (12010, 12040),
         "payload_length": 786,
         "combat_power_offset": 772,
     },
     0x0423: {
         "type": "lobby_stat",
         "message": "FG2C_lobby_stat_Message",
+        "ports": (12010,),
         "payload_length": 762,
         "combat_power_offset": 752,
     },
@@ -631,12 +633,12 @@ PLAYER_STAT_LAYOUTS = {
 
 
 def parse_player_stat_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
-    """Decodifica snapshots de Power confirmados no serviço TCP 12010."""
-    if port != 12010 or len(decoded) < HEADER_SIZE:
+    """Decode CP snapshots observed on the realtime gameplay service."""
+    if len(decoded) < HEADER_SIZE:
         return None
     opcode = int.from_bytes(decoded[4:6], "little")
     layout = PLAYER_STAT_LAYOUTS.get(opcode)
-    if layout is None:
+    if layout is None or port not in layout["ports"]:
         return None
     payload = decoded[HEADER_SIZE:]
     if len(payload) != layout["payload_length"]:
@@ -657,6 +659,92 @@ def parse_player_stat_payload(decoded: bytes, port: int) -> dict[str, Any] | Non
             "combat_power_offset": combat_power_offset,
         },
     }
+
+
+ULTIMATE_GEAR_MESSAGES = {
+    0x1504: (
+        "ultimate_gear_summon_request",
+        "FC2L_ask_summon_ultimate_gear_Message",
+        "FC2L",
+    ),
+    0x1505: (
+        "ultimate_gear_summon_response",
+        "FL2C_ans_summon_ultimate_gear_Message",
+        "FL2C",
+    ),
+    0x1508: (
+        "ultimate_gear_hangar_slot_update",
+        "FL2C_ultimate_gear_hangar_slot_update_Message",
+        "FL2C",
+    ),
+    0x150D: (
+        "ultimate_gear_summon_cool_response",
+        "FL2C_ans_ug_summon_cool_Message",
+        "FL2C",
+    ),
+}
+ULTIMATE_GEAR_TYPE_NAMES = {1: "mau", 2: "launcher"}
+
+
+def parse_ultimate_gear_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
+    """Decode the confirmed MAU/Launcher summon exchange on TCP/12020."""
+    if port != 12020 or len(decoded) < HEADER_SIZE:
+        return None
+    opcode = int.from_bytes(decoded[4:6], "little")
+    entry = ULTIMATE_GEAR_MESSAGES.get(opcode)
+    if entry is None:
+        return None
+    payload = decoded[HEADER_SIZE:]
+    expected_length = {0x1504: 15, 0x1505: 36, 0x1508: 43, 0x150D: 16}[opcode]
+    if len(payload) != expected_length:
+        return None
+    type_name, message, direction = entry
+    result: dict[str, Any] = {
+        "type": type_name,
+        "opcode": f"0x{opcode:04x}",
+        "message": message,
+        "direction": direction,
+        "confidence": (
+            "medio-1-evento-marcado+catalogo-estatico-20260902"
+            if opcode == 0x150D
+            else "alto-2-eventos-marcados+catalogo-estatico-20260902"
+        ),
+        "payload_length": len(payload),
+    }
+    if opcode == 0x1504:
+        ug_type, slot, x, y, z, direction_raw = struct.unpack("<BBfffB", payload)
+        result["fields"] = {
+            "ug_type": ug_type,
+            "ug_type_name": ULTIMATE_GEAR_TYPE_NAMES.get(ug_type),
+            "hangar_slot_raw": slot,
+            "position": {"x": x, "y": y, "z": z},
+            "direction_raw": direction_raw,
+        }
+    elif opcode == 0x1505:
+        result_raw, ug_type, slot, x, y, z = struct.unpack_from("<HBBfff", payload)
+        result["fields"] = {
+            "result_raw": result_raw,
+            "success": result_raw == 0,
+            "ug_type": ug_type,
+            "ug_type_name": ULTIMATE_GEAR_TYPE_NAMES.get(ug_type),
+            "hangar_slot_raw": slot,
+            "position": {"x": x, "y": y, "z": z},
+            "tail_hex": payload[16:].hex(),
+        }
+    elif opcode == 0x1508:
+        prefix_raw, ug_type, slot, item_index = struct.unpack_from("<HBBI", payload)
+        result["fields"] = {
+            "prefix_raw": prefix_raw,
+            "ug_type": ug_type,
+            "ug_type_name": ULTIMATE_GEAR_TYPE_NAMES.get(ug_type),
+            "hangar_slot_raw": slot,
+            "ultimate_gear_item_index": item_index,
+            "tail_hex": payload[8:].hex(),
+        }
+    else:
+        value0_raw, value1_raw = struct.unpack("<QQ", payload)
+        result["fields"] = {"value0_raw": value0_raw, "value1_raw": value1_raw}
+    return result
 
 
 def parse_exp_rank_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
@@ -743,6 +831,156 @@ def parse_exp_rank_payload(decoded: bytes, port: int) -> dict[str, Any] | None:
                 "ranking_cycle_raw": ranking_cycle,
                 "ranking_time_ms": ranking_time_ms,
             }
+    except (DecodeError, struct.error, UnicodeDecodeError) as exc:
+        result["field_decode"] = "layout-mismatch"
+        result["field_decode_error"] = str(exc)
+        return result
+    result["field_decode"] = "captura-layout-exato"
+    return result
+
+
+REALM_CONTRIBUTION_RANK_MESSAGES = {
+    0x2408: (
+        "realm_contribution_rank_schedule_request",
+        "FC2L_ask_realm_id_card_rank_schedule_Message",
+        "FC2L",
+    ),
+    0x2409: (
+        "realm_contribution_rank_schedule",
+        "FL2C_ans_realm_id_card_rank_schedule_Message",
+        "FL2C",
+    ),
+    0x240A: (
+        "realm_contribution_rank_list_request",
+        "FC2L_ask_realm_id_card_rank_list_Message",
+        "FC2L",
+    ),
+    0x240B: (
+        "realm_contribution_rank_list",
+        "FL2C_ans_realm_id_card_rank_list_Message",
+        "FL2C",
+    ),
+    0x240C: (
+        "realm_contribution_user_rank_request",
+        "FC2L_ask_realm_id_card_user_rank_Message",
+        "FC2L",
+    ),
+    0x240D: (
+        "realm_contribution_user_rank",
+        "FL2C_ans_realm_id_card_user_rank_Message",
+        "FL2C",
+    ),
+}
+REALM_RANK_TYPE_NAMES = {3: "faction_contribution"}
+
+
+def _parse_realm_contribution_rank_record(
+    payload: bytes, cursor: int
+) -> tuple[dict[str, Any], int]:
+    (character_uid,), cursor = _read_struct(payload, cursor, "<Q", "rank character UID")
+    character_name, cursor = _read_utf16le_u16(payload, cursor, "rank character name")
+    (biosuit_index, guild_id), cursor = _read_struct(
+        payload, cursor, "<IQ", "rank biosuit and guild"
+    )
+    guild_name, cursor = _read_utf16le_u16(payload, cursor, "rank guild name")
+    (guild_mark_raw, rank, contribution), cursor = _read_struct(
+        payload, cursor, "<IId", "rank values"
+    )
+    return {
+        "character_uid": character_uid,
+        "character_name": character_name,
+        "biosuit_index": biosuit_index,
+        "guild_id": guild_id,
+        "guild_name": guild_name,
+        "guild_mark_raw": guild_mark_raw,
+        "rank": rank,
+        "contribution": contribution,
+    }, cursor
+
+
+def parse_realm_contribution_rank_payload(
+    decoded: bytes, port: int
+) -> dict[str, Any] | None:
+    """Decode faction-contribution ranking messages observed on TCP/12020."""
+    if port != 12020 or len(decoded) < HEADER_SIZE:
+        return None
+    opcode = int.from_bytes(decoded[4:6], "little")
+    entry = REALM_CONTRIBUTION_RANK_MESSAGES.get(opcode)
+    if entry is None:
+        return None
+    payload = decoded[HEADER_SIZE:]
+    type_name, message, direction = entry
+    result: dict[str, Any] = {
+        "type": type_name,
+        "opcode": f"0x{opcode:04x}",
+        "message": message,
+        "direction": direction,
+        "confidence": "alto-2-sessoes-4-listas-completas-20260902",
+        "payload_length": len(payload),
+    }
+    try:
+        if opcode in (0x2408, 0x240C):
+            if payload:
+                raise DecodeError(f"0x{opcode:04x} payload must be empty")
+            result["fields"] = {}
+        elif opcode == 0x2409:
+            if len(payload) != 30:
+                raise DecodeError("0x2409 payload must have 30 bytes")
+            values = struct.unpack("<HQIQQ", payload)
+            result["fields"] = {
+                "result_raw": values[0],
+                "value0_raw": values[1],
+                "value1_raw": values[2],
+                "period_start_time_ms": values[3],
+                "period_end_time_ms": values[4],
+            }
+        elif opcode == 0x240A:
+            if len(payload) != 2:
+                raise DecodeError("0x240a payload must have 2 bytes")
+            result["fields"] = {
+                "rank_id_raw": struct.unpack("<H", payload)[0],
+                "rank_type_raw": payload[0],
+                "rank_type_name": REALM_RANK_TYPE_NAMES.get(payload[0]),
+                "rank_variant_raw": payload[1],
+            }
+        elif opcode == 0x240B:
+            (rank_id_raw,), cursor = _read_struct(payload, 0, "<H", "rank ID")
+            self_rank, cursor = _parse_realm_contribution_rank_record(payload, cursor)
+            (record_count,), cursor = _read_struct(payload, cursor, "<H", "rank count")
+            records = []
+            for _ in range(record_count):
+                record, cursor = _parse_realm_contribution_rank_record(payload, cursor)
+                records.append(record)
+            if cursor != len(payload):
+                raise DecodeError(f"0x240b has {len(payload) - cursor} trailing bytes")
+            result["fields"] = {
+                "rank_id_raw": rank_id_raw,
+                "rank_type_raw": payload[0],
+                "rank_type_name": REALM_RANK_TYPE_NAMES.get(payload[0]),
+                "rank_variant_raw": payload[1],
+                "self_rank": self_rank,
+            }
+            result["record_count"] = record_count
+            result["records"] = records
+        else:
+            (result_raw, record_count), cursor = _read_struct(
+                payload, 0, "<HH", "user rank prefix"
+            )
+            records = []
+            for _ in range(record_count):
+                values, cursor = _read_struct(payload, cursor, "<II", "user rank record")
+                records.append(
+                    {
+                        "rank_type_raw": values[0],
+                        "rank_type_name": REALM_RANK_TYPE_NAMES.get(values[0]),
+                        "rank": values[1],
+                    }
+                )
+            if cursor != len(payload):
+                raise DecodeError(f"0x240d has {len(payload) - cursor} trailing bytes")
+            result["fields"] = {"result_raw": result_raw}
+            result["record_count"] = record_count
+            result["records"] = records
     except (DecodeError, struct.error, UnicodeDecodeError) as exc:
         result["field_decode"] = "layout-mismatch"
         result["field_decode_error"] = str(exc)
@@ -1974,7 +2212,7 @@ def parse_nmssw_payload(decoded: bytes) -> dict[str, Any] | None:
 SYSTEM_ITEM_RECORD_TAIL_SIZES = (65, 73)
 
 
-def _parse_system_loot_record(
+def _parse_system_item_record(
     payload: bytes, start: int, tail_size: int
 ) -> tuple[dict[str, Any], int] | None:
     if start + 10 > len(payload):
@@ -1987,7 +2225,7 @@ def _parse_system_loot_record(
     if name_length > 64 or record_end > len(payload):
         return None
     try:
-        player_name = payload[name_start:name_end].decode("utf-16le")
+        presentation_name = payload[name_start:name_end].decode("utf-16le")
     except UnicodeDecodeError:
         return None
     tail = payload[name_end:record_end]
@@ -1998,15 +2236,27 @@ def _parse_system_loot_record(
     if character_uid == 0 or item_index == 0 or count == 0:
         return None
     return ({
-        "character_uid": character_uid,
-        "player_name": player_name,
+        "recipient_character_uid": character_uid,
+        "recipient_name": presentation_name or None,
+        "recipient_name_source": "packet" if presentation_name else "not_present",
         "item_index": item_index,
-        "count": count,
-        "message_kind": tail[21],
+        "quantity": count,
+        "message_kind_raw": tail[21],
+        "f27_u8_raw": tail[27],
+        "f28_u8_raw": tail[28],
+        "f29_u16_raw": struct.unpack_from("<H", tail, 29)[0],
+        "f31_u48_raw": int.from_bytes(tail[31:37], "little"),
+        "record_tail_size": tail_size,
+        "field_provenance": {
+            "recipient_character_uid": "packet",
+            "recipient_name": "packet" if presentation_name else "absent",
+            "item_index": "packet",
+            "quantity": "packet",
+        },
     }, record_end)
 
 
-def _parse_system_loot_records(
+def _parse_system_item_records(
     payload: bytes, start: int, count: int
 ) -> list[dict[str, Any]] | None:
     memo: dict[tuple[int, int], list[dict[str, Any]] | None] = {}
@@ -2021,7 +2271,7 @@ def _parse_system_loot_records(
             return result
         solutions = []
         for tail_size in SYSTEM_ITEM_RECORD_TAIL_SIZES:
-            parsed = _parse_system_loot_record(payload, cursor, tail_size)
+            parsed = _parse_system_item_record(payload, cursor, tail_size)
             if parsed is None:
                 continue
             record, next_cursor = parsed
@@ -2039,24 +2289,27 @@ def _parse_system_loot_announcement(decoded: bytes) -> dict[str, Any] | None:
     opcode = int.from_bytes(decoded[4:6], "little")
     payload = decoded[HEADER_SIZE:]
     if opcode == 0x0E09:
-        records = _parse_system_loot_records(payload, 0, 1)
+        records = _parse_system_item_records(payload, 0, 1)
         message = "FL2C_system_msg_Message"
     elif opcode == 0x0E0A and len(payload) >= 2:
         count = struct.unpack_from("<H", payload)[0]
         minimum = 10 + min(SYSTEM_ITEM_RECORD_TAIL_SIZES)
         if count == 0 or count > (len(payload) - 2) // minimum:
             return None
-        records = _parse_system_loot_records(payload, 2, count)
+        records = _parse_system_item_records(payload, 2, count)
         message = "FL2C_system_msg_list_Message"
     else:
         return None
     if records is None:
         return None
     # message_kind=3 é aprimoramento/prime e não é loot.
-    announcements = [
-        record for record in records
-        if record["message_kind"] == SYSTEM_MESSAGE_LOOT_KIND
-    ]
+    announcements = [{
+        "character_uid": record["recipient_character_uid"],
+        "player_name": record["recipient_name"] or "",
+        "item_index": record["item_index"],
+        "count": record["quantity"],
+        "message_kind": record["message_kind_raw"],
+    } for record in records if record["message_kind_raw"] == SYSTEM_MESSAGE_LOOT_KIND]
     if not announcements:
         return None
     return {
@@ -2066,6 +2319,43 @@ def _parse_system_loot_announcement(decoded: bytes) -> dict[str, Any] | None:
         "confidence": "alto-layout-captura-multi-registro-20260820",
         "source": "server_system_message",
         "announcements": announcements,
+    }
+
+
+def parse_system_item_announcement_payload(
+    decoded: bytes, port: int
+) -> dict[str, Any] | None:
+    """Decode item-acquisition notices without inventing a player name or drop source."""
+    if port != 12020 or len(decoded) < HEADER_SIZE:
+        return None
+    opcode = int.from_bytes(decoded[4:6], "little")
+    payload = decoded[HEADER_SIZE:]
+    if opcode == 0x0E09:
+        records = _parse_system_item_records(payload, 0, 1)
+        message = "FL2C_system_msg_Message"
+    elif opcode == 0x0E0A and len(payload) >= 2:
+        count = struct.unpack_from("<H", payload)[0]
+        minimum_record_size = 10 + min(SYSTEM_ITEM_RECORD_TAIL_SIZES)
+        if count == 0 or count > (len(payload) - 2) // minimum_record_size:
+            return None
+        records = _parse_system_item_records(payload, 2, count)
+        message = "FL2C_system_msg_list_Message"
+    else:
+        return None
+    if records is None:
+        return None
+    return {
+        "type": "system_item_announcement_list",
+        "opcode": f"0x{opcode:04x}",
+        "message": message,
+        "direction": "FL2C",
+        "confidence": "alto-layout-captura; semantica-item/recebedor-marcada",
+        "record_count": len(records),
+        "announcements": records,
+        "source_entity_decoded": False,
+        "source_entity_note": (
+            "nenhum campo foi confirmado como UID do mob ou boss que originou o drop"
+        ),
     }
 
 

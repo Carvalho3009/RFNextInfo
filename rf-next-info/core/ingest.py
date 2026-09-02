@@ -176,6 +176,11 @@ def _safe_parse(
                 "parse_exp_rank_payload",
                 lambda _value, _port: None,
             )(decoded, port)
+            or getattr(
+                decoder,
+                "parse_realm_contribution_rank_payload",
+                lambda _value, _port: None,
+            )(decoded, port)
             # 0x0401 tambem carrega o snapshot de stackables. Com exatamente
             # 27 itens ele tem os mesmos 786 bytes do player_stat; o layout
             # exato do inventario precisa vencer essa colisao de tamanho.
@@ -185,7 +190,17 @@ def _safe_parse(
                 "parse_player_stat_payload",
                 lambda _value, _port: None,
             )(decoded, port)
+            or getattr(
+                decoder,
+                "parse_ultimate_gear_payload",
+                lambda _value, _port: None,
+            )(decoded, port)
             or decoder.parse_observation_payload(decoded)
+            or getattr(
+                decoder,
+                "parse_system_item_announcement_payload",
+                lambda _value, _port: None,
+            )(decoded, port)
             or decoder.parse_marked_gameplay_payload(decoded, port)
             or inventory_candidate
             or decoder.parse_job1_payload(decoded)
