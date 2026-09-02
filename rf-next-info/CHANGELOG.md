@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0-beta.33 — 2026-09-02
+
+- correlaciona aparências de equipamento entre rotas TCP do mesmo cliente
+  lógico, preservando a separação entre clientes e permitindo ao site marcar
+  corretamente os itens equipados no Inventário.
+
 ## 2.0.0-beta.32 — 2026-08-31
 
 - envia ao site fotografias consolidadas de encontros de Boss pela fila

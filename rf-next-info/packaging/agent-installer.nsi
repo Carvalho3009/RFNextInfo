@@ -6,10 +6,10 @@ RequestExecutionLevel admin
 !endif
 
 !ifndef APP_VERSION
-!define APP_VERSION "2.0.0-beta.32"
+!define APP_VERSION "2.0.0-beta.33"
 !endif
 !ifndef APP_FILE_VERSION
-!define APP_FILE_VERSION "2.0.0.42"
+!define APP_FILE_VERSION "2.0.0.43"
 !endif
 !ifndef APP_SOURCE
 !define APP_SOURCE "..\dist\RF Next Companion"
