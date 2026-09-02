@@ -110,6 +110,12 @@ class CoreTest(unittest.TestCase):
             ),
         )
         contribution = self._decoder_frame(0x240A, struct.pack("<H", 3))
+        user_ranks = self._decoder_frame(
+            0x240D,
+            bytes.fromhex(
+                "00000300010000005b00000002000000c70000000300000031000000"
+            ),
+        )
 
         tail = bytearray(65)
         tail[21] = 3
@@ -126,9 +132,17 @@ class CoreTest(unittest.TestCase):
         )
         self.assertEqual(
             parse_realm_contribution_rank_payload(contribution, 12020)["fields"][
-                "rank_type_name"
+                "faction_name"
             ],
-            "faction_contribution",
+            "cora",
+        )
+        self.assertEqual(
+            parse_realm_contribution_rank_payload(user_ranks, 12020)["records"],
+            [
+                {"faction_id_raw": 1, "faction_name": "accretia", "rank": 91},
+                {"faction_id_raw": 2, "faction_name": "bellato", "rank": 199},
+                {"faction_id_raw": 3, "faction_name": "cora", "rank": 49},
+            ],
         )
         self.assertEqual(
             parse_system_item_announcement_payload(item_notice, 12020)[

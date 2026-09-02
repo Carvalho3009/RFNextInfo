@@ -871,7 +871,8 @@ REALM_CONTRIBUTION_RANK_MESSAGES = {
         "FL2C",
     ),
 }
-REALM_RANK_TYPE_NAMES = {3: "faction_contribution"}
+REALM_NAMES = {1: "accretia", 2: "bellato", 3: "cora"}
+REALM_RANK_VARIANT_NAMES = {0: "full_list", 1: "self_rank_only"}
 
 
 def _parse_realm_contribution_rank_record(
@@ -939,8 +940,8 @@ def parse_realm_contribution_rank_payload(
                 raise DecodeError("0x240a payload must have 2 bytes")
             result["fields"] = {
                 "rank_id_raw": struct.unpack("<H", payload)[0],
-                "rank_type_raw": payload[0],
-                "rank_type_name": REALM_RANK_TYPE_NAMES.get(payload[0]),
+                "faction_id_raw": payload[0],
+                "faction_name": REALM_NAMES.get(payload[0]),
                 "rank_variant_raw": payload[1],
             }
         elif opcode == 0x240B:
@@ -955,9 +956,10 @@ def parse_realm_contribution_rank_payload(
                 raise DecodeError(f"0x240b has {len(payload) - cursor} trailing bytes")
             result["fields"] = {
                 "rank_id_raw": rank_id_raw,
-                "rank_type_raw": payload[0],
-                "rank_type_name": REALM_RANK_TYPE_NAMES.get(payload[0]),
+                "faction_id_raw": payload[0],
+                "faction_name": REALM_NAMES.get(payload[0]),
                 "rank_variant_raw": payload[1],
+                "rank_variant_name": REALM_RANK_VARIANT_NAMES.get(payload[1]),
                 "self_rank": self_rank,
             }
             result["record_count"] = record_count
@@ -971,8 +973,8 @@ def parse_realm_contribution_rank_payload(
                 values, cursor = _read_struct(payload, cursor, "<II", "user rank record")
                 records.append(
                     {
-                        "rank_type_raw": values[0],
-                        "rank_type_name": REALM_RANK_TYPE_NAMES.get(values[0]),
+                        "faction_id_raw": values[0],
+                        "faction_name": REALM_NAMES.get(values[0]),
                         "rank": values[1],
                     }
                 )
