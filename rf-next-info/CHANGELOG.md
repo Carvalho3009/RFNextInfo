@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.0-beta.34 — 2026-09-02
+
+- atualiza o Agent com os decodes confirmados de Power na rota TCP 12040,
+  MAU/Launcher, ranking de contribuição e avisos de itens do sistema;
+- preserva os filtros existentes de loot, alvos e combate e mantém mensagens
+  de aprimoramento ou primagem fora do histórico de drops.
+
 ## 2.0.0-beta.33 — 2026-09-02
 
 - correlaciona aparências de equipamento entre rotas TCP do mesmo cliente
