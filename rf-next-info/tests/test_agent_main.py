@@ -330,6 +330,12 @@ class AgentWindowTest(unittest.TestCase):
                     }},
                 })
                 self.assertEqual(window.memory_value.text(), "192 MiB / 1.024 MiB")
+                installation_id = str(window.preferences["installation_id"])
+                self.assertEqual(
+                    window.identity_value.text(),
+                    f"Agent {installation_id[:8].upper()}",
+                )
+                self.assertEqual(window.identity_value.toolTip(), installation_id)
                 self.assertIn("ABCD-EFGH", window.authorization_value.text())
                 self.assertFalse(window.start_button.isEnabled())
             finally:

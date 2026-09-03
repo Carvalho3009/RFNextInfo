@@ -390,6 +390,12 @@ class AgentWindow(QtWidgets.QWidget):
         self.authorization_value = QtWidgets.QLabel(
             "Verificando", objectName="statusValue"
         )
+        installation_id = str(self.preferences.get("installation_id") or "").strip()
+        self.identity_value = QtWidgets.QLabel(
+            f"Agent {installation_id[:8].upper()}" if installation_id else "Indisponível",
+            objectName="statusValue",
+        )
+        self.identity_value.setToolTip(installation_id)
         self.api_value = QtWidgets.QLabel("Preparando", objectName="statusValue")
         self.update_value = QtWidgets.QLabel(
             f"{APP_VERSION} · aguardando verificação", objectName="statusValue"
@@ -404,6 +410,7 @@ class AgentWindow(QtWidgets.QWidget):
             ("Último decode", self.last_decode_value),
             ("Último envio", self.last_ack_value),
             ("Memória", self.memory_value),
+            ("Identidade", self.identity_value),
             ("Conta", self.authorization_value),
             ("API local", self.api_value),
             ("Atualização", self.update_value),
