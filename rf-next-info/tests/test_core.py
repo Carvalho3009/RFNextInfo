@@ -1565,6 +1565,11 @@ class CoreTest(unittest.TestCase):
             3, packet(profile, 100 + len(appearance), 50000)
         )
         correlated_other_route = live.feed(4, packet(profile, 100, 50002))
+        unresolved = LiveEventDecoder()
+        unresolved.feed(5, packet(appearance, 100, 50003))
+        correlated_unresolved_route = unresolved.feed(
+            6, packet(profile, 100, 50004)
+        )
 
         self.assertEqual(appeared[0]["type"], "appear_player_prefix")
         self.assertNotIn(
@@ -1580,6 +1585,11 @@ class CoreTest(unittest.TestCase):
             correlated_other_route[0]["data"]["fields"]["active_equipment"]
             ["slots"][0]["item"]["item_index"],
             1_002_279,
+        )
+        self.assertEqual(
+            correlated_unresolved_route[0]["data"]["fields"]["active_equipment"]
+            ["character_uid"],
+            7,
         )
 
     def test_live_decoder_reads_exitlag_loopback_transport(self):
