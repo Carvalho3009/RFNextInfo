@@ -1,0 +1,10 @@
+{
+  "version": "2.0.0-beta.37",
+  "release_sequence": 47,
+  "installer": "K:\\MCP\\_worktrees\\rf-qol-security-implementation\\rf-next-info\\release-agent-2.0.0-beta.37\\RF-Next-Companion-Setup-2.0.0-beta.37.exe",
+  "installer_size": 35704075,
+  "installer_sha256": "1A7258F30D4C4C2360F82412CE37B84FA780E4EBCD741C32D5AA9FBBC0FCA1E8",
+  "authenticode_status": "NotSigned",
+  "packaged_self_test": "passed",
+  "installer_smoke_evidence": "C:\\Users\\celc3\\AppData\\Local\\Temp\\rf-qol-agent-installer-smoke-20260903T022954Z\\agent-installer-smoke-result.json"
+}
