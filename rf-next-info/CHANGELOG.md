@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0-beta.36 — 2026-09-02
+
+- recupera o snapshot de equipamentos quando o Windows ainda não associou as
+  conexões TCP do mesmo cliente, usando os UIDs exatos dos itens;
+- mantém isoladas as rotas já identificadas como clientes diferentes.
+
 ## 2.0.0-beta.35 — 2026-09-02
 
 - distingue corretamente os rankings de contribuição das facções Accretia,
