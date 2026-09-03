@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0-beta.37 — 2026-09-02
+
+- envia ao site as listas completas top 100 de contribuição de Accretia,
+  Bellato e Cora;
+- mantém UIDs e campos internos do ranking somente no Agent.
+
 ## 2.0.0-beta.36 — 2026-09-02
 
 - recupera o snapshot de equipamentos quando o Windows ainda não associou as
