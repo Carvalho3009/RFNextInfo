@@ -70,6 +70,7 @@ IMMEDIATE_EVENT_TYPES = frozenset({
 })
 HIGH_PRIORITY_EVENT_TYPES = frozenset({
     "community.exp_ranking_snapshot",
+    "community.faction_ranking_snapshot",
     "community.market_observed",
     "market.personal_listing_observed",
     "market.personal_listings_snapshot",
@@ -169,6 +170,7 @@ EVENT_TYPES = {
     "FL2C_ans_exchange_for_my_transaction_history_Message": "market.personal_transaction_observed",
     "FL2C_respond_to_purchase_item_on_exchange_Message": "market.personal_transaction_observed",
     "exp_rank_list": "community.exp_ranking_snapshot",
+    "realm_contribution_rank_list": "community.faction_ranking_snapshot",
     "inventory_snapshot": "inventory.snapshot",
     "inventory_delta": "inventory.snapshot",
     "collection_snapshot_chunk": "progress.collection_snapshot",
@@ -352,6 +354,11 @@ _PAYLOAD_FIELDS = {
         "conflict_count", "source_pages", "first_captured_at", "captured_at",
         "capture_span_ms", "ranking_records",
     },
+    "community.faction_ranking_snapshot": {
+        "snapshot_ref", "faction", "top_limit", "record_count", "completeness",
+        "conflict_count", "source_pages", "first_captured_at", "captured_at",
+        "capture_span_ms", "faction_ranking_records",
+    },
     "inventory.snapshot": {
         "snapshot_ref", "character_uid", "chunk_index", "chunk_count",
         "complete", "item_kind", "inventory_items",
@@ -380,6 +387,9 @@ _NESTED_FIELDS = {
     "ranking_records": {
         "rank", "previous_rank", "character_name", "guild_name", "total_exp",
         "level", "level_percent",
+    },
+    "faction_ranking_records": {
+        "rank", "previous_rank", "character_name", "guild_name", "faction_points",
     },
     "boss_records": {"values"},
     "players": {
@@ -2206,6 +2216,8 @@ class WebEventProjector:
             return prepared if isinstance(prepared, dict) else None
         if kind == "exp_rank_list":
             return self._exp_ranking_payload(data, session_id, occurred_ns)
+        if kind == "realm_contribution_rank_list":
+            return self._faction_ranking_payload(data, occurred_ns)
         if kind in {"inventory_snapshot", "inventory_delta"}:
             prepared = data.get("_agent_inventory_payload")
             return prepared if isinstance(prepared, dict) else None
@@ -2331,6 +2343,61 @@ class WebEventProjector:
                 max(0, (context["last_ns"] - context["first_ns"]) // 1_000_000),
             ),
             "ranking_records": records,
+        }
+
+    def _faction_ranking_payload(
+        self, data: dict[str, Any], occurred_ns: int | None
+    ) -> dict[str, Any] | None:
+        fields = self._fields(data)
+        faction = (_text(fields.get("faction_name"), 40) or "").casefold()
+        raw_rows = data.get("records")
+        if (
+            data.get("field_decode") != "captura-layout-exato"
+            or _integer(fields.get("rank_variant_raw")) != 0
+            or faction not in {"accretia", "bellato", "cora"}
+            or not isinstance(raw_rows, list)
+            or len(raw_rows) != 100
+        ):
+            return None
+        records: dict[int, dict[str, Any]] = {}
+        for raw in raw_rows:
+            if not isinstance(raw, dict):
+                return None
+            rank = _integer(raw.get("rank"))
+            name = _text(raw.get("character_name"), 80)
+            points = _number(raw.get("contribution"))
+            if (
+                rank is None or not 1 <= rank <= 100 or rank in records
+                or not name or points is None or not points.is_integer()
+                or not 0 <= points <= 2**63 - 1
+            ):
+                return None
+            records[rank] = {
+                "rank": rank,
+                "previous_rank": 0,
+                "character_name": name,
+                "guild_name": _text(raw.get("guild_name"), 80) or "",
+                "faction_points": int(points),
+            }
+        if set(records) != set(range(1, 101)):
+            return None
+        ordered = [records[rank] for rank in range(1, 101)]
+        captured_at = _utc_from_ns(occurred_ns)
+        signature = hashlib.sha256(_canonical_json(ordered)).hexdigest()
+        return {
+            "snapshot_ref": self._opaque(
+                "faction-ranking-snapshot", f"{faction}:{signature}"
+            ),
+            "faction": faction.capitalize(),
+            "top_limit": 100,
+            "record_count": 100,
+            "completeness": "complete",
+            "conflict_count": 0,
+            "source_pages": 1,
+            "first_captured_at": captured_at,
+            "captured_at": captured_at,
+            "capture_span_ms": 0,
+            "faction_ranking_records": ordered,
         }
 
     def ranking_diagnostics(self) -> dict[str, int]:

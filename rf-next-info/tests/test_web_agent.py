@@ -1373,6 +1373,51 @@ class WebEventProjectorTest(unittest.TestCase):
         ), "sessao-1")
         self.assertIsNone(duplicate)
 
+    def test_faction_ranking_projects_only_complete_full_top100(self):
+        records = [{
+            "character_uid": 20_000 + rank,
+            "character_name": f"Personagem {rank}",
+            "biosuit_index": 5000,
+            "guild_id": rank,
+            "guild_name": "Guilda",
+            "guild_mark_raw": 123,
+            "rank": rank,
+            "contribution": float(1_000_000 - rank),
+        } for rank in range(1, 101)]
+        event = decoded_event(
+            "realm_contribution_rank_list",
+            {
+                "field_decode": "captura-layout-exato",
+                "fields": {
+                    "faction_name": "bellato",
+                    "rank_variant_raw": 0,
+                    "rank_variant_name": "full_list",
+                },
+                "record_count": 100,
+                "records": records,
+            },
+            opcode=0x240B,
+        )
+
+        projected = self.projector.project(event, "sessao-1")
+
+        self.assertEqual(projected["type"], "community.faction_ranking_snapshot")
+        self.assertEqual(projected["payload"]["faction"], "Bellato")
+        self.assertEqual(projected["payload"]["record_count"], 100)
+        self.assertEqual(
+            projected["payload"]["faction_ranking_records"][0],
+            {
+                "rank": 1,
+                "previous_rank": 0,
+                "character_name": "Personagem 1",
+                "guild_name": "Guilda",
+                "faction_points": 999_999,
+            },
+        )
+        assert_no_forbidden_keys(self, projected)
+        event["data"]["records"] = records[:-1]
+        self.assertIsNone(self.projector.project(event, "sessao-1"))
+
     def test_lifecycle_uses_same_opaque_session_reference(self):
         connection = _connection_key(self.identity_event()["flow"])
         scoped = self.projector.connection_session_id("sessao-1", connection)
@@ -1477,6 +1522,10 @@ class AgentOutboxTest(unittest.TestCase):
         )
         self.assertEqual(
             delivery_priority("community.exp_ranking_snapshot"),
+            DELIVERY_PRIORITY_HIGH,
+        )
+        self.assertEqual(
+            delivery_priority("community.faction_ranking_snapshot"),
             DELIVERY_PRIORITY_HIGH,
         )
         self.assertEqual(
