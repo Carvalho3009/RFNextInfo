@@ -7,8 +7,8 @@ from urllib.parse import urlsplit
 PROFILE_NAME = "beta"
 PROFILE_LABEL = "Beta"
 PRODUCT_NAME = "RF Next Companion"
-APP_VERSION = "2.0.0-beta.37"
-RELEASE_SEQUENCE = 47
+APP_VERSION = "2.0.0-beta.38"
+RELEASE_SEQUENCE = 48
 
 LICENSE_SERVER = "https://rflicenca.karvalho.dev.br"
 SITE_SERVER = "https://rfnext.karvalho.dev.br"
@@ -71,9 +71,9 @@ def validate_build_profile(*, release: bool = False) -> None:
     elif PROFILE_NAME == "beta":
         parsed = urlsplit(LICENSE_SERVER)
         if (
-            APP_VERSION != "2.0.0-beta.37"
+            APP_VERSION != "2.0.0-beta.38"
             or PROFILE_LABEL != "Beta"
-            or RELEASE_SEQUENCE != 47
+            or RELEASE_SEQUENCE != 48
             or parsed.scheme != "https"
             or parsed.hostname != "rflicenca.karvalho.dev.br"
             or parsed.path not in {"", "/"}

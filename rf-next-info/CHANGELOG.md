@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-beta.38 — 2026-09-03
+
+- exibe na tela do Companion a identidade estável de cada Agent;
+- mantém o identificador completo disponível sem expor credenciais.
+
 ## 2.0.0-beta.37 — 2026-09-02
 
 - envia ao site as listas completas top 100 de contribuição de Accretia,
