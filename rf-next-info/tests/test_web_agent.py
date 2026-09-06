@@ -14,6 +14,7 @@ from core.web_agent import (
     DELIVERY_PRIORITY_HIGH,
     DELIVERY_PRIORITY_IMMEDIATE,
     DELIVERY_PRIORITY_REALTIME,
+    IDENTITY_ONLY_EVENT_TYPES,
     PROCESSING_PRIORITY_BOSS,
     PROCESSING_PRIORITY_NORMAL,
     AgentOutbox,
@@ -906,6 +907,69 @@ class WebEventProjectorTest(unittest.TestCase):
             [True, False],
         )
 
+    def test_local_appearance_recovers_equipment_profile_across_connection(self):
+        self.assertIn("appear_player_prefix", IDENTITY_ONLY_EVENT_TYPES)
+        self.projector.project(self.identity_event(), "sessao-1")
+        self.projector.observe_identity_event(decoded_event(
+            "appear_player_prefix",
+            {"fields": {
+                "character_uid": 123456789,
+                "character_name": "Personagem",
+                "equipment_refs": [{
+                    "equip_part_type": 1,
+                    "item_uid": 987654,
+                }],
+            }},
+            offset=2,
+            flow="10.0.0.1:50001 -> 10.0.0.2:12020",
+            opcode=0x0305,
+        ))
+        projected = self.projector.project_many(decoded_event(
+            "player_profile_info",
+            {"fields": {"items": [{
+                "inventory_slot": 7,
+                "item_uid": 987654,
+                "item_index": 1000078,
+                "count": 1,
+                "enchant_level": 6,
+                "lock": False,
+            }]}},
+            offset=3,
+        ), "sessao-1")
+
+        self.assertEqual(len(projected), 1)
+        self.assertTrue(projected[0]["payload"]["complete"])
+        self.assertTrue(projected[0]["payload"]["inventory_items"][0]["equipped"])
+
+    def test_partial_equipment_correlation_is_not_published_as_complete(self):
+        self.projector.project(self.identity_event(), "sessao-1")
+        self.projector.observe_identity_event(decoded_event(
+            "appear_player_prefix",
+            {"fields": {
+                "character_uid": 123456789,
+                "character_name": "Personagem",
+                "equipment_refs": [
+                    {"equip_part_type": 1, "item_uid": 987654},
+                    {"equip_part_type": 2, "item_uid": 987655},
+                ],
+            }},
+            offset=2,
+            flow="10.0.0.1:50001 -> 10.0.0.2:12020",
+            opcode=0x0305,
+        ))
+
+        projected = self.projector.project_many(decoded_event(
+            "player_profile_info",
+            {"fields": {"items": [{
+                "inventory_slot": 7, "item_uid": 987654,
+                "item_index": 1000078, "count": 1,
+                "enchant_level": 6, "lock": False,
+            }]}},
+            offset=3,
+        ), "sessao-1")
+
+        self.assertEqual(projected, [])
+
     def test_nearby_profile_cannot_mark_or_publish_local_equipment(self):
         self.projector.project(self.identity_event(), "sessao-1")
         nearby = self.projector.project_many(decoded_event(
@@ -1733,6 +1797,59 @@ class AgentOutboxTest(unittest.TestCase):
 
 
 class WebAgentBridgeTest(unittest.TestCase):
+    def test_equipped_profile_reaches_outbox_after_cross_connection_correlation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            projector = WebEventProjector(
+                "install-publica", b"0123456789abcdef0123456789abcdef",
+                decoder_version="test",
+            )
+            outbox = AgentOutbox(Path(folder) / "outbox.sqlite3", "install-publica")
+            bridge = WebAgentBridge(projector, outbox)
+            bridge.start_session("sessao-1")
+            self.assertTrue(bridge.submit(decoded_event(
+                "world_info_prefix",
+                {"fields": {
+                    "character_uid": 123456789,
+                    "character_name": "Personagem",
+                    "level": 66,
+                }},
+                offset=1,
+                opcode=0x0106,
+            )))
+            self.assertTrue(bridge.submit(decoded_event(
+                "appear_player_prefix",
+                {"fields": {
+                    "character_uid": 123456789,
+                    "character_name": "Personagem",
+                    "equipment_refs": [{
+                        "equip_part_type": 1, "item_uid": 987654,
+                    }],
+                }},
+                offset=2,
+                flow="10.0.0.1:50001 -> 10.0.0.2:12020",
+                opcode=0x0305,
+            )))
+            self.assertTrue(bridge.submit(decoded_event(
+                "player_profile_info",
+                {"fields": {"items": [{
+                    "inventory_slot": 7, "item_uid": 987654,
+                    "item_index": 1000078, "count": 1,
+                    "enchant_level": 6, "lock": False,
+                }]}},
+                offset=3,
+            )))
+            bridge.wait_until_idle()
+
+            events = drain_outbox(outbox)
+            equipment = next(
+                event for event in events if event["type"] == "inventory.snapshot"
+            )
+            self.assertTrue(
+                equipment["payload"]["inventory_items"][0]["equipped"]
+            )
+            bridge.close()
+            outbox.close()
+
     def test_multichunk_inventory_can_retry_after_outbox_fills_mid_snapshot(self):
         with tempfile.TemporaryDirectory() as folder:
             projector = WebEventProjector(

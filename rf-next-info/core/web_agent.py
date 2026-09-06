@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from core.rfnext_frame_decode import correlate_active_equipment
 from core.store import LEVEL_CURVE, exp_rank_level_progress
 from core.drop_alerts import NON_ITEM_REWARD_INDEXES
 from core.web_agent_character_history import (
@@ -186,6 +187,7 @@ EVENT_TYPES = {
 # Eventos usados somente para correlacionar uma ação própria com o UID público
 # já conhecido. Eles nunca são projetados nem enviados ao site.
 IDENTITY_ONLY_EVENT_TYPES = frozenset({
+    "appear_player_prefix",
     "change_equip_slot_request",
     "change_equip_slot_response",
     "change_rover_request",
@@ -734,6 +736,7 @@ class WebEventProjector:
         self._connection_confirmation_sources: dict[str, str] = {}
         self._connection_equipped_item_uids: dict[str, set[int]] = {}
         self._connection_equipped_slots: dict[str, dict[int, int]] = {}
+        self._equipment_appearances_by_character: dict[int, dict[str, Any]] = {}
         self._connection_inventory_items: dict[
             str, dict[str, dict[int, dict[str, Any]]]
         ] = {}
@@ -989,6 +992,19 @@ class WebEventProjector:
                 self._bind_character_locked(
                     connection, decision.character_uid, decision.source,
                 )
+        if kind == "appear_player_prefix":
+            character_uid = _character_uid(fields.get("character_uid"))
+            equipment_refs = fields.get("equipment_refs")
+            if character_uid is not None and isinstance(equipment_refs, list):
+                with self._lock:
+                    self._equipment_appearances_by_character.pop(character_uid, None)
+                    self._equipment_appearances_by_character[character_uid] = {
+                        "fields": fields,
+                    }
+                    while len(self._equipment_appearances_by_character) > 256:
+                        self._equipment_appearances_by_character.pop(
+                            next(iter(self._equipment_appearances_by_character))
+                        )
         if kind == "change_equip_slot_response":
             result = _integer(fields.get("result"), 0)
             equipment_slot = _integer(fields.get("equipment_slot"))
@@ -2494,8 +2510,21 @@ class WebEventProjector:
                 return []
             flow = str(event.get("flow") or "")
             fields = self._fields(data)
-            self._identity(kind, session_id, flow, fields)
             connection = _connection_key(flow)
+            confirmed_uid = self._connection_character_uids.get(connection)
+            if confirmed_uid is not None and not isinstance(
+                fields.get("active_equipment"), dict
+            ):
+                with self._lock:
+                    appearance = self._equipment_appearances_by_character.get(
+                        confirmed_uid
+                    )
+                correlated = correlate_active_equipment(
+                    {"fields": fields}, [appearance] if appearance else []
+                )
+                if correlated is not None and correlated[0].get("complete") is True:
+                    fields = {**fields, "active_equipment": correlated[0]}
+            self._identity(kind, session_id, flow, fields)
             confirmed_uid = self._connection_character_uids.get(connection)
             active_equipment = fields.get("active_equipment")
             active_uid = (
@@ -2505,6 +2534,7 @@ class WebEventProjector:
             items = fields.get("items")
             if (
                 confirmed_uid is None or active_uid != confirmed_uid
+                or active_equipment.get("complete") is False
                 or not isinstance(items, list) or not items
             ):
                 return []
