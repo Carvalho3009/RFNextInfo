@@ -198,7 +198,7 @@ class AgentClientRegistryTest(unittest.TestCase):
             registry.snapshot()[0]["session_duration_seconds"], 30
         )
 
-    def test_registry_reconciles_history_with_active_process_count(self):
+    def test_registry_removes_exact_client_without_affecting_another(self):
         registry = AgentClientRegistry()
         for client_ref, name in (
             ("client-old", "Personagem antigo"),
@@ -211,13 +211,13 @@ class AgentClientRegistryTest(unittest.TestCase):
                 "payload": {"name": name},
             })
 
-        self.assertEqual(registry.reconcile_active_count(2), 1)
+        registry.remove("client-old")
         self.assertEqual(
             [item["name"] for item in registry.snapshot()],
             ["Alice", "Bob"],
         )
-        self.assertEqual(registry.reconcile_active_count(0), 2)
-        self.assertEqual(registry.snapshot(), [])
+        registry.remove("client-b")
+        self.assertEqual([item["name"] for item in registry.snapshot()], ["Alice"])
 
 
 class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
@@ -429,29 +429,37 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
             finally:
                 runtime.close()
 
-    def test_route_refresh_removes_stale_recognized_characters(self):
+    def test_route_refresh_preserves_live_instances_and_removes_only_exited_process(self):
         current = {"value": _processes(10, 20)}
         with tempfile.TemporaryDirectory() as folder:
-            runtime = self._runtime(folder, lambda _ports: current["value"])
+            aliases = {51000: "process:10:100", 51001: "process:20:200"}
+            runtime = self._runtime(
+                folder, lambda _ports: current["value"],
+                route_alias_reader=lambda _ports: dict(aliases),
+            )
             try:
                 runtime.start_capture()
-                for client_ref, name in (
-                    ("client-old", "Personagem antigo"),
-                    ("client-a", "Alice"),
-                    ("client-b", "Bob"),
-                ):
-                    runtime.registry.observe({
-                        "type": "character.observed",
-                        "client_ref": client_ref,
-                        "payload": {"name": name},
-                    })
-
-                self.assertEqual(len(runtime.health()["clients"]), 3)
-                runtime.refresh_routes()
+                for uid, name, alias in ((1, "Alice", aliases[51000]), (2, "Bob", aliases[51001])):
+                    runtime.service.submit({**_decoded_identity(uid, name), "flow": f"client-route:{alias}"})
+                runtime.service.runtime.bridge.wait_until_idle()
+                before = runtime.registry.snapshot()
+                current["value"] = {}
+                aliases.clear()
+                for probe in (lambda pid: {10: 100, 20: 200}[pid], lambda pid: None):
+                    with mock.patch("core.windows_agent_capture.process_started_at", side_effect=probe):
+                        self.assertEqual(runtime.refresh_routes()["client_processes"], 2)
+                    self.assertEqual([row["name"] for row in runtime.registry.snapshot()], ["Alice", "Bob"])
+                    self.assertEqual([row["client_ref"] for row in runtime.registry.snapshot()], [row["client_ref"] for row in before])
+                # PID 10 reutilizado: remover Alice, sem tocar no cliente 20.
+                with mock.patch("core.windows_agent_capture.process_started_at", side_effect=lambda pid: {10: 101, 20: 200}[pid]):
+                    runtime.refresh_routes()
                 self.assertEqual(
                     [item["name"] for item in runtime.health()["clients"]],
-                    ["Alice", "Bob"],
+                    ["Bob"],
                 )
+                with mock.patch("core.windows_agent_capture.process_started_at", return_value=0):
+                    runtime.refresh_routes()
+                self.assertEqual(runtime.registry.snapshot(), [])
             finally:
                 runtime.close()
 

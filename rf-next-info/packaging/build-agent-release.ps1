@@ -47,7 +47,7 @@ try {
     $PreviousCompatLayer = $env:__COMPAT_LAYER
     try {
         $env:__COMPAT_LAYER = 'RunAsInvoker'
-        $SelfTest = Start-Process -FilePath $Executable -ArgumentList '--self-test' -PassThru
+        $SelfTest = Start-Process -FilePath $Executable -ArgumentList '--self-test' -WindowStyle Hidden -PassThru
         if (-not $SelfTest.WaitForExit(60000)) {
             Stop-Process -Id $SelfTest.Id -Force -ErrorAction SilentlyContinue
             throw 'Autoteste empacotado excedeu 60 segundos.'

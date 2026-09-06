@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from core.connections import agent_connection_aliases, agent_processes
+from core.connections import agent_connection_aliases, agent_processes, process_started_at
 from core.ingest import DEFAULT_PORTS
 from core.live_stream import LiveEventStream
 from core.pktmon_realtime import RealtimeCapture
@@ -133,6 +133,8 @@ class AgentClientRegistry:
             item["character_uid"] = int(payload["character_uid"])
         with self._lock:
             previous = self._clients.get(client_ref)
+            if previous and item.get("character_uid") != previous.get("character_uid"):
+                self._session_started_ns.pop(client_ref, None)
             same_character = previous is not None and (
                 item.get("character_uid") == previous.get("character_uid")
             )
@@ -166,22 +168,15 @@ class AgentClientRegistry:
                 for client_ref, item in self._clients.items()
             ]
 
-    def reconcile_active_count(self, active_count: int) -> int:
-        """Descarta identidades antigas quando o número de processos diminui."""
-        limit = max(0, min(self.max_clients, int(active_count)))
-        removed = 0
-        with self._lock:
-            while len(self._clients) > limit:
-                expired = next(iter(self._clients))
-                self._clients.pop(expired, None)
-                self._session_started_ns.pop(expired, None)
-                removed += 1
-        return removed
-
     def clear(self) -> None:
         with self._lock:
             self._clients.clear()
             self._session_started_ns.clear()
+
+    def remove(self, client_ref: str) -> None:
+        with self._lock:
+            self._clients.pop(client_ref, None)
+            self._session_started_ns.pop(client_ref, None)
 
 
 class StandaloneWindowsAgentRuntime:
@@ -219,6 +214,8 @@ class StandaloneWindowsAgentRuntime:
         )
         self.memory_reader = memory_reader
         self.memory_limits = agent_memory_limits(memory_budget_mb)
+        self._process_bindings: dict[str, str] = {}
+        self._process_bindings_lock = threading.Lock()
         self.live_events = self._new_event_stream()
         self.live_capture: RealtimeCapture | None = None
         self.session_id: str | None = None
@@ -361,9 +358,39 @@ class StandaloneWindowsAgentRuntime:
             event_sink=self.service.submit,
         )
         stream.set_connection_alias_resolver(
-            lambda: self.route_alias_reader(self.ports)
+            self._read_process_aliases
         )
         return stream
+
+    def _read_process_aliases(self) -> dict[int, str]:
+        aliases = self.route_alias_reader(self.ports)
+        projector = self.service.runtime.bridge.projector
+        with self._process_bindings_lock:
+            for alias in set(aliases.values()):
+                parts = alias.split(":")
+                if len(parts) == 3 and parts[0] == "process" and all(
+                    part.isdigit() and int(part) > 0 for part in parts[1:]
+                ):
+                    self._process_bindings[alias] = projector.client_ref_for_connection(
+                        f"client-route:{alias}"
+                    )
+        return aliases
+
+    def _reconcile_process_bindings(self) -> set[int]:
+        retained_pids = set()
+        with self._process_bindings_lock:
+            for alias, client_ref in list(self._process_bindings.items()):
+                _, pid, started = alias.split(":")
+                current = process_started_at(int(pid))
+                if current is None or current == int(started):
+                    retained_pids.add(int(pid))
+                else:
+                    self.registry.remove(client_ref)
+                    history = self.service.runtime.bridge.projector.character_history
+                    if history is not None:
+                        history.release(f"client-route:{alias}")
+                    self._process_bindings.pop(alias)
+        return retained_pids
 
     def detected_processes(self) -> dict[str, tuple[set[int], set[int], set[int]]]:
         result = self.process_reader(self.ports)
@@ -440,7 +467,7 @@ class StandaloneWindowsAgentRuntime:
             self.live_events.clear()
             self.live_events.set_transport_ports(capture_ports)
             self.live_events.set_connection_aliases(
-                self.route_alias_reader(self.ports)
+                self._read_process_aliases()
             )
             self.live_events.start()
             self.service.start_session(session_id)
@@ -529,7 +556,7 @@ class StandaloneWindowsAgentRuntime:
                 self.stop_capture(reason="authorization_expired")
             processes = self.detected_processes()
             self.live_events.set_connection_aliases(
-                self.route_alias_reader(self.ports)
+                self._read_process_aliases()
             )
             pids, capture_ports = self._capture_routes(processes, self.ports)
             restarted = False
@@ -569,8 +596,8 @@ class StandaloneWindowsAgentRuntime:
                         self._last_capture_restart = time.monotonic()
                         self._pending_capture_ports = ()
                         self._pending_route_observations = 0
+            pids = tuple(sorted(set(pids) | self._reconcile_process_bindings()))
             self._known_pids = pids
-            self.registry.reconcile_active_count(len(pids))
             if hasattr(self.service, "heartbeat"):
                 try:
                     self.service.heartbeat(
@@ -646,6 +673,9 @@ class StandaloneWindowsAgentRuntime:
             self._pending_capture_ports = ()
             self._pending_route_observations = 0
             self.registry.clear()
+            if reason != "paused":
+                with self._process_bindings_lock:
+                    self._process_bindings.clear()
             if hasattr(self.service, "heartbeat"):
                 try:
                     self.service.heartbeat("stopped", 0)

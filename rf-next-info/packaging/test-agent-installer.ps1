@@ -61,7 +61,7 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $InstallDir '_internal') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $InstallDir 'RF QOL Agent.exe') -Value 'legacy-smoke'
     Set-Content -LiteralPath (Join-Path $InstallDir '_internal\legacy-smoke.txt') -Value 'legacy-smoke'
-    $Install = Start-Process -FilePath $Installer -ArgumentList @('/S', "/D=$InstallDir") -PassThru
+    $Install = Start-Process -FilePath $Installer -ArgumentList @('/S', "/D=$InstallDir") -WindowStyle Hidden -PassThru
     if (-not $Install.WaitForExit(120000)) {
         Stop-Process -Id $Install.Id -Force -ErrorAction SilentlyContinue
         throw 'Instalação de ensaio excedeu 120 segundos.'
@@ -77,7 +77,7 @@ try {
     if (Test-Path -LiteralPath (Join-Path $InstallDir '_internal\legacy-smoke.txt')) {
         throw 'A atualização deixou arquivos internos da versão anterior.'
     }
-    $SelfTest = Start-Process -FilePath $Executable -ArgumentList '--self-test' -PassThru
+    $SelfTest = Start-Process -FilePath $Executable -ArgumentList '--self-test' -WindowStyle Hidden -PassThru
     if (-not $SelfTest.WaitForExit(60000)) {
         Stop-Process -Id $SelfTest.Id -Force -ErrorAction SilentlyContinue
         throw 'Autoteste instalado excedeu 60 segundos.'
@@ -86,7 +86,7 @@ try {
 } finally {
     $Uninstaller = Join-Path $InstallDir 'Uninstall.exe'
     if (Test-Path -LiteralPath $Uninstaller -PathType Leaf) {
-        $Uninstall = Start-Process -FilePath $Uninstaller -ArgumentList @('/S', "_?=$InstallDir") -PassThru
+        $Uninstall = Start-Process -FilePath $Uninstaller -ArgumentList @('/S', "_?=$InstallDir") -WindowStyle Hidden -PassThru
         if (-not $Uninstall.WaitForExit(120000)) {
             Stop-Process -Id $Uninstall.Id -Force -ErrorAction SilentlyContinue
             throw 'Desinstalação de ensaio excedeu 120 segundos.'

@@ -117,6 +117,38 @@ def _process_path(pid: int) -> str | None:
         kernel.CloseHandle(handle)
 
 
+def process_started_at(pid: int) -> int | None:
+    """FILETIME de criação; 0 = encerrado, None = consulta indisponível."""
+    if os.name != "nt":
+        return None
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [
+        ctypes.POINTER(wintypes.FILETIME)
+    ] * 4
+    kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return 0 if ctypes.get_last_error() == 87 else None
+    try:
+        status = wintypes.DWORD()
+        if not kernel.GetExitCodeProcess(handle, ctypes.byref(status)):
+            return None
+        if status.value != 259:  # STILL_ACTIVE
+            return 0
+        created, exited, system, user = (wintypes.FILETIME() for _ in range(4))
+        if not kernel.GetProcessTimes(
+            handle, ctypes.byref(created), ctypes.byref(exited),
+            ctypes.byref(system), ctypes.byref(user),
+        ):
+            return None
+        return (created.dwHighDateTime << 32) | created.dwLowDateTime
+    finally:
+        kernel.CloseHandle(handle)
+
+
 def _connected_processes(
     allowed_remote_ports: tuple[int, ...],
     executable_prefixes: tuple[str, ...],
@@ -223,12 +255,13 @@ def agent_connection_aliases(
 ) -> dict[int, str]:
     """Agrupa portas TCP do mesmo processo somente durante a captura.
 
-    O alias contém o PID local porque nunca sai do processo: o projetor o
+    O alias contém PID e criação da instância, sem expor estes dados: o projetor o
     transforma em ``client_ref`` opaco antes de qualquer persistência remota.
     """
     allowed = set(int(port) for port in allowed_remote_ports)
     aliases: dict[int, str] = {}
     paths: dict[int, str | None] = {}
+    starts: dict[int, int | None] = {}
     for pid, local_port, remote_port in _tcp_rows():
         if pid not in paths:
             paths[pid] = _process_path(pid)
@@ -238,7 +271,10 @@ def agent_connection_aliases(
         is_direct_game = bool(allowed and remote_port in allowed)
         is_relay_candidate = remote_port not in (0, 80, 443)
         if is_direct_game or is_relay_candidate:
-            aliases[int(local_port)] = f"process:{int(pid)}"
+            if pid not in starts:
+                starts[pid] = process_started_at(pid)
+            if starts[pid]:
+                aliases[int(local_port)] = f"process:{int(pid)}:{starts[pid]}"
     return aliases
 
 

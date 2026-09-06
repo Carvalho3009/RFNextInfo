@@ -208,7 +208,7 @@ class LiveEventDecoder:
     ) -> None:
         self._connection_alias_resolver = resolver
 
-    def _connection_alias(self, flow: str) -> str:
+    def _connection_alias(self, flow: str, *, refresh: bool = True) -> str:
         ports: list[int] = []
         for endpoint in str(flow).split(" -> ", 1):
             try:
@@ -224,7 +224,7 @@ class LiveEventDecoder:
         # assim as conexões 12010/12020 do mesmo cliente não viram personagens
         # distintos durante teleporte ou reconexão.
         resolver = self._connection_alias_resolver
-        if ports and resolver is not None:
+        if refresh and ports and resolver is not None:
             self.alias_resolution_attempts += 1
             try:
                 aliases = resolver()
@@ -297,6 +297,11 @@ class LiveEventDecoder:
         # processo serve apenas como identidade lógica nos eventos decodificados;
         # usá-lo como chave do reagrupador misturaria as conexões 12010/12020.
         state = self._flows.pop(flow, None)
+        if state is not None and state.event_flow.startswith("client-route:process:"):
+            current_alias = self._connection_alias(flow, refresh=False)
+            if current_alias.startswith("client-route:process:") and current_alias != state.event_flow:
+                # A porta TCP pode ser reutilizada por outra instância do jogo.
+                state = None
         if state is None:
             while len(self._flows) >= self._max_flows:
                 self._flows.pop(next(iter(self._flows)))

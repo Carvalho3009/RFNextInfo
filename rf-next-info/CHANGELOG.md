@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0-beta.40 — 2026-09-06
+
+- vincula conexões à instância do cliente (PID e horário de criação), mantendo
+  a identidade confirmada durante intervalos sem conexão TCP;
+- remove da tela somente o cliente cujo processo encerrou ou foi substituído,
+  sem apagar outros personagens pela contagem de conexões;
+- reinicia o reagrupamento TCP quando uma porta é reutilizada por outra instância;
+- correlaciona equipamentos equipados usando a aparição do próprio personagem
+  e o perfil, aceitando somente correlações completas para envio ao site;
+- mantém a proteção contra UID conflitante; PID não confirma personagem sozinho.
+
 ## 2.0.0-beta.39 — 2026-09-06
 
 - mantém o nome e o nível do personagem na tela quando chegam atualizações
