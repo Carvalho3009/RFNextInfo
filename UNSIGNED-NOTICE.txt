@@ -1,8 +1,8 @@
-RF Next Companion 2.0.0-beta.38
+RF Next Companion 2.0.0-beta.39
 
 O instalador oficial permanece sem Authenticode por decisão do projeto.
 A autenticidade da atualização é validada pelo manifesto Ed25519, pelo tamanho
 e pelo SHA-256 antes de o programa oferecer a instalação ao usuário.
 
 SHA-256 do instalador:
-5518C34A37355D0B399C788466BFE1D94BFEA9D8C1074D441BE4E3168AE9F52D
+7FCBDB419B9B4BF47D0C5F85EBFE2D2574D0CA2703CBE8BCED5D96C0C128615A
