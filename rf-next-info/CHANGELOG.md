@@ -10,6 +10,8 @@
 - correlaciona equipamentos equipados usando a aparição do próprio personagem
   e o perfil, aceitando somente correlações completas para envio ao site;
 - mantém a proteção contra UID conflitante; PID não confirma personagem sozinho.
+- corrige uma disputa entre pausa e retomada rápida que podia registrar a sessão
+  retomada como uma captura nova.
 
 ## 2.0.0-beta.39 — 2026-09-06
 

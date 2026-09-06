@@ -120,6 +120,7 @@ Section "RF Next Companion" SEC_APP
 SectionEnd
 
 Section "Uninstall"
+!ifndef DEV_SMOKE
   SetShellVarContext all
   Delete "$DESKTOP\RF QOL Agent.lnk"
   Delete "$DESKTOP\RF Next Companion.lnk"
@@ -128,6 +129,7 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\Karvalho"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "RF QOL Agent"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "RF Next Companion"
+!endif
   RMDir /r "$INSTDIR\_internal"
   Delete "$INSTDIR\RF QOL Agent.exe"
   Delete "$INSTDIR\RF Next Companion.exe"

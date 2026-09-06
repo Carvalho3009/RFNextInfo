@@ -217,6 +217,10 @@ class AgentClientRegistryTest(unittest.TestCase):
             ["Alice", "Bob"],
         )
         registry.remove("client-b")
+        registry.observe({
+            "type": "character.observed", "client_ref": "client-b",
+            "payload": {"name": "Bob"},
+        })
         self.assertEqual([item["name"] for item in registry.snapshot()], ["Alice"])
 
 

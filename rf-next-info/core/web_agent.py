@@ -3218,6 +3218,9 @@ class WebAgentBridge:
         with self._lock:
             if self._session_id == session_id:
                 self._session_id = None
+            # Limpar antes de uma eventual retomada; o worker antigo não pode
+            # apagar o estado de uma nova captura com o mesmo session_id.
+            self._session_initial_states.pop(session_id, None)
         self._put_control(session_id, state, reason)
         try:
             cleanup = {
@@ -3314,7 +3317,6 @@ class WebAgentBridge:
                         self._observe(projected)
                         queued = self.outbox.enqueue(projected)
                         self._record_projected(projected["type"], queued)
-                    self._session_initial_states.pop(session_id, None)
                 else:
                     kind = str(event.get("type") or "unknown")[:96]
                     connection = _connection_key(str(event.get("flow") or ""))

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -1797,6 +1798,40 @@ class AgentOutboxTest(unittest.TestCase):
 
 
 class WebAgentBridgeTest(unittest.TestCase):
+    def test_delayed_pause_cannot_erase_resumed_session_state(self):
+        with tempfile.TemporaryDirectory() as folder:
+            projector = WebEventProjector("install-publica", b"0123456789abcdef0123456789abcdef", decoder_version="test")
+            outbox = AgentOutbox(Path(folder) / "outbox.sqlite3", "install-publica")
+            paused, release = threading.Event(), threading.Event()
+
+            def observe(event):
+                if event.get("payload", {}).get("state") == "paused":
+                    paused.set()
+                    release.wait(5)
+
+            bridge = WebAgentBridge(projector, outbox, event_observer=observe)
+            try:
+                bridge.start_session("session")
+                bridge.submit(decoded_event("world_info_prefix", {"fields": {
+                    "character_uid": 123, "character_name": "Alice", "level": 60,
+                }}, opcode=0x0106))
+                bridge.wait_until_idle()
+                bridge.pause_session("session")
+                self.assertTrue(paused.wait(5))
+                bridge.start_session("session", resumed=True)
+                release.set()
+                bridge.wait_until_idle()
+                bridge.submit(decoded_event("update_exp", {"level": 60, "exp": 1000, "gain_exp": 100}, offset=2))
+                bridge.wait_until_idle()
+                states = [row[0] for row in outbox.conn.execute(
+                    "SELECT json_extract(document, '$.payload.state') FROM outbox_events "
+                    "WHERE json_extract(document, '$.type') = 'session.lifecycle' ORDER BY sequence"
+                )]
+                self.assertEqual(states, ["started", "paused", "resumed"])
+            finally:
+                release.set()
+                bridge.close()
+
     def test_equipped_profile_reaches_outbox_after_cross_connection_correlation(self):
         with tempfile.TemporaryDirectory() as folder:
             projector = WebEventProjector(

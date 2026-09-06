@@ -108,6 +108,7 @@ class AgentClientRegistry:
         self.max_clients = max(1, int(max_clients))
         self._clock_ns = clock_ns
         self._clients: dict[str, dict[str, Any]] = {}
+        self._retired_clients: dict[str, None] = {}
         self._session_started_ns: dict[str, int] = {}
         self._lock = threading.Lock()
 
@@ -132,6 +133,8 @@ class AgentClientRegistry:
         if isinstance(payload.get("character_uid"), (int, float)):
             item["character_uid"] = int(payload["character_uid"])
         with self._lock:
+            if client_ref in self._retired_clients:
+                return
             previous = self._clients.get(client_ref)
             if previous and item.get("character_uid") != previous.get("character_uid"):
                 self._session_started_ns.pop(client_ref, None)
@@ -172,9 +175,14 @@ class AgentClientRegistry:
         with self._lock:
             self._clients.clear()
             self._session_started_ns.clear()
+            self._retired_clients.clear()
 
     def remove(self, client_ref: str) -> None:
         with self._lock:
+            # Eventos já na fila não podem recolocar um processo encerrado na tela.
+            self._retired_clients[client_ref] = None
+            while len(self._retired_clients) > 256:
+                self._retired_clients.pop(next(iter(self._retired_clients)))
             self._clients.pop(client_ref, None)
             self._session_started_ns.pop(client_ref, None)
 
