@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0-beta.39 — 2026-09-06
+
+- mantém o nome e o nível do personagem na tela quando chegam atualizações
+  parciais de equipamento, Rover, biosuit ou poder para o mesmo UID;
+- não reaproveita esses dados quando o UID realmente muda.
+
 ## 2.0.0-beta.38 — 2026-09-03
 
 - exibe na tela do Companion a identidade estável de cada Agent;
