@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0-beta.40",
+  "release_sequence": 50,
+  "source_commit": "37854f27d31645a2d68f9a4a62917955920cac2c",
+  "installer_size": 35723819,
+  "installer_sha256": "E99EE24F08EA3FDEBD551647BC4DE5E3C341A4CD82DC20097C88FE481DE4E3CA",
+  "authenticode_status": "NotSigned",
+  "targeted_tests_passed": 21,
+  "regression_tests_run": 609,
+  "regression_tests_skipped": 1,
+  "regression_failures": 0,
+  "packaged_self_test": "passed",
+  "installer_smoke": "passed",
+  "legacy_install_migration": "passed",
+  "installed_executable_removed": true,
+  "installer_smoke_sha256": "4F2E6C9450C987949D84D0D20E836FBDCB9DA697790E82CCE199B36754A5968E",
+  "installer_smoke_tested_at_utc": "2026-09-06T20:17:02.8114022Z",
+  "simulated_session_hours": 14,
+  "real_long_session_tested": false
+}
