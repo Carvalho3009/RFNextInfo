@@ -149,6 +149,37 @@ class AgentClientRegistryTest(unittest.TestCase):
         self.assertEqual(clients[1]["session_duration_seconds"], 60)
         self.assertEqual(clients[0]["level"], 67)
 
+    def test_registry_keeps_name_when_same_character_gets_partial_update(self):
+        registry = AgentClientRegistry()
+        registry.observe({
+            "type": "character.observed", "client_ref": "client-a",
+            "occurred_at": "2026-08-23T12:00:00Z",
+            "payload": {
+                "character_uid": 123456789, "name": "Alice", "level": 66,
+            },
+        })
+        registry.observe({
+            "type": "character.observed", "client_ref": "client-a",
+            "occurred_at": "2026-08-23T12:01:00Z",
+            "payload": {"character_uid": 123456789, "power": 987654},
+        })
+
+        client = registry.snapshot()[0]
+
+        self.assertEqual(client["name"], "Alice")
+        self.assertEqual(client["level"], 66)
+        self.assertEqual(client["character_uid"], 123456789)
+        self.assertEqual(client["last_seen"], "2026-08-23T12:01:00Z")
+
+        registry.observe({
+            "type": "character.observed", "client_ref": "client-a",
+            "payload": {"character_uid": 987654321, "power": 123456},
+        })
+        client = registry.snapshot()[0]
+        self.assertEqual(client["name"], "")
+        self.assertIsNone(client["level"])
+        self.assertEqual(client["character_uid"], 987654321)
+
     def test_per_client_lifecycle_does_not_clear_other_durations(self):
         now_ns = [10_000_000_000]
         registry = AgentClientRegistry(clock_ns=lambda: now_ns[0])

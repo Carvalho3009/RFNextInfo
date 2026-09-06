@@ -132,6 +132,15 @@ class AgentClientRegistry:
         if isinstance(payload.get("character_uid"), (int, float)):
             item["character_uid"] = int(payload["character_uid"])
         with self._lock:
+            previous = self._clients.get(client_ref)
+            same_character = previous is not None and (
+                item.get("character_uid") == previous.get("character_uid")
+            )
+            if same_character:
+                if not item["name"]:
+                    item["name"] = previous.get("name", "")
+                if item["level"] is None:
+                    item["level"] = previous.get("level")
             self._session_started_ns.setdefault(
                 client_ref, max(0, int(self._clock_ns()))
             )
