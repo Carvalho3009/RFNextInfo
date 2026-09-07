@@ -1,0 +1,3 @@
+# Preserve the exact bytes covered by release hashes and signatures.
+*.json -text
+*.exe -text

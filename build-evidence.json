@@ -1,18 +1,10 @@
 {
-  "version": "2.0.0-beta.43",
-  "release_sequence": 53,
-  "source_commit": "5d4dffda4ece79cc24cda55967130d74210ff797",
-  "installer_size": 35742365,
-  "installer_sha256": "9ffc01d89ac2c8e45f0180eaf1684e75d4020ffa450e04a33765342fb2ac94e1",
+  "version": "2.0.0-beta.44",
+  "release_sequence": 54,
+  "installer": "K:\\MCP\\_release-builds\\rf-qol-agent-2.0.0-beta.44\\release\\RF-Next-Companion-Setup-2.0.0-beta.44.exe",
+  "installer_size": 35738757,
+  "installer_sha256": "D1F0F7300205C6ACB1CF19951F791759AD6C844F193B338D35118A44BAF65F40",
   "authenticode_status": "NotSigned",
-  "regression_tests_run": 629,
-  "regression_tests_skipped": 1,
-  "regression_failures": 0,
-  "targeted_tests_passed": 55,
   "packaged_self_test": "passed",
-  "installer_smoke": "passed",
-  "windows10_backend_included": true,
-  "windows10_real_machine_tested": false,
-  "real_game_equipment_recapture_tested": false,
-  "installer_smoke_tested_at_utc": "2026-09-07T01:50:37.7499571Z"
+  "installer_smoke_evidence": "C:\\Users\\celc3\\AppData\\Local\\Temp\\rf-qol-agent-installer-smoke-20260907T034802Z\\agent-installer-smoke-result.json"
 }

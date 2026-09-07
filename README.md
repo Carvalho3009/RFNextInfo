@@ -1,16 +1,21 @@
-# RF Next Companion — 2.0.0-beta.43
+# RF Next Companion — 2.0.0-beta.44
 
-- Adaptação de captura para Windows 10 22H2 x64 via Pktmon/ETW em tempo real.
-- Mantém a captura nativa de streaming no Windows 11 e as correções da beta.42.
-- Novas portas usam reinício controlado; falhas do consumidor deixam de aparecer como captura ativa.
-- Diagnóstico inclui o backend e os motivos de bloqueio dos equipamentos.
+- Corrige a leitura dos formatos de equipamento ignorados de 1004 e 1012 bytes.
+- Usa a referência completa dos itens, evitando colisões e perda de equipamentos.
+- Exporta todos os registros com índices únicos, sem sobrescrita no site.
+- Mantém as funcionalidades da beta.43 e o caminho Pktmon/ETW para Windows 10.
 
-Validação: 629 testes executados, sem falhas, 1 ignorado; 55 testes direcionados;
-autoteste empacotado e ensaio automático de instalação aprovados.
+Validação funcional: captura real com dois personagens gerou snapshots de 35 e
+42 itens, com 17 equipados por personagem. O código implantado do receptor aceitou
+e exibiu os dois loadouts em banco temporário isolado, sem rejeições.
+
+Regressão: 634 testes executados, sem falhas, 1 ignorado; replay real habilitado.
+Autoteste empacotado e ensaio automático de instalação aprovados. Decoder,
+projeção e versão dentro do executável conferidos contra o código validado.
 
 **Windows 10 ainda precisa de validação em máquina real.** O ensaio de instalação
-foi feito no Windows 11. O envio real de equipamentos também permanece em
-investigação; não considerar o teste sintético como confirmação dessa correção.
+é feito no Windows 11. O replay não substitui a conferência de uma captura nova
+em produção após o usuário instalar esta atualização.
 
 Não instala drivers adicionais, não altera antivírus e não grava capturas brutas
 em ETL/PCAP. Exige privilégios administrativos. O atualizador verifica manifesto
