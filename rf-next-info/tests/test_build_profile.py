@@ -17,8 +17,8 @@ class BetaBuildProfileTest(unittest.TestCase):
         self.assertEqual(build_profile.PROFILE_NAME, "beta")
         self.assertEqual(build_profile.PROFILE_LABEL, "Beta")
         self.assertEqual(build_profile.PRODUCT_NAME, "RF Next Companion")
-        self.assertEqual(build_profile.APP_VERSION, "2.0.0-beta.41")
-        self.assertEqual(build_profile.RELEASE_SEQUENCE, 51)
+        self.assertEqual(build_profile.APP_VERSION, "2.0.0-beta.42")
+        self.assertEqual(build_profile.RELEASE_SEQUENCE, 52)
         self.assertEqual(
             build_profile.LICENSE_SERVER, "https://rflicenca.karvalho.dev.br"
         )

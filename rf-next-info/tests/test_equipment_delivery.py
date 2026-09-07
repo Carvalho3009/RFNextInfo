@@ -84,6 +84,41 @@ class EquipmentDeliveryTest(unittest.TestCase):
         self.appearance(123456789, 987654)
         self.assertEqual(self.equipment(), [])
 
+    def test_partial_profile_does_not_erase_confirmed_equipment(self):
+        self.identity(123456789)
+        self.profile(987654)
+        self.appearance(123456789, 987654)
+        self.assertTrue(self.equipment()[0]['payload']['inventory_items'][0]['equipped'])
+        # A partial decoder result is not an authoritative replacement.
+        self.send('player_profile_info', {'items': [{'inventory_slot': 8,
+            'item_uid': 987655, 'item_index': 1000079, 'count': 1}],
+            'active_equipment': {'character_uid': 123456789,
+                'complete': False, 'slots': []}})
+        self.assertEqual(self.equipment(), [])
+        self.send('inventory_delta', {})  # does not change the equipment state
+        equipped = list(self.projector._connection_equipped_item_uids.values())
+        self.assertEqual(equipped, [{987654}])
+
+    def test_equipment_diagnostics_distinguish_blockers_without_private_data(self):
+        self.profile(987654)
+        self.identity(123456789)
+        self.send('appear_player_prefix', {'character_uid': 123456789,
+            'character_name': 'PRIVATE_NAME', 'remaining_payload_length': 1004})
+        self.appearance(123456789, 111111)
+        self.send('appear_player_prefix', {'character_uid': 123456789,
+            'character_name': 'PRIVATE_NAME', 'equipment_refs': []})
+        self.appearance(123456789, 987654)
+        diagnostic = self.bridge.metrics()['equipment_diagnostics']
+        for reason in ('unconfirmed_character', 'missing_appearance',
+                       'appearances_without_refs', 'no_matching_item_uids',
+                       'empty_equipment_refs', 'projected_snapshots'):
+            self.assertGreater(diagnostic['counts'][reason], 0)
+        self.assertEqual(diagnostic['pending_profiles'], 0)
+        self.assertEqual(diagnostic['last']['appearance_tail_bytes'], 1004)
+        self.assertEqual(diagnostic['last']['matched_item_count'], 1)
+        for private in ('PRIVATE_NAME', '123456789', '987654', '10.0.0.1'):
+            self.assertNotIn(private, str(diagnostic))
+
     def test_outbox_durable_mode_and_sequence_survive_reopen(self):
         self.assertEqual(self.outbox.conn.execute('PRAGMA synchronous').fetchone()[0], 2)
         self.identity(123456789)

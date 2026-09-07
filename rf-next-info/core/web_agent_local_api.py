@@ -376,6 +376,10 @@ class AgentLocalMonitorApi:
         if not isinstance(bridge_source, dict):
             bridge_source = source.get("projection")
         bridge = bridge_source if isinstance(bridge_source, dict) else {}
+        equipment = bridge.get("equipment_diagnostics")
+        equipment = equipment if isinstance(equipment, dict) else {}
+        equipment_counts = _public_counts(equipment.get("counts"))
+        equipment_last = _public_counts(equipment.get("last"))
         capture = (
             source.get("capture")
             if isinstance(source.get("capture"), dict) else {}
@@ -440,7 +444,24 @@ class AgentLocalMonitorApi:
             } | {
                 "last_errors_by_type": _public_messages(
                     bridge.get("last_errors_by_type")
-                )
+                ),
+                "equipment_diagnostics": {
+                    "counts": {key: equipment_counts.get(key, 0) for key in (
+                        "appearances_with_refs", "appearances_without_refs",
+                        "profile_attempts", "unconfirmed_character", "empty_profile",
+                        "partial_match", "character_mismatch", "missing_appearance",
+                        "empty_equipment_refs", "no_matching_item_uids",
+                        "projected_snapshots", "unchanged_snapshot",
+                    )},
+                    "last": {key: equipment_last.get(key, 0) for key in (
+                        "appearance_tail_bytes", "profile_items",
+                        "selected_item_count", "matched_item_count",
+                    )},
+                    "pending_profiles": _integer(
+                        equipment.get("pending_profiles"), minimum=0, maximum=256,
+                        default=0,
+                    ),
+                },
             },
             "capture": {
                 key: _integer(

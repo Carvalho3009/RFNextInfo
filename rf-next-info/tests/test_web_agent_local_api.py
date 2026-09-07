@@ -371,6 +371,11 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
                 "state": "capturing",
                 "projection": {
                     "accepted": 12,
+                    "equipment_diagnostics": {
+                        "counts": {"missing_appearance": 2, "PRIVATE_UID": 123},
+                        "last": {"appearance_tail_bytes": 1004, "PRIVATE_ITEM": 123},
+                        "pending_profiles": 2,
+                    },
                     "errors": 1,
                     "errors_by_type": {"market": 1},
                     "last_errors_by_type": {
@@ -410,6 +415,11 @@ class AgentLocalMonitorApiTest(unittest.TestCase):
         health = api._health()
 
         self.assertEqual(health["capture_bridge"]["accepted"], 12)
+        equipment = health["capture_bridge"]["equipment_diagnostics"]
+        self.assertEqual(equipment["counts"]["missing_appearance"], 2)
+        self.assertEqual(equipment["last"]["appearance_tail_bytes"], 1004)
+        self.assertEqual(equipment["pending_profiles"], 2)
+        self.assertNotIn("PRIVATE", json.dumps(equipment))
         self.assertEqual(health["capture_bridge"]["errors_by_type"], {"market": 1})
         self.assertIn(
             "snapshot inválido",

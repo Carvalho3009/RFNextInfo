@@ -8,6 +8,7 @@ import tracemalloc
 from pathlib import Path
 
 from core.web_agent import AgentOutbox
+from core.web_agent_local_api import AgentLocalMonitorApi, AgentMonitorFeed
 from core.web_agent_runtime import WebAgentOfflineRuntime
 
 
@@ -193,6 +194,13 @@ def run_offline_agent_self_test(
                  "runtime nao estava em modo offline")
         _require("delivery" not in health_before_close,
                  "componente de entrega criado no modo offline")
+        public_health = AgentLocalMonitorApi(
+            AgentMonitorFeed(), "t" * 43,
+            health_provider=lambda: health_before_close,
+        )._health()
+        equipment_diagnostics = public_health["capture_bridge"]["equipment_diagnostics"]
+        _require(equipment_diagnostics["counts"]["projected_snapshots"] == 1,
+                 "diagnostico de equipamentos ausente na API local")
         metrics = outbox.metrics()
         return {
             "ok": True,
@@ -203,6 +211,7 @@ def run_offline_agent_self_test(
             "isolated_sessions": len(session_refs),
             "isolated_clients": len(client_refs),
             "equipped_loadout_items": len(equipped_items),
+            "equipment_diagnostics": equipment_diagnostics,
             "outbox_bytes": metrics["bytes"],
             "queue_errors": health_before_close["capture_bridge"]["errors"],
             "checked_at_ns": time.time_ns(),

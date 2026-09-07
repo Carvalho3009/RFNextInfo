@@ -738,6 +738,8 @@ class WebEventProjector:
         self._connection_equipped_slots: dict[str, dict[int, int]] = {}
         self._equipment_appearances_by_character: dict[int, dict[str, Any]] = {}
         self._pending_equipment_profiles: dict[tuple[str, int], dict[str, Any]] = {}
+        self._equipment_diagnostics: Counter[str] = Counter()
+        self._equipment_last: dict[str, int] = {}
         self._connection_inventory_items: dict[
             str, dict[str, dict[int, dict[str, Any]]]
         ] = {}
@@ -826,6 +828,7 @@ class WebEventProjector:
             )
             if (
                 isinstance(active_equipment, dict)
+                and active_equipment.get("complete") is not False
                 and active_character_uid is not None
                 and active_character_uid
                 == self._connection_character_uids.get(connection)
@@ -999,6 +1002,14 @@ class WebEventProjector:
         if kind == "appear_player_prefix":
             character_uid = _character_uid(fields.get("character_uid"))
             equipment_refs = fields.get("equipment_refs")
+            with self._lock:
+                self._equipment_diagnostics[
+                    "appearances_with_refs" if isinstance(equipment_refs, list)
+                    else "appearances_without_refs"
+                ] += 1
+                tail = _integer(fields.get("remaining_payload_length"))
+                if tail is not None and 0 <= tail <= MAX_EVENT_BYTES:
+                    self._equipment_last["appearance_tail_bytes"] = tail
             if character_uid is not None and isinstance(equipment_refs, list):
                 with self._lock:
                     self._equipment_appearances_by_character.pop(character_uid, None)
@@ -2504,6 +2515,15 @@ class WebEventProjector:
             raise WebEventContractError("Evento excede o limite do contrato")
         return result
 
+    def equipment_diagnostics(self) -> dict[str, object]:
+        """Somente contagens: nunca inclui personagens, itens, conexoes ou bytes."""
+        with self._lock:
+            return {
+                "counts": dict(self._equipment_diagnostics),
+                "last": dict(self._equipment_last),
+                "pending_profiles": len(self._pending_equipment_profiles),
+            }
+
     def project_many(
         self, event: dict[str, Any], session_id: str
     ) -> list[dict[str, Any]]:
@@ -2531,6 +2551,8 @@ class WebEventProjector:
             connection = _connection_key(flow)
             confirmed_uid = self._connection_character_uids.get(connection)
             active_equipment = fields.get("active_equipment")
+            appearance = None
+            correlation = active_equipment
             if confirmed_uid is not None and (
                 not isinstance(active_equipment, dict)
                 or active_equipment.get("complete") is False
@@ -2543,6 +2565,8 @@ class WebEventProjector:
                 correlated = correlate_active_equipment(
                     {"fields": fields}, [appearance] if appearance else []
                 )
+                if correlated is not None:
+                    correlation = correlated[0]
                 if correlated is not None and correlated[0].get("complete") is True:
                     fields = {**fields, "active_equipment": correlated[0]}
             self._identity(kind, session_id, flow, fields)
@@ -2553,12 +2577,36 @@ class WebEventProjector:
                 if isinstance(active_equipment, dict) else None
             )
             items = fields.get("items")
+            with self._lock:
+                self._equipment_diagnostics["profile_attempts"] += 1
+                self._equipment_last["profile_items"] = len(items) if isinstance(items, list) else 0
+                for key in ("selected_item_count", "matched_item_count"):
+                    self._equipment_last[key] = (
+                        _integer(correlation.get(key), 0) or 0
+                        if isinstance(correlation, dict) else 0
+                    )
             if (
                 confirmed_uid is None or active_uid != confirmed_uid
                 or not isinstance(active_equipment, dict)
                 or active_equipment.get("complete") is False
                 or not isinstance(items, list) or not items
             ):
+                if confirmed_uid is None:
+                    reason = "unconfirmed_character"
+                elif not isinstance(items, list) or not items:
+                    reason = "empty_profile"
+                elif isinstance(correlation, dict) and correlation.get("complete") is False:
+                    reason = "partial_match"
+                elif isinstance(active_equipment, dict) and active_uid != confirmed_uid:
+                    reason = "character_mismatch"
+                elif appearance is None:
+                    reason = "missing_appearance"
+                elif not any(ref.get("item_uid") for ref in appearance["fields"]["equipment_refs"]):
+                    reason = "empty_equipment_refs"
+                else:
+                    reason = "no_matching_item_uids"
+                with self._lock:
+                    self._equipment_diagnostics[reason] += 1
                 if confirmed_uid is not None and isinstance(items, list) and items:
                     with self._lock:
                         key = (session_id, confirmed_uid)
@@ -2585,6 +2633,10 @@ class WebEventProjector:
                 projected = self.project(snapshot_event, session_id)
                 if projected is not None:
                     projected_events.append(projected)
+            with self._lock:
+                self._equipment_diagnostics[
+                    "projected_snapshots" if projected_events else "unchanged_snapshot"
+                ] += len(projected_events) or 1
             return projected_events
         multi_types = {
             "market", "FL2C_respond_purchase_list_on_exchange_Message",
@@ -3695,6 +3747,7 @@ class WebAgentBridge:
                 "errors_by_type": self._bounded_counts(self.errors_by_type),
                 "last_errors_by_type": dict(self.last_errors_by_type),
                 "ranking_diagnostics": self.projector.ranking_diagnostics(),
+                "equipment_diagnostics": self.projector.equipment_diagnostics(),
                 "identity": {
                     **(
                         self.projector.character_history.metrics()
