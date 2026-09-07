@@ -1,8 +1,11 @@
 import ctypes as ct
 import os
 import struct
+import subprocess
+import sys
 import unittest
 from unittest.mock import Mock, patch
+from core.capture import _pktmon_state
 from core.live_stream import LiveEventDecoder
 
 from core.pktmon_etw import (
@@ -58,12 +61,82 @@ class PktmonEtwTest(unittest.TestCase):
             self.assertEqual(sink.call_count, 1)
 
     def test_existing_or_unknown_capture_is_not_touched(self):
-        for status in ("Status: Active", "unknown"):
+        for status in ("Status: Active", "unknown", b"Status: Active", b"unknown", b""):
             capture = PktmonEtwCapture(None, (12020,))
             with patch.object(capture, "_bind_etw"), patch.object(capture, "_command", return_value=status) as command:
                 with self.assertRaisesRegex(RuntimeError, "Nenhuma captura"):
                     capture.start()
                 command.assert_called_once_with("status")
+
+    @unittest.skipUnless(os.name == "nt", "Windows console code pages")
+    def test_hidden_command_preserves_localized_status_bytes(self):
+        capture = PktmonEtwCapture(None, (12020,))
+        capture._pktmon = sys.executable
+        # Processo real, mas apenas imprime texto fixo: nao executa o Pktmon.
+        for encoding in ("oem", "mbcs", "utf-8"):
+            for message, expected in (
+                ("O Monitor de Pacotes não está em execução.", False),
+                ("O Monitor de Pacotes está em execução.", True),
+                ("Packet Monitor is not running.", False),
+                ("Packet Monitor is running.", True),
+                ("Resposta não reconhecida.", None),
+            ):
+                with self.subTest(encoding=encoding, message=message):
+                    try:
+                        raw = (message + "\r\n").encode(encoding)
+                    except UnicodeEncodeError:
+                        continue  # Pagina local sem esse texto PT; UTF-8 sempre e testado.
+                    output = capture._command("-c", f"import sys; sys.stdout.buffer.write({raw!r})")
+                    self.assertIs(_pktmon_state(output), expected)
+                    self.assertEqual(output, raw)
+
+    def test_conflicting_decodings_do_not_authorize_capture(self):
+        class ConflictingBytes(bytes):
+            def decode(self, encoding):
+                return "Not running" if encoding == "oem" else "Status: Active"
+        raw = ConflictingBytes(b"conflicting code pages")
+        self.assertIsNone(_pktmon_state(raw))
+        capture = PktmonEtwCapture(None, (12020,))
+        with patch.object(capture, "_bind_etw"), patch.object(capture, "_command", return_value=raw) as command:
+            with self.assertRaisesRegex(RuntimeError, "Nenhuma captura"):
+                capture.start()
+            command.assert_called_once_with("status")
+
+    @unittest.skipUnless(os.name == "nt", "Windows console code pages")
+    def test_localized_bytes_reach_start_and_open_trace_gates(self):
+        for encoding in ("oem", "mbcs", "utf-8"):
+            with self.subTest(encoding=encoding):
+                capture = PktmonEtwCapture(None, (12020,))
+                capture._etw = Mock()
+                capture._etw.OpenTraceW.return_value = 123
+                process = Mock()
+                process.poll.return_value = None
+                try:
+                    replies = iter([
+                        "O Monitor de Pacotes não está em execução.".encode(encoding),
+                        "O Monitor de Pacotes está em execução.".encode(encoding),
+                    ])
+                except UnicodeEncodeError:
+                    continue
+                def run(args, **options):
+                    output = next(replies) if args[1:] == ["status"] else b""
+                    self.assertFalse(options.get("text", False))
+                    return subprocess.CompletedProcess(args, 0, output, b"")
+                with patch.object(capture, "_bind_etw"), patch(
+                    "core.pktmon_etw.subprocess.run", side_effect=run,
+                ) as commands, patch("core.pktmon_etw.subprocess.Popen", return_value=process), patch(
+                    "core.pktmon_etw.threading.Thread",
+                ) as thread:
+                    thread.return_value.is_alive.return_value = False
+                    capture.start()
+                    self.assertTrue(capture._active)
+                    capture._etw.OpenTraceW.assert_called_once()
+                    capture.stop()
+                    self.assertFalse(capture._active)
+                    actions = [call.args[0][1:] for call in commands.call_args_list]
+                    self.assertEqual(actions.count(["status"]), 2)
+                    self.assertEqual(actions.count(["stop"]), 1)
+                    self.assertIn(["filter", "remove", f"{capture._prefix}-12020"], actions)
 
     def test_etw_packets_reach_same_decoder_with_two_isolated_clients(self):
         decoder = LiveEventDecoder()

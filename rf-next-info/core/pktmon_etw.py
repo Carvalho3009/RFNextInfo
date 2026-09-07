@@ -84,8 +84,8 @@ class PktmonEtwCapture(RealtimeCapture):
 
     def _command(self, *args):
         result = subprocess.run(
-            [self._pktmon, *args], capture_output=True, text=True,
-            errors="replace", timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
+            [self._pktmon, *args], capture_output=True,
+            timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
         )
         if result.returncode:
             # Nunca incorporar saída da captura em mensagens/diagnósticos.

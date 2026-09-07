@@ -18,7 +18,19 @@ GIB = 1024**3
 LOGGER = logging.getLogger("rfqol")
 
 
-def _pktmon_state(status: str) -> bool | None:
+def _pktmon_state(status: str | bytes) -> bool | None:
+    if isinstance(status, bytes):
+        # Pktmon pode usar OEM, ANSI ou UTF-8; errors="replace" perde os acentos
+        # antes da verificacao. Nunca considerar resposta ambigua como livre.
+        states = set()
+        for encoding in ("utf-8-sig", "oem", "mbcs"):
+            try:
+                state = _pktmon_state(status.decode(encoding))
+            except (UnicodeError, LookupError):
+                continue
+            if state is not None:
+                states.add(state)
+        return states.pop() if len(states) == 1 else None
     status = " ".join(status.lower().split())
     stopped = (
         "not running", "não está em execução", "nao esta em execucao",

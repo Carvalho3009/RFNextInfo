@@ -48,8 +48,38 @@ Instalador beta.43 publicado no canal beta, sequência 53. Nenhuma
 alteração no site ou na instalação atualmente em uso. Reversão: reinstalar o
 pacote beta.42 no Windows 11 (sem suporte Windows 10). Custo: unknown.
 
+## Correcao local posterior a beta.44: texto do Pktmon
+
+07/09/2026 UTC — corrigida localmente, ainda nao empacotada nem publicada.
+
+O computador afetado mostrou `O Monitor de Pacotes nao esta em execucao.`
+com os acentos corretos no console, enquanto o Agent bloqueava como ocupado
+ou desconhecido. A frase Unicode correta ja era aceita. Foi reproduzido o
+defeito lendo bytes OEM como ANSI/UTF-8: a conversao alterava os acentos antes
+de verificar o estado. O screenshot nao permite confirmar a pagina de codigo
+exata do computador remoto, e nao substitui a validacao do novo executavel la.
+
+- O caminho ETW do Agent preserva a resposta em bytes, sem `errors=replace`.
+- O parser existente considera UTF-8 e as paginas OEM/ANSI do proprio Windows,
+  com decodificacao estrita. Mantem o contrato para os chamadores com strings.
+- Iniciar e aguardar o stream usam o mesmo parser corrigido. Estado ocupado,
+  vazio, desconhecido ou com interpretacoes conflitantes continua bloqueado;
+  nenhuma captura de terceiros e parada ou tem filtros removidos.
+- Teste com subprocesso real oculto imprime somente frases fixas PT/EN nas
+  tres codificacoes, sem executar Pktmon. Inicio, abertura ETW e encerramento
+  sao exercitados com controlador simulado, preservando os filtros alheios.
+- Validacao direcionada: 33 testes OK; os 14 testes ETW tambem passaram com
+  `python -X utf8`. Regressao final: 637 testes em 80,254 s, sem falhas, 1 skip
+  opcional preexistente; replay privado de equipamentos habilitado.
+
+Branch: `fix/pktmon-windows-console-encoding`. Nenhuma mudanca no decoder,
+protocolo, servidor ou captura em uso. Atualizador permanece na beta.44.
+Proximo gate: gerar/publicar novo pacote quando autorizado e testar no Windows
+10 afetado. Rollback: reverter somente este commit local. Custo real: unknown.
+
 ## Referências
 
 - [Pktmon e modo real-time, Microsoft](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/pktmon-start)
 - [Consumo ETW, Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_logfilew)
 - [Eventos e propriedades Pktmon, Microsoft](https://github.com/microsoft/PacketCaptureTools/blob/main/lib/Converter/src/Etl/PktMonConstants.cs)
+- [Codecs OEM e ANSI do Windows, Python](https://docs.python.org/3.13/library/codecs.html#python-specific-encodings)
