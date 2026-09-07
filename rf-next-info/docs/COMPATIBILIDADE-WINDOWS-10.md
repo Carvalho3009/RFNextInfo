@@ -1,6 +1,6 @@
 # Companion: compatibilidade Windows 10
 
-2026-09-06 — beta.43, compatibilidade em teste; não publicada no atualizador.
+2026-09-07 UTC — beta.43 publicada no atualizador; compatibilidade Windows 10 em teste.
 
 O pedido atual reabre o suporte ao Windows 10 anteriormente recusado. Alvo de
 validação: Windows 10 22H2 x64. Inclui as correções e diagnósticos de equipamentos
@@ -44,7 +44,7 @@ comportamento ao encerrar o Agent/jogo. Os contadores de perdas da API de
 streaming não são equivalentes aos de ETW; zero não comprova ausência de perda
 no backend de compatibilidade. Não declarar suporte homologado antes do ensaio.
 
-Instalador beta.43 preparado para teste local; publicação pendente. Nenhuma
+Instalador beta.43 publicado no canal beta, sequência 53. Nenhuma
 alteração no site ou na instalação atualmente em uso. Reversão: reinstalar o
 pacote beta.42 no Windows 11 (sem suporte Windows 10). Custo: unknown.
 
