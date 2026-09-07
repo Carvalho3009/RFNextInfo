@@ -23,5 +23,11 @@ Testes sintéticos não substituem nova observação dos equipamentos após inst
 Uma captura perdida pela beta.40 não pode ser recriada apenas ao instalar a atualização.
 
 Validação de código: 134 testes específicos aprovados; regressão final com
-614 testes em 75,166 s, sem falhas e com 1 ignorado. A verificação do executável
+615 testes em 79,676 s, sem falhas e com 1 ignorado. A verificação do executável
 empacotado também exige a correlação de perfil parcial com referências tardias.
+
+O autoteste agora aceita relatório JSON explícito, para registrar falhas no pacote
+sem deixá-las em uma janela de exceção. Uma tentativa anterior excedeu o limite
+após instalar e não foi distribuída; a causa exata daquele timeout não foi recuperada.
+O pacote final passou em 10 repetições do autoteste e no ensaio instalado, com
+relatório confirmando 2 clientes, 3 sessões, item equipado e zero erros de fila.

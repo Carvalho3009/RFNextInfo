@@ -1215,21 +1215,32 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=PRODUCT_NAME)
     parser.add_argument("--background", action="store_true")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--self-test-report", type=Path)
     args = parser.parse_args(argv)
     if args.self_test:
-        validate_build_profile()
-        if not LEVEL_CURVE or max(LEVEL_CURVE) < 100:
-            raise RuntimeError("Curva de EXP obrigatória não foi carregada.")
-        with tempfile.TemporaryDirectory(prefix="rf-next-companion-self-test-") as folder:
-            result = run_offline_agent_self_test(
-                Path(folder), str(uuid.uuid4()), version=APP_VERSION
-            )
-        if (
-            result.get("ok") is not True
-            or result.get("network_used") is not False
-            or result.get("equipped_loadout_items") != 1
-        ):
-            raise RuntimeError("Autoteste integrado do Companion falhou.")
+        try:
+            validate_build_profile()
+            if not LEVEL_CURVE or max(LEVEL_CURVE) < 100:
+                raise RuntimeError("Curva de EXP obrigatória não foi carregada.")
+            with tempfile.TemporaryDirectory(prefix="rf-next-companion-self-test-") as folder:
+                result = run_offline_agent_self_test(
+                    Path(folder), str(uuid.uuid4()), version=APP_VERSION
+                )
+            if (
+                result.get("ok") is not True
+                or result.get("network_used") is not False
+                or result.get("equipped_loadout_items") != 1
+            ):
+                raise RuntimeError("Autoteste integrado do Companion falhou.")
+        except Exception as error:
+            if args.self_test_report is None:
+                raise
+            args.self_test_report.write_text(json.dumps({
+                "ok": False, "error": f"{type(error).__name__}: {error}",
+            }, ensure_ascii=False), encoding="utf-8")
+            return 1
+        if args.self_test_report is not None:
+            args.self_test_report.write_text(json.dumps(result), encoding="utf-8")
         return 0
     app = create_application(["rf-qol-agent"])
     instance_server = _claim_instance_server(app)

@@ -507,6 +507,16 @@ class AgentWindowTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Curva de EXP"):
                 agent_main.main(["--self-test"])
 
+    def test_self_test_report_returns_failure_without_a_windowed_exception(self):
+        from app import agent_main
+
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder) / "self-test.json"
+            with mock.patch.object(agent_main, "LEVEL_CURVE", {}):
+                result = agent_main.main(["--self-test", "--self-test-report", str(report)])
+            self.assertEqual(result, 1)
+            self.assertFalse(json.loads(report.read_text(encoding="utf-8"))["ok"])
+
     def test_runtime_uses_only_the_dedicated_agent_server_when_configured(self):
         from app import agent_main
 
