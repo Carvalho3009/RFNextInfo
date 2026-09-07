@@ -6,7 +6,7 @@ RequestExecutionLevel admin
 !endif
 
 !ifndef APP_VERSION
-!define APP_VERSION "2.0.0-beta.43"
+!define APP_VERSION "2.0.0-beta.44"
 !endif
 !ifndef APP_FILE_VERSION
 !define APP_FILE_VERSION "2.0.0.53"

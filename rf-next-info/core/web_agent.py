@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from core.rfnext_frame_decode import correlate_active_equipment
+from core.rfnext_frame_decode import correlate_active_equipment, equipment_item_uid
 from core.store import LEVEL_CURVE, exp_rank_level_progress
 from core.drop_alerts import NON_ITEM_REWARD_INDEXES
 from core.web_agent_character_history import (
@@ -741,7 +741,7 @@ class WebEventProjector:
         self._equipment_diagnostics: Counter[str] = Counter()
         self._equipment_last: dict[str, int] = {}
         self._connection_inventory_items: dict[
-            str, dict[str, dict[int, dict[str, Any]]]
+            str, dict[str, dict[tuple[int, int], dict[str, Any]]]
         ] = {}
         self._connection_inventory_complete: dict[str, set[str]] = {}
         self._connection_inventory_snapshot_refs: dict[
@@ -837,7 +837,7 @@ class WebEventProjector:
                     uid for raw_slot in active_equipment.get("slots", [])
                     if isinstance(raw_slot, dict)
                     and isinstance(raw_slot.get("item"), dict)
-                    and (uid := _integer(raw_slot["item"].get("item_uid")))
+                    and (uid := _integer(equipment_item_uid(raw_slot["item"])))
                 }
                 self._connection_equipped_item_uids[connection] = equipped_uids
                 equipped_slots = {
@@ -848,7 +848,7 @@ class WebEventProjector:
                         or raw_slot.get("equipment_slot")
                     )) is not None
                     and isinstance(raw_slot.get("item"), dict)
-                    and (uid := _integer(raw_slot["item"].get("item_uid")))
+                    and (uid := _integer(equipment_item_uid(raw_slot["item"])))
                 }
                 self._connection_equipped_slots[connection] = equipped_slots
             self._flow_clients[key] = client_ref
@@ -1741,7 +1741,7 @@ class WebEventProjector:
             else [data.get("item")] if isinstance(data.get("item"), dict)
             else []
         )
-        incoming: dict[int, dict[str, Any]] = {}
+        incoming: dict[tuple[int, int], dict[str, Any]] = {}
         for raw in raw_items:
             if not isinstance(raw, dict):
                 continue
@@ -1749,7 +1749,7 @@ class WebEventProjector:
             item_index = _integer(raw.get("item_index") or raw.get("index"))
             quantity = _integer(raw.get("count"), 0)
             enhance = _integer(raw.get("enchant_level"), 0)
-            item_uid = _integer(raw.get("item_uid"))
+            item_uid = _integer(equipment_item_uid(raw))
             if (
                 slot is None or not 0 <= slot <= 100_000
                 or item_index is None or not 1 <= item_index <= 2**31 - 1
@@ -1757,7 +1757,11 @@ class WebEventProjector:
                 or enhance is None or not 0 <= enhance <= 255
             ):
                 continue
-            incoming[slot] = {
+            # The legacy "slot" and six-byte UID each repeat in real profiles.
+            # Only the full eight-byte reference identifies an equipment item.
+            item_key = ((1, item_uid) if item_kind == "equipment" and item_uid
+                        else (0, slot))
+            incoming[item_key] = {
                 "slot": slot,
                 "item_index": item_index,
                 "name": _text(COMMUNITY_ITEM_NAMES.get(str(item_index)), 120) or "",
@@ -1775,14 +1779,14 @@ class WebEventProjector:
             if not incoming:
                 return []
             state = state_by_kind.setdefault(item_kind, {})
-            for slot, item in incoming.items():
+            for item_key, item in incoming.items():
                 if item["quantity"] <= 0:
-                    state.pop(slot, None)
+                    state.pop(item_key, None)
                 else:
-                    state[slot] = item
+                    state[item_key] = item
         else:
             state_by_kind[item_kind] = {
-                slot: item for slot, item in incoming.items()
+                item_key: item for item_key, item in incoming.items()
                 if item["quantity"] > 0
             }
             complete_kinds.add(item_kind)
@@ -1792,11 +1796,18 @@ class WebEventProjector:
             state_by_kind[item_kind] = dict(sorted(state.items())[:10_000])
             state = state_by_kind[item_kind]
         inventory_items = []
-        for item in state.values():
+        ordered_items = sorted(state.values(), key=lambda item: (
+            item["slot"], item.get("_item_uid") or 0,
+        ))
+        for row_index, item in enumerate(ordered_items):
             item_uid = _integer(item.get("_item_uid"))
             inventory_items.append({
                 key: value for key, value in {
                     **item,
+                    # v1 requires a unique row slot per snapshot. Equipment
+                    # uses a normalized row index, not the category-local slot.
+                    # Native slots and UIDs remain only in the local state.
+                    "slot": row_index if item_kind == "equipment" else item["slot"],
                     "equipped": bool(item_uid and item_uid in equipped_item_uids),
                 }.items() if not key.startswith("_")
             })
@@ -2601,7 +2612,7 @@ class WebEventProjector:
                     reason = "character_mismatch"
                 elif appearance is None:
                     reason = "missing_appearance"
-                elif not any(ref.get("item_uid") for ref in appearance["fields"]["equipment_refs"]):
+                elif not any(equipment_item_uid(ref) for ref in appearance["fields"]["equipment_refs"]):
                     reason = "empty_equipment_refs"
                 else:
                     reason = "no_matching_item_uids"

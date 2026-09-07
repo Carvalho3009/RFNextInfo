@@ -1,9 +1,53 @@
+import os
+import struct
 import tempfile
 import unittest
 from pathlib import Path
 
 from core.web_agent import AgentOutbox, WebAgentBridge, WebEventProjector
-from tests.test_web_agent import decoded_event, drain_outbox
+from core.ingest import decoded_events
+from core.live_stream import LiveEventDecoder
+from core.rfnext_frame_decode import correlate_active_equipment, parse_marked_gameplay_payload
+from tests.test_web_agent import assert_no_forbidden_keys, decoded_event, drain_outbox
+
+
+def equipment_frames(tail, character_uid=123456789, item_uid=987654):
+    """Sanitized layout: refs at name_end+839, not relative to the suffix.
+
+    Real 2026-09-04 capture: tails 1004/1012, 17/17 UID AND inventory-slot
+    matches per character, with 67/75 bytes after the 18 references.
+    Unknown fields are zeroed; no captured payload or identity is stored here.
+    """
+    name = 'Test'.encode('utf-16le')
+    name_end = 10 + len(name)
+    appearance = bytearray(name_end + 46 + tail)
+    struct.pack_into('<QH', appearance, 0, character_uid, len(name) // 2)
+    appearance[10:name_end] = name
+    struct.pack_into('<H', appearance, name_end, 66)
+    refs_offset = name_end + 839
+    struct.pack_into('<I', appearance, refs_offset - 10, 2075041)
+    struct.pack_into('<I', appearance, refs_offset - 5, 4400008)
+    struct.pack_into('<H', appearance, refs_offset, 4)
+    appearance[refs_offset + 2:refs_offset + 8] = item_uid.to_bytes(6, 'little')
+    item = (struct.pack('<H', 4) + item_uid.to_bytes(6, 'little')
+            + struct.pack('<IQBHHHBQ', 1002233, 1, 1, 8, 0, 0, 0, 0))
+    payloads = (
+        (0x0106, struct.pack('<HHQHH', 0, 0, character_uid, 66, len(name) // 2)
+         + name + b'\0' + struct.pack('<I', 2075041)),
+        (0x0305, appearance),
+        (0x0403, struct.pack('<BH', 1, 1) + item),
+    )
+    return [struct.pack('<BHBH', 0, len(p) + 6, 0, opcode) + p
+            for opcode, p in payloads]
+
+
+def equipment_packet(frame, sequence, port):
+    tcp = struct.pack('!HHIIH', 12020, port, sequence, 0, 0x5018) + bytes(6) + frame
+    ip = bytearray(20)
+    ip[0], ip[8], ip[9] = 0x45, 64, 6
+    ip[2:4] = (20 + len(tcp)).to_bytes(2, 'big')
+    ip[12:16], ip[16:20] = bytes((10, 0, 0, 1)), bytes((10, 0, 0, 2))
+    return bytes(12) + b'\x08\x00' + ip + tcp
 
 
 class EquipmentDeliveryTest(unittest.TestCase):
@@ -38,6 +82,125 @@ class EquipmentDeliveryTest(unittest.TestCase):
 
     def equipment(self):
         return [e for e in drain_outbox(self.outbox) if e['type'] == 'inventory.snapshot']
+
+    def test_wire_layouts_reach_outbox_without_mocked_equipment_refs(self):
+        for tail in (988, 996, 1004, 1012):
+            with self.subTest(tail=tail):
+                live = LiveEventDecoder()
+                frames = equipment_frames(tail, 123456789 + tail, 987654 + tail)
+                sequence = 100
+                for tick, frame in enumerate(frames):
+                    # Exercise TCP reassembly as well as the shared wire parser.
+                    for part in (frame[:19], frame[19:]):
+                        for event in live.feed(1_700_000_000_000_000_000 + tick,
+                                equipment_packet(part, sequence, 50000 + tail)):
+                            self.bridge.submit(event)
+                        sequence += len(part)
+                self.bridge.wait_until_idle()
+                events = self.equipment()
+                self.assertEqual(len(events), 1)
+                payload = events[0]['payload']
+                self.assertEqual(payload['character_uid'], 123456789 + tail)
+                self.assertEqual(payload['item_kind'], 'equipment')
+                self.assertTrue(payload['complete'])
+                self.assertTrue(payload['inventory_items'][0]['equipped'])
+                self.assertEqual(payload['inventory_items'][0]['item_index'], 1002233)
+                assert_no_forbidden_keys(self, events)
+
+    def test_unknown_appearance_size_does_not_guess_equipment(self):
+        for tail in (1003, 1005, 1011, 1013):
+            with self.subTest(tail=tail):
+                parsed = parse_marked_gameplay_payload(equipment_frames(tail)[1], 12020)
+                self.assertNotIn('equipment_refs', parsed['fields'])
+
+    def test_equipment_repeated_slots_move_and_removal_use_item_uid(self):
+        self.identity(123456789)
+        first = {'inventory_slot': 1, 'item_uid': 987654, 'item_index': 1002233, 'count': 1}
+        second = {**first, 'item_uid': 987655, 'item_index': 1000695}
+        self.send('player_profile_info', {'items': [first, second]})
+        self.appearance(123456789, 987654)
+        initial = self.equipment()[0]['payload']
+        self.assertEqual(len(initial['inventory_items']), 2)
+        self.assertEqual(len({item['slot'] for item in initial['inventory_items']}), 2)
+        for delta, expected in (
+            ({**first, 'inventory_slot': 7}, {1002233, 1000695}),
+            ({**first, 'inventory_slot': 7, 'count': 0}, {1000695}),
+            ({**second, 'count': 0}, set()),
+        ):
+            self.offset += 1
+            self.bridge.submit(decoded_event('inventory_delta', {
+                'type': 'inventory_delta', 'container': 'inventory',
+                'item_kind': 'equipment', 'item': delta,
+            }, offset=self.offset))
+            self.bridge.wait_until_idle()
+            payload = self.equipment()[0]['payload']
+            self.assertEqual({item['item_index'] for item in payload['inventory_items']}, expected)
+            self.assertEqual(len(payload['inventory_items']), len(expected))
+            self.assertTrue(payload['complete'])
+
+    def test_full_reference_distinguishes_equal_six_byte_uid_suffixes(self):
+        _, appearance_frame, profile_frame = equipment_frames(1012)
+        payload = bytearray(profile_frame[6:])
+        duplicate_suffix = bytearray(payload[3:])
+        struct.pack_into('<H', duplicate_suffix, 0, 6)
+        struct.pack_into('<I', duplicate_suffix, 8, 1000695)
+        struct.pack_into('<H', payload, 1, 2)
+        payload.extend(duplicate_suffix)
+        profile_frame = struct.pack('<BHBH', 0, len(payload) + 6, 0, 0x0403) + payload
+        profile = parse_marked_gameplay_payload(profile_frame, 12020)
+        appearance = parse_marked_gameplay_payload(appearance_frame, 12020)
+        first, second = profile['fields']['items']
+        self.assertEqual(first['item_uid'], second['item_uid'])
+        self.assertNotEqual(first['item_uid_full'], second['item_uid_full'])
+        active, _ = correlate_active_equipment(profile, [appearance])
+        self.assertTrue(active['complete'])
+        self.assertEqual(active['slots'][0]['item']['item_index'], 1002233)
+        self.identity(123456789)
+        self.send('player_profile_info', {**profile['fields'], 'active_equipment': active})
+        items = self.equipment()[0]['payload']['inventory_items']
+        self.assertEqual([(i['item_index'], i['equipped']) for i in items],
+                         [(1002233, True), (1000695, False)])
+        # A real change response carries the full eight-byte UID, not its suffix.
+        change = struct.pack('<HHHBQ', 0, 0, 0, 1, second['item_uid_full'])
+        frame = struct.pack('<BHBH', 0, len(change) + 6, 0, 0x0502) + change
+        self.send('change_equip_slot_response',
+                  parse_marked_gameplay_payload(frame, 12020)['fields'])
+        self.offset += 1
+        self.bridge.submit(decoded_event('inventory_delta', {
+            'type': 'inventory_delta', 'container': 'inventory',
+            'item_kind': 'equipment', 'item': second,
+        }, offset=self.offset))
+        self.bridge.wait_until_idle()
+        items = self.equipment()[0]['payload']['inventory_items']
+        self.assertEqual([(i['item_index'], i['equipped']) for i in items],
+                         [(1002233, False), (1000695, True)])
+
+    @unittest.skipUnless(os.environ.get('RFQOL_EQUIPMENT_PCAP'),
+                         'Optional private capture replay; raw traffic is never checked in')
+    def test_real_september4_capture_reaches_outbox(self):
+        # Input stays read-only. The only persisted output is the sanitized,
+        # temporary outbox; no HTTP client or running Agent is used.
+        events = [event for event in decoded_events(Path(os.environ['RFQOL_EQUIPMENT_PCAP']),
+                  ports=(12020,)) if event['type'] in {
+                      'world_info_prefix', 'appear_player_prefix', 'player_profile_info'}]
+        for event in sorted(events, key=lambda e: (e['ts_ns'], e['stream_offset'], e['bundle_seq'])):
+            self.bridge.submit(event)
+        self.bridge.wait_until_idle()
+        snapshots = self.equipment()
+        self.assertEqual(len(snapshots), 2)
+        self.assertEqual(len({e['client_ref'] for e in snapshots}), 2)
+        self.assertEqual(len({e['payload']['character_uid'] for e in snapshots}), 2)
+        self.assertEqual(sorted(len(e['payload']['inventory_items']) for e in snapshots), [35, 42])
+        for event in snapshots:
+            payload = event['payload']
+            self.assertTrue(payload['complete'])
+            self.assertEqual(payload['item_kind'], 'equipment')
+            self.assertEqual(sum(bool(item['equipped']) for item in payload['inventory_items']), 17)
+            self.assertEqual(len({item['slot'] for item in payload['inventory_items']}),
+                             len(payload['inventory_items']))
+        self.assertEqual(self.bridge.metrics()['errors'], 0)
+        self.assertEqual(self.projector.equipment_diagnostics()['pending_profiles'], 0)
+        assert_no_forbidden_keys(self, snapshots)
 
     def test_two_clients_both_packet_orders_and_duplicate_appearance(self):
         self.identity(123456789)

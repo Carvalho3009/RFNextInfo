@@ -1355,8 +1355,10 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
             return None
         equipment_fields = {}
         equipment_tail = len(payload) - name_end - 46
-        if equipment_tail in (988, 996):
-            refs_offset = len(payload) - 195 - (equipment_tail - 988)
+        if equipment_tail in (988, 996, 1004, 1012):
+            # Sep-04 replay: tails 1004/1012 resolve 17/17 items each by UID
+            # and inventory slot. Only the suffix grows; refs stay name_end+839.
+            refs_offset = name_end + 839
             biosuit_offset = refs_offset - 10
             equipment_prefix = payload[biosuit_offset + 4:refs_offset]
             equipment_refs = []
@@ -1370,6 +1372,7 @@ def parse_marked_gameplay_payload(decoded: bytes, port: int) -> dict[str, Any] |
                         "equip_part": equip_part,
                         "inventory_slot": inventory_slot,
                         "item_uid": int.from_bytes(item_uid_raw, "little"),
+                        "item_uid_full": inventory_slot | (int.from_bytes(item_uid_raw, "little") << 16),
                         "item_uid_hex": item_uid_raw.hex(),
                     }
                 )
@@ -1527,6 +1530,7 @@ def _parse_compact_profile_item(payload: bytes, cursor: int) -> tuple[dict[str, 
     return {
         "inventory_slot": inventory_slot,
         "item_uid": int.from_bytes(item_uid_raw, "little"),
+        "item_uid_full": inventory_slot | (int.from_bytes(item_uid_raw, "little") << 16),
         "item_uid_hex": item_uid_raw.hex(),
         "item_index": item_index,
         "count": count,
@@ -1720,16 +1724,23 @@ def add_profile_item_names(profile: dict[str, Any], names: dict[int, str]) -> No
             item["item_name_ptbr"] = name
 
 
+def equipment_item_uid(item: dict[str, Any]) -> int:
+    # Sep-04: two different items share the six-byte suffix. Their eight-byte
+    # references are distinct and match the UID in the 0x0501/0x0502 messages.
+    # Keep the legacy fields for consumers; use the full reference for identity.
+    return item.get("item_uid_full", item.get("item_uid", 0))
+
+
 def correlate_active_equipment(
     profile: dict[str, Any], appearances: list[dict[str, Any]]
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     profile_items = profile.get("fields", {}).get("items", [])
-    by_uid = {item["item_uid"]: item for item in profile_items if item["item_uid"]}
+    by_uid = {equipment_item_uid(item): item for item in profile_items if equipment_item_uid(item)}
     candidates = []
     for appearance in appearances:
         refs = appearance.get("fields", {}).get("equipment_refs", [])
-        selected = [ref for ref in refs if ref["item_uid"]]
-        matched = sum(ref["item_uid"] in by_uid for ref in selected)
+        selected = [ref for ref in refs if equipment_item_uid(ref)]
+        matched = sum(equipment_item_uid(ref) in by_uid for ref in selected)
         if matched:
             candidates.append((matched, len(selected), appearance, refs))
     if not candidates:
@@ -1738,8 +1749,8 @@ def correlate_active_equipment(
     slots = []
     for ref in refs:
         slot = dict(ref)
-        item = by_uid.get(ref["item_uid"])
-        slot["empty"] = ref["item_uid"] == 0
+        item = by_uid.get(equipment_item_uid(ref))
+        slot["empty"] = equipment_item_uid(ref) == 0
         slot["resolved"] = item is not None
         if item is not None:
             slot["item"] = item
