@@ -1,0 +1,14 @@
+{
+  "product": "rf-qol",
+  "component": "rf-qol-agent",
+  "release": true,
+  "version": "2.0.0-beta.41",
+  "release_sequence": 51,
+  "authenticode": false,
+  "commit": "5234695cfac5b55e9be46a482195fb1cc735d82c",
+  "source_branch": "release/rf-qol-agent-beta41",
+  "installer_sha256": "17ee5890708ed5d223464904500c4ac87b34138dbc09a164951a0fcc14917c1c",
+  "manifest_sha256": "ef8bc37e6643a5615e8b86e10b0015704bbe4f99a9938c9c67d7d26b4ff58673",
+  "tests": {"regression": 615, "skipped": 1, "failures": 0, "installer_smoke": "passed", "packaged_self_test_repetitions": 10},
+  "real_game_equipment_recapture_tested": false
+}
