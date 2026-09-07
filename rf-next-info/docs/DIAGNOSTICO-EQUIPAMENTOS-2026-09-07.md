@@ -125,14 +125,18 @@ ao site. Apenas eventos sanitizados chegaram ao banco temporario do teste.
 
 ## Entrega e gate restante
 
-Branch local do Agent: `fix/equipment-appearance-tail-1012`, baseada na beta.43.
+Correcao originada em `fix/equipment-appearance-tail-1012`, baseada na beta.43,
+e publicada com autorizacao como beta.44, sequencia 54, pela branch
+`release/rf-qol-agent-beta44`. Codigo: `0cdea0fb18e0a7e50308d90eeb39001dfe6e7564`.
 Mudanca localizada tambem aplicada ao decoder canonico sem substituir suas
-outras alteracoes. Nenhum instalador foi gerado nesta etapa; atualizador segue
-na beta.43. A captura atual continua com o binario anterior e nao recebe hot patch.
+outras alteracoes. O instalador passou na regressao com replay, self-test e
+ensaio isolado; download publico, hashes, assinaturas e oferta do atualizador
+foram confirmados. Evidencias em `RELEASE-AGENT-BETA44.md`.
 
-Proximo gate: empacotar e publicar a correcao quando autorizado; depois conferir
-um novo snapshot da captura em uso no banco/site real. Replay com codigo do
-receptor nao equivale a afirmar que o executavel instalado ja foi atualizado.
+Gate restante: conferir um novo snapshot da captura em uso no banco/site real
+apos instalar a beta.44. A captura atual nao foi interrompida e continua com o
+binario anterior. Replay com codigo do receptor nao equivale a afirmar que o
+executavel instalado ja foi atualizado.
 
-Custo real: unknown. Rollback: manter a beta.43 publicada; reverter apenas os
-hunks desta correcao se necessario, preservando as demais alteracoes locais.
+Custo real: unknown. Rollback: beta.43 e manifesto anterior preservados;
+restaurar o feed anterior suspende novas ofertas, mas nao rebaixa instalacoes.
