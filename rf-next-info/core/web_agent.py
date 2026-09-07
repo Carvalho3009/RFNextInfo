@@ -737,6 +737,7 @@ class WebEventProjector:
         self._connection_equipped_item_uids: dict[str, set[int]] = {}
         self._connection_equipped_slots: dict[str, dict[int, int]] = {}
         self._equipment_appearances_by_character: dict[int, dict[str, Any]] = {}
+        self._pending_equipment_profiles: dict[tuple[str, int], dict[str, Any]] = {}
         self._connection_inventory_items: dict[
             str, dict[str, dict[int, dict[str, Any]]]
         ] = {}
@@ -912,6 +913,9 @@ class WebEventProjector:
             for key in tuple(self._collection_contexts):
                 if key[0].startswith(f"{session_id}:connection:"):
                     self._collection_contexts.pop(key, None)
+            for key in tuple(self._pending_equipment_profiles):
+                if key[0] == session_id:
+                    self._pending_equipment_profiles.pop(key, None)
 
     def _movement_allowed(
         self,
@@ -2504,6 +2508,20 @@ class WebEventProjector:
         self, event: dict[str, Any], session_id: str
     ) -> list[dict[str, Any]]:
         kind = _text(event.get("type"), 96) if isinstance(event, dict) else None
+        if kind == "appear_player_prefix":
+            fields = self._fields(event.get("data") or {})
+            character_uid = _character_uid(fields.get("character_uid"))
+            key = (session_id, character_uid)
+            with self._lock:
+                pending = self._pending_equipment_profiles.get(key)
+            if pending is None:
+                return []
+            connection = _connection_key(str(pending.get("flow") or ""))
+            if self._connection_character_uids.get(connection) != character_uid:
+                with self._lock:
+                    self._pending_equipment_profiles.pop(key, None)
+                return []
+            return self.project_many(pending, session_id)
         if kind == "player_profile_info":
             data = event.get("data")
             if not isinstance(data, dict):
@@ -2512,8 +2530,11 @@ class WebEventProjector:
             fields = self._fields(data)
             connection = _connection_key(flow)
             confirmed_uid = self._connection_character_uids.get(connection)
-            if confirmed_uid is not None and not isinstance(
-                fields.get("active_equipment"), dict
+            active_equipment = fields.get("active_equipment")
+            if confirmed_uid is not None and (
+                not isinstance(active_equipment, dict)
+                or active_equipment.get("complete") is False
+                or _character_uid(active_equipment.get("character_uid")) != confirmed_uid
             ):
                 with self._lock:
                     appearance = self._equipment_appearances_by_character.get(
@@ -2534,10 +2555,22 @@ class WebEventProjector:
             items = fields.get("items")
             if (
                 confirmed_uid is None or active_uid != confirmed_uid
+                or not isinstance(active_equipment, dict)
                 or active_equipment.get("complete") is False
                 or not isinstance(items, list) or not items
             ):
+                if confirmed_uid is not None and isinstance(items, list) and items:
+                    with self._lock:
+                        key = (session_id, confirmed_uid)
+                        self._pending_equipment_profiles.pop(key, None)
+                        self._pending_equipment_profiles[key] = event
+                        while len(self._pending_equipment_profiles) > 256:
+                            self._pending_equipment_profiles.pop(
+                                next(iter(self._pending_equipment_profiles))
+                            )
                 return []
+            with self._lock:
+                self._pending_equipment_profiles.pop((session_id, confirmed_uid), None)
             payloads = self._inventory_payloads({
                 "type": "inventory_snapshot",
                 "container": "inventory",
@@ -2702,7 +2735,9 @@ class AgentOutbox:
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
+        # Events and AUTOINCREMENT must survive power loss before transmission.
+        # NORMAL can roll back an already exported sequence and reuse it.
+        self.conn.execute("PRAGMA synchronous=FULL")
         self.conn.execute("PRAGMA wal_autocheckpoint=256")
         self.conn.execute("PRAGMA journal_size_limit=16777216")
         self._issued_batches: dict[str, tuple[tuple[int, str], ...]] = {}
@@ -3342,7 +3377,10 @@ class WebAgentBridge:
                             queued = self.outbox.enqueue(recovered)
                             self._record_projected(recovered["type"], queued)
                         self._replay_pending(session_id, connection)
-                    if kind in IDENTITY_ONLY_EVENT_TYPES:
+                    if (
+                        kind in IDENTITY_ONLY_EVENT_TYPES
+                        and kind != "appear_player_prefix"
+                    ):
                         continue
                     public_type = EVENT_TYPES.get(kind)
                     remote_requires_identity = (
@@ -3361,7 +3399,13 @@ class WebAgentBridge:
                     if projected_events:
                         for projected in projected_events:
                             self._observe(projected)
-                            self._route_projected(projected, confirmed=confirmed)
+                            self._route_projected(
+                                projected,
+                                confirmed=(
+                                    confirmed
+                                    or kind == "appear_player_prefix"
+                                ),
+                            )
                     else:
                         self.skipped += 1
                         with self._metrics_lock:

@@ -498,7 +498,8 @@ class AgentTransportTest(unittest.TestCase):
         worker.start()
         try:
             deadline = time.monotonic() + 2.0
-            while self.outbox.metrics()["events"] and time.monotonic() < deadline:
+            # ACK empties the outbox before _run records the completed burst.
+            while not worker.metrics()["burst_cycles"] and time.monotonic() < deadline:
                 time.sleep(0.01)
             metrics = worker.metrics()
             self.assertEqual(self.outbox.metrics()["events"], 0)

@@ -74,19 +74,8 @@ def run_offline_agent_self_test(
         _require(runtime.submit(_event(
             "player_profile_info", 20,
             {"fields": {"active_equipment": {
-                "character_uid": 101,
-                "slots": [{
-                    "resolved": True,
-                    "item": {"item_uid": 987654, "item_index": 1000078},
-                }],
-            }}},
-            flow=flow_a, opcode=0x0401,
-        )), "perfil equipado do primeiro cliente rejeitado")
-        _require(runtime.submit(_event(
-            "inventory_snapshot", 21,
-            {
-                "container": "inventory", "item_kind": "equipment",
-                "items": [{
+                "character_uid": 101, "complete": False, "slots": [],
+            }, "items": [{
                     "inventory_slot": 7, "item_uid": 987654,
                     "item_index": 1000078, "count": 1,
                     "enchant_level": 6, "lock": False,
@@ -94,10 +83,18 @@ def run_offline_agent_self_test(
                     "inventory_slot": 8, "item_uid": 123,
                     "item_index": 1000080, "count": 1,
                     "enchant_level": 0, "lock": False,
-                }],
-            },
-            flow=flow_a, opcode=0x1C02,
-        )), "inventario equipado do primeiro cliente rejeitado")
+                }]}},
+            flow=flow_a, opcode=0x0401,
+        )), "perfil equipado do primeiro cliente rejeitado")
+        runtime.bridge.wait_until_idle()
+        _require(runtime.submit(_event(
+            "appear_player_prefix", 21,
+            {"fields": {
+                "character_uid": 101, "character_name": "Cliente A",
+                "equipment_refs": [{"equip_part_type": 1, "item_uid": 987654}],
+            }},
+            flow=flow_b, opcode=0x0305,
+        )), "referencias tardias dos equipamentos rejeitadas")
         _require(runtime.submit(_event(
             "update_exp", 2,
             {"level": 60, "exp": 1000, "gain_exp": 100},
