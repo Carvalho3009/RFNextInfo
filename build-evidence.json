@@ -1,10 +1,10 @@
 {
-  "version": "2.0.0-beta.44",
-  "release_sequence": 54,
-  "installer": "K:\\MCP\\_release-builds\\rf-qol-agent-2.0.0-beta.44\\release\\RF-Next-Companion-Setup-2.0.0-beta.44.exe",
-  "installer_size": 35738757,
-  "installer_sha256": "D1F0F7300205C6ACB1CF19951F791759AD6C844F193B338D35118A44BAF65F40",
+  "version": "2.0.0-beta.45",
+  "release_sequence": 55,
+  "installer": "K:\\MCP\\_release-builds\\rf-qol-agent-2.0.0-beta.45\\release\\RF-Next-Companion-Setup-2.0.0-beta.45.exe",
+  "installer_size": 35740092,
+  "installer_sha256": "95BFC65A87F4789F0757A78C93F148B51829B8735C87F851C7FF3ACCE0B5441D",
   "authenticode_status": "NotSigned",
   "packaged_self_test": "passed",
-  "installer_smoke_evidence": "C:\\Users\\celc3\\AppData\\Local\\Temp\\rf-qol-agent-installer-smoke-20260907T034802Z\\agent-installer-smoke-result.json"
+  "installer_smoke_evidence": "C:\\Users\\celc3\\AppData\\Local\\Temp\\rf-qol-agent-installer-smoke-20260907T050944Z\\agent-installer-smoke-result.json"
 }
