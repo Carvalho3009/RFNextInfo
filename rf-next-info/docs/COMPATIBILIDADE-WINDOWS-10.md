@@ -48,9 +48,9 @@ Instalador beta.43 publicado no canal beta, sequência 53. Nenhuma
 alteração no site ou na instalação atualmente em uso. Reversão: reinstalar o
 pacote beta.42 no Windows 11 (sem suporte Windows 10). Custo: unknown.
 
-## Correcao local posterior a beta.44: texto do Pktmon
+## Correcao beta.45: texto do Pktmon
 
-07/09/2026 UTC — corrigida localmente, ainda nao empacotada nem publicada.
+07/09/2026 UTC — publicada na beta.45, sequencia 55, com autorizacao do owner.
 
 O computador afetado mostrou `O Monitor de Pacotes nao esta em execucao.`
 com os acentos corretos no console, enquanto o Agent bloqueava como ocupado
@@ -72,10 +72,12 @@ exata do computador remoto, e nao substitui a validacao do novo executavel la.
   `python -X utf8`. Regressao final: 637 testes em 80,254 s, sem falhas, 1 skip
   opcional preexistente; replay privado de equipamentos habilitado.
 
-Branch: `fix/pktmon-windows-console-encoding`. Nenhuma mudanca no decoder,
-protocolo, servidor ou captura em uso. Atualizador permanece na beta.44.
-Proximo gate: gerar/publicar novo pacote quando autorizado e testar no Windows
-10 afetado. Rollback: reverter somente este commit local. Custo real: unknown.
+Correcao originada em `fix/pktmon-windows-console-encoding`, publicada por
+`release/rf-qol-agent-beta45`. Nenhuma mudanca no decoder, protocolo, servidor ou
+captura em uso. Instalador isolado, modulos empacotados, download publico e
+atualizador validados; evidencias em `RELEASE-AGENT-BETA45.md`.
+Proximo gate: testar no Windows 10 afetado apos atualizar. Rollback: artefato e
+manifesto beta.44 preservados; nao ha downgrade automatico. Custo real: unknown.
 
 ## Referências
 
