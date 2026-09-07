@@ -470,8 +470,13 @@ class AgentLocalMonitorApi:
                 for key in (
                     "packets", "received_packets", "filtered_packets", "duplicate_packets",
                     "missed_write", "missed_read", "sink_errors",
-                    "route_restarts", "port_count",
+                    "route_restarts", "port_count", "property_errors",
                 )
+            } | {
+                "backend": capture.get("backend") if capture.get("backend") in (
+                    "pktmon-streaming", "pktmon-etw",
+                ) else None,
+                "backend_error": str(capture.get("backend_error") or "")[:240] or None,
             },
             "decoder": {
                 key: _integer(

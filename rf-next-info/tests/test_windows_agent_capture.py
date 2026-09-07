@@ -581,6 +581,8 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 runtime.live_capture.received_packets = 12
                 runtime.live_capture.packets = 4
                 runtime.live_capture.filtered_packets = 3
+                runtime.live_capture.backend = "pktmon-etw"
+                runtime.live_capture.property_errors = 2
                 health = runtime.service.api._health()
 
                 self.assertEqual(health["capture_state"], "capturing")
@@ -588,11 +590,28 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 self.assertEqual(health["capture"]["received_packets"], 12)
                 self.assertEqual(health["capture"]["packets"], 4)
                 self.assertEqual(health["capture"]["filtered_packets"], 3)
+                self.assertEqual(health["capture"]["backend"], "pktmon-etw")
+                self.assertEqual(health["capture"]["property_errors"], 2)
                 self.assertIn("decoded_events", health["decoder"])
                 serialized = json.dumps(health).lower()
                 self.assertNotIn("packet_bytes", serialized)
                 self.assertNotIn('"source"', serialized)
                 self.assertNotIn('"flow"', serialized)
+            finally:
+                runtime.close()
+
+    def test_failed_etw_consumer_stops_reporting_active_capture(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = self._runtime(folder, lambda _ports: _processes(101, 202))
+            try:
+                runtime.start_capture()
+                failed = runtime.live_capture
+                failed.last_error = "O stream Pktmon/ETW encerrou (5)."
+                runtime.refresh_routes()
+                self.assertFalse(runtime.active)
+                self.assertTrue(failed.stopped)
+                self.assertEqual(runtime.last_error, failed.last_error)
+                self.assertFalse(runtime.health()["session_active"])
             finally:
                 runtime.close()
 

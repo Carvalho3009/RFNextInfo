@@ -16,6 +16,7 @@ from core.connections import agent_connection_aliases, agent_processes, process_
 from core.ingest import DEFAULT_PORTS
 from core.live_stream import LiveEventStream
 from core.pktmon_realtime import RealtimeCapture
+from core.pktmon_etw import agent_capture
 from core.remote_subsessions import RemoteSubsessionController
 from core.web_agent_service import WindowsAgentLocalService
 from core.web_agent_transport import AgentTransportError
@@ -198,7 +199,7 @@ class StandaloneWindowsAgentRuntime:
         remote_subsessions: RemoteSubsessionController | None = None,
         memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
         ports: tuple[int, ...] = DEFAULT_PORTS,
-        capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
+        capture_factory: Callable[..., RealtimeCapture] = agent_capture,
         process_reader: Callable[..., dict] = agent_processes,
         route_alias_reader: Callable[..., dict[int, str]] = agent_connection_aliases,
         route_change_confirmations: int = 2,
@@ -260,7 +261,7 @@ class StandaloneWindowsAgentRuntime:
         version: str,
         memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
         local_api_port: int = 17621,
-        capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
+        capture_factory: Callable[..., RealtimeCapture] = agent_capture,
         process_reader: Callable[..., dict] = agent_processes,
         route_alias_reader: Callable[..., dict[int, str]] = agent_connection_aliases,
         route_change_confirmations: int = 2,
@@ -303,7 +304,7 @@ class StandaloneWindowsAgentRuntime:
         version: str,
         memory_budget_mb: int = DEFAULT_AGENT_MEMORY_MB,
         local_api_port: int = 17621,
-        capture_factory: Callable[..., RealtimeCapture] = RealtimeCapture,
+        capture_factory: Callable[..., RealtimeCapture] = agent_capture,
         process_reader: Callable[..., dict] = agent_processes,
         route_alias_reader: Callable[..., dict[int, str]] = agent_connection_aliases,
         route_change_confirmations: int = 2,
@@ -557,6 +558,10 @@ class StandaloneWindowsAgentRuntime:
 
     def refresh_routes(self) -> dict[str, Any]:
         with self._lock:
+            backend_error = getattr(self.live_capture, "last_error", "")
+            if backend_error:
+                self.stop_capture(reason="capture_failed")
+                self.last_error = backend_error
             authorized = self.service.refresh_authorization()
             if authorized:
                 self._sync_character_profiles()
@@ -726,6 +731,9 @@ class StandaloneWindowsAgentRuntime:
             }
             capture_metrics["route_restarts"] = self._capture_restarts
             capture_metrics["port_count"] = len(self._capture_ports)
+            capture_metrics["backend"] = getattr(capture, "backend", "pktmon-streaming") if capture else None
+            capture_metrics["backend_error"] = getattr(capture, "last_error", "") or None
+            capture_metrics["property_errors"] = int(getattr(capture, "property_errors", 0))
             memory_bytes = self.memory_reader()
             if memory_bytes is not None:
                 memory_bytes = max(0, int(memory_bytes))
