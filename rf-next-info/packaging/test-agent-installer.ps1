@@ -77,7 +77,8 @@ try {
     if (Test-Path -LiteralPath (Join-Path $InstallDir '_internal\legacy-smoke.txt')) {
         throw 'A atualização deixou arquivos internos da versão anterior.'
     }
-    $SelfTest = Start-Process -FilePath $Executable -ArgumentList '--self-test' -WindowStyle Hidden -PassThru
+    $SelfTestReport = Join-Path $EvidenceRoot 'installed-self-test.json'
+    $SelfTest = Start-Process -FilePath $Executable -ArgumentList @('--self-test', '--self-test-report', "`"$SelfTestReport`"") -WindowStyle Hidden -PassThru
     if (-not $SelfTest.WaitForExit(60000)) {
         Stop-Process -Id $SelfTest.Id -Force -ErrorAction SilentlyContinue
         throw 'Autoteste instalado excedeu 60 segundos.'

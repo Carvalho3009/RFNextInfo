@@ -226,6 +226,7 @@ class AgentClientRegistryTest(unittest.TestCase):
 
 class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
     def _runtime(self, folder: str, reader, **options):
+        options.setdefault("route_alias_reader", lambda _ports: {})
         return StandaloneWindowsAgentRuntime.create_offline(
             Path(folder),
             str(uuid.uuid4()),

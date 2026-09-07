@@ -1832,7 +1832,7 @@ class WebAgentBridgeTest(unittest.TestCase):
                 release.set()
                 bridge.close()
 
-    def test_equipped_profile_reaches_outbox_after_cross_connection_correlation(self):
+    def test_equipped_profile_reaches_outbox_when_appearance_arrives_later(self):
         with tempfile.TemporaryDirectory() as folder:
             projector = WebEventProjector(
                 "install-publica", b"0123456789abcdef0123456789abcdef",
@@ -1852,6 +1852,16 @@ class WebAgentBridgeTest(unittest.TestCase):
                 opcode=0x0106,
             )))
             self.assertTrue(bridge.submit(decoded_event(
+                "player_profile_info",
+                {"fields": {"items": [{
+                    "inventory_slot": 7, "item_uid": 987654,
+                    "item_index": 1000078, "count": 1,
+                    "enchant_level": 6, "lock": False,
+                }]}},
+                offset=2,
+            )))
+            bridge.wait_until_idle()
+            self.assertTrue(bridge.submit(decoded_event(
                 "appear_player_prefix",
                 {"fields": {
                     "character_uid": 123456789,
@@ -1860,18 +1870,9 @@ class WebAgentBridgeTest(unittest.TestCase):
                         "equip_part_type": 1, "item_uid": 987654,
                     }],
                 }},
-                offset=2,
+                offset=3,
                 flow="10.0.0.1:50001 -> 10.0.0.2:12020",
                 opcode=0x0305,
-            )))
-            self.assertTrue(bridge.submit(decoded_event(
-                "player_profile_info",
-                {"fields": {"items": [{
-                    "inventory_slot": 7, "item_uid": 987654,
-                    "item_index": 1000078, "count": 1,
-                    "enchant_level": 6, "lock": False,
-                }]}},
-                offset=3,
             )))
             bridge.wait_until_idle()
 
