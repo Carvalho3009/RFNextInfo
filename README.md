@@ -1,22 +1,19 @@
-# RF Next Companion 2.0.0-beta.41
+# RF Next Companion — 2.0.0-beta.43
 
-Instalador Windows x64. Requer a API Pktmon de streaming, como na beta.40.
+- Adaptação de captura para Windows 10 22H2 x64 via Pktmon/ETW em tempo real.
+- Mantém a captura nativa de streaming no Windows 11 e as correções da beta.42.
+- Novas portas usam reinício controlado; falhas do consumidor deixam de aparecer como captura ativa.
+- Diagnóstico inclui o backend e os motivos de bloqueio dos equipamentos.
 
-- Corrige snapshots dos equipamentos equipados quando o perfil chega antes das
-  referências ativas, inclusive correlação parcial e conexões diferentes.
-- Preserva confirmação de personagem, separação entre clientes/sessões e deduplicação.
-- Reforça a persistência da fila após interrupção de energia.
+Validação: 629 testes executados, sem falhas, 1 ignorado; 55 testes direcionados;
+autoteste empacotado e ensaio automático de instalação aprovados.
 
-Código validado: `5234695cfac5b55e9be46a482195fb1cc735d82c`, branch
-`release/rf-qol-agent-beta41`, PR #37.
-134 testes específicos e 615 testes de regressão, sem falhas, 1 ignorado.
-O autoteste do executável verifica a correlação parcial com referências tardias.
-Pacote final aprovado no ensaio instalado e em 10 repetições do autoteste.
+**Windows 10 ainda precisa de validação em máquina real.** O ensaio de instalação
+foi feito no Windows 11. O envio real de equipamentos também permanece em
+investigação; não considerar o teste sintético como confirmação dessa correção.
 
-Atualização disponível pelo Companion. O instalador preserva vínculo, configurações
-e fila local. Depois de atualizar, é necessária uma nova captura dos equipamentos
-no jogo; snapshots descartados pela versão antiga não são recriados pela instalação.
+Não instala drivers adicionais, não altera antivírus e não grava capturas brutas
+em ETL/PCAP. Exige privilégios administrativos. O atualizador verifica manifesto
+Ed25519, tamanho e SHA-256; a instalação exige confirmação do usuário.
 
-Não inclui o suporte experimental do Windows 10. Não houve alteração no servidor.
-Não usa Authenticode nem modifica antivírus. Manifesto e procedência Ed25519,
-SHA-256 e evidências de build acompanham o instalador.
+Este projeto não utiliza Authenticode. Consulte UNSIGNED-NOTICE.txt e SHA256SUMS.txt.

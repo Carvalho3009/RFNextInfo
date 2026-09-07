@@ -2,13 +2,21 @@
   "product": "rf-qol",
   "component": "rf-qol-agent",
   "release": true,
-  "version": "2.0.0-beta.41",
-  "release_sequence": 51,
+  "version": "2.0.0-beta.43",
+  "release_sequence": 53,
   "authenticode": false,
-  "commit": "5234695cfac5b55e9be46a482195fb1cc735d82c",
-  "source_branch": "release/rf-qol-agent-beta41",
-  "installer_sha256": "17ee5890708ed5d223464904500c4ac87b34138dbc09a164951a0fcc14917c1c",
-  "manifest_sha256": "ef8bc37e6643a5615e8b86e10b0015704bbe4f99a9938c9c67d7d26b4ff58673",
-  "tests": {"regression": 615, "skipped": 1, "failures": 0, "installer_smoke": "passed", "packaged_self_test_repetitions": 10},
+  "commit": "5d4dffda4ece79cc24cda55967130d74210ff797",
+  "source_branch": "release/rf-qol-agent-beta43",
+  "installer_sha256": "9ffc01d89ac2c8e45f0180eaf1684e75d4020ffa450e04a33765342fb2ac94e1",
+  "manifest_sha256": "d73354431487c1bbc7efd320341d4778797bfffdfc43ca7e6017d91d31a0310c",
+  "tests": {
+    "regression_tests_run": 629,
+    "regression_tests_skipped": 1,
+    "regression_failures": 0,
+    "targeted_tests_passed": 55,
+    "packaged_self_test": "passed",
+    "installer_smoke": "passed"
+  },
+  "windows10_real_machine_tested": false,
   "real_game_equipment_recapture_tested": false
 }
