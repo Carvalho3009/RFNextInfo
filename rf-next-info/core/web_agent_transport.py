@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import json
 import random
+import sqlite3
 import threading
 import time
 import urllib.error
@@ -802,17 +803,29 @@ class AgentDeliveryWorker:
                 else:
                     self._blocked = True
             return False
-        except Exception:
+        except Exception as error:
             # Falha local inesperada nao pode encerrar silenciosamente a thread
             # nem remover eventos ainda nao confirmados.
-            with self._lock:
-                self.permanent_errors += 1
-                self.last_error_code = "local_delivery_error"
-                self._blocked = True
+            self._local_failure(error)
             return False
         finally:
             with self._lock:
                 self._sending = False
+
+    def _local_failure(self, error: Exception) -> None:
+        code = getattr(error, "sqlite_errorcode", 0)
+        transient = isinstance(error, sqlite3.OperationalError) and (
+            code & 0xFF in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+            or str(error).lower() in {"database is locked", "database table is locked", "database schema is locked"}
+        )
+        with self._lock:
+            self.last_error_code = "local_database_busy" if transient else "local_delivery_error"
+            if transient:
+                self.temporary_errors += 1
+                self._temporary_failures += 1
+            else:
+                self.permanent_errors += 1
+                self._blocked = True
 
     def _delay(self) -> float:
         with self._lock:
@@ -842,7 +855,11 @@ class AgentDeliveryWorker:
                 burst += 1
                 with self._lock:
                     blocked = self._blocked
-            remaining = int(self.outbox.metrics()["events"])
+            try:
+                remaining = int(self.outbox.metrics()["events"])
+            except Exception as error:
+                self._local_failure(error)
+                remaining = 0
             with self._lock:
                 blocked = self._blocked
                 failures = self._temporary_failures

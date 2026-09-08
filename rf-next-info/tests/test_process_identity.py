@@ -28,7 +28,7 @@ class ProcessIdentityTest(unittest.TestCase):
     def test_reused_socket_starts_new_decoder_flow_only_for_new_process_instance(self):
         decoder = LiveEventDecoder(max_flows=4)
         flow = "10.0.0.1:51000 -> 10.0.0.2:12020"
-        with patch("core.live_stream._tcp_payload", return_value=(flow, 12020, 100, b"a")), patch.object(
+        with patch("core.live_stream._tcp_payload", return_value=(flow, 12020, 100, b"a", 0)), patch.object(
             decoder, "_decode_available", return_value=[],
         ) as decode:
             decoder.set_connection_aliases({51000: "process:10:100"})
