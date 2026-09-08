@@ -61,10 +61,13 @@ class _Property(ct.Structure):
 
 PROVIDER = uuid.UUID("4d4f80d9-c8bd-4d73-bb5b-19c90402c5ac").bytes_le
 INVALID_TRACE = 2**64 - 1
+ERROR_CTX_CLOSE_PENDING = 7007
+MAX_PKTMON_FILTERS = 32
 
 
 class PktmonEtwCapture(RealtimeCapture):
     backend = "pktmon-etw"
+    max_filter_ports = MAX_PKTMON_FILTERS
 
     def __init__(self, target, ports, packet_sink=None):
         if target is not None:
@@ -80,6 +83,8 @@ class PktmonEtwCapture(RealtimeCapture):
         self._record_callback = _Callback(self._on_record)
         self.last_error = ""
         self.property_errors = 0
+        self.last_packet_ns = 0
+        self._controller_waited = False
         self._pktmon = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "pktmon.exe")
 
     def _command(self, *args):
@@ -138,6 +143,7 @@ class PktmonEtwCapture(RealtimeCapture):
                 return
             stamp = _normalized_timestamp_ns((record.header.timestamp - FILETIME_UNIX_EPOCH) * 100)
             self.packets += 1
+            self.last_packet_ns = stamp
             self.bytes += len(packet)
             if self.packet_sink is not None:
                 try:
@@ -179,13 +185,14 @@ class PktmonEtwCapture(RealtimeCapture):
         raise RuntimeError("O stream ETW do Pktmon não ficou disponível.")
 
     def start(self):
-        if self._active or self._process is not None:
+        if self._active or self._process is not None or self._consumer is not None or self._filters or self._trace != INVALID_TRACE:
             raise RuntimeError("Captura já está ativa")
         self._bind_etw()
         if _pktmon_state(self._command("status")) is not False:
             raise RuntimeError("Pktmon ocupado ou estado desconhecido. Nenhuma captura existente foi alterada.")
         self._stopping.clear()
         self.last_error = ""
+        self._controller_waited = False
         try:
             self._add_filters(self.ports)
             self._process = subprocess.Popen(
@@ -200,11 +207,16 @@ class PktmonEtwCapture(RealtimeCapture):
             self._active = True
             self._consumer = threading.Thread(target=self._consume, daemon=True)
             self._consumer.start()
-        except Exception:
-            self.stop()
+        except Exception as error:
+            try:
+                self.stop()
+            except Exception as cleanup_error:
+                error.add_note(f"Limpeza ETW pendente: {type(cleanup_error).__name__}")
             raise
 
     def _add_filters(self, ports):
+        if len(ports) > MAX_PKTMON_FILTERS:
+            raise RuntimeError("As rotas excedem o limite de 32 filtros do Pktmon.")
         for port in ports:
             name = f"{self._prefix}-{port}"
             self._command("filter", "add", name, "-t", "TCP", "-p", str(port))
@@ -221,31 +233,57 @@ class PktmonEtwCapture(RealtimeCapture):
         self._stopping.set()
         self._active = False
         failures = []
-        if self._process is not None and self._process.poll() is None:
+        if self._process is not None and not self._controller_waited and self._process.poll() is None:
             try:
                 self._command("stop")
                 self._process.wait(timeout=5)
+                self._controller_waited = True
             except Exception:
-                failures.append("Não foi possível encerrar o processo Pktmon normalmente.")
-                self._process.terminate()
+                try:
+                    self._process.terminate()
+                    self._process.wait(timeout=5)
+                    self._controller_waited = True
+                except Exception:
+                    failures.append("Não foi possível encerrar o processo Pktmon.")
         if self._trace != INVALID_TRACE:
-            self._etw.CloseTrace(self._trace)
-            self._trace = INVALID_TRACE
+            try:
+                result = self._etw.CloseTrace(self._trace)
+                if result not in (0, ERROR_CTX_CLOSE_PENDING):
+                    raise RuntimeError("CloseTrace falhou")
+                self._trace = INVALID_TRACE
+            except Exception:
+                failures.append("Não foi possível fechar o handle ETW.")
         if self._consumer is not None:
-            self._consumer.join(timeout=5)
-            if self._consumer.is_alive():
-                failures.append("O consumidor ETW ainda está encerrando.")
-            else:
-                self._consumer = None
+            try:
+                if self._consumer.is_alive():
+                    self._consumer.join(timeout=5)
+                if self._consumer.is_alive():
+                    failures.append("O consumidor ETW ainda está encerrando.")
+                else:
+                    self._consumer = None
+            except Exception:
+                failures.append("Não foi possível aguardar o consumidor ETW.")
         for name in list(self._filters):
             try:
                 self._command("filter", "remove", name)
                 self._filters.remove(name)
             except Exception:
                 failures.append("Não foi possível remover um filtro do Companion.")
-        self._process = None
+        if self._process is not None and (self._controller_waited or self._process.poll() is not None):
+            self._process = None
         if failures:
+            self.last_error = " ".join(failures)
             raise RuntimeError(" ".join(failures))
+
+    @property
+    def is_active(self):
+        running = bool(self._active and self._process is not None
+                       and self._process.poll() is None and self._consumer is not None
+                       and self._consumer.is_alive())
+        if self._active and not running and not self._stopping.is_set():
+            self.last_error = "O controlador ou consumidor Pktmon/ETW encerrou."
+            self._active = False
+        return running
 
 
 def agent_capture(target, ports):
