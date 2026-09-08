@@ -1,10 +1,70 @@
 {
-  "version": "2.0.0-beta.45",
-  "release_sequence": 55,
-  "installer": "K:\\MCP\\_release-builds\\rf-qol-agent-2.0.0-beta.45\\release\\RF-Next-Companion-Setup-2.0.0-beta.45.exe",
-  "installer_size": 35740092,
-  "installer_sha256": "95BFC65A87F4789F0757A78C93F148B51829B8735C87F851C7FF3ACCE0B5441D",
+  "version": "2.0.0-beta.46",
+  "release_sequence": 56,
+  "installer": "RF-Next-Companion-Setup-2.0.0-beta.46.exe",
+  "installer_size": 35799296,
+  "installer_sha256": "94e943aff606efc3071e811129735a531a4551433f787e6acb4886412ff35478",
   "authenticode_status": "NotSigned",
-  "packaged_self_test": "passed",
-  "installer_smoke_evidence": "C:\\Users\\celc3\\AppData\\Local\\Temp\\rf-qol-agent-installer-smoke-20260907T050944Z\\agent-installer-smoke-result.json"
+  "packaged_self_test": {
+    "ok": true,
+    "mode": "offline",
+    "network_used": false,
+    "events": 15,
+    "session_lifecycle_events": 8,
+    "isolated_sessions": 3,
+    "isolated_clients": 2,
+    "equipped_loadout_items": 1,
+    "equipment_diagnostics": {
+      "counts": {
+        "appearances_with_refs": 1,
+        "appearances_without_refs": 0,
+        "profile_attempts": 2,
+        "unconfirmed_character": 0,
+        "empty_profile": 0,
+        "partial_match": 1,
+        "character_mismatch": 0,
+        "missing_appearance": 0,
+        "empty_equipment_refs": 0,
+        "no_matching_item_uids": 0,
+        "projected_snapshots": 1,
+        "unchanged_snapshot": 0
+      },
+      "last": {
+        "appearance_tail_bytes": 0,
+        "profile_items": 2,
+        "selected_item_count": 1,
+        "matched_item_count": 1
+      },
+      "pending_profiles": 0
+    },
+    "outbox_bytes": 7696,
+    "queue_errors": 0,
+    "checked_at_ns": 1788842271033662300
+  },
+  "installer_smoke": {
+    "status": "passed",
+    "tested_at_utc": "2026-09-08T04:38:57.1033131Z",
+    "version": "2.0.0-beta.46",
+    "installer_sha256": "5235BEF3C818778F217A5EE8D4FD9E6CED550F313D0C904CB4A6C03582C91D0A",
+    "compiler": "v3.12",
+    "compiler_sha256": "B043E554AFEFBFC56315669D0B4779793AEAE67F0F2A7A790E2EA91F05298EFF",
+    "authenticode_status": "NotSigned",
+    "packaged_self_test": "passed",
+    "legacy_install_migration": "passed",
+    "installed_executable_removed": true
+  },
+  "packaged_modules_match_validated_source": [
+    "app.build_profile",
+    "core.connections",
+    "core.live_stream",
+    "core.pktmon_etw",
+    "core.pktmon_realtime",
+    "core.rfnext_frame_decode",
+    "core.web_agent",
+    "core.web_agent_authorization",
+    "core.web_agent_local_api",
+    "core.web_agent_transport",
+    "core.windows_agent_capture",
+    "app.agent_main"
+  ]
 }
