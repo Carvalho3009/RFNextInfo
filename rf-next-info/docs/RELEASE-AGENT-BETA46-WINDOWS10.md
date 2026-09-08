@@ -70,8 +70,27 @@ Rollback disponível: preservar artefato beta.45 e feed anterior no commit
 nova; não faz downgrade automático de quem já instalou. A instalação anterior
 depende de consentimento, preservando identidade, configuração e outbox.
 
-Estado: correções locais e QA de código concluídos; pacote/publicação são
-registrados em `build-evidence.json` e `provenance.json` do download.
+Estado: implementado e publicado em 08/09/2026. Pacote/publicação registrados
+em `build-evidence.json` e `provenance.json` do download.
 Próximo gate externo: homologação no Windows 10 22H2 x64 afetado.
 Rotinas usadas: operar-mcp para evidências/gates; Ponytail para reutilizar os
 componentes existentes e a biblioteca padrão. Custo real: desconhecido.
+
+## Evidência da publicação
+
+- Código empacotado: `2209391b1355c351cffcd04200060cbe6b1210aa`.
+- PR restrito às mudanças da beta.46: https://github.com/Carvalho3009/RFNextInfo/pull/38.
+- Artefato: `575104a087db4223f6c519490aef51ca54ffbe7f`.
+- Canal: `2e93d704da322a7e66e7c4968e9f51d3e4e1cd72`.
+- Instalador: `RF-Next-Companion-Setup-2.0.0-beta.46.exe`, 35.799.296 bytes.
+- SHA-256: `94e943aff606efc3071e811129735a531a4551433f787e6acb4886412ff35478`.
+- Download público: https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.46/RF-Next-Companion-Setup-2.0.0-beta.46.exe.
+- Autoteste empacotado aprovado: dois clientes, três sessões isoladas, sem rede.
+- Ensaio isolado de instalação, migração do executável legado e remoção aprovado.
+- Doze módulos do executável comparados com o código validado, incluindo entrada,
+  decoder, remontagem, captura, entrega e perfil de versão.
+- Instalador público baixado pelo próprio código do atualizador; tamanho/hash,
+  manifesto Ed25519 e procedência Ed25519 aprovados após download.
+- Feed público oferece beta.46 às sequências 51–55 e não repete a oferta para 56.
+- Beta.45 preservada na mesma referência pública; sem alteração da instalação
+  atual, do receptor ou do banco de produção. Nenhuma homologação física inferida.
