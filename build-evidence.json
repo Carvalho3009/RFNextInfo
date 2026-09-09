@@ -1,10 +1,9 @@
 {
-  "version": "2.0.0-beta.46",
-  "release_sequence": 56,
-  "installer": "RF-Next-Companion-Setup-2.0.0-beta.46.exe",
-  "installer_size": 35799296,
-  "installer_sha256": "94e943aff606efc3071e811129735a531a4551433f787e6acb4886412ff35478",
-  "authenticode_status": "NotSigned",
+  "regression": {
+    "run": 666,
+    "skipped": 2,
+    "failures": 0
+  },
   "packaged_self_test": {
     "ok": true,
     "mode": "offline",
@@ -39,13 +38,13 @@
     },
     "outbox_bytes": 7696,
     "queue_errors": 0,
-    "checked_at_ns": 1788842271033662300
+    "checked_at_ns": 1788969839287318000
   },
-  "installer_smoke": {
+  "installer_smoke_dev_build": {
     "status": "passed",
-    "tested_at_utc": "2026-09-08T04:38:57.1033131Z",
-    "version": "2.0.0-beta.46",
-    "installer_sha256": "5235BEF3C818778F217A5EE8D4FD9E6CED550F313D0C904CB4A6C03582C91D0A",
+    "tested_at_utc": "2026-09-09T16:05:19.5312636Z",
+    "version": "2.0.0-beta.47",
+    "installer_sha256": "0E64FFE1C9088B580EF74A433ED908F188E43B4A79DE44051ED9580C8BEC0AF5",
     "compiler": "v3.12",
     "compiler_sha256": "B043E554AFEFBFC56315669D0B4779793AEAE67F0F2A7A790E2EA91F05298EFF",
     "authenticode_status": "NotSigned",
@@ -65,6 +64,8 @@
     "core.web_agent_local_api",
     "core.web_agent_transport",
     "core.windows_agent_capture",
-    "app.agent_main"
+    "core.web_agent_runtime",
+    "app.agent_main",
+    "app.agent_maintenance"
   ]
 }
