@@ -3,14 +3,14 @@
 `latest.json` é um manifesto Ed25519. O instalador permanece na branch da versão.
 Este canal contém somente metadados públicos da distribuição.
 
-Versão atual: `2.0.0-beta.48` (sequência 58).
+Versão atual: `2.0.0-beta.49` (sequência 59).
 
-[Baixar instalador](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.48/RF-Next-Companion-Setup-2.0.0-beta.48.exe)
+[Baixar instalador](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.49/RF-Next-Companion-Setup-2.0.0-beta.49.exe)
 
-Inclui os oito beacons de Albern Warzone no Monitor de Boss do Companion,
-com HP e dano observados pelo Agent. A atualização preserva identidade,
-histórico e fila. Testes automáticos e instalador validados; confirmação
-em um evento real de Albern permanece pendente.
+Corrige os requisitos entregues e faltantes de Coleção no Agent, incluindo
+no instalador o catálogo de 4.785 coleções e 14.458 requisitos. Testes automáticos,
+instalador e integração com o planejador validados. Atualização preserva identidade,
+histórico e fila; é necessária uma nova captura válida para renovar o progresso antigo.
 
-Beta.47 e o manifesto anterior permanecem disponíveis para reversão manual.
+Beta.48 e o manifesto anterior permanecem disponíveis para reversão manual.
 Restaurar o canal suspende a oferta, mas não faz downgrade de instalações.
