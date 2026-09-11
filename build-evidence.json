@@ -1,0 +1,24 @@
+{
+  "version": "2.0.0-beta.49",
+  "release_sequence": 59,
+  "regression": {
+    "run": 670,
+    "skipped": 2,
+    "failures": 0
+  },
+  "packaged_modules_verified": 32,
+  "verified_data_sha256": {
+    "core/boss_catalog.csv": "d9afcf89e92d178dd80aa265f93342058fbe28e66de44dfe71575c3a75ffe31b",
+    "core/collection_requirements.csv": "495c5172020680638a03a5664006734e699c8030d1de83839a92e6acea2eb7f8",
+    "core/job1_all_opcodes.csv": "c36202fa07ecc52f129f343ad16a08479abe5c36937f719e2677c35e61510782",
+    "core/job1_pending_layouts.json": "1be189f53ed23c8bcb864560bc3bf328828f09f1c3eabcf5d1a951aca802ba4f",
+    "core/level_curve.json": "a7a30ccf7e0fe598398c4619a86406adef71e61a8e1d22c9575d4254f862c86f"
+  },
+  "installer_sha256": "29788dba54cf020a0e6d4c67b9b8c7b92e2305b8a36de6c5d83343a08a8918d2",
+  "installer_size": 35937236,
+  "packaged_self_test": "passed",
+  "installer_smoke": "passed",
+  "authenticode": false,
+  "manifest_signature": "Ed25519",
+  "provenance_signature": "Ed25519"
+}
