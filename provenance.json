@@ -1,0 +1,83 @@
+{
+  "product": "rf-qol",
+  "component": "rf-qol-agent",
+  "release": true,
+  "version": "2.0.0-beta.51",
+  "release_sequence": 61,
+  "authenticode": false,
+  "commit": "8342e83d9e68aaf07c1eef5f9606a0ba2066f1dd",
+  "commit_role": "base_commit_not_full_package",
+  "source_dirty": true,
+  "verified_source_sha256": {
+    "app": "9e299e03dd744cf9f5ad348f215403cc2991e2302ea80823890d18f63a2a9ace",
+    "app.agent_maintenance": "48117c0b71e4efb334e12105e01f1145ddc8e127a560dc517bd4cfcbec4200d4",
+    "app.agent_paths": "095839028632b114b3e5abdc0501c5274edede4374d7bb3c7cbd9752b6a12b86",
+    "app.agent_preferences": "af25ad7121a5e869c577d64f3110ca44b2032740c5a007d5895f9b6bd369b496",
+    "app.build_profile": "62d762035717d28f5eaac5b7364460bea9d369be429880b4b81682a4daf5d778",
+    "app.protected_state": "545c3d9869bcbd49f6619a7d710fbcfdff9f2334ed4fc7c4589ca975ad97447e",
+    "core": "5e329b6f57e7fc1a9c5cda47daea7ee6fef7276e53a75f55f71e9bd22daba7fb",
+    "core.activity_contract": "4f8506892222b453a59a00675855e460231160dcb2075222ed4cf3be4f83b0ab",
+    "core.agent_updates": "1ad2b5f9ade876b1c50444285e93e5833ea196d152525aa53e6cd1a636f564e1",
+    "core.auction_sales": "3519d4948820f5ec8f8474c970ca703c0cd6e29f3ff0d0ffb5a6f2154c6fe8a3",
+    "core.capture": "3dc14409410fd9d540b0d78545e34861079f3835bacbda903c6991994953be8e",
+    "core.combat_monitor": "06b55542381c7502325536b630f87783a754ecfa792cc09b8897374085059e7a",
+    "core.connections": "101f00a957fb2b0f9e430e67b9c7abad3a937d49a16998f8c5dbe0f0e080545a",
+    "core.drop_alerts": "4f9b99b84895a68c24f34cc71c6329584d4ee1c66318433d898a040df544185b",
+    "core.ingest": "effa6d72832a026044c0058a37ae209f1ebeb702dd703b265381167bb6aa9ef5",
+    "core.live_stream": "cb69aa74595128f651eb90017a4003a04291a85ee01b48d23fd1a061a041446c",
+    "core.pktmon_etw": "89e96e6d69267dd417be0b424a29a118503db3e660b700e3fe96f3e34699b326",
+    "core.pktmon_realtime": "997ecc2800564471fd0fae7850cc6454ca5a484cad92abd2346ad37032e30295",
+    "core.remote_subsessions": "7775188316deaeb77093ba26a057e647c8b4cfcf90f55cfe53bfd421b0cbc180",
+    "core.rfnext_frame_decode": "99a28528582e0b6dbb208d65a68d9c0cc72647c2fe4b9665ed75a949460b07b6",
+    "core.store": "dd12465afda97942c8bd4d70ea2f52cdc961366a81969c9e14ec1cf38f58f982",
+    "core.web_agent": "904bd46e660826495bfa3c7b0b37403c7f232daf630a6f355fa41dfcfee35c9a",
+    "core.web_agent_authorization": "43bff54036e15cddd191a1b0b1a154c212dabadc1d9834315e2f014b5afe3d11",
+    "core.web_agent_boss_api": "0ade17eb048046db4358caf52879c0e68b944ad834c166b4c583c3db94ec4de9",
+    "core.web_agent_character_history": "18ce566c45512a29874632f106261ea30620a0d6a4088bb264bb78b085741590",
+    "core.web_agent_identity": "28b5af00d5f1f91b680b1b6d43e0d23d6c85ad50a82163c08b92d42817cb4b34",
+    "core.web_agent_local_api": "bb3e9e9709c7fdfd0dde2cac33834adb17d53e9b313aefba5ee26c5a5b24dd1e",
+    "core.web_agent_runtime": "69f24f747501d6509bbc14ae5a4493dd56b1713688717e5df781a56632126b3b",
+    "core.web_agent_selftest": "d2485bc545e5ff1e169c51b162c62d3a1a6878da9986c966ac72955a61c47bac",
+    "core.web_agent_service": "a580bee83cb80bb844f81f3638188830e1f860f5046516d05567b05327bb0099",
+    "core.web_agent_transport": "5a262de8d3a84a3df5663f0feba497de0ed035caf353ee88dd5bebb232adb64e",
+    "core.windows_agent_capture": "0fa9e6d5f0860573c9c6f8509c7bd4bd1642f13a9837562fc5a7575c6c054000",
+    "app.agent_main": "b980ec7e7b9fde25356f4d76a17af447f75fc822918e96f1c0c241ee3f4ad71c"
+  },
+  "verified_data_sha256": {
+    "core/boss_catalog.csv": "d9afcf89e92d178dd80aa265f93342058fbe28e66de44dfe71575c3a75ffe31b",
+    "core/collection_requirements.csv": "495c5172020680638a03a5664006734e699c8030d1de83839a92e6acea2eb7f8",
+    "core/job1_all_opcodes.csv": "c36202fa07ecc52f129f343ad16a08479abe5c36937f719e2677c35e61510782",
+    "core/job1_pending_layouts.json": "1be189f53ed23c8bcb864560bc3bf328828f09f1c3eabcf5d1a951aca802ba4f",
+    "core/level_curve.json": "a7a30ccf7e0fe598398c4619a86406adef71e61a8e1d22c9575d4254f862c86f"
+  },
+  "verified_build_inputs_sha256": {
+    "packaging/RFQOLAgent.spec": "458e57e7a0bf4e872b6bc61a9218611aa5b4f096d5cc094bcd49d2a639c34682",
+    "packaging/agent-installer.nsi": "f156900f95259e756ae0abbc35f16cdc8e09ddf667f372faf40a97a055569d9e",
+    "packaging/build-agent-release.ps1": "6cc4e94871dc565a6ff26ccda450249e699ef267522b9879264a3e411a60565e",
+    "tests/test_agent_session_recovery.py": "fb01550a353fd076d80394479669a484bcd1cb60609fa7ca0622446aed80c078",
+    "tests/test_agent_main.py": "b68643c5726e2fdd346482f95992a8c8f740966af65aee1a81095a6236d8397f",
+    "tests/test_remote_subsessions.py": "c67cff3f619de876dca6a4fa1cee7b4d7e1e066d3be8598987e0c2cf97cf93d0"
+  },
+  "installer_sha256": "be85d342dbc5d3eead064705ead5be9f3b9f2d5309ee443a14360100b2e8667c",
+  "manifest_sha256": "12f4a01d3ab2c6f8328d4a4cf1e86595812c9af2ccc19d786fc54724f07f06f5",
+  "tests": {
+    "run": 684,
+    "skipped": 2,
+    "failures": 0
+  },
+  "packaged_self_test": "passed",
+  "installer_smoke": "passed",
+  "features": [
+    "confirmed_queue_clear_with_verified_backup",
+    "protected_update_session_handoff"
+  ],
+  "update_resume": {
+    "ttl_minutes": 15,
+    "requires_same_process_and_ports": true,
+    "requires_update_initiated_by_version": "2.0.0-beta.51"
+  },
+  "windows10_real_machine_tested": false,
+  "live_game_capture_tested": false,
+  "distribution": "signed-update-artifact",
+  "channel_publication": "pending_at_signing"
+}
