@@ -3,14 +3,13 @@
 `latest.json` é um manifesto Ed25519. O instalador permanece na branch da versão.
 Este canal contém somente metadados públicos da distribuição.
 
-Versão atual: `2.0.0-beta.49` (sequência 59).
+Versão atual: `2.0.0-beta.50` (sequência 60).
 
-[Baixar instalador](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.49/RF-Next-Companion-Setup-2.0.0-beta.49.exe)
+[Baixar instalador](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.50/RF-Next-Companion-Setup-2.0.0-beta.50.exe)
 
-Corrige os requisitos entregues e faltantes de Coleção no Agent, incluindo
-no instalador o catálogo de 4.785 coleções e 14.458 requisitos. Testes automáticos,
-instalador e integração com o planejador validados. Atualização preserva identidade,
-histórico e fila; é necessária uma nova captura válida para renovar o progresso antigo.
+Atualiza o decoder e envia observações privadas de Wargames, missões diárias,
+recompensas e saldos/dungeons. O receptor do site já foi publicado. Identidade,
+histórico e fila são preservados; o novo envio requer personagem confirmado.
 
-Beta.48 e o manifesto anterior permanecem disponíveis para reversão manual.
-Restaurar o canal suspende a oferta, mas não faz downgrade de instalações.
+Beta.49 e o manifesto anterior permanecem disponíveis para recuperação manual.
+Restaurar o canal suspende a oferta, sem downgrade automático de instalações.
