@@ -1,3 +1,11 @@
+# Atualização v5 — rankings
+
+[Baixar v5](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v5.zip).
+
+Consulta EXP (300 posições) e Top 100 de Accretia, Bellato e Cora após o mercado. Ativo por padrão na interface; terminal: `"rankings": true` no config. Salva os rankings no JSONL local; ainda não envia rankings ao Companion. Preserve config, sessão e a pasta companion.state_dir para manter o vínculo.
+
+Validação: 192 testes (185 aprovados, 7 ignorados); os 300 registros de uma resposta real de EXP coincidem com o decoder. Teste ativo no jogo pendente.
+
 # Cliente de Mercado para RF Companion — 19/09/2026
 
 ## Atualização local/global
