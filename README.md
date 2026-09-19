@@ -1,3 +1,11 @@
+# Atualização v6 — envio de rankings
+
+[Baixar v6](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v6.zip).
+
+Integra os contratos community.exp_ranking_snapshot e community.faction_ranking_snapshot à mesma fila e identidade do mercado. Envia Top 100 de EXP e cada facção; conserva 300 posições de EXP no dump local. Rankings inválidos/incompletos geram diagnóstico local. Preserve config, sessão e companion.state_dir.
+
+Validação: 195 testes, 188 aprovados e 7 ignorados; quatro lotes completos passaram no validate_batch do receptor. Sem envio de dados de teste ao site.
+
 # Atualização v5 — rankings
 
 [Baixar v5](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v5.zip).
