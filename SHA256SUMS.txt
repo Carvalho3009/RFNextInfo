@@ -1,2 +1,3 @@
 e11277045ae91ee30c942c637ea60355355c5aab7e542014f8be7fb587a58980  rfnext-market-client-source.zip
 a1f3b9e1b339380e6c401d690565ab373939ecbc8dd0659e8d095b31141dfefa  rfnext-market-local-global-20260919.zip
+d11c262eb4a64c4b0ec3cb0d5e8d1395939f446e5e5d14549c075e899562a764  rfnext-market-local-global-20260919-v2.zip

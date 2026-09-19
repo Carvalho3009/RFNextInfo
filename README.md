@@ -2,6 +2,10 @@
 
 ## Atualização local/global
 
+[Baixar correção v2](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v2.zip).
+
+Correção baseada na captura 20260919-163618: lista global usa `0100`, não `0001`. Duas consultas reais confirmam a resposta do mercado 1. A captura não contém detalhes nem entrada na 12000; o seletor dos detalhes e a causa do timeout de entrada permanecem pendentes. 177 testes aprovados, 7 ignorados. Prefira a v2 aos pacotes abaixo.
+
 [Baixar cliente local/global](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919.zip).
 
 Consultas, detalhes, relatórios e envio separados por mercado e item. Inclui catálogo SQLite e instruções de uso. Validação local: 184 testes, 177 aprovados e 7 ignorados. Os seletores de envio global ainda são hipótese; confirmação no jogo pendente. O cliente rejeita respostas de mercado divergente. Esta atualização não altera o receptor publicado. O pacote anterior permanece disponível abaixo.
