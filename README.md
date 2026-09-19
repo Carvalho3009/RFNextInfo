@@ -2,6 +2,10 @@
 
 ## Atualização local/global
 
+[Baixar v4 — envio completo corrigido](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v4.zip).
+
+Corrige o envio de mercados com mais de 32.768 ofertas: até 256 partes de ofertas, sem misturar mercados ou dividir uma coleta em snapshots concorrentes. Listas agregadas respeitam 256 linhas por parte. Receptor atualizado em 19/09 às 18:33 (Brasília), preservando preço máximo zero informado pelo jogo. Validação: 189 testes do cliente (182 aprovados, 7 ignorados), 47 testes do receptor e envio assinado em banco isolado de 114 lotes com 49.219 ofertas locais e 2.324 globais. Não houve reenvio da coleta do usuário para produção. Prefira v4 aos pacotes abaixo.
+
 [Baixar v3 — conexão aberta após coleta](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v3.zip).
 
 Na interface, mantém a conexão 12020 aberta após concluir e enviar a coleta. Resultado disponível para exportação; botão Desconectar encerra a sessão. Fechamento pelo servidor preserva a coleta. Não implementa ainda heartbeat 0x0205 ou renovação de token; permanência da sessão depende do servidor. CLI permanece execução única. Validação: 187 testes, 180 aprovados e 7 ignorados; sem teste de permanência no jogo real. Prefira v3 aos pacotes abaixo.
