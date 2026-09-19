@@ -1,3 +1,9 @@
+# Atualização v7 — barras de progresso
+
+[Baixar v7](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v7.zip).
+
+Barras de leitura por etapa e envio por lotes confirmados pelo receptor, sem mensagens de progresso por item na interface. Rejeições continuam visíveis. Preserve configuração, sessão e pasta companion.state_dir. Validação automatizada: 197 testes, 190 aprovados, 7 ignorados. Visualização manual pendente.
+
 # Atualização v6 — envio de rankings
 
 [Baixar v6](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v6.zip).
