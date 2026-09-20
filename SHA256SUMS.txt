@@ -17,3 +17,4 @@ b2180b4aeaed3b6e76b55c038b1384804772bfee5ea23538634059132b44bc21  rfnext-market-
 5af6efa404dfb3d5d3578cbebbf42fc4237476583faf254c3e2a60574e2562b3  rfnext-market-local-global-20260919-v16.zip
 ad8b9ab4d6aaf7ab77d3d6e1d8ac1e2e2a76c9cd6d89177f99ba8820a61b0702  rfnext-market-local-global-20260919-v17.zip
 61bcf42c466c39593e4a78763778aba9b41b3baab1bbbdbc6bcad7353db89ad4  rfnext-market-local-global-20260919-v18.zip
+36de09c9e4bc25af54bee70375a7c325c52f278910cecdbd8f8cb21c86ce86ec  rfnext-market-local-global-20260919-v19.zip
