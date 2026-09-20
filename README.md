@@ -1,3 +1,9 @@
+# Atualização v8 — vendedores pelos rankings
+
+[Baixar v8](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v8.zip).
+
+Cruza IDs exatos da mesma coleta para preencher seller nos mercados local e global. Usa as 300 posições de EXP e três rankings de facção. Nomes conflitantes ou ausentes continuam desconhecidos. Faça nova coleta com rankings e envio habilitados; não reescreve lotes antigos. Preserve configuração, sessão e companion.state_dir. Testes: 198 executados, 191 aprovados e 7 ignorados.
+
 # Atualização v7 — barras de progresso
 
 [Baixar v7](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v7.zip).
