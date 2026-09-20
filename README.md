@@ -1,3 +1,9 @@
+# v11 — exportador completo incluído
+
+[Baixar v11](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v11.zip).
+
+Arraste o PCAP principal sobre converter-captura.bat; use o .completo.json no preparador com --initialize-character. Conversão e preparação do 0201 validadas offline na captura real 20260919-171931. Não recupera comandos ausentes no PCAP nem renova credenciais. Cliente mantém a implementação v10.
+
 # Atualização v10 — entrada experimental do personagem
 
 [Baixar v10](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v10.zip).
