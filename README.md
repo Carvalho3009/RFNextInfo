@@ -1,3 +1,9 @@
+# Atualização v9 — sequência de rankings
+
+[Baixar v9](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v9.zip).
+
+EXP: 0x1A03 seguido de 0x1A01 sem aguardar resposta intermediária. Facções: agenda 0x2408 e seletores 0101/0201/0301, correlacionando listas completas. Timeout isolado não bloqueia as outras listas. Preserva envio, cruzamento de vendedores e barras. Validação: 198 testes (191 aprovados, 7 ignorados) e 15 quadros reais das duas capturas mais recentes. Teste ativo no jogo pendente. Preserve configuração, sessão e pasta companion.state_dir.
+
 # Atualização v8 — vendedores pelos rankings
 
 [Baixar v8](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v8.zip).
