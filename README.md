@@ -1,3 +1,9 @@
+# Atualização v10 — entrada experimental do personagem
+
+[Baixar v10](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v10.zip).
+
+Opção --initialize-character no preparador. Exige novo dump com 0x0201; atualiza identificadores da conexão e aguarda 0x0202 antes do mercado. Desativada sem configuração explícita. Leia instruções do ZIP e preserve configuração/vínculo em pasta separada. Testes: 199 executados, 192 aprovados e 7 ignorados; reconstrução idêntica à captura de referência. Inicialização ativa e efeito sobre rankings ainda pendentes.
+
 # Atualização v9 — sequência de rankings
 
 [Baixar v9](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v9.zip).
