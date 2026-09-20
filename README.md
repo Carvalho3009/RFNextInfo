@@ -1,3 +1,9 @@
+# v27 — envia capturas parciais
+
+[Baixar v27](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v27.zip).
+
+Um erro de leitura em ranking ou mercado não descarta mais o ciclo: os dados disponíveis são enviados ao Companion com o diagnóstico. A execução contínua continua tentando o próximo ciclo, e o intervalo começa somente após o encerramento do ciclo. Testes da consulta completa: 6 aprovados.
+
 # v26 — repetição após encerramento do ciclo
 
 [Baixar v26](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v26.zip).
