@@ -1,3 +1,9 @@
+# v28 — sincroniza o upload do heartbeat automático
+
+[Baixar v28](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v28.zip).
+
+A consulta completa agora usa o mesmo fluxo do botão individual: publica a coleta de inicialização no Companion antes de liberar a consulta de ranking. Depois disso, mantém o heartbeat ativo e segue para mercado. Falha de upload fica pendente e não impede a sessão de continuar. Testes da consulta completa: 6 aprovados.
+
 # v27 — envia capturas parciais
 
 [Baixar v27](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v27.zip).
