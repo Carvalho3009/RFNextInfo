@@ -1,3 +1,9 @@
+# v26 — repetição após encerramento do ciclo
+
+[Baixar v26](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v26.zip).
+
+Na execução contínua, erros de um ciclo são registrados e não desativam a execução. O intervalo configurado começa somente quando o ciclo termina, inclusive após falha; a próxima tentativa só começa depois desse intervalo. A autenticação e a conexão inicial continuam sendo falhas fatais. Testes da consulta completa: 6 aprovados.
+
 # v11 — exportador completo incluído
 
 [Baixar v11](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-market-client-20260919/rfnext-market-local-global-20260919-v11.zip).
