@@ -1,0 +1,293 @@
+From 0a9fb7262ab7866f20f81abc700ff05eddd54c3e Mon Sep 17 00:00:00 2001
+From: Kadukarvalho01 <137368376+Kadukarvalho01@users.noreply.github.com>
+Date: Sun, 20 Sep 2026 19:45:57 -0300
+Subject: [PATCH] fix: initialize ranking character and report failed
+ collections accurately
+
+---
+ LEIA-ME-v32.md            | 13 ++++++
+ VALIDACAO-v32.md          |  9 ++++
+ rfnext_market/complete.py |  9 +++-
+ rfnext_market/desktop.py  | 12 +++++-
+ rfnext_market/session.py  | 17 +++++---
+ tests/test_complete.py    | 24 ++++++++++-
+ tests/test_rankings.py    | 88 +++++++++++++++++++++++++++++++++++++++
+ 7 files changed, 163 insertions(+), 9 deletions(-)
+ create mode 100644 LEIA-ME-v32.md
+ create mode 100644 VALIDACAO-v32.md
+ create mode 100644 tests/test_rankings.py
+
+diff --git a/LEIA-ME-v32.md b/LEIA-ME-v32.md
+new file mode 100644
+index 0000000..54b5e9e
+--- /dev/null
++++ b/LEIA-ME-v32.md
+@@ -0,0 +1,13 @@
++# RF Next — v32
++
++Correção da regressão da v31: a conexão usada pelo ranking agora inicializa o personagem com 0x0201 e exige a resposta válida 0x0202 antes de requisitar EXP e as três facções. O mesmo caminho atende os botões de ranking individual/contínuo e a etapa de ranking da consulta completa.
++
++Se todos os rankings falharem, o resultado é failed. Se houver dados parciais, é incomplete. A consulta completa não apresenta sucesso total quando o mercado conclui mas faltam rankings. Ofertas disponíveis ainda seguem para o envio.
++
++Estados de encerramento dos workers são conservados separadamente dos quadros do log visual e incluídos na exportação, com horário. Esse histórico também é limitado (1.000 eventos); não é uma captura ilimitada.
++
++Mercado, ranking e consulta completa mantêm seus controles independentes da v31. O servidor do Companion continua https://apirf.karvalho.dev.br. O suporte de até 300 registros não garante que o jogo retorne 300 por facção.
++
++Extraia o ZIP na pasta do cliente preservando config.json, session.json, base de itens e companion-state. Abra run-client.bat e confirme v32 no título.
++
++Limitação: esta alteração corrige a inicialização omitida e o resultado falso. A coexistência das conexões autenticadas e a persistência do heartbeat dependem do teste com o servidor real; não foram declaradas resolvidas.
+diff --git a/VALIDACAO-v32.md b/VALIDACAO-v32.md
+new file mode 100644
+index 0000000..95f2a5f
+--- /dev/null
++++ b/VALIDACAO-v32.md
+@@ -0,0 +1,9 @@
++# Validação v32
++
++- Teste de protocolo simulado comprova 0x0201/0x0202 antes de 0x1A01, quatro rankings recebidos e ausência de pedidos de mercado nesse modo.
++- Rejeição da inicialização impede envio de pedidos de ranking.
++- Quatro timeouts produzem failed; EXP recebido e facções ausentes produzem incomplete.
++- Consulta completa preserva falha dos rankings mesmo com mercado e upload bem-sucedidos.
++- Estado de encerramento do worker é retido com horário para exportação.
++- Regressão completa e validação do ZIP extraído executadas; resultados em .validation/v32-tests.log e .validation/v32-package-tests.log na origem.
++- Sem teste de login real, sem alteração de credenciais e sem alteração no site nesta versão.
+diff --git a/rfnext_market/complete.py b/rfnext_market/complete.py
+index f7b9fb1..e6b597e 100644
+--- a/rfnext_market/complete.py
++++ b/rfnext_market/complete.py
+@@ -11,7 +11,7 @@ SERVER = "https://apirf.karvalho.dev.br"
+ def mode_config(config, mode):
+     value = copy.deepcopy(config)
+     value.update(heartbeat_only=mode == "heartbeat", rankings_only=mode == "rankings",
+-                 rankings=mode == "rankings", initialize_character=mode == "heartbeat")
++                 rankings=mode == "rankings", initialize_character=mode in ("heartbeat", "rankings"))
+     value["heartbeat"] = dict(value.get("heartbeat", {}), enabled=mode == "heartbeat")
+     if mode == "heartbeat":
+         value["heartbeat"].setdefault("constant", -371988797)
+@@ -132,6 +132,13 @@ def run(config, emit, stop_event, continuous=False, interval=300, runner=None, s
+                 if result is not None:
+                     if mode == "complete":
+                         result["rankings"] = snapshots
++                        missing = [name for name, *_ in session.rankings.REQUESTS
++                                   if snapshots.get(name, {}).get("status") != "completed"]
++                        if missing:
++                            if result.get("status") == "completed":
++                                result["status"] = "incomplete"
++                            result["diagnostic"] = "; ".join(filter(None, (
++                                result.get("diagnostic"), "Rankings pendentes: " + ", ".join(missing))))
+                     result["upload"] = submit(result, mode_config(config, "market"), emit=emit, stop_event=stop_event)
+                     emit({"record_type": "cycle", "operation": mode, "stage": "done",
+                           "status": result.get("status"), "result": result})
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index 6944f3a..54c0a4b 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -163,7 +163,7 @@ def upload_status_text(value):
+ class DesktopApp:
+     def __init__(self, root: tk.Tk):
+         self.root = root
+-        self.root.title("RF Next — consultas v31")
++        self.root.title("RF Next — consultas v32")
+         self.root.minsize(900, 560)
+         self.config_document = {}
+         self.config_path = tk.StringVar()
+@@ -192,6 +192,7 @@ class DesktopApp:
+         self.heartbeat_stop_event = None
+         self.rankings_worker = None
+         self.rankings_stop_event = None
++        self.operation_events = deque(maxlen=1000)
+         self.records = deque(maxlen=MAX_VISIBLE_RECORDS)
+         self.result = None
+         self._closing = False
+@@ -619,10 +620,16 @@ class DesktopApp:
+                 self.result = result
+                 self.mode_results[mode] = result
+             self.mode_buttons[mode].configure(state="normal")
+-            self.mode_status[mode].set(error or "Encerrado")
++            summary = (result or {}).get("diagnostic") or (result or {}).get("status", "")
++            self.mode_status[mode].set(error or ("Encerrado: " + summary))
+             return
+         if event[0] == "mode_state":
+             record = event[1]
++            if record.get("record_type") != "countdown":
++                if not hasattr(self, "operation_events"):
++                    self.operation_events = deque(maxlen=1000)
++                self.operation_events.append({**{k: v for k, v in record.items() if k != "result"},
++                    "timestamp": record.get("timestamp", datetime.now().astimezone().isoformat())})
+             mode = record.get("operation", "complete")
+             if record["record_type"] == "countdown":
+                 seconds = record["remaining_seconds"]
+@@ -835,6 +842,7 @@ class DesktopApp:
+             return
+         try:
+             records = list(self.records)
++            records.extend(getattr(self, "operation_events", ()))
+             omitted = getattr(self, "_dropped_records", 0)
+             if omitted:
+                 records.append({"record_type": "log_truncated", "omitted_records": omitted})
+diff --git a/rfnext_market/session.py b/rfnext_market/session.py
+index c30d995..6fa5ae6 100644
+--- a/rfnext_market/session.py
++++ b/rfnext_market/session.py
+@@ -583,13 +583,20 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+         if config.get("rankings_only"):
+             state["stage"] = "rankings:done"
+             state["collection_complete"] = True
+-            result = {"status": "completed", "stage": "rankings:done", "diagnostic": "",
++            missing = [name for name, *_ in rankings.REQUESTS
++                       if rank_results.get(name, {}).get("status") != "completed"]
++            received = any(value.get("records") for value in rank_results.values())
++            status = "completed" if not missing else "incomplete" if received else "failed"
++            diagnostic = "Rankings pendentes: " + ", ".join(missing) if missing else ""
++            errors = [{"ranking": name, "error": rank_results.get(name, {}).get("diagnostic")
++                       or "Ranking incompleto ou sem resposta"} for name in missing]
++            result = {"status": status, "stage": "rankings:done", "diagnostic": diagnostic,
+                       "authenticated": state["authenticated"], "items": [], "offers": [],
+-                      "errors": [], "frames": frames, "market": {}, "rankings": rank_results,
++                      "errors": errors, "frames": frames, "market": {}, "rankings": rank_results,
+                       "unconfirmed": list(UNCONFIRMED)}
+-            emit({"record_type": "completion", "status": "completed", "stage": "rankings:done",
+-                  "diagnostic": "", "authenticated": state["authenticated"],
+-                  "items": 0, "offers": 0, "errors": [], "frames": len(frames),
++            emit({"record_type": "completion", "status": status, "stage": "rankings:done",
++                  "diagnostic": diagnostic, "authenticated": state["authenticated"],
++                  "items": 0, "offers": 0, "errors": errors, "frames": len(frames),
+                   "unconfirmed": list(UNCONFIRMED)})
+             return result
+ 
+diff --git a/tests/test_complete.py b/tests/test_complete.py
+index 7159abf..34e7c3d 100644
+--- a/tests/test_complete.py
++++ b/tests/test_complete.py
+@@ -47,7 +47,7 @@ class CompleteTest(unittest.TestCase):
+                     step='rankings' if config['rankings_only'] else 'market'
+                     order.append(step)
+                     self.assertFalse(config['heartbeat']['enabled'])
+-                    self.assertFalse(config['initialize_character'])
++                    self.assertEqual(config['initialize_character'], step == 'rankings')
+                     if mode=='market':
+                         self.assertTrue(config['market']['both_markets']); self.assertFalse(config['rankings'])
+                     if step=='rankings': self.assertFalse(config['market']['both_markets']); self.assertEqual(config['market']['list_requests'],[])
+@@ -139,3 +139,25 @@ class CompleteTest(unittest.TestCase):
+         self.assertEqual(toggles,list(app.mode_continuous.values()))
+         entries=[c.kwargs.get('textvariable') for c in widgets.Entry.call_args_list]
+         for variable in app.mode_intervals.values():self.assertIn(variable,entries)
++
++    def test_complete_does_not_hide_failed_rankings_behind_market_success(self):
++        stop=threading.Event(); hb=Mock(); hb.wait_ready.return_value=True
++        def runner(config,emit,stop_event):
++            if config["rankings_only"]:
++                self.assertTrue(config["initialize_character"])
++                return {"status":"failed", "rankings":{}}
++            return {"status":"completed", "offers":[{"pc_id":42}]}
++        answer=complete.run({"market":{}},lambda r:None,stop,runner=runner,
++                            submit=lambda *a,**k:{"status":"accepted"},heartbeat=hb)
++        self.assertEqual(answer["status"],"incomplete")
++        self.assertIn("exp",answer["diagnostic"])
++        self.assertEqual(answer["upload"]["status"],"accepted")
++
++    def test_worker_end_state_is_retained_for_export(self):
++        app=desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app.mode_status={"heartbeat":Mock()}
++        record={"record_type":"operation_state","operation":"heartbeat",
++                "status":"failed","message":"connection closed by test server"}
++        app._handle_event(("mode_state",record))
++        self.assertEqual(app.operation_events[-1]["message"],record["message"])
++        self.assertIn("timestamp",app.operation_events[-1])
+diff --git a/tests/test_rankings.py b/tests/test_rankings.py
+new file mode 100644
+index 0000000..e1d1e58
+--- /dev/null
++++ b/tests/test_rankings.py
+@@ -0,0 +1,88 @@
++import struct
++import unittest
++from rfnext_market import rankings
++from tests import test_session as ts
++
++
++def exp(count=300):
++    return struct.pack("<H", count) + b"".join(
++        struct.pack("<QQIIIIQ", n, n * 100, n, n, 1, 2, n) + ts.s16("Player")
++        + struct.pack("<QI", 0, 0) + ts.s16("Guild") + bytes(4)
++        for n in range(1, count + 1))
++
++
++def faction(fid):
++    def row(n):
++        return (struct.pack("<Q", n) + ts.s16("Player") + struct.pack("<IQ", 1, 0)
++                + ts.s16("") + struct.pack("<IId", 0, n, float(n)))
++    return bytes([fid, 0]) + row(1) + struct.pack("<H", 100) + b"".join(row(n) for n in range(1, 101))
++
++
++class RankingsTest(unittest.TestCase):
++    run_session = ts.SessionTest.run_session
++    sent_ops = ts.SessionTest.sent_ops
++
++    def test_collection_and_correlation(self):
++        cfg = ts.config(); cfg["rankings"] = True
++        script = ts.game_script({0x1A03: [[(0x1A04, struct.pack("<IIIIQ", 1, 1, 1, 2, 0))]], 0x1A01: [[(0x1A02, exp())]],
++            0x240A: [[(0x240B, faction(3)), (0x240B, faction(1))],
++                     [(0x240B, faction(2))], [(0x240B, faction(3))]]})
++        result = self.run_session(game_s=script, cfg=cfg)
++        self.assertEqual(result["status"], "completed")
++        self.assertEqual(list(result["rankings"]), ["exp", "accretia", "bellato", "cora"])
++        self.assertTrue(all(v["status"] == "completed" for v in result["rankings"].values()))
++        self.assertEqual(self.sent_ops(12020)[-6:], [0x1A03, 0x1A01, 0x2408, 0x240A, 0x240A, 0x240A])
++        self.assertEqual([f["payload"].hex() for f in self.conns[12020].sent[-3:]], ["0101", "0201", "0301"])
++        self.assertEqual(self.conns[12020].sent[-5]["payload"].hex(), "000000002c010000")
++        self.assertEqual(len(result["rankings"]["exp"]["records"]), 300)
++
++    def test_exp_timeout_preserves_market_and_continues_factions(self):
++        cfg = ts.config(); cfg["rankings"] = True
++        result = self.run_session(cfg=cfg, game_s=ts.game_script({0x240A: [[(0x240B, faction(n))] for n in (1, 2, 3)]}))
++        self.assertEqual(result["status"], "completed")
++        self.assertEqual(result["rankings"]["exp"]["status"], "failed")
++        self.assertEqual(self.sent_ops(12020).count(0x240A), 3)
++        self.assertEqual(result["rankings"]["cora"]["status"], "completed")
++        self.assertTrue(result["market"]["queries"])
++
++    def test_strict_decode_and_partial_results(self):
++        for opcode, raw in ((0x1A02, exp()), (0x240B, faction(1))):
++            rankings.parse_message(opcode, raw)
++            for bad in (raw[:-1], raw + b"x"):
++                with self.assertRaises(ValueError): rankings.parse_message(opcode, bad)
++        fields = rankings.parse_message(0x1A02, exp(2))["fields"]
++        self.assertFalse(rankings.validate(fields, "exp"))
++        fields["records"][1]["rank"] = 1
++        with self.assertRaises(ValueError): rankings.validate(fields, "exp")
++
++    def test_ranking_mode_initializes_character_before_all_requests(self):
++        from rfnext_market import complete
++        cfg = complete.mode_config(ts.config(), "rankings")
++        creds = cfg["credentials"]
++        creds["character_enter_payload_hex"] = (ts.s16(creds["account_id"]) +
++            struct.pack("<QQ14sQ", 99, 123, bytes(14), 88) + ts.s16(creds["auth_jwt"])).hex()
++        script = ts.game_script({
++            0x0201: [[(0x0202, struct.pack("<HQ", 0, 123))]],
++            0x1A01: [[(0x1A02, exp())]],
++            0x240A: [[(0x240B, faction(n))] for n in (1, 2, 3)]})
++        answer = self.run_session(cfg=cfg, game_s=script)
++        self.assertEqual(answer["status"], "completed", answer["diagnostic"])
++        ops = self.sent_ops(12020)
++        self.assertLess(ops.index(0x0201), ops.index(0x1A01))
++        self.assertFalse(any(op >> 8 == 0x1D for op in ops))
++        self.assertEqual(len(answer["rankings"]), 4)
++        script[0x0201] = [[(0x0202, struct.pack("<HQ", 1, 123))]]
++        answer = self.run_session(cfg=cfg, game_s=script)
++        self.assertEqual(answer["status"], "failed")
++        self.assertNotIn(0x1A01, self.sent_ops(12020))
++
++    def test_no_ranking_responses_is_failed_and_partial_is_incomplete(self):
++        for has_exp in (False, True):
++            with self.subTest(has_exp=has_exp):
++                cfg = ts.config(); cfg.update(rankings=True, rankings_only=True)
++                script = ts.game_script({0x1A01: [[(0x1A02, exp())]]} if has_exp else {})
++                answer = self.run_session(cfg=cfg, game_s=script)
++                expected = "incomplete" if has_exp else "failed"
++                self.assertEqual(answer["status"], expected)
++                self.assertEqual(len(answer["errors"]), 3 if has_exp else 4)
++                self.assertEqual(self.records[-1]["status"], expected)
+-- 
+2.55.0.windows.4
+
