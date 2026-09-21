@@ -1,0 +1,193 @@
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index 54c0a4b..c403ea8 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -163,7 +163,7 @@ def upload_status_text(value):
+ class DesktopApp:
+     def __init__(self, root: tk.Tk):
+         self.root = root
+-        self.root.title("RF Next — consultas v32")
++        self.root.title("RF Next — consultas v33")
+         self.root.minsize(900, 560)
+         self.config_document = {}
+         self.config_path = tk.StringVar()
+diff --git a/rfnext_market/upload.py b/rfnext_market/upload.py
+index 8dbebc2..7d7b35e 100644
+--- a/rfnext_market/upload.py
++++ b/rfnext_market/upload.py
+@@ -188,18 +188,42 @@ def _database(options):
+     db = sqlite3.connect(folder / "market-upload.sqlite3", timeout=10)
+     db.row_factory = sqlite3.Row
+     try:
+-        # ponytail: retain results/receipts; add an explicit archival policy if disk growth matters.
+         db.executescript("""
++            CREATE TABLE IF NOT EXISTS upload_totals (id INTEGER PRIMARY KEY CHECK(id=1),accepted INTEGER NOT NULL,last_sequence INTEGER NOT NULL);
++            INSERT OR IGNORE INTO upload_totals VALUES(1,0,0);
+             CREATE TABLE IF NOT EXISTS identity (id INTEGER PRIMARY KEY CHECK(id=1),origin TEXT NOT NULL,secret BLOB NOT NULL);
+             CREATE TABLE IF NOT EXISTS results (result_ref TEXT PRIMARY KEY,captured_at TEXT NOT NULL,document BLOB NOT NULL,queued INTEGER NOT NULL DEFAULT 0,error TEXT);
+             CREATE TABLE IF NOT EXISTS batches (sequence INTEGER PRIMARY KEY,batch_id TEXT UNIQUE NOT NULL,body BLOB NOT NULL,
+                 state TEXT NOT NULL DEFAULT 'pending',receipt BLOB);
+         """)
+-        yield db
++        _prune_uploaded(db)
++        try:
++            yield db
++        finally:
++            db.rollback()
++            _prune_uploaded(db)
+     finally:
+         db.close()
+ 
+ 
++def _prune_uploaded(db):
++    """Remove apenas dados confirmados; mantém fila, identidade e sequência."""
++    with db:
++        db.execute("""DELETE FROM results WHERE queued=1 AND result_ref NOT IN (
++            SELECT json_extract(body, '$.events[0].session_ref') FROM batches
++            WHERE state!='accepted')""")
++        db.execute("""UPDATE upload_totals SET
++            accepted=accepted+(SELECT COUNT(*) FROM batches WHERE state='accepted'),
++            last_sequence=MAX(last_sequence,COALESCE((SELECT MAX(sequence) FROM batches),0)) WHERE id=1""")
++        db.execute("DELETE FROM batches WHERE state='accepted'")
++    free = db.execute("PRAGMA freelist_count").fetchone()[0]
++    pages = db.execute("PRAGMA page_count").fetchone()[0]
++    # ponytail: compact once per upload run when at least 20% and 1 MiB are free.
++    page_size = db.execute("PRAGMA page_size").fetchone()[0]
++    if free * page_size >= 1024 * 1024 and free >= pages * 0.2:
++        db.execute("VACUUM")
++
++
+ def _identity(db, options):
+     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+     from cryptography.hazmat.primitives import serialization
+@@ -261,8 +285,6 @@ def _post(options, path, body, headers=None, stop_event=None):
+         connection.request("POST", path, body, {"Content-Type": "application/json", "Accept": "application/json",
+                            "User-Agent": "RFQOL-Agent/" + VERSION, "Connection": "close", **(headers or {})})
+         response = connection.getresponse()
+-        if not 200 <= response.status < 300:
+-            raise ValueError(f"Companion HTTP {response.status}: envio permanece pendente")
+         raw = bytearray()
+         while len(raw) <= MAX_BODY:
+             if stop_event.is_set():
+@@ -283,6 +305,9 @@ def _post(options, path, body, headers=None, stop_event=None):
+             raise TimeoutError("tempo de resposta do Companion esgotado")
+         if len(raw) > MAX_BODY:
+             raise ValueError("resposta do Companion excede limite")
++        if not 200 <= response.status < 300:
++            detail = bytes(raw).decode("utf-8", errors="replace").strip()
++            raise ValueError(f"Companion HTTP {response.status}: {detail[:2000] or 'resposta sem detalhes'}; envio permanece pendente")
+         value = json.loads(raw)
+         if not isinstance(value, dict):
+             raise ValueError("resposta do Companion inválida")
+@@ -318,6 +343,7 @@ def _receipt(receipt, batch):
+ 
+ def _status(db, **extra):
+     counts = dict(db.execute("SELECT state,COUNT(*) FROM batches GROUP BY state").fetchall())
++    counts["accepted"] = counts.get("accepted", 0) + db.execute("SELECT accepted FROM upload_totals WHERE id=1").fetchone()[0]
+     saved = db.execute("SELECT COUNT(*) FROM results WHERE queued=0").fetchone()[0]
+     blocked = db.execute("SELECT error FROM results WHERE queued=0 AND error IS NOT NULL ORDER BY captured_at LIMIT 1").fetchone()
+     rejected = db.execute("SELECT receipt FROM batches WHERE state='rejected' ORDER BY sequence DESC LIMIT 1").fetchone()
+@@ -363,6 +389,10 @@ def _flush(db, options, registration, key, emit, stop_event):
+             try:
+                 receipt = _post(options, INGEST_PATH, body, headers, stop_event=stop_event)
+                 break
++            except ValueError as exc:
++                event = batch["events"][0]
++                raise ValueError(f"{exc}; batch_id={batch['batch_id']}; "
++                                 f"event_type={event['type']}; session_ref={event['session_ref']}") from exc
+             except (OSError, http.client.RemoteDisconnected):
+                 if attempt:
+                     raise
+@@ -419,7 +449,7 @@ def _run_locked(config, result, emit, stop_event):
+                     db.execute("BEGIN IMMEDIATE")
+                     if db.execute("SELECT queued FROM results WHERE result_ref=?", (result_ref,)).fetchone()[0]:
+                         continue
+-                    sequence = db.execute("SELECT COALESCE(MAX(sequence),0) FROM batches").fetchone()[0]
++                    sequence = db.execute("SELECT MAX(last_sequence,COALESCE((SELECT MAX(sequence) FROM batches),0)) FROM upload_totals WHERE id=1").fetchone()[0]
+                     for payload in payloads:
+                         sequence += 1
+                         event_id = secrets.token_hex(24)
+diff --git a/tests/test_upload_http_errors.py b/tests/test_upload_http_errors.py
+new file mode 100644
+index 0000000..c67476a
+--- /dev/null
++++ b/tests/test_upload_http_errors.py
+@@ -0,0 +1,42 @@
++import threading
++import unittest
++from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
++
++from rfnext_market import upload
++
++
++class UploadHttpErrorsTest(unittest.TestCase):
++    def test_error_body_is_preserved_for_json_text_and_empty_responses(self):
++        response_body = [b'{"error":"invalid_payload","message":"Campo obrigatorio ausente"}']
++
++        class Handler(BaseHTTPRequestHandler):
++            def log_message(self, *args):
++                pass
++
++            def do_POST(self):
++                self.rfile.read(int(self.headers.get("Content-Length", "0")))
++                self.send_response(422)
++                self.send_header("Content-Length", str(len(response_body[0])))
++                self.end_headers()
++                self.wfile.write(response_body[0])
++
++        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
++        thread = threading.Thread(target=server.serve_forever, daemon=True)
++        thread.start()
++        try:
++            options = {"base_url": f"http://127.0.0.1:{server.server_port}", "timeout": 2}
++            for body, expected in (
++                (response_body[0], "Campo obrigatorio ausente"),
++                (b"invalid request", "invalid request"),
++                (b"", "resposta sem detalhes"),
++            ):
++                response_body[0] = body
++                with self.subTest(body=body), self.assertRaises(ValueError) as caught:
++                    upload._post(options, "/local", b"{}")
++                self.assertIn("HTTP 422", str(caught.exception))
++                self.assertIn(expected, str(caught.exception))
++                self.assertIn("envio permanece pendente", str(caught.exception))
++        finally:
++            server.shutdown()
++            server.server_close()
++            thread.join(2)
+diff --git a/tests/test_upload_retention.py b/tests/test_upload_retention.py
+new file mode 100644
+index 0000000..3f9b3a5
+--- /dev/null
++++ b/tests/test_upload_retention.py
+@@ -0,0 +1,30 @@
++import json
++import tempfile
++import unittest
++from pathlib import Path
++
++from rfnext_market import upload
++
++
++class UploadRetentionTest(unittest.TestCase):
++    def test_cleanup_preserves_pending_rejected_identity_counts_and_sequence(self):
++        with tempfile.TemporaryDirectory() as folder:
++            options = {"state_dir": folder}
++            with upload._database(options) as db:
++                with db:
++                    db.execute("INSERT INTO identity VALUES(1,'origin',?)", (b'identity',))
++                    for ref, queued in (("sent",1),("pending",1),("rejected",1),("unqueued",0)):
++                        db.execute("INSERT INTO results VALUES(?,?,?, ?,NULL)", (ref,"now",b'x'*2000000,queued))
++                    for seq, state, ref in ((1,"pending","pending"),(2,"rejected","rejected"),(3,"accepted","sent")):
++                        body=json.dumps({"events":[{"session_ref":ref}]}).encode()
++                        db.execute("INSERT INTO batches VALUES(?,?,?,?,?)",(seq,str(seq),body,state,b'{}'))
++                size_before=Path(folder,"market-upload.sqlite3").stat().st_size
++                original=db.execute("SELECT body FROM batches WHERE state!='accepted' ORDER BY sequence").fetchall()
++            with upload._database(options) as db:
++                self.assertEqual([r[0] for r in db.execute("SELECT result_ref FROM results ORDER BY result_ref")],["pending","rejected","unqueued"])
++                self.assertEqual(original,db.execute("SELECT body FROM batches ORDER BY sequence").fetchall())
++                self.assertEqual(tuple(db.execute("SELECT accepted,last_sequence FROM upload_totals").fetchone()),(1,3))
++                self.assertEqual(db.execute("SELECT secret FROM identity").fetchone()[0],b'identity')
++                self.assertLess(Path(folder,"market-upload.sqlite3").stat().st_size,size_before)
++            with upload._database(options) as db:
++                self.assertEqual(tuple(db.execute("SELECT accepted,last_sequence FROM upload_totals").fetchone()),(1,3))
