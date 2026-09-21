@@ -1,2 +1,1 @@
-# Preserve the bytes of the signed update manifest.
-*.json -text whitespace=cr-at-eol
+*.json -text
