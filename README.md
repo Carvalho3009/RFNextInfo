@@ -1,19 +1,10 @@
-# Canal beta do RF Next Companion
+# RF Next Companion Agent 2.0.0-beta.53
 
-`latest.json` é um manifesto Ed25519. O instalador permanece na branch da versão.
-Este canal contém somente metadados públicos da distribuição.
+Publicado em 21/09/2026 11:19 — horário de Brasília (UTC−3).
 
-Versão atual: `2.0.0-beta.52` (sequência 62).
+- Corrigido o tamanho da estrutura do filtro Pktmon, para restringir a captura às portas do jogo antes de os pacotes chegarem ao Agent. Corrige o defeito que fazia o Agent processar tráfego de downloads; estabilidade sob download real ainda requer validação após instalar.
+- Rankings de EXP e facção incluem o character_uid confirmado pelo decoder.
 
-[Baixar instalador](https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.52/RF-Next-Companion-Setup-2.0.0-beta.52.exe)
+Validação: 714 testes (712 aprovados, dois ignorados), autoteste empacotado e instalação/desinstalação isoladas aprovados. 33 módulos e cinco arquivos de dados conferidos no instalador. Manifesto e procedência assinados com Ed25519. Sem Authenticode, conforme política do produto.
 
-Rotação lógica de sessão a cada seis horas, prioridade de dados de chefes,
-localização confirmada e recibos aplicados atomicamente à fila local.
-Preserve a pasta de dados do Agent e a fila durante a atualização.
-
-Atualizações iniciadas pela beta.51 ou posterior salvam os vínculos das sessões
-em arquivo protegido, com retomada em até 15 minutos para processos e conexões
-preservados. Não há captura durante o intervalo em que o programa fica fechado.
-
-Beta.51 e o manifesto anterior permanecem disponíveis para recuperação manual.
-Restaurar o canal suspende a oferta, sem downgrade automático de instalações.
+Instale pela atualização do Agent ou pelo arquivo RF-Next-Companion-Setup-2.0.0-beta.53.exe. Não é necessário limpar a fila de envios.
