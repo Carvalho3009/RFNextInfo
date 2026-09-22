@@ -477,6 +477,8 @@ class AgentLocalMonitorApi:
                     "pktmon-streaming", "pktmon-etw",
                 ) else None,
                 "backend_error": str(capture.get("backend_error") or "")[:240] or None,
+                "cleanup_pending": capture.get("cleanup_pending") is True,
+                "native_loss_counters_available": capture.get("native_loss_counters_available") is True,
             },
             "decoder": {
                 key: _integer(

@@ -227,6 +227,8 @@ class StandaloneWindowsAgentRuntime:
         self._process_bindings_lock = threading.Lock()
         self.live_events = self._new_event_stream()
         self.live_capture: RealtimeCapture | None = None
+        self._capture_stopping = False
+        self._session_stopping = False
         self.session_id: str | None = None
         self.started_at_ns: int | None = None
         self.last_error = ""
@@ -350,7 +352,11 @@ class StandaloneWindowsAgentRuntime:
 
     @property
     def active(self) -> bool:
-        return self.live_capture is not None
+        capture = self.live_capture
+        return bool(capture is not None and not self._capture_stopping and not self._session_stopping
+                    and not getattr(capture, "last_error", "")
+                    and getattr(capture, "is_active", getattr(
+                        capture, "_active", not getattr(capture, "stopped", False))))
 
     def _new_event_stream(self) -> LiveEventStream:
         limits = self.memory_limits
@@ -417,6 +423,8 @@ class StandaloneWindowsAgentRuntime:
                 continue
             process_pids, local_ports, remote_ports = raw[:3]
             pids.update(int(pid) for pid in process_pids)
+            # agent_processes returns relay-only local ports, including when
+            # another client of the same executable uses a direct connection.
             capture_ports.extend(int(port) for port in local_ports)
             capture_ports.extend(int(port) for port in remote_ports)
         return tuple(sorted(pids)), tuple(sorted(set(capture_ports)))
@@ -456,12 +464,22 @@ class StandaloneWindowsAgentRuntime:
         return True
 
     def start_capture(self) -> dict[str, Any]:
+        if self._closed:
+            raise RuntimeError("Agent ja encerrado")
+        self.service.require_capture_authorization()
         with self._lock:
             if self._closed:
                 raise RuntimeError("Agent ja encerrado")
             if self.active:
                 return self.health()
-            self.service.require_capture_authorization()
+            if self._session_stopping:
+                raise RuntimeError("A sessão ainda está encerrando; tente pausá-la novamente.")
+            if self.live_capture is not None:
+                self._stop_backend()
+            if self.session_id is not None:
+                # Recover capture only; do not mint another session per client.
+                self._start_backend(self._capture_ports or self.ports)
+                return self.health()
             processes = self.detected_processes()
             pids, capture_ports = self._capture_routes(processes, self.ports)
             if not pids:
@@ -478,20 +496,22 @@ class StandaloneWindowsAgentRuntime:
             self.live_events.set_connection_aliases(
                 self._read_process_aliases()
             )
-            self.live_events.start()
-            self.service.start_session(session_id)
-            live = self.capture_factory(None, capture_ports)
-            if hasattr(live, "set_packet_sink"):
-                live.set_packet_sink(self.live_events.feed)
             try:
-                live.start()
+                self.live_events.start()
+                self.session_id = session_id
+                self.service.start_session(session_id)
+                self._start_backend(capture_ports)
             except Exception as error:
-                self.live_events.stop()
-                self.service.finish_session(session_id, reason="capture_start_failed")
-                self.service.runtime.bridge.wait_until_idle()
+                try:
+                    self.live_events.stop()
+                    self.service.finish_session(session_id, reason="capture_start_failed")
+                    self.service.runtime.bridge.wait_until_idle()
+                    self.session_id = None
+                except Exception as cleanup_error:
+                    self._session_stopping = True
+                    error.add_note(f"Limpeza de início pendente: {type(cleanup_error).__name__}")
                 self.last_error = f"{type(error).__name__}: {error}"[:240]
                 raise
-            self.live_capture = live
             self._capture_ports = capture_ports
             self._pending_capture_ports = ()
             self._pending_route_observations = 0
@@ -509,40 +529,67 @@ class StandaloneWindowsAgentRuntime:
                 getattr(capture, name, 0) or 0
             )
 
+    def _stop_backend(self) -> None:
+        capture = self.live_capture
+        if capture is None:
+            return
+        self._capture_stopping = True
+        try:
+            capture.stop()
+        except Exception as error:
+            self.last_error = f"Encerramento da captura pendente: {type(error).__name__}: {error}"[:240]
+            raise
+        # Consolidate once, after all callbacks have stopped. Retain ownership
+        # and unaggregated counters if cleanup is incomplete.
+        self._accumulate_capture_metrics(capture)
+        self.live_capture = None
+        self._capture_stopping = False
+
+    def _start_backend(self, ports: tuple[int, ...]) -> None:
+        if self.live_capture is not None:
+            raise RuntimeError("A captura anterior ainda precisa ser encerrada.")
+        capture = self.capture_factory(None, ports)
+        self.live_capture = capture
+        self._capture_stopping = False
+        try:
+            self.live_events.set_transport_ports(ports)
+            capture.set_packet_sink(self.live_events.feed)
+            capture.start()
+        except Exception as error:
+            try:
+                self._stop_backend()
+            except Exception as cleanup_error:
+                error.add_note(f"Limpeza do capturador pendente: {type(cleanup_error).__name__}")
+            raise
+        self._capture_ports = ports
+        self.last_error = ""
+
     def _restart_capture_for_routes(
         self, capture_ports: tuple[int, ...]
     ) -> bool:
         previous = self.live_capture
         previous_ports = self._capture_ports
-        if previous is None or not capture_ports:
+        if not capture_ports:
             return False
-        self._accumulate_capture_metrics(previous)
-        previous.stop()
-        self.live_events.set_transport_ports(capture_ports)
-
-        replacement = self.capture_factory(None, capture_ports)
-        if hasattr(replacement, "set_packet_sink"):
-            replacement.set_packet_sink(self.live_events.feed)
+        limit = getattr(previous, "max_filter_ports", None)
+        if limit is not None and len(capture_ports) > limit:
+            self.last_error = f"As rotas excedem o limite de {limit} filtros; captura atual preservada."
+            raise RuntimeError(self.last_error)
+        self._stop_backend()
         try:
-            replacement.start()
+            self._start_backend(capture_ports)
         except Exception as route_error:
-            fallback = self.capture_factory(None, previous_ports)
-            if hasattr(fallback, "set_packet_sink"):
-                fallback.set_packet_sink(self.live_events.feed)
+            if self.live_capture is not None:
+                raise  # Cleanup pending: never start a second native consumer.
             try:
-                self.live_events.set_transport_ports(previous_ports)
-                fallback.start()
+                self._start_backend(previous_ports or self.ports)
             except Exception as fallback_error:
-                self.live_capture = None
-                self._capture_ports = ()
-                self.live_events.stop()
                 self.last_error = (
                     "Falha ao atualizar rotas e restaurar captura: "
                     f"{type(route_error).__name__}; "
                     f"{type(fallback_error).__name__}"
                 )[:240]
                 raise RuntimeError(self.last_error) from fallback_error
-            self.live_capture = fallback
             self._capture_ports = previous_ports
             self.last_error = (
                 "Não foi possível aplicar as novas rotas; captura anterior restaurada: "
@@ -550,22 +597,20 @@ class StandaloneWindowsAgentRuntime:
             )[:240]
             return False
 
-        self.live_capture = replacement
         self._capture_ports = capture_ports
         self._capture_restarts += 1
         self.last_error = ""
         return True
 
     def refresh_routes(self) -> dict[str, Any]:
+        # Network I/O must not hold the lock used by local health and controls.
+        authorized = self.service.refresh_authorization()
+        if authorized:
+            self._sync_character_profiles()
         with self._lock:
-            backend_error = getattr(self.live_capture, "last_error", "")
-            if backend_error:
-                self.stop_capture(reason="capture_failed")
-                self.last_error = backend_error
-            authorized = self.service.refresh_authorization()
-            if authorized:
-                self._sync_character_profiles()
-            if self.live_capture is not None and not authorized:
+            if self._closed:
+                return {"no_clients": True, "capture_authorized": False}
+            if self.session_id is not None and not authorized:
                 self.stop_capture(reason="authorization_expired")
             processes = self.detected_processes()
             self.live_events.set_connection_aliases(
@@ -573,19 +618,19 @@ class StandaloneWindowsAgentRuntime:
             )
             pids, capture_ports = self._capture_routes(processes, self.ports)
             restarted = False
-            if self.live_capture and capture_ports:
-                # Portas observadas permanecem válidas até o fim da captura.
-                # Conexões TCP desaparecem/reaparecem durante teleporte; reduzir
-                # o filtro nesse intervalo causava reinícios e perda de pacotes.
-                desired_ports = tuple(sorted(
-                    set(self._capture_ports).union(capture_ports)
-                ))
+            if authorized and self.session_id is not None and not self._session_stopping and not self.active:
+                if time.monotonic() - self._last_capture_restart >= self.route_restart_cooldown_seconds:
+                    self._last_capture_restart = time.monotonic()
+                    restarted = self._restart_capture_for_routes(capture_ports)
+            if self.active and capture_ports:
+                # Keep only the current generation of routes. A transient
+                # disappearance does not justify a restart; a new stable route does.
+                desired_ports = capture_ports
                 # add_ports amplia o filtro defensivo em memória, mas uma
                 # sessão Pktmon ativa não recebe novos filtros kernel. Quando
                 # a rota permanece estável por duas leituras, recriamos apenas
                 # a captura e mantemos a mesma sessão/outbox.
-                self.live_capture.add_ports(desired_ports)
-                if desired_ports == self._capture_ports:
+                if set(desired_ports).issubset(self._capture_ports):
                     self._pending_capture_ports = ()
                     self._pending_route_observations = 0
                 else:
@@ -603,6 +648,7 @@ class StandaloneWindowsAgentRuntime:
                         >= self.route_change_confirmations
                         and cooldown_elapsed
                     ):
+                        self._last_capture_restart = time.monotonic()
                         restarted = self._restart_capture_for_routes(
                             desired_ports
                         )
@@ -614,21 +660,21 @@ class StandaloneWindowsAgentRuntime:
             if hasattr(self.service, "heartbeat"):
                 try:
                     self.service.heartbeat(
-                        "active" if self.live_capture is not None else "stopped",
+                        "active" if self.active else "stopped",
                         len(pids),
                     )
                 except Exception as error:
                     self.last_error = f"Heartbeat: {type(error).__name__}: {error}"[:240]
-            remote_commands = self._sync_remote_subsessions()
-            return {
+            result = {
                 "client_processes": len(pids),
                 "client_pids": list(pids),
                 "no_clients": not pids,
                 "capture_restarted": restarted,
                 "capture_port_count": len(self._capture_ports),
-                "capture_authorized": authorized,
-                "remote_subsession_commands": remote_commands,
+                "capture_authorized": authorized and not self._session_stopping,
             }
+        result["remote_subsession_commands"] = self._sync_remote_subsessions()
+        return result
 
     def _sync_remote_subsessions(self) -> int:
         controller = self.remote_subsessions
@@ -643,11 +689,11 @@ class StandaloneWindowsAgentRuntime:
             controller.acknowledge_results(results)
             if any(command.get("action") == "stop" for command in commands):
                 self.service.runtime.bridge.wait_until_idle()
-            controller.apply_commands(
-                commands,
-                session_id=self.session_id,
-                capture_active=self.live_capture is not None,
-            )
+            with self._lock:
+                if not self._closed:
+                    controller.apply_commands(
+                        commands, session_id=self.session_id, capture_active=self.active,
+                    )
             self.remote_last_error = ""
             return len(commands)
         except AgentTransportError as error:
@@ -658,15 +704,16 @@ class StandaloneWindowsAgentRuntime:
 
     def stop_capture(self, *, reason: str = "paused") -> dict[str, Any]:
         with self._lock:
-            live, self.live_capture = self.live_capture, None
-            session_id, self.session_id = self.session_id, None
+            live = self.live_capture
+            session_id = self.session_id
+            self._session_stopping = True
             failures = []
             if live is not None:
                 try:
-                    self._accumulate_capture_metrics(live)
-                    live.stop()
+                    self._stop_backend()
                 except Exception as error:
-                    failures.append(f"capture: {type(error).__name__}")
+                    # Keep session, callbacks and resource ownership for retry.
+                    raise RuntimeError(self.last_error) from error
             self.live_events.stop()
             self.service.runtime.bridge.wait_until_idle()
             if self.remote_subsessions is not None:
@@ -679,8 +726,11 @@ class StandaloneWindowsAgentRuntime:
                         self.service.finish_session(session_id, reason=reason)
                     self.service.runtime.bridge.wait_until_idle()
                 except Exception as error:
-                    failures.append(f"session: {type(error).__name__}")
+                    self.last_error = f"Encerramento da sessão pendente: {type(error).__name__}"
+                    raise RuntimeError(self.last_error) from error
             self.started_at_ns = None
+            self.session_id = None
+            self._session_stopping = False
             self._known_pids = ()
             self._capture_ports = ()
             self._pending_capture_ports = ()
@@ -701,7 +751,7 @@ class StandaloneWindowsAgentRuntime:
     def configure_memory_budget(self, value: object) -> bool:
         limits = agent_memory_limits(value)
         with self._lock:
-            if self.active:
+            if self.live_capture is not None or self.session_id is not None:
                 return False
             self.live_events.stop()
             self.memory_limits = limits
@@ -719,6 +769,7 @@ class StandaloneWindowsAgentRuntime:
         with self._lock:
             service_health = self.service.health()
             capture = self.live_capture
+            active = self.active
             stream = self.live_events.metrics()
             uptime_seconds = (
                 max(0.0, (time.time_ns() - self.started_at_ns) / 1_000_000_000)
@@ -734,6 +785,9 @@ class StandaloneWindowsAgentRuntime:
             capture_metrics["backend"] = getattr(capture, "backend", "pktmon-streaming") if capture else None
             capture_metrics["backend_error"] = getattr(capture, "last_error", "") or None
             capture_metrics["property_errors"] = int(getattr(capture, "property_errors", 0))
+            capture_metrics["last_packet_ns"] = int(getattr(capture, "last_packet_ns", 0))
+            capture_metrics["native_loss_counters_available"] = bool(capture and capture_metrics["backend"] != "pktmon-etw")
+            capture_metrics["cleanup_pending"] = self._capture_stopping
             memory_bytes = self.memory_reader()
             if memory_bytes is not None:
                 memory_bytes = max(0, int(memory_bytes))
@@ -750,9 +804,11 @@ class StandaloneWindowsAgentRuntime:
             else:
                 pressure_bytes = self.memory_limits["budget_mb"] * 1024 * 1024
             return {
-                "state": "capturing" if capture else "idle",
-                "active": capture is not None,
+                "state": "capturing" if active else "attention" if self.session_id or self._capture_stopping else "idle",
+                "active": active,
+                "sampled_at_ns": time.time_ns(),
                 "session_active": self.session_id is not None,
+                "session_stopping": self._session_stopping,
                 "client_processes": len(self._known_pids),
                 "clients": self.registry.snapshot(),
                 "uptime_seconds": round(uptime_seconds, 3),

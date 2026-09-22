@@ -217,7 +217,8 @@ def agent_processes(
 
     Conexoes HTTPS do cliente servem para login/telemetria e mudam com
     frequencia. Elas nao carregam os frames do jogo e, se entrarem no filtro,
-    provocam reinicios e trabalho inutil no decoder.
+    provocam reinicios e trabalho inutil no decoder. Portas locais retornadas
+    são apenas as de relay; conexões diretas já são cobertas pelas remotas.
     """
     allowed = set(allowed_remote_ports)
     result: dict[str, tuple[set[int], set[int], set[int]]] = {}
@@ -244,9 +245,10 @@ def agent_processes(
             key, (set(), set(), set())
         )
         pids.add(pid)
-        local_ports.add(local_port)
         if is_direct_game:
             remote_ports.add(remote_port)
+        else:
+            local_ports.add(local_port)
     return result
 
 

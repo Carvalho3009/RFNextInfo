@@ -115,6 +115,7 @@ class AgentAuthorizationManager:
         self._pairing_code: str | None = None
         self._last_error_code: str | None = None
         self._lock = threading.RLock()
+        self._refresh_lock = threading.Lock()
 
     def _cache_valid(self) -> bool:
         if not self._cached:
@@ -129,6 +130,12 @@ class AgentAuthorizationManager:
             return False
 
     def refresh(self, *, force: bool = False) -> bool:
+        # Serialize requests, not health reads. The last verified lease still
+        # expires at its original deadline while the network is unavailable.
+        with self._refresh_lock:
+            return self._refresh(force=force)
+
+    def _refresh(self, *, force: bool) -> bool:
         with self._lock:
             now = self.clock()
             refresh_seconds = (
@@ -143,13 +150,15 @@ class AgentAuthorizationManager:
             ):
                 return self._cache_valid()
             self._last_refresh_attempt = now
-            try:
-                receipt = self.transport.authorize()
-            except AgentTransportError as error:
+        try:
+            receipt = self.transport.authorize()
+        except AgentTransportError as error:
+            with self._lock:
                 self._last_error_code = error.code
                 if not self._cache_valid():
                     self._status = "validation_required"
                 return self._cache_valid()
+        with self._lock:
             self._apply(receipt)
             return self._cache_valid()
 

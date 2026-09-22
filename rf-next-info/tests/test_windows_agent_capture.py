@@ -56,7 +56,7 @@ def _processes(*pids: int):
     return {
         r"C:\RF\ProjectRF.exe": (
             set(pids),
-            {51000 + index for index, _pid in enumerate(pids)},
+            set(),  # Direct connections need only the stable remote port.
             {12020},
         )
     }
@@ -430,7 +430,8 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
                 current["value"] = _processes(10, 20)
                 refreshed = runtime.refresh_routes()
                 self.assertEqual(refreshed["client_processes"], 2)
-                self.assertTrue(runtime.live_capture.added_ports)
+                self.assertIn(12020, runtime.live_capture.ports)
+                self.assertFalse(refreshed["capture_restarted"])
             finally:
                 runtime.close()
 
@@ -600,18 +601,22 @@ class StandaloneWindowsAgentRuntimeTest(unittest.TestCase):
             finally:
                 runtime.close()
 
-    def test_failed_etw_consumer_stops_reporting_active_capture(self):
+    def test_failed_etw_consumer_recovers_without_replacing_client_session(self):
         with tempfile.TemporaryDirectory() as folder:
             runtime = self._runtime(folder, lambda _ports: _processes(101, 202))
             try:
                 runtime.start_capture()
                 failed = runtime.live_capture
+                session_id = runtime.session_id
                 failed.last_error = "O stream Pktmon/ETW encerrou (5)."
+                runtime._last_capture_restart = 0
                 runtime.refresh_routes()
-                self.assertFalse(runtime.active)
+                self.assertTrue(runtime.active)
                 self.assertTrue(failed.stopped)
-                self.assertEqual(runtime.last_error, failed.last_error)
-                self.assertFalse(runtime.health()["session_active"])
+                self.assertIsNot(runtime.live_capture, failed)
+                self.assertEqual(runtime.last_error, "")
+                self.assertEqual(runtime.session_id, session_id)
+                self.assertTrue(runtime.health()["session_active"])
             finally:
                 runtime.close()
 

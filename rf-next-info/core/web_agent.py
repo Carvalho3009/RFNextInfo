@@ -3725,8 +3725,16 @@ class WebAgentBridge:
             # A API local e apenas consumidora; nunca pode interromper a outbox.
             self.observer_errors += 1
 
-    def wait_until_idle(self) -> None:
-        self._queue.join()
+    def wait_until_idle(self, timeout: float = 10.0) -> None:
+        deadline = time.monotonic() + timeout
+        with self._queue.all_tasks_done:
+            while self._queue.unfinished_tasks:
+                if not self._thread or not self._thread.is_alive():
+                    raise RuntimeError("O processador de eventos parou com dados pendentes.")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError("Eventos ainda estão sendo processados; tente encerrar novamente.")
+                self._queue.all_tasks_done.wait(remaining)
 
     @staticmethod
     def _bounded_counts(values: Counter[str]) -> dict[str, int]:

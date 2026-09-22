@@ -2736,9 +2736,15 @@ class CoreTest(unittest.TestCase):
             stream.feed(index, b"packet")
         time.sleep(0.02)
 
-        stream.stop()
-
+        with self.assertRaisesRegex(RuntimeError, "drenando"):
+            stream.stop()
         self.assertIsNotNone(old_worker)
+        self.assertTrue(old_worker.is_alive())
+        with self.assertRaisesRegex(RuntimeError, "encerrando"):
+            stream.start()
+        stream.stop()
+        self.assertEqual(stream.processed_packets, 50)
+        self.assertEqual(stream.dropped_packets, 0)
         self.assertFalse(old_worker.is_alive())
         stream.start()
         self.assertIsNot(stream._thread, old_worker)
@@ -2939,9 +2945,9 @@ class CoreTest(unittest.TestCase):
     def test_live_decoder_bounds_old_tcp_flows(self):
         decoder = LiveEventDecoder(max_flows=2)
         packets = [
-            ("flow-1", 12020, 1, b"a"),
-            ("flow-2", 12020, 1, b"b"),
-            ("flow-3", 12020, 1, b"c"),
+            ("flow-1", 12020, 1, b"a", 0),
+            ("flow-2", 12020, 1, b"b", 0),
+            ("flow-3", 12020, 1, b"c", 0),
         ]
         with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
             decoder, "_decode_available", return_value=[]
@@ -2956,8 +2962,8 @@ class CoreTest(unittest.TestCase):
         decoder = LiveEventDecoder(max_flows=4)
         decoder.set_connection_aliases({50001: "process:77", 50002: "process:77"})
         packets = [
-            ("10.0.0.1:50001 -> 10.0.0.2:12020", 12020, 100, b"a"),
-            ("10.0.0.1:50002 -> 10.0.0.2:12010", 12010, 900, b"b"),
+            ("10.0.0.1:50001 -> 10.0.0.2:12020", 12020, 100, b"a", 0),
+            ("10.0.0.1:50002 -> 10.0.0.2:12010", 12010, 900, b"b", 0),
         ]
         with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
             decoder, "_decode_available", return_value=[]
@@ -2979,8 +2985,8 @@ class CoreTest(unittest.TestCase):
         decoder = LiveEventDecoder(max_flows=2)
         flow = "10.0.0.1:50001 -> 10.0.0.2:12020"
         packets = [
-            (flow, 12020, 100, b"a"),
-            (flow, 12020, 101, b"b"),
+            (flow, 12020, 100, b"a", 0),
+            (flow, 12020, 101, b"b", 0),
         ]
         with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
             decoder, "_decode_available", return_value=[]
@@ -3000,8 +3006,8 @@ class CoreTest(unittest.TestCase):
         decoder.set_connection_alias_resolver(resolver)
         flow = "10.0.0.1:50001 -> 10.0.0.2:12020"
         packets = [
-            (flow, 12020, 100, b"a"),
-            (flow, 12020, 101, b"b"),
+            (flow, 12020, 100, b"a", 0),
+            (flow, 12020, 101, b"b", 0),
         ]
         with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
             decoder, "_decode_available", return_value=[]
@@ -3026,7 +3032,7 @@ class CoreTest(unittest.TestCase):
         flow = "10.0.0.1:50001 -> 10.0.0.2:12020"
         with patch(
             "core.live_stream._tcp_payload",
-            return_value=(flow, 12020, 100, b"a"),
+            return_value=(flow, 12020, 100, b"a", 0),
         ), patch.object(decoder, "_decode_available", return_value=[]) as decode:
             decoder.feed(1, b"packet")
 
@@ -3039,7 +3045,7 @@ class CoreTest(unittest.TestCase):
             max_pending_bytes=12,
         )
         packets = [
-            ("flow", 12020, sequence, b"data")
+            ("flow", 12020, sequence, b"data", 0)
             for sequence in (0, 10, 20, 30, 40, 50)
         ]
         with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
@@ -3054,10 +3060,10 @@ class CoreTest(unittest.TestCase):
     def test_live_decoder_recovers_only_stalled_tcp_flow_after_gap_timeout(self):
         decoder = LiveEventDecoder(gap_recovery_seconds=5)
         packets = [
-            ("flow-a", 12020, 100, b"head"),
-            ("flow-b", 12020, 500, b"safe"),
-            ("flow-a", 12020, 108, b"next"),
-            ("flow-a", 12020, 112, b"tail"),
+            ("flow-a", 12020, 100, b"head", 0),
+            ("flow-b", 12020, 500, b"safe", 0),
+            ("flow-a", 12020, 108, b"next", 0),
+            ("flow-a", 12020, 112, b"tail", 0),
         ]
         timestamps = (1, 2, 1_000_000_000, 6_100_000_000)
 
@@ -3081,9 +3087,9 @@ class CoreTest(unittest.TestCase):
     def test_live_decoder_accepts_late_missing_segment_without_recovery(self):
         decoder = LiveEventDecoder(gap_recovery_seconds=5)
         packets = [
-            ("flow", 12020, 100, b"head"),
-            ("flow", 12020, 108, b"tail"),
-            ("flow", 12020, 104, b"miss"),
+            ("flow", 12020, 100, b"head", 0),
+            ("flow", 12020, 108, b"tail", 0),
+            ("flow", 12020, 104, b"miss", 0),
         ]
 
         with patch("core.live_stream._tcp_payload", side_effect=packets), patch.object(
@@ -4346,7 +4352,7 @@ class CoreTest(unittest.TestCase):
 
         pids, local_ports, remote_ports = next(iter(processes.values()))
         self.assertEqual(pids, {10})
-        self.assertEqual(local_ports, {50100, 50102})
+        self.assertEqual(local_ports, {50100})
         self.assertEqual(remote_ports, {12020})
 
     def test_pc_and_bluestacks_connections_are_discovered_separately(self):

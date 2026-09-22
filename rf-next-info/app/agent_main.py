@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from logging.handlers import RotatingFileHandler
+import platform
 import subprocess
 import sys
 import tempfile
@@ -119,6 +121,7 @@ class AgentBackend(QtCore.QObject):
     def __init__(self, runtime: StandaloneWindowsAgentRuntime) -> None:
         super().__init__()
         self.runtime = runtime
+        self._last_poll_error = None
 
     @QtCore.Slot()
     def start_capture(self) -> None:
@@ -155,13 +158,17 @@ class AgentBackend(QtCore.QObject):
             ):
                 self.runtime.start_capture()
                 self.command_finished.emit("auto_start", {})
-            elif self.runtime.active:
+            elif self.runtime.session_id is not None:
                 if routes.get("no_clients"):
                     self.runtime.stop_capture(reason="finished")
                     self.command_finished.emit("clients_closed", {})
             self.health_ready.emit(self.runtime.health())
+            self._last_poll_error = None
         except Exception as error:
-            LOG.exception("agent_poll_failed")
+            signature = (type(error).__name__, str(error))
+            if signature != self._last_poll_error:
+                LOG.exception("agent_poll_failed")
+            self._last_poll_error = signature
             self.command_failed.emit("poll", f"{type(error).__name__}: {error}")
 
     @QtCore.Slot(int)
@@ -181,6 +188,8 @@ class AgentBackend(QtCore.QObject):
             self.runtime.close()
         except Exception:
             LOG.exception("agent_shutdown_failed")
+            self.command_failed.emit("shutdown", "O Agent ainda está encerrando. Tente novamente; dados pendentes foram preservados.")
+            return
         self.shutdown_finished.emit()
 
 
@@ -689,11 +698,12 @@ class AgentWindow(QtWidgets.QWidget):
         capture_authorized = (
             not authorization.get("required", False)
             or authorization.get("authorized") is True
-        )
+        ) and not self._health.get("session_stopping", False)
         self.start_button.setEnabled(not busy and not active and capture_authorized)
-        self.stop_button.setEnabled(not busy and active)
+        can_stop = active or bool(self._health.get("session_active")) or bool(dict(self._health.get("capture") or {}).get("cleanup_pending"))
+        self.stop_button.setEnabled(not busy and can_stop)
         self.tray_start_action.setEnabled(not busy and not active and capture_authorized)
-        self.tray_stop_action.setEnabled(not busy and active)
+        self.tray_stop_action.setEnabled(not busy and can_stop)
 
     @QtCore.Slot()
     def _start_clicked(self) -> None:
@@ -712,6 +722,10 @@ class AgentWindow(QtWidgets.QWidget):
         self.stop_requested.emit()
 
     def _request_poll(self) -> None:
+        if self._poll_pending and time.time_ns() - getattr(self, "_health_received_ns", 0) > 10_000_000_000:
+            self._poll_error = "Aguardando resposta"
+            self.state_label.setText("Atualizando…")
+            self.message.setText("A última leitura está desatualizada; aguardando resposta. O diagnóstico registra esse atraso.")
         if self._busy or self._poll_pending or self.backend is None:
             return
         self._poll_pending = True
@@ -721,9 +735,17 @@ class AgentWindow(QtWidgets.QWidget):
     def _render_health(self, health: dict) -> None:
         self._poll_pending = False
         self._health = dict(health)
+        self._health_received_ns = time.time_ns()
+        recovered = bool(getattr(self, "_poll_error", None))
+        self._poll_error = None
+        if health.get("last_error"):
+            self.message.setText(str(health["last_error"])[:240])
+        elif recovered:
+            self.message.setText("Leitura atualizada.")
         active = health.get("active") is True
-        self.state_label.setText("Capturando" if active else "Ocioso")
-        self.state_label.setObjectName("stateActive" if active else "stateIdle")
+        attention = bool(health.get("last_error") or health.get("state") == "attention")
+        self.state_label.setText("Atenção" if attention else "Capturando" if active else "Ocioso")
+        self.state_label.setObjectName("stateError" if attention else "stateActive" if active else "stateIdle")
         self.state_label.style().unpolish(self.state_label)
         self.state_label.style().polish(self.state_label)
         self.capture_value.setText("Ligada" if active else "Desligada")
@@ -919,13 +941,20 @@ class AgentWindow(QtWidgets.QWidget):
     def _command_failed(self, command: str, message: str) -> None:
         if command == "poll":
             self._poll_pending = False
-            return
-        if command != "poll":
-            self.message.setText(message)
-            self.state_label.setText("Atenção")
-            self.state_label.setObjectName("stateError")
-            self.state_label.style().unpolish(self.state_label)
-            self.state_label.style().polish(self.state_label)
+            self._poll_error = message[:240]
+            message = f"Leitura desatualizada: {message}"
+        if command == "shutdown":
+            self._exiting = False
+            self.setEnabled(True)
+            self.poll_timer.start()
+            self.update_timer.start()
+        self.message.setText(message)
+        self.state_label.setText("Atenção")
+        self.state_label.setObjectName("stateError")
+        self.state_label.style().unpolish(self.state_label)
+        self.state_label.style().polish(self.state_label)
+        if command == "poll":
+            return  # Do not release an unrelated start/stop command's busy gate.
         self._set_busy(False)
 
     def _preferences_changed(self) -> None:
@@ -980,6 +1009,10 @@ class AgentWindow(QtWidgets.QWidget):
             "schema": "rf-qol.agent-diagnostic/v1",
             "version": APP_VERSION,
             "created_at_ns": time.time_ns(),
+            "health_received_at_ns": getattr(self, "_health_received_ns", None),
+            "health_stale": bool(getattr(self, "_poll_error", None)) or time.time_ns() - getattr(self, "_health_received_ns", 0) > 10_000_000_000,
+            "last_poll_error": getattr(self, "_poll_error", None),
+            "platform": platform.platform(),
             "health": self._health,
         }
         target.write_text(
@@ -1181,7 +1214,7 @@ def _activate_from_instance_request(
 def _configure_logging() -> None:
     AGENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
-        filename=AGENT_LOG_PATH,
+        handlers=[RotatingFileHandler(AGENT_LOG_PATH, maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8")],
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )

@@ -109,6 +109,7 @@ class PktmonEtwTest(unittest.TestCase):
                 capture = PktmonEtwCapture(None, (12020,))
                 capture._etw = Mock()
                 capture._etw.OpenTraceW.return_value = 123
+                capture._etw.CloseTrace.return_value = 0
                 process = Mock()
                 process.poll.return_value = None
                 try:

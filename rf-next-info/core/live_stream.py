@@ -92,6 +92,9 @@ def _collection_slots() -> dict[tuple[int, int], dict[str, Any]]:
 @dataclass
 class _FlowState:
     event_flow: str = ""
+    syn_sequence: int | None = None
+    fin_sequence: int | None = None
+    closed: bool = False
     next_sequence: int | None = None
     stream_offset: int = 0
     buffer: bytearray = field(default_factory=bytearray)
@@ -107,7 +110,7 @@ class _FlowState:
 def _tcp_payload(
     packet: bytes,
     transport_ports: tuple[int, ...] = DEFAULT_PORTS,
-) -> tuple[str, int, int, bytes] | None:
+) -> tuple[str, int, int, bytes, int] | None:
     ethertype, network = decoder._network_payload(packet, 1)
     if ethertype != 0x0800 or len(network) < 40:
         return None
@@ -130,7 +133,7 @@ def _tcp_payload(
     if header_length < 20 or len(tcp) < header_length:
         return None
     payload = tcp[header_length:]
-    if not payload:
+    if not payload and not offset_flags & 0x07:
         return None
     accepted_ports = tuple(int(port) for port in transport_ports)
     server_port = next(
@@ -153,7 +156,7 @@ def _tcp_payload(
     source = socket.inet_ntoa(network[12:16])
     destination = socket.inet_ntoa(network[16:20])
     flow = f"{source}:{source_port} -> {destination}:{destination_port}"
-    return flow, server_port, sequence, payload
+    return flow, server_port, sequence, payload, offset_flags & 0xFF
 
 
 class LiveEventDecoder:
@@ -170,6 +173,7 @@ class LiveEventDecoder:
         gap_recovery_seconds: float = TCP_GAP_RECOVERY_SECONDS,
     ) -> None:
         self._flows: dict[str, _FlowState] = {}
+        self._lock = threading.RLock()
         self._max_flows = max(1, int(max_flows))
         self._max_pending_segments = max(1, int(max_pending_segments))
         self._max_pending_bytes = max(1, int(max_pending_bytes))
@@ -246,24 +250,32 @@ class LiveEventDecoder:
 
     @property
     def flow_count(self) -> int:
-        return len(self._flows)
+        with self._lock:
+            return len(self._flows)
 
     @property
     def pending_segment_count(self) -> int:
-        return sum(len(state.pending) for state in self._flows.values())
+        with self._lock:
+            return sum(len(state.pending) for state in self._flows.values())
 
     @property
     def pending_bytes(self) -> int:
-        return sum(state.pending_bytes for state in self._flows.values())
+        with self._lock:
+            return sum(state.pending_bytes for state in self._flows.values())
 
     @property
     def stalled_flow_count(self) -> int:
-        return sum(
-            1 for state in self._flows.values()
-            if state.gap_started_ns is not None and state.pending
-        )
+        with self._lock:
+            return sum(
+                1 for state in self._flows.values()
+                if state.gap_started_ns is not None and state.pending
+            )
 
     def compact(self, fraction: float = 0.5) -> dict[str, int]:
+        with self._lock:
+            return self._compact(fraction)
+
+    def _compact(self, fraction: float) -> dict[str, int]:
         """Reduz contextos antigos sem interromper o fluxo TCP mais recente."""
         fraction = max(0.1, min(1.0, float(fraction)))
         flow_limit = max(1, round(self._max_flows * fraction))
@@ -289,14 +301,27 @@ class LiveEventDecoder:
         }
 
     def feed(self, timestamp_ns: int, packet: bytes) -> list[dict[str, Any]]:
+        with self._lock:
+            return self._feed(timestamp_ns, packet)
+
+    def _feed(self, timestamp_ns: int, packet: bytes) -> list[dict[str, Any]]:
         parsed = _tcp_payload(packet, self._transport_ports)
         if parsed is None:
             return []
-        flow, server_port, sequence, payload = parsed
+        flow, server_port, sequence, payload, flags = parsed
+        reverse = " -> ".join(reversed(flow.split(" -> ", 1)))
+        if flags & 0x04:  # RST invalidates both directions, not the PID identity.
+            self._flows.pop(flow, None)
+            self._flows.pop(reverse, None)
+            return []
         # Cada socket TCP conserva seu próprio espaço de sequência. O alias do
         # processo serve apenas como identidade lógica nos eventos decodificados;
         # usá-lo como chave do reagrupador misturaria as conexões 12010/12020.
         state = self._flows.pop(flow, None)
+        if flags & 0x02 and (state is None or state.closed or state.syn_sequence != sequence):
+            state = None
+            if not flags & 0x10:  # New SYN, not its peer's SYN/ACK.
+                self._flows.pop(reverse, None)
         if state is not None and state.event_flow.startswith("client-route:process:"):
             current_alias = self._connection_alias(flow, refresh=False)
             if current_alias.startswith("client-route:process:") and current_alias != state.event_flow:
@@ -310,9 +335,28 @@ class LiveEventDecoder:
             # socket troque de client_ref no meio da sessão e perca métricas de
             # subsessão já vinculadas ao personagem.
             state = _FlowState(event_flow=self._connection_alias(flow))
+            if flags & 0x02:
+                state.syn_sequence = sequence
+                state.next_sequence = (sequence + 1) & 0xFFFFFFFF
         self._flows[flow] = state
-        self._append_segment(state, sequence, payload, timestamp_ns)
-        return self._decode_available(state, state.event_flow or flow, server_port)
+        if state.closed:
+            return []  # Bounded tombstone prevents duplicate final-frame events.
+        if flags & 0x02:
+            sequence = (sequence + 1) & 0xFFFFFFFF
+        if flags & 0x01:
+            expected = state.next_sequence if state.next_sequence is not None else sequence
+            state.fin_sequence = expected + ((sequence - expected + 2**31) % 2**32 - 2**31) + len(payload)
+        if payload:
+            self._append_segment(state, sequence, payload, timestamp_ns)
+        events = self._decode_available(state, state.event_flow or flow, server_port)
+        if state.fin_sequence is not None and (state.next_sequence is None or state.next_sequence >= state.fin_sequence):
+            state.closed = True
+            state.buffer.clear()
+            state.pending.clear()
+            state.pending_bytes = 0
+            state.gap_started_ns = None
+            state.equipment_appearances.clear()
+        return events
 
     def _recover_gap(self, state: _FlowState, timestamp_ns: int) -> None:
         """Descarta apenas o prefixo incompleto do fluxo TCP bloqueado."""
@@ -343,6 +387,9 @@ class LiveEventDecoder:
         if state.next_sequence is None:
             state.next_sequence = sequence
         expected = int(state.next_sequence)
+        # RFC 9293: unwrap the wire sequence around the expected position.
+        # Pending keys remain linear, so overlap/gap ordering also survives wrap.
+        sequence = expected + ((sequence - expected + 2**31) % 2**32 - 2**31)
         end = sequence + len(payload)
         if end <= expected:
             return
@@ -622,18 +669,15 @@ class LiveEventStream:
         self.last_received_ns = max(self.last_received_ns, int(timestamp_ns))
         packet_bytes = len(packet)
         with self._queue_lock:
-            if self._queued_packet_bytes + packet_bytes > self._max_pending_packet_bytes:
+            if self._worker_stop.is_set() or self._queued_packet_bytes + packet_bytes > self._max_pending_packet_bytes:
                 self.dropped_packets += 1
                 return
-            self._queued_packet_bytes += packet_bytes
-        try:
-            self._items.put_nowait((timestamp_ns, packet))
-        except queue.Full:
-            with self._queue_lock:
-                self._queued_packet_bytes = max(
-                    0, self._queued_packet_bytes - packet_bytes
-                )
-            self.dropped_packets += 1
+            try:
+                self._items.put_nowait((timestamp_ns, packet))
+            except queue.Full:
+                self.dropped_packets += 1
+            else:
+                self._queued_packet_bytes += packet_bytes
 
     def snapshot(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -917,13 +961,19 @@ class LiveEventStream:
     def stop(self) -> None:
         thread = self._thread
         if thread and thread.is_alive():
-            self._worker_stop.set()
-            try:
-                self._items.put_nowait(None)
-            except queue.Full:
-                pass
+            with self._queue_lock:
+                self._worker_stop.set()
+                try:
+                    self._items.put_nowait(None)
+                except queue.Full:
+                    pass  # The worker drains the queue, then observes the stop.
             thread.join(timeout=3)
+            if thread.is_alive():
+                raise RuntimeError("O decoder ainda está drenando os pacotes aceitos; tente encerrar novamente.")
         if not thread or not thread.is_alive():
+            # Includes packets queued before start: never hide an abandoned tail.
+            with self._items.mutex:
+                self.dropped_packets += sum(item is not None for item in self._items.queue)
             self._thread = None
             self._items = queue.Queue(maxsize=self._max_pending_packets)
             with self._queue_lock:
@@ -931,13 +981,18 @@ class LiveEventStream:
 
     def _worker(self) -> None:
         while True:
-            item = self._items.get()
+            try:
+                item = self._items.get(timeout=0.1)
+            except queue.Empty:
+                if self._worker_stop.is_set():
+                    return
+                continue
             if item is not None:
                 with self._queue_lock:
                     self._queued_packet_bytes = max(
                         0, self._queued_packet_bytes - len(item[1])
                     )
-            if item is None or self._worker_stop.is_set():
+            if item is None:
                 return
             try:
                 events = self._decoder.feed(*item)
