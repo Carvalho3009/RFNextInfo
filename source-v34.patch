@@ -1,0 +1,358 @@
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index c403ea8..0b2821d 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -14,9 +14,38 @@ from collections import deque
+ from datetime import datetime
+ from pathlib import Path
+ import tkinter as tk
+-from tkinter import filedialog, messagebox, ttk
++from tkinter import filedialog, messagebox, ttk, simpledialog
++
++from . import dump, report, session, upload, complete, purchase
++
++class PurchaseDialog(simpledialog.Dialog):
++    def body(self, master):
++        self.values = {}
++        labels = ("Mercado: 0 local / 1 global", "ExchangeIndex da oferta", "PCID do vendedor",
++                  "SellingPrice (valor inteiro)", "ItemIndex", "Refino")
++        ttk.Label(master, text="Uma oferta por pedido, sem quantidade parcial. IDs: decimal ou 0x hexadecimal.").grid(row=0, columnspan=2)
++        for row, (key, label) in enumerate(zip(purchase.FIELDS, labels), 1):
++            ttk.Label(master, text=label).grid(row=row, column=0, sticky="w")
++            entry = ttk.Entry(master, width=30)
++            entry.grid(row=row, column=1)
++            self.values[key] = entry
++        return self.values["exchange_server_type"]
++
++    def validate(self):
++        try:
++            self.request = {}
++            for key, entry in self.values.items():
++                raw = entry.get().strip()
++                self.request[key] = int(raw, 16 if raw.lower().startswith("0x") else 10)
++            purchase.build(self.request)
++            return True
++        except ValueError as exc:
++            messagebox.showerror("Compra inválida", str(exc), parent=self)
++            return False
++
++    def apply(self):
++        self.result = self.request
+ 
+-from . import dump, report, session, upload, complete
+ 
+ CLIENT_TO_SERVER = "client_to_server"
+ PUBLIC_MARKET_KEYS = {
+@@ -163,7 +192,7 @@ def upload_status_text(value):
+ class DesktopApp:
+     def __init__(self, root: tk.Tk):
+         self.root = root
+-        self.root.title("RF Next — consultas v33")
++        self.root.title("RF Next — consultas v34")
+         self.root.minsize(900, 560)
+         self.config_document = {}
+         self.config_path = tk.StringVar()
+@@ -258,6 +287,8 @@ class DesktopApp:
+         ttk.Label(controls, textvariable=self.mode_status["heartbeat"]).grid(row=3, column=5, sticky="w", padx=8)
+         self.stop_button = ttk.Button(actions, text="Parar tudo", command=self._stop)
+         self.stop_button.pack(side="left")
++        self.purchase_button = ttk.Button(actions, text="Comprar oferta (teste)", command=self._start_purchase)
++        self.purchase_button.pack(side="left", padx=5)
+         ttk.Button(actions, text="Inspecionar selecionada", command=self._inspect_selected).pack(side="right", padx=5)
+         ttk.Button(actions, text="Exportar log completo", command=self._export).pack(side="right")
+ 
+@@ -486,6 +517,8 @@ class DesktopApp:
+         self._start_mode("complete")
+ 
+     def _start_heartbeat(self):
++        if getattr(self, "purchase_running", False):
++            return
+         if self._closing or (self.heartbeat_service.worker and self.heartbeat_service.worker.is_alive()):
+             return
+         try:
+@@ -497,8 +530,47 @@ class DesktopApp:
+         except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Não foi possível iniciar", str(exc))
+ 
++    def _start_purchase(self):
++        service = getattr(self, "heartbeat_service", None)
++        if (self._closing or any(w.is_alive() for w in self.mode_threads.values())
++                or (self.worker and self.worker.is_alive())
++                or (service and service.worker and service.worker.is_alive())):
++            messagebox.showinfo("Compra", "Pare as consultas e o heartbeat antes da compra manual.")
++            return
++        request = PurchaseDialog(self.root, "Compra manual de uma oferta").result
++        if request is None:
++            return
++        try:
++            loaded = self._validate_config(self._current_config())
++        except (OSError, ValueError, TypeError) as exc:
++            messagebox.showerror("Compra", str(exc))
++            return
++        preview = "\n".join(f"{key}: {value}" for key, value in request.items())
++        if not messagebox.askyesno("Confirmar compra", preview +
++                "\n\nEnviar uma compra desta oferta com esse preço?\nNão haverá repetição automática."):
++            return
++        loaded = copy.deepcopy(loaded)
++        loaded.update(manual_purchase=request, initialize_character=True, heartbeat_only=False,
++                      rankings=False, rankings_only=False)
++        loaded["heartbeat"] = dict(loaded.get("heartbeat", {}), enabled=True)
++        self.stop_event = threading.Event()
++        self.purchase_running = True
++        self._finished = False
++        self.purchase_button.configure(state="disabled")
++        self.status.set("Autenticando para compra manual...")
++        def work():
++            result, error = None, None
++            try:
++                result = session.run(loaded, self._observe, stop_event=self.stop_event)
++            except Exception as exc:
++                error = str(exc)
++            finally:
++                self._control_queue.put(("purchase_done", result, error))
++        self.worker = threading.Thread(target=work, name="purchase", daemon=True)
++        self.worker.start()
++
+     def _start_mode(self, mode):
+-        if self._closing:
++        if self._closing or getattr(self, "purchase_running", False):
+             return
+         active = set(self.mode_threads)
+         if mode in active:
+@@ -613,6 +685,16 @@ class DesktopApp:
+         self.root.after(50, self._drain_queue)
+ 
+     def _handle_event(self, event):
++        if event[0] == "purchase_done":
++            _, result, error = event
++            self.purchase_running = False
++            self._finished = True
++            self.purchase_button.configure(state="normal")
++            if result is not None:
++                self.result = result
++                self.mode_results["purchase"] = result
++            self.status.set(error or (result or {}).get("diagnostic") or "Compra sem confirmação")
++            return
+         if event[0] == "mode_done":
+             _, mode, result, error = event
+             self.mode_threads.pop(mode, None)
+diff --git a/rfnext_market/purchase.py b/rfnext_market/purchase.py
+new file mode 100644
+index 0000000..0291184
+--- /dev/null
++++ b/rfnext_market/purchase.py
+@@ -0,0 +1,73 @@
++"""Compra manual de uma oferta: layout documentado em purchase-latest-verify.md."""
++import struct
++from . import market
++
++FIELDS = ("exchange_server_type", "exchange_index", "pc_id", "selling_price", "item_index", "enchant_level")
++
++
++def build(request):
++    if not isinstance(request, dict) or set(request) != set(FIELDS):
++        raise ValueError("Informe exatamente mercado, oferta, vendedor, preço, item e refino")
++    for key, bits in zip(FIELDS, (8, 64, 64, 64, 32, 16)):
++        value = request[key]
++        if type(value) is not int or not 0 <= value < 2**bits:
++            raise ValueError(f"{key}: inteiro sem sinal de {bits} bits esperado")
++    if request["exchange_server_type"] not in (0, 1):
++        raise ValueError("Mercado deve ser 0 (local) ou 1 (global)")
++    if any(request[key] == 0 for key in ("exchange_index", "pc_id", "item_index")):
++        raise ValueError("IDs da oferta, vendedor e item devem ser positivos")
++    return struct.pack("<BHQQQIH", request["exchange_server_type"], 1,
++                       *(request[key] for key in FIELDS[1:]))
++
++
++def parse(opcode, payload):
++    if opcode == 0x1D12:
++        if len(payload) != 33:
++            raise ValueError("Compra manual exige uma oferta (33 bytes)")
++        server, count, *values = struct.unpack("<BHQQQIH", payload)
++        if count != 1:
++            raise ValueError("Compra manual exige uma oferta")
++        fields = dict(zip(FIELDS, (server, *values)))
++    else:
++        (ret, server, count), cursor = market._read(payload, 0, "<HBH", "purchase response")
++        entries = []
++        for _ in range(count):
++            (entry_ret,), cursor = market._read(payload, cursor, "<H", "purchase result")
++            offer, cursor = market._offer(payload, cursor)
++            entries.append({"ret": entry_ret, "exchange_info": offer})
++        market._end(opcode, payload, cursor)
++        fields = {"ret": ret, "exchange_server_type": server, "purchase_results": entries}
++    return {"status": "confirmed", "fields": fields, "unknown_fields": []}
++
++
++def execute(link, request, wait, emit, stop_event, timeout):
++    payload = build(request)
++    result = {"status": "unconfirmed", "stage": "purchase", "request": dict(request),
++              "diagnostic": "Resultado da compra não confirmado; não reenviar automaticamente"}
++    if stop_event is not None and stop_event.is_set():
++        return dict(result, status="cancelled", diagnostic="Cancelado antes do envio")
++    try:
++        link.send(0x1D12, payload)
++        emit({"record_type": "purchase", "status": "sent", "request": dict(request)})
++        frame, _ = wait(link, 0x1D13, timeout, "12020:0x1D12", stop_event=stop_event)
++        fields = parse(0x1D13, frame["payload"])["fields"]
++        result["response"] = fields
++        if fields["exchange_server_type"] != request["exchange_server_type"]:
++            raise ValueError("Resposta pertence a outro mercado")
++        if fields["ret"] != 0:
++            result.update(status="rejected", diagnostic=f"Compra rejeitada: código {fields['ret']}")
++        elif len(fields["purchase_results"]) == 1:
++            entry = fields["purchase_results"][0]
++            offer = entry["exchange_info"]
++            if (offer["exchange_index"] != request["exchange_index"] or offer["pc_id"] != request["pc_id"]
++                    or offer["selling_price"] != request["selling_price"]
++                    or offer["item_info"]["index"] != request["item_index"]
++                    or offer["item_info"]["enchant_level"] != request["enchant_level"]):
++                raise ValueError("Resposta não corresponde à oferta solicitada")
++            result.update(status="confirmed" if entry["ret"] == 0 else "rejected",
++                          diagnostic="Compra confirmada pelo servidor" if entry["ret"] == 0 else
++                          f"Oferta rejeitada: código {entry['ret']}")
++    except Exception as exc:
++        result["diagnostic"] += f"; {exc}"
++    emit({"record_type": "purchase_result", **result})
++    return result
+diff --git a/rfnext_market/session.py b/rfnext_market/session.py
+index 6fa5ae6..01a5ecc 100644
+--- a/rfnext_market/session.py
++++ b/rfnext_market/session.py
+@@ -20,7 +20,7 @@ import time
+ import struct
+ from datetime import datetime, timezone
+ 
+-from . import auth, dump, market, protocol, report, selection, rankings, character
++from . import auth, dump, market, protocol, report, selection, rankings, character, purchase
+ from .transport import CancelledError, DIRECTION_C2S, DIRECTION_S2C, Connection
+ 
+ SERVICES = {"auth": 12000, "game": 12020}
+@@ -73,7 +73,8 @@ class _Link:
+         self.next_beat = None  # prazo do próximo 0x0103, a partir do último enviado
+ 
+     def send(self, opcode, payload):
+-        if opcode not in ALLOWED_SENDS.get(self.port, ()):
++        manual_purchase = self.port == 12020 and opcode == 0x1D12 and self.state.get("purchase_enabled")
++        if opcode not in ALLOWED_SENDS.get(self.port, ()) and not manual_purchase:
+             raise _Stop("failed", f"envio não permitido: serviço {self.port} 0x{opcode:04x}")
+         wire = protocol.encode_frame(opcode, payload, self.send_seq, seed=secrets.randbelow(0x40))
+         self.send_seq = (self.send_seq + 1) & 0xFF
+@@ -122,6 +123,8 @@ class _Link:
+ 
+ 
+ def _parse(port, direction, frame):
++    if port == 12020 and frame["opcode"] in (0x1D12, 0x1D13):
++        return purchase.parse(frame["opcode"], frame["payload"])
+     if port == 12020 and frame["opcode"] in (0x0201, 0x0202):
+         return character.parse_message(frame["opcode"], frame["payload"])
+     if port == 12020 and frame["opcode"] in rankings.OPCODES:
+@@ -253,6 +256,8 @@ def run(config: dict, emit, stop_event=None, on_collected=None) -> dict:
+ 
+ def _collect(config: dict, emit, stop_event, links) -> dict:
+     state = {"stage": "init", "authenticated": None, "stop_event": stop_event}
++    if config.get("manual_purchase") is not None:
++        purchase.build(config["manual_purchase"])
+     acc = market.MarketAccumulator()
+     frames: list[dict] = []
+     _emit = emit
+@@ -399,6 +404,12 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+             emit({"record_type": "heartbeat", "status": "confirmed",
+                   "payload_hex": payload.hex()})
+ 
++        if config.get("manual_purchase") is not None:
++            state.update(stage="12020:0x1D12", purchase_enabled=True)
++            result = purchase.execute(g, config["manual_purchase"], _await, emit, stop_event, t)
++            result.update(frames=frames, items=[], offers=[], market={}, rankings={})
++            return result
++
+         if config.get("heartbeat_only"):
+             state["stage"] = "heartbeat"
+             state["collection_complete"] = True
+diff --git a/tests/test_purchase.py b/tests/test_purchase.py
+new file mode 100644
+index 0000000..98dc9ce
+--- /dev/null
++++ b/tests/test_purchase.py
+@@ -0,0 +1,81 @@
++import struct
++import threading
++import unittest
++from unittest.mock import Mock, patch
++
++from rfnext_market import purchase, session, desktop
++from tests import test_session as helper
++
++REQUEST = dict(exchange_server_type=0, exchange_index=0x555A0D11550A9143,
++               pc_id=0x555A0D114A4D048D, selling_price=231, item_index=1002, enchant_level=0)
++PAYLOAD = "00010043910a55110d5a558d044d4a110d5a55e700000000000000ea0300000000"
++
++
++def response(ret=0, uid=None):
++    offer = struct.pack("<QQQ", REQUEST["exchange_index"], 0, uid or REQUEST["pc_id"])
++    offer += struct.pack("<QIQBHHHBQ", 1, 1002, 1, 0, 0, 0, 0, 0, 0)
++    offer += struct.pack("<QQQQQB", 0, 0, 0, 231, 0, 0)
++    return struct.pack("<HBHH", 0, 0, 1, ret) + offer
++
++
++class PurchaseTest(unittest.TestCase):
++    def test_capture_bytes_and_validation(self):
++        self.assertEqual(purchase.build(REQUEST).hex(), PAYLOAD)
++        self.assertEqual(purchase.parse(0x1D12,bytes.fromhex(PAYLOAD))["fields"],REQUEST)
++        for key in purchase.FIELDS:
++            for bad in (-1, True, 2**64):
++                with self.subTest(key=key,bad=bad), self.assertRaises(ValueError):
++                    purchase.build(dict(REQUEST, **{key:bad}))
++
++    def test_confirm_reject_mismatch_and_timeout_send_once(self):
++        for answer, expected in ((response(),"confirmed"),(response(7),"rejected"),
++                                 (response(uid=123),"unconfirmed"),(b"bad","unconfirmed"),
++                                 (TimeoutError("timeout"),"unconfirmed")):
++            link, wait = Mock(), Mock()
++            if isinstance(answer, Exception): wait.side_effect=answer
++            else: wait.return_value=({"payload":answer},None)
++            result=purchase.execute(link,REQUEST,wait,Mock(),threading.Event(),1)
++            self.assertEqual(result["status"],expected)
++            link.send.assert_called_once_with(0x1D12,bytes.fromhex(PAYLOAD))
++        stop=threading.Event();stop.set();link=Mock()
++        self.assertEqual(purchase.execute(link,REQUEST,Mock(),Mock(),stop,1)["status"],"cancelled")
++        link.send.assert_not_called()
++
++    def test_authenticated_session_purchase_does_not_query_market_or_rank(self):
++        runner=helper.SessionTest()
++        cfg=helper.config();cfg["manual_purchase"]=REQUEST
++        result=runner.run_session(cfg=cfg,game_s=helper.game_script({0x1D12:[[(0x1D13,response())]]}))
++        self.assertEqual(result["status"],"confirmed",result)
++        self.assertEqual(runner.sent_ops(12020),[0x0101,0x0103,0x0105,0x1D12])
++        self.assertTrue(all(c.closed for c in runner.conns.values()))
++
++    def test_cancelled_confirmation_does_not_start_session(self):
++        app=desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app._closing=False;app.mode_threads={};app.worker=None;app.heartbeat_service=None
++        app.root=Mock();app._validate_config=Mock(return_value={});app._current_config=Mock(return_value={})
++        with patch.object(desktop,"PurchaseDialog",return_value=Mock(result=REQUEST)), patch.object(
++                desktop.messagebox,"askyesno",return_value=False), patch.object(session,"run") as run:
++            app._start_purchase()
++            run.assert_not_called()
++
++    def test_confirmed_button_uses_purchase_worker_without_upload(self):
++        import queue
++        app=desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app._closing=False;app.mode_threads={};app.worker=None;app.heartbeat_service=None
++        app.root=Mock();app._validate_config=Mock(return_value={});app._current_config=Mock(return_value={})
++        app._control_queue=queue.Queue();app._observe=Mock();app.purchase_button=Mock();app.status=Mock()
++        app.mode_results={}
++        with patch.object(desktop,"PurchaseDialog",return_value=Mock(result=REQUEST)), patch.object(
++                desktop.messagebox,"askyesno",return_value=True), patch.object(session,"run",
++                return_value={"status":"unconfirmed","diagnostic":"timeout"}) as run, patch.object(
++                desktop.upload,"submit_result") as upload:
++            app._start_purchase();app.worker.join(2)
++            self.assertFalse(app.worker.is_alive())
++            cfg=run.call_args.args[0]
++            self.assertEqual(cfg["manual_purchase"],REQUEST)
++            self.assertTrue(cfg["initialize_character"])
++            self.assertTrue(cfg["heartbeat"]["enabled"])
++            upload.assert_not_called()
++            app._handle_event(app._control_queue.get_nowait())
++            self.assertFalse(app.purchase_running)
++            self.assertEqual(app.mode_results["purchase"]["status"],"unconfirmed")
