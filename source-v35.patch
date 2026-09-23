@@ -1,0 +1,441 @@
+diff --git a/rfnext_market/complete.py b/rfnext_market/complete.py
+index e6b597e..3b35b8a 100644
+--- a/rfnext_market/complete.py
++++ b/rfnext_market/complete.py
+@@ -3,6 +3,8 @@ import copy
+ import math
+ import threading
+ import time
++import queue
++from concurrent.futures import Future, TimeoutError as FutureTimeout
+ from . import session, upload
+ 
+ SERVER = "https://apirf.karvalho.dev.br"
+@@ -37,6 +39,24 @@ class HeartbeatWorker:
+         self.confirmations = 0
+         self.error = ""
+         self._lock = threading.Lock()
++        self.purchase_commands = queue.Queue()
++
++    def purchase(self, request, cancel):
++        session.purchase.build(request)
++        future = Future()
++        with self._lock:
++            if not self.ready.is_set() or self.ended.is_set() or self.stop_event.is_set():
++                raise RuntimeError("Heartbeat precisa estar ativo e confirmado; nenhuma nova conexão será aberta")
++            self.purchase_commands.put((dict(request), future, cancel))
++        while True:
++            if cancel.is_set() and future.cancel():
++                return {"status": "cancelled", "diagnostic": "Compra cancelada antes do envio", "request": request}
++            try:
++                return future.result(timeout=0.1)
++            except FutureTimeout:
++                if future.done():
++                    raise
++                continue
+ 
+     def start(self, config, emit):
+         with self._lock:
+@@ -57,15 +77,22 @@ class HeartbeatWorker:
+                 emit(dict(record, operation="heartbeat"))
+             def maintain():
+                 try:
+-                    result = self.runner(mode_config(config, "heartbeat"), observe,
++                    heartbeat_config = mode_config(config, "heartbeat")
++                    heartbeat_config["_purchase_commands"] = self.purchase_commands
++                    result = self.runner(heartbeat_config, observe,
+                                          stop_event=self.stop_event, on_collected=lambda result: None)
+                     self.error = result.get("diagnostic") or result.get("connection", {}).get("reason") or "conexão encerrada"
+                 except Exception as exc:
+                     self.error = str(exc)
+                 finally:
+-                    self.ready.clear()
+-                    self.confirmations = 0
+-                    self.ended.set()
++                    with self._lock:
++                        self.ready.clear()
++                        self.confirmations = 0
++                        self.ended.set()
++                        while not self.purchase_commands.empty():
++                            _, future, _ = self.purchase_commands.get_nowait()
++                            if future.set_running_or_notify_cancel():
++                                future.set_exception(RuntimeError("Heartbeat encerrou antes da compra; nada reenviado"))
+                     emit({"record_type": "operation_state", "operation": "heartbeat",
+                           "status": "stopped" if self.stop_event.is_set() else "failed", "message": self.error})
+             self.worker = threading.Thread(target=maintain, name="heartbeat", daemon=True)
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index 0b2821d..78bde80 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -192,7 +192,7 @@ def upload_status_text(value):
+ class DesktopApp:
+     def __init__(self, root: tk.Tk):
+         self.root = root
+-        self.root.title("RF Next — consultas v34")
++        self.root.title("RF Next — consultas v35")
+         self.root.minsize(900, 560)
+         self.config_document = {}
+         self.config_path = tk.StringVar()
+@@ -287,8 +287,10 @@ class DesktopApp:
+         ttk.Label(controls, textvariable=self.mode_status["heartbeat"]).grid(row=3, column=5, sticky="w", padx=8)
+         self.stop_button = ttk.Button(actions, text="Parar tudo", command=self._stop)
+         self.stop_button.pack(side="left")
+-        self.purchase_button = ttk.Button(actions, text="Comprar oferta (teste)", command=self._start_purchase)
++        self.purchase_button = ttk.Button(actions, text="Comprar: nova conexão", command=self._start_purchase)
+         self.purchase_button.pack(side="left", padx=5)
++        self.purchase_heartbeat_button = ttk.Button(actions, text="Comprar: heartbeat ativo", command=lambda: self._start_purchase(True))
++        self.purchase_heartbeat_button.pack(side="left", padx=5)
+         ttk.Button(actions, text="Inspecionar selecionada", command=self._inspect_selected).pack(side="right", padx=5)
+         ttk.Button(actions, text="Exportar log completo", command=self._export).pack(side="right")
+ 
+@@ -530,22 +532,25 @@ class DesktopApp:
+         except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Não foi possível iniciar", str(exc))
+ 
+-    def _start_purchase(self):
++    def _start_purchase(self, use_heartbeat=False):
+         service = getattr(self, "heartbeat_service", None)
+         if (self._closing or any(w.is_alive() for w in self.mode_threads.values())
+                 or (self.worker and self.worker.is_alive())
+-                or (service and service.worker and service.worker.is_alive())):
++                or (not use_heartbeat and service and service.worker and service.worker.is_alive())):
+             messagebox.showinfo("Compra", "Pare as consultas e o heartbeat antes da compra manual.")
+             return
++        if use_heartbeat and (service is None or not service.ready.is_set() or service.ended.is_set() or service.stop_event.is_set()):
++            messagebox.showinfo("Compra", "Inicie o heartbeat e aguarde as três confirmações.")
++            return
+         request = PurchaseDialog(self.root, "Compra manual de uma oferta").result
+         if request is None:
+             return
+         try:
+-            loaded = self._validate_config(self._current_config())
++            loaded = {} if use_heartbeat else self._validate_config(self._current_config())
+         except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Compra", str(exc))
+             return
+-        preview = "\n".join(f"{key}: {value}" for key, value in request.items())
++        preview = ("Conexão do heartbeat ativo" if use_heartbeat else "Nova conexão autenticada") + "\n" + "\n".join(f"{key}: {value}" for key, value in request.items())
+         if not messagebox.askyesno("Confirmar compra", preview +
+                 "\n\nEnviar uma compra desta oferta com esse preço?\nNão haverá repetição automática."):
+             return
+@@ -557,11 +562,13 @@ class DesktopApp:
+         self.purchase_running = True
+         self._finished = False
+         self.purchase_button.configure(state="disabled")
+-        self.status.set("Autenticando para compra manual...")
++        if getattr(self, "purchase_heartbeat_button", None):
++            self.purchase_heartbeat_button.configure(state="disabled")
++        self.status.set("Verificando dispositivo no heartbeat ativo..." if use_heartbeat else "Autenticando para compra manual...")
+         def work():
+             result, error = None, None
+             try:
+-                result = session.run(loaded, self._observe, stop_event=self.stop_event)
++                result = service.purchase(request, self.stop_event) if use_heartbeat else session.run(loaded, self._observe, stop_event=self.stop_event)
+             except Exception as exc:
+                 error = str(exc)
+             finally:
+@@ -690,6 +697,8 @@ class DesktopApp:
+             self.purchase_running = False
+             self._finished = True
+             self.purchase_button.configure(state="normal")
++            if getattr(self, "purchase_heartbeat_button", None):
++                self.purchase_heartbeat_button.configure(state="normal")
+             if result is not None:
+                 self.result = result
+                 self.mode_results["purchase"] = result
+diff --git a/rfnext_market/purchase.py b/rfnext_market/purchase.py
+index 0291184..193061d 100644
+--- a/rfnext_market/purchase.py
++++ b/rfnext_market/purchase.py
+@@ -21,7 +21,16 @@ def build(request):
+ 
+ 
+ def parse(opcode, payload):
+-    if opcode == 0x1D12:
++    if opcode == 0x0215:
++        if payload:
++            raise ValueError("0x0215 exige payload vazio")
++        fields = {}
++    elif opcode == 0x0216:
++        if len(payload) != 3:
++            raise ValueError("0x0216 exige 3 bytes")
++        ret, verification = struct.unpack("<HB", payload)
++        fields = {"ret": ret, "verification": verification}
++    elif opcode == 0x1D12:
+         if len(payload) != 33:
+             raise ValueError("Compra manual exige uma oferta (33 bytes)")
+         server, count, *values = struct.unpack("<BHQQQIH", payload)
+@@ -42,6 +51,20 @@ def parse(opcode, payload):
+ 
+ def execute(link, request, wait, emit, stop_event, timeout):
+     payload = build(request)
++    if stop_event is not None and stop_event.is_set():
++        return {"status": "cancelled", "request": dict(request), "diagnostic": "Cancelado antes do envio"}
++    try:
++        link.send(0x0215, b"")
++        frame, _ = wait(link, 0x0216, timeout, "12020:0x0215", stop_event=stop_event)
++        verification = parse(0x0216, frame["payload"])["fields"]
++        emit({"record_type": "purchase_verification", **verification})
++        if verification != {"ret": 0, "verification": 1}:
++            raise ValueError(f"Verificação do dispositivo recusada: {verification}")
++    except Exception as exc:
++        result = {"status": "blocked", "stage": "purchase:verification", "request": dict(request),
++                  "diagnostic": f"Compra não enviada: {exc}"}
++        emit({"record_type": "purchase_result", **result})
++        return result
+     result = {"status": "unconfirmed", "stage": "purchase", "request": dict(request),
+               "diagnostic": "Resultado da compra não confirmado; não reenviar automaticamente"}
+     if stop_event is not None and stop_event.is_set():
+diff --git a/rfnext_market/session.py b/rfnext_market/session.py
+index 01a5ecc..cac259b 100644
+--- a/rfnext_market/session.py
++++ b/rfnext_market/session.py
+@@ -18,6 +18,8 @@ import secrets
+ import inspect
+ import time
+ import struct
++import queue
++from types import SimpleNamespace
+ from datetime import datetime, timezone
+ 
+ from . import auth, dump, market, protocol, report, selection, rankings, character, purchase
+@@ -73,7 +75,7 @@ class _Link:
+         self.next_beat = None  # prazo do próximo 0x0103, a partir do último enviado
+ 
+     def send(self, opcode, payload):
+-        manual_purchase = self.port == 12020 and opcode == 0x1D12 and self.state.get("purchase_enabled")
++        manual_purchase = self.port == 12020 and opcode in (0x0215, 0x1D12) and self.state.get("purchase_enabled")
+         if opcode not in ALLOWED_SENDS.get(self.port, ()) and not manual_purchase:
+             raise _Stop("failed", f"envio não permitido: serviço {self.port} 0x{opcode:04x}")
+         wire = protocol.encode_frame(opcode, payload, self.send_seq, seed=secrets.randbelow(0x40))
+@@ -123,7 +125,7 @@ class _Link:
+ 
+ 
+ def _parse(port, direction, frame):
+-    if port == 12020 and frame["opcode"] in (0x1D12, 0x1D13):
++    if port == 12020 and frame["opcode"] in (0x0215, 0x0216, 0x1D12, 0x1D13):
+         return purchase.parse(frame["opcode"], frame["payload"])
+     if port == 12020 and frame["opcode"] in (0x0201, 0x0202):
+         return character.parse_message(frame["opcode"], frame["payload"])
+@@ -150,7 +152,7 @@ def _heartbeat_payload(now=None, constant=0, flag=0):
+     return bytes((int(flag) & 1,)) + struct.pack("<I", counter)
+ 
+ 
+-def _await(link, opcode, timeout, stage, heartbeat=False, on_frame=None, stop_event=None):
++def _await(link, opcode, timeout, stage, heartbeat=False, on_frame=None, stop_event=None, game_heartbeat=None):
+     """Recebe até `opcode` (ou on_frame devolver True). Assíncronas só são registradas.
+ 
+     Com heartbeat e link.beat_s, envia 0x0103 quando link.next_beat vence; o timeout do
+@@ -159,6 +161,7 @@ def _await(link, opcode, timeout, stage, heartbeat=False, on_frame=None, stop_ev
+     """
+     deadline = time.monotonic() + timeout
+     beat = heartbeat and link.beat_s
++    next_game_beat = time.monotonic() + 2.5
+     sock = getattr(link.conn, "_sock", None)
+     base_timeout = sock.gettimeout() if sock is not None else None
+     try:
+@@ -171,8 +174,13 @@ def _await(link, opcode, timeout, stage, heartbeat=False, on_frame=None, stop_ev
+                 link.next_beat = now + link.beat_s
+             if now >= deadline:
+                 raise _Stop("failed", f"{stage}: timeout aguardando 0x{opcode:04x}", timeout=True)
++            if game_heartbeat is not None and now >= next_game_beat:
++                link.send(0x0205, _heartbeat_payload(**game_heartbeat))
++                next_game_beat = now + 2.5
+             if sock is not None and base_timeout is not None:
+                 wake = min(deadline, link.next_beat) if beat else deadline
++                if game_heartbeat is not None:
++                    wake = min(wake, next_game_beat)
+                 if stop_event is not None:
+                     wake = min(wake, now + 0.2)
+                 sock.settimeout(max(0.001, min(base_timeout, wake - now)))
+@@ -206,6 +214,36 @@ def _require_ok(parsed, stage):
+     return parsed
+ 
+ 
++def _purchase_on_link(link, config, request, emit, stop_event):
++    heartbeat = config.get("heartbeat", {})
++    def wait(*args, **kwargs):
++        return _await(*args, **kwargs, game_heartbeat={
++            "constant": heartbeat.get("constant", 0), "flag": heartbeat.get("flag", 0)})
++    link.state["purchase_enabled"] = True
++    try:
++        return purchase.execute(link, request, wait, emit, stop_event, config["game"]["timeout"])
++    finally:
++        link.state.pop("purchase_enabled", None)
++
++
++def _pending_purchase(link, config, emit, stop_event):
++    commands = config.get("_purchase_commands")
++    if commands is None:
++        return
++    try:
++        request, future, cancel = commands.get_nowait()
++    except queue.Empty:
++        return
++    if not future.set_running_or_notify_cancel():
++        return
++    try:
++        combined = SimpleNamespace(is_set=lambda: stop_event.is_set() or cancel.is_set())
++        result = _purchase_on_link(link, config, request, emit, combined)
++        future.set_result(result)
++    except Exception as exc:
++        future.set_exception(exc)
++
++
+ def run(config: dict, emit, stop_event=None, on_collected=None) -> dict:
+     """Entrega a coleta pronta e, com callback, aguarda desconexão sem refazer login."""
+     if on_collected is not None and stop_event is None:
+@@ -235,6 +273,7 @@ def run(config: dict, emit, stop_event=None, on_collected=None) -> dict:
+                                "heartbeat", stop_event=stop_event)
+                         emit({"record_type": "heartbeat", "status": "confirmed",
+                               "payload_hex": payload.hex()})
++                        _pending_purchase(game, config, emit, stop_event)
+                         if stop_event.wait(2.5):
+                             break
+                     else:
+@@ -405,8 +444,8 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+                   "payload_hex": payload.hex()})
+ 
+         if config.get("manual_purchase") is not None:
+-            state.update(stage="12020:0x1D12", purchase_enabled=True)
+-            result = purchase.execute(g, config["manual_purchase"], _await, emit, stop_event, t)
++            state.update(stage="12020:0x1D12")
++            result = _purchase_on_link(g, config, config["manual_purchase"], emit, stop_event)
+             result.update(frames=frames, items=[], offers=[], market={}, rankings={})
+             return result
+ 
+diff --git a/tests/test_purchase.py b/tests/test_purchase.py
+index 98dc9ce..2c74b34 100644
+--- a/tests/test_purchase.py
++++ b/tests/test_purchase.py
+@@ -1,7 +1,7 @@
+ import struct
+ import threading
+ import unittest
+-from unittest.mock import Mock, patch
++from unittest.mock import Mock, patch, call
+ 
+ from rfnext_market import purchase, session, desktop
+ from tests import test_session as helper
+@@ -32,11 +32,11 @@ class PurchaseTest(unittest.TestCase):
+                                  (response(uid=123),"unconfirmed"),(b"bad","unconfirmed"),
+                                  (TimeoutError("timeout"),"unconfirmed")):
+             link, wait = Mock(), Mock()
+-            if isinstance(answer, Exception): wait.side_effect=answer
+-            else: wait.return_value=({"payload":answer},None)
++            wait.side_effect=[({"payload":bytes.fromhex("000001")},None),
++                              answer if isinstance(answer, Exception) else ({"payload":answer},None)]
+             result=purchase.execute(link,REQUEST,wait,Mock(),threading.Event(),1)
+             self.assertEqual(result["status"],expected)
+-            link.send.assert_called_once_with(0x1D12,bytes.fromhex(PAYLOAD))
++            self.assertEqual(link.send.call_args_list,[call(0x0215,b""),call(0x1D12,bytes.fromhex(PAYLOAD))])
+         stop=threading.Event();stop.set();link=Mock()
+         self.assertEqual(purchase.execute(link,REQUEST,Mock(),Mock(),stop,1)["status"],"cancelled")
+         link.send.assert_not_called()
+@@ -44,11 +44,104 @@ class PurchaseTest(unittest.TestCase):
+     def test_authenticated_session_purchase_does_not_query_market_or_rank(self):
+         runner=helper.SessionTest()
+         cfg=helper.config();cfg["manual_purchase"]=REQUEST
+-        result=runner.run_session(cfg=cfg,game_s=helper.game_script({0x1D12:[[(0x1D13,response())]]}))
++        result=runner.run_session(cfg=cfg,game_s=helper.game_script({0x0215:[[(0x0216,bytes.fromhex("000001"))]],0x1D12:[[(0x1D13,response())]]}))
+         self.assertEqual(result["status"],"confirmed",result)
+-        self.assertEqual(runner.sent_ops(12020),[0x0101,0x0103,0x0105,0x1D12])
++        self.assertEqual(runner.sent_ops(12020),[0x0101,0x0103,0x0105,0x0215,0x1D12])
+         self.assertTrue(all(c.closed for c in runner.conns.values()))
+ 
++    def test_failed_verification_never_sends_purchase(self):
++        for answer in (b"\x01\x00\x01", b"\x00\x00\x00", b"\x00\x00\x02", b"bad!", TimeoutError()):
++            link, wait = Mock(), Mock()
++            wait.side_effect = [answer if isinstance(answer, Exception) else ({"payload":answer}, None)]
++            result = purchase.execute(link, REQUEST, wait, Mock(), threading.Event(), 1)
++            self.assertEqual(result["status"], "blocked")
++            link.send.assert_called_once_with(0x0215, b"")
++
++    def test_heartbeat_queue_uses_existing_socket_and_resumes(self):
++        import queue
++        from concurrent.futures import Future
++        cfg = helper.config()
++        cfg.update(heartbeat_only=True, initialize_character=True, heartbeat={"enabled":True})
++        creds = cfg["credentials"]
++        creds["character_enter_payload_hex"] = (helper.s16(creds["account_id"]) +
++            struct.pack("<QQ14sQ",99,123,bytes(14),88) + helper.s16(creds["auth_jwt"])).hex()
++        cfg["_purchase_commands"] = queue.Queue()
++        future = Future()
++        clock, conns, records = helper.Clock(), {}, []
++        clock.time = clock.monotonic
++        stop = Mock(wraps=threading.Event())
++        stop.wait = Mock(return_value=False)
++        script = helper.game_script({
++            0x0201:[[(0x0202,struct.pack("<HQ",0,123))]],
++            0x0205:[[(0x0206,bytes(8))]]*12,
++            0x0215:[["timeout"]*4+[(0x0216,b"\x00\x00\x01")]],
++            0x1D12:[["timeout"]*4+[(0x1D13,response())]]})
++        def factory(host, port, timeout, **kw):
++            self.assertNotIn(port,conns)
++            conns[port] = helper.FakeConn(port,helper.auth_script() if port==12000 else script,clock,[])
++            return conns[port]
++        def observe(record):
++            records.append(record)
++            if future.done() and record.get("record_type")=="heartbeat":
++                stop.set()
++        def ready(result):
++            cfg["_purchase_commands"].put((REQUEST,future,threading.Event()))
++        with patch.object(session,"Connection",factory), patch.object(session,"time",clock):
++            session.run(cfg,observe,stop,on_collected=ready)
++        self.assertEqual(future.result()["status"],"confirmed")
++        ops=[f["opcode"] for f in conns[12020].sent]
++        self.assertEqual(ops[:4],[0x0101,0x0103,0x0105,0x0201])
++        self.assertEqual(ops.count(0x1D12),1)
++        self.assertEqual(ops.count(0x0215),1)
++        self.assertEqual(ops.count(0x0103),1)
++        self.assertIn(0x0205,ops[ops.index(0x0215)+1:ops.index(0x1D12)])
++        self.assertGreaterEqual(ops[ops.index(0x1D12)+1:].count(0x0205),2)
++        self.assertFalse(set(ops)&{0x1D01,0x1D03,0x1A01,0x240A})
++
++    def test_heartbeat_button_does_not_authenticate_or_upload(self):
++        import queue
++        app=desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app._closing=False;app.mode_threads={};app.worker=None
++        service=Mock();service.ready.is_set.return_value=True
++        service.ended.is_set.return_value=False;service.stop_event.is_set.return_value=False
++        service.purchase.return_value={"status":"confirmed"}
++        app.heartbeat_service=service;app.root=Mock();app.purchase_button=Mock();app.status=Mock()
++        app._validate_config=Mock();app._control_queue=queue.Queue()
++        with patch.object(desktop,"PurchaseDialog",return_value=Mock(result=REQUEST)), patch.object(
++                desktop.messagebox,"askyesno",return_value=True), patch.object(session,"run") as run, patch.object(
++                desktop.upload,"submit_result") as upload:
++            app._start_purchase(True);app.worker.join(2)
++            service.purchase.assert_called_once_with(REQUEST,app.stop_event)
++            run.assert_not_called();upload.assert_not_called();app._validate_config.assert_not_called()
++
++    def test_worker_rejects_inactive_and_resolves_cancelled_queue(self):
++        from rfnext_market.complete import HeartbeatWorker
++        worker=HeartbeatWorker()
++        with self.assertRaises(RuntimeError):
++            worker.purchase(REQUEST,threading.Event())
++        worker.ready.set()
++        cancel=threading.Event();cancel.set()
++        self.assertEqual(worker.purchase(REQUEST,cancel)["status"],"cancelled")
++        link=Mock()
++        session._pending_purchase(link,{"_purchase_commands":worker.purchase_commands},Mock(),threading.Event())
++        link.send.assert_not_called()
++
++    def test_worker_shutdown_resolves_waiting_purchase(self):
++        from concurrent.futures import Future
++        from rfnext_market.complete import HeartbeatWorker
++        def runner(cfg, emit, **kw):
++            for _ in range(3):
++                emit({"record_type":"heartbeat","status":"confirmed"})
++            cfg["_purchase_commands"].put((REQUEST,future,threading.Event()))
++            return {"diagnostic":"closed"}
++        future=Future()
++        worker=HeartbeatWorker(runner)
++        worker.start(helper.config(),Mock());worker.worker.join(2)
++        self.assertTrue(worker.ended.is_set())
++        self.assertFalse(worker.ready.is_set())
++        with self.assertRaises(RuntimeError):
++            future.result(timeout=1)
++
+     def test_cancelled_confirmation_does_not_start_session(self):
+         app=desktop.DesktopApp.__new__(desktop.DesktopApp)
+         app._closing=False;app.mode_threads={};app.worker=None;app.heartbeat_service=None
