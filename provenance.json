@@ -2,8 +2,8 @@
   "product": "rf-qol",
   "component": "rf-qol-agent",
   "release": true,
-  "version": "2.0.0-beta.54",
-  "release_sequence": 64,
+  "version": "2.0.0-beta.55",
+  "release_sequence": 65,
   "authenticode": false,
   "commit": "candidate-not-git",
   "commit_role": "candidate-source",
@@ -13,7 +13,7 @@
     "app.agent_maintenance": "48117c0b71e4efb334e12105e01f1145ddc8e127a560dc517bd4cfcbec4200d4",
     "app.agent_paths": "095839028632b114b3e5abdc0501c5274edede4374d7bb3c7cbd9752b6a12b86",
     "app.agent_preferences": "af25ad7121a5e869c577d64f3110ca44b2032740c5a007d5895f9b6bd369b496",
-    "app.build_profile": "d2ff8dd619de5e8f5682fb4907a45467545981fa5cceb845874ef26df09244c3",
+    "app.build_profile": "395890e316321b3351ad82f95674bae6e242689da2fef8cd9d8604abd1564a88",
     "app.protected_state": "545c3d9869bcbd49f6619a7d710fbcfdff9f2334ed4fc7c4589ca975ad97447e",
     "core": "5e329b6f57e7fc1a9c5cda47daea7ee6fef7276e53a75f55f71e9bd22daba7fb",
     "core.activity_contract": "4f8506892222b453a59a00675855e460231160dcb2075222ed4cf3be4f83b0ab",
@@ -32,7 +32,7 @@
     "core.store": "dd12465afda97942c8bd4d70ea2f52cdc961366a81969c9e14ec1cf38f58f982",
     "core.web_agent": "7202d7162389d3a95e15ed820600c8e23053b35f8bf41997a685eeb1c56d968d",
     "core.web_agent_authorization": "43bff54036e15cddd191a1b0b1a154c212dabadc1d9834315e2f014b5afe3d11",
-    "core.web_agent_boss_api": "49e7c71fcd6aaace0edb1eef7ba8090141b05f8123cfad72eb483dd60c8258a6",
+    "core.web_agent_boss_api": "865355df995c1b46dd093c45ebae23672633b08f2400c0ca2ecf7a130b94dad0",
     "core.web_agent_character_history": "d1514e9fbc068fdc5ef1661e6f39df41b0813ff73f311c99b2a5913238f6af65",
     "core.web_agent_identity": "28b5af00d5f1f91b680b1b6d43e0d23d6c85ad50a82163c08b92d42817cb4b34",
     "core.web_agent_local_api": "bb3e9e9709c7fdfd0dde2cac33834adb17d53e9b313aefba5ee26c5a5b24dd1e",
@@ -50,17 +50,26 @@
     "core/job1_pending_layouts.json": "1be189f53ed23c8bcb864560bc3bf328828f09f1c3eabcf5d1a951aca802ba4f",
     "core/level_curve.json": "a7a30ccf7e0fe598398c4619a86406adef71e61a8e1d22c9575d4254f862c86f"
   },
-  "installer_sha256": "4a94002fa314c8eec27c47d3c64ac38c303b7e2bad856363f58a90aa7e69080b",
+  "installer_sha256": "3ea04edaa117becb87485b075ceac3d07c8af5ffba9563203f4966c996a3f247",
   "verified_build_inputs_sha256": {
     "packaging/RFQOLAgent.spec": "458e57e7a0bf4e872b6bc61a9218611aa5b4f096d5cc094bcd49d2a639c34682",
-    "packaging/agent-installer.nsi": "9c86a9f7d75497743f62f698bfcf384a45e11c981e613be922edb3fac1470efa",
+    "packaging/agent-installer.nsi": "986abe984cc339019b12085fbb15bceb92da5b714e37bd9c930ae58e0f05567b",
     "packaging/build-agent-release.ps1": "6cc4e94871dc565a6ff26ccda450249e699ef267522b9879264a3e411a60565e",
     "requirements-lock-win-x64-py313.txt": "9eb2e13ab1408006b756bb2086d2c9d3d98d7d15f93d0122146e22d4ebc78ebc"
   },
-  "manifest_sha256": "f24172fd28761842a8d2a4b061152e69e6531640632a0805a48b381478bc8f54",
+  "source_delta_from_beta54": [
+    "app.build_profile",
+    "core.web_agent_boss_api",
+    "packaging/agent-installer.nsi"
+  ],
+  "manifest_sha256": "9d6682f0dab6eefc7073a4f065123837b75f4540f5288b2b241aa40ecf8d47e8",
   "tests": {
-    "run": 714,
+    "run": 715,
     "skipped": 2,
+    "failures": 0
+  },
+  "focused_tests": {
+    "run": 98,
     "failures": 0
   },
   "packaged_self_test": "passed",
