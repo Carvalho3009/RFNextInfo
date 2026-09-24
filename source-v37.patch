@@ -1,0 +1,1897 @@
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index a420d68..74d63de 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -192,7 +192,7 @@ def upload_status_text(value):
+ class DesktopApp:
+     def __init__(self, root: tk.Tk):
+         self.root = root
+-        self.root.title("RF Next Companion · v36")
++        self.root.title("RF Next Companion · v37")
+         self.root.minsize(1050, 700)
+         self.root.geometry("1280x820")
+         self.config_document = {}
+@@ -234,6 +234,9 @@ class DesktopApp:
+         self._tree_records = {}
+         self._last_selected_tree = None
+         self.market_result = None
++        self.rankings_result = None
++        self._product_nodes = {}
++        self._offer_nodes = {}
+         self.capture_ref = None
+         self.shopping_snapshot = None
+         self.proposals = []
+@@ -241,124 +244,19 @@ class DesktopApp:
+         self.active_proposal = None
+         self.shopping_worker = None
+         self.shopping_stop = threading.Event()
++        try:
++            settings = json.loads((Path(__file__).resolve().parent.parent / "ui-settings.json").read_text(encoding="utf-8"))
++            self.ui_font_size = max(8, min(20, int(settings.get("font_size", 11))))
++        except (OSError, ValueError, TypeError, AttributeError):
++            self.ui_font_size = 11
+         self._build()
++        self._render_purchase_list()
+         self.root.protocol("WM_DELETE_WINDOW", self._close)
+         self.root.after(50, self._drain_queue)
+ 
+     def _build(self):
+-        style = ttk.Style(self.root)
+-        style.theme_use("clam")
+-        style.configure(".", font=("Segoe UI", 10), background="#f3f5f8", foreground="#1d2b3a")
+-        style.configure("TButton", padding=(12, 7))
+-        style.configure("TNotebook.Tab", padding=(22, 10))
+-        style.configure("Treeview", background="white", fieldbackground="white", rowheight=30)
+-        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), padding=7)
+-        style.map("Treeview", background=[("selected", "#185c87")], foreground=[("selected", "white")])
+-        style.configure("Title.TLabel", font=("Segoe UI", 20, "bold"))
+-        header = ttk.Frame(self.root, padding=(20, 12))
+-        header.pack(fill="x")
+-        ttk.Label(header, text="RF Next Companion", style="Title.TLabel").pack(side="left")
+-        ttk.Label(header, textvariable=self.mode_status["heartbeat"]).pack(side="right")
+-        self.navigation = ttk.Notebook(self.root)
+-        self.navigation.pack(fill="both", expand=True, padx=16, pady=8)
+-        self.pages = {}
+-        for name in ("Mercado", "Rankings", "Compras", "Configurações", "Diagnóstico"):
+-            page = ttk.Frame(self.navigation, padding=12)
+-            self.pages[name] = page
+-            self.navigation.add(page, text=name)
+-        files = ttk.LabelFrame(self.pages["Configurações"], text="Arquivos locais")
+-        files.pack(fill="x", padx=8, pady=8)
+-        self._file_row(files, 0, "Configuração", self.config_path, self._choose_config, False)
+-        self._file_row(files, 1, "Sessão", self.session_path, self._choose_session, True)
+-        self._file_row(files, 2, "Base de itens", self.item_database, self._choose_items, True)
+-
+-        settings = ttk.LabelFrame(self.pages["Configurações"], text="Configurações editáveis")
+-        settings.pack(fill="x", padx=8, pady=(0, 8))
+-        fields = (
+-            ("auth_host", "Login host"), ("auth_port", "Login porta"),
+-            ("auth_timeout", "Login timeout"), ("game_host", "Jogo host"),
+-            ("game_port", "Jogo porta"), ("game_timeout", "Jogo timeout"),
+-            ("world_id", "World ID"), ("response_timeout", "Mercado timeout"),
+-        )
+-        for index, (name, label) in enumerate(fields):
+-            row, col = divmod(index, 4)
+-            ttk.Label(settings, text=label).grid(row=row * 2, column=col, sticky="w", padx=5, pady=(4, 0))
+-            ttk.Entry(settings, textvariable=self.vars[name], width=22).grid(
+-                row=row * 2 + 1, column=col, sticky="ew", padx=5, pady=(0, 4))
+-            settings.columnconfigure(col, weight=1)
+-
+-        actions = ttk.Frame(self.pages["Configurações"])
+-        actions.pack(fill="x", padx=8, pady=(0, 8))
+-        self.open_button = ttk.Button(actions, text="Abrir configuração", command=self._choose_config)
+-        self.open_button.pack(side="left")
+-        ttk.Button(actions, text="Salvar configuração", command=self._save_config).pack(side="left", padx=5)
+-        ttk.Button(actions, text="Validar", command=self._validate).pack(side="left")
+-        controls = ttk.LabelFrame(self.pages["Mercado"], text="Coleta e consulta completa")
+-        controls.pack(fill="x", padx=8, pady=5)
+-        self.mode_buttons = {}
+-        for row, (mode, label, command) in enumerate((("market", "Consultar mercado", self._start),
+-                ("rankings", "Consultar rankings", self._start_rankings),
+-                ("complete", "Consulta completa", self._start_complete))):
+-            target = self.pages["Rankings"] if mode == "rankings" else controls
+-            if mode == "rankings":
+-                target = ttk.Frame(target)
+-                target.pack(fill="x", pady=8)
+-            button = ttk.Button(target, text=label, command=command)
+-            button.grid(row=row, column=0, sticky="ew")
+-            self.mode_buttons[mode] = button
+-            ttk.Checkbutton(target, text="Continuamente", variable=self.mode_continuous[mode]).grid(row=row, column=1)
+-            ttk.Label(target, text="Intervalo após encerrar (min)").grid(row=row, column=2)
+-            ttk.Entry(target, textvariable=self.mode_intervals[mode], width=6).grid(row=row, column=3)
+-            ttk.Button(target, text="Parar", command=lambda m=mode: self._stop_mode(m)).grid(row=row, column=4)
+-            ttk.Label(target, textvariable=self.mode_status[mode]).grid(row=row, column=5, sticky="w", padx=8)
+-        self.start_button = self.mode_buttons["market"]
+-        self.rankings_button = self.mode_buttons["rankings"]
+-        self.complete_button = self.mode_buttons["complete"]
+-        self.heartbeat_button = ttk.Button(controls, text="Iniciar heartbeat", command=self._start_heartbeat)
+-        self.heartbeat_button.grid(row=3, column=0, sticky="ew")
+-        ttk.Button(controls, text="Parar heartbeat", command=lambda: self._stop_mode("heartbeat")).grid(row=3, column=4)
+-        ttk.Label(controls, textvariable=self.mode_status["heartbeat"]).grid(row=3, column=5, sticky="w", padx=8)
+-        self.stop_button = ttk.Button(header, text="Parar tudo", command=self._stop)
+-        self.stop_button.pack(side="right", padx=12)
+-        self.purchase_button = ttk.Button(self.pages["Compras"], text="Comprar: nova conexão", command=self._start_purchase)
+-        self.purchase_button.pack(anchor="w", pady=4)
+-        self.purchase_heartbeat_button = ttk.Button(self.pages["Compras"], text="Comprar: heartbeat ativo", command=lambda: self._start_purchase(True))
+-        self.purchase_heartbeat_button.pack(anchor="w", pady=4)
+-        diagnostic_actions = ttk.Frame(self.pages["Diagnóstico"])
+-        diagnostic_actions.pack(fill="x", pady=8)
+-        ttk.Button(diagnostic_actions, text="Inspecionar selecionada", command=self._inspect_selected).pack(side="left", padx=5)
+-        ttk.Button(diagnostic_actions, text="Exportar log completo", command=self._export).pack(side="left")
+-
+-        companion = ttk.LabelFrame(self.pages["Configurações"], text="Companion")
+-        companion.pack(fill="x", padx=8, pady=(0, 8))
+-        ttk.Checkbutton(companion, text="Enviar ao Companion", variable=self.companion_enabled).grid(row=0, column=0, padx=5)
+-        ttk.Label(companion, text="Servidor (HTTPS)").grid(row=0, column=1)
+-        ttk.Entry(companion, textvariable=self.companion_url, width=32, state="readonly").grid(row=0, column=2, padx=5, sticky="ew")
+-        self.retry_button = ttk.Button(companion, text="Reenviar pendentes", command=self._retry_upload)
+-        self.retry_button.grid(row=0, column=3, padx=5)
+-        ttk.Label(companion, text="Pasta da fila").grid(row=1, column=1)
+-        ttk.Entry(companion, textvariable=self.companion_state_dir).grid(row=1, column=2, columnspan=2, padx=5, sticky="ew")
+-        companion.columnconfigure(2, weight=1)
+-        self.progress_bars = {}
+-        self.progress_labels = {}
+-        for key, title in (("read", "Leitura"), ("upload", "Envio ao site"), ("market:read", "Mercado: leitura"), ("market:upload", "Mercado: envio"), ("rankings:read", "Rankings: leitura"), ("rankings:upload", "Rankings: envio")):
+-            frame = ttk.Frame(self.pages["Rankings"] if key.startswith("rankings:") else self.pages["Mercado"])
+-            frame.pack(fill="x", padx=8, pady=(0, 5))
+-            label = tk.StringVar(value=f"{title}: aguardando")
+-            ttk.Label(frame, textvariable=label, width=52).pack(side="left")
+-            bar = ttk.Progressbar(frame, maximum=100, mode="determinate")
+-            bar.pack(side="left", fill="x", expand=True)
+-            self.progress_bars[key] = bar
+-            self.progress_labels[key] = label
+-        panes = ttk.Panedwindow(self.pages["Diagnóstico"], orient="horizontal")
+-        panes.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+-        self.tx = self._log_pane(panes, "Mensagens enviadas (TX)")
+-        self.rx = self._log_pane(panes, "Mensagens recebidas / eventos (RX)")
+-        panes.add(self.tx[0], weight=1)
+-        panes.add(self.rx[0], weight=1)
+-        self._build_results()
+-        self.status = tk.StringVar(value="Pronto. Nenhuma conexão foi aberta.")
+-        ttk.Label(self.root, textvariable=self.status, anchor="w").pack(fill="x", padx=8, pady=(0, 8))
++        from . import desktop_shell
++        desktop_shell.build(self)
+ 
+     @staticmethod
+     def _table(parent, columns):
+@@ -378,69 +276,6 @@ class DesktopApp:
+         frame.columnconfigure(0, weight=1)
+         return tree
+ 
+-    def _build_results(self):
+-        page = self.pages["Mercado"]
+-        filters = ttk.Frame(page)
+-        filters.pack(fill="x", pady=8)
+-        self.market_scope = tk.StringVar(value="Local")
+-        self.market_search = tk.StringVar()
+-        self.market_refine = tk.StringVar(value="Todos")
+-        ttk.Label(filters, text="Mercado").pack(side="left")
+-        selector = ttk.Combobox(filters, textvariable=self.market_scope, values=("Local", "Global"), state="readonly", width=10)
+-        selector.pack(side="left", padx=8)
+-        ttk.Label(filters, text="Buscar produto ou ID").pack(side="left")
+-        ttk.Entry(filters, textvariable=self.market_search, width=32).pack(side="left", padx=8)
+-        ttk.Label(filters, text="Refino").pack(side="left")
+-        ttk.Combobox(filters, textvariable=self.market_refine, values=("Todos", *map(str, range(21))), width=6).pack(side="left", padx=8)
+-        self.capture_status = tk.StringVar(value="Nenhuma captura disponível. Execute uma consulta de mercado.")
+-        ttk.Label(page, textvariable=self.capture_status, wraplength=1000).pack(anchor="w")
+-        tables = ttk.Notebook(page)
+-        tables.pack(fill="both", expand=True, pady=8)
+-        offers_page, summary_page = ttk.Frame(tables), ttk.Frame(tables)
+-        tables.add(offers_page, text="Ofertas detalhadas")
+-        tables.add(summary_page, text="Produtos consultados")
+-        self.summary_table = self._table(summary_page, (("produto", "Produto", 260), ("item_index", "Item ID", 100),
+-            ("ofertas", "Ofertas recebidas", 120), ("menor_preco", "Menor preço informado", 150),
+-            ("maior_preco", "Maior preço informado", 150), ("quantidade_total", "Quantidade", 100), ("status", "Estado", 140)))
+-        self.market_table = self._table(offers_page, (("produto", "Produto", 230), ("enchant_level", "Refino", 65),
+-            ("quantidade", "Qtd. no lote", 95), ("selling_price", "Preço informado", 105),
+-            ("seller", "Vendedor", 170), ("pc_id", "PCID", 170), ("exchange_index", "Oferta", 170),
+-            ("registered_time", "Postagem (UTC)", 180), ("expired_time", "Expiração (UTC)", 180)))
+-        self.market_scope.trace_add("write", lambda *_: self._render_market())
+-        self.market_search.trace_add("write", lambda *_: self._render_market())
+-        self.market_refine.trace_add("write", lambda *_: self._render_market())
+-        self.ranking_status = tk.StringVar(value="Nenhuma consulta de ranking disponível.")
+-        ttk.Label(self.pages["Rankings"], textvariable=self.ranking_status).pack(anchor="w", pady=8)
+-        self.ranking_table = self._table(self.pages["Rankings"], (("kind", "Ranking", 100), ("rank", "Posição", 70),
+-            ("name", "Personagem", 230), ("guild", "Guilda", 150), ("uid", "Character UID", 180),
+-            ("value", "EXP / Contribuição", 180), ("status", "Estado", 100)))
+-        page = self.pages["Compras"]
+-        ttk.Separator(page).pack(fill="x", pady=10)
+-        actions = ttk.Frame(page)
+-        actions.pack(fill="x")
+-        ttk.Button(actions, text="Receber lista do site", command=self._fetch_shopping).pack(side="left")
+-        self.shopping_market = tk.StringVar(value="Local")
+-        ttk.Combobox(actions, textvariable=self.shopping_market, values=("Local", "Global"), state="readonly", width=10).pack(side="left", padx=8)
+-        ttk.Button(actions, text="Preparar ofertas", command=self._prepare_shopping).pack(side="left")
+-        ttk.Label(page, text="A lista prepara lotes inteiros para revisão. Preço de referência não é um limite. Cada compra exige confirmação.", wraplength=1000).pack(anchor="w", pady=8)
+-        self.shopping_status = tk.StringVar(value="Receba a lista do site e consulte o mercado antes de preparar ofertas.")
+-        ttk.Label(page, textvariable=self.shopping_status, wraplength=1050).pack(anchor="w")
+-        shopping_tabs = ttk.Notebook(page)
+-        shopping_tabs.pack(fill="both", expand=True, pady=8)
+-        list_page, proposal_page = ttk.Frame(shopping_tabs), ttk.Frame(shopping_tabs)
+-        shopping_tabs.add(list_page, text="Lista recebida")
+-        shopping_tabs.add(proposal_page, text="Ofertas preparadas")
+-        self.shopping_tabs = shopping_tabs
+-        self.shopping_list_table = self._table(list_page, (("name", "Produto", 250), ("refine", "Refino", 80),
+-            ("remaining", "Pendente no site", 150), ("reference", "Referência / un.", 130), ("updated", "Atualizado em", 190)))
+-        self.proposal_table = self._table(proposal_page, (("name", "Produto", 220), ("quantity", "Qtd. no lote", 95),
+-            ("price", "Preço informado", 105), ("reference", "Referência / un.", 115), ("market", "Mercado", 80),
+-            ("pcid", "PCID", 170), ("offer", "Oferta", 170), ("state", "Estado", 110)))
+-        actions = ttk.Frame(proposal_page)
+-        actions.pack(fill="x")
+-        ttk.Button(actions, text="Comprar selecionada: nova conexão", command=lambda: self._buy_proposal(False)).pack(side="left", padx=4)
+-        ttk.Button(actions, text="Comprar selecionada: heartbeat ativo", command=lambda: self._buy_proposal(True)).pack(side="left", padx=4)
+-
+     def _show_capture(self, result, mode):
+         if not hasattr(self, "market_table"):
+             return
+@@ -455,28 +290,236 @@ class DesktopApp:
+             self.shopping_status.set("Nova captura: prepare novamente as ofertas da lista. " + self._reservation_text())
+             self._render_market()
+         if result.get("rankings"):
++            self.rankings_result = result
+             self.ranking_table.delete(*self.ranking_table.get_children())
+-            rows = presentation.ranking_rows(result)
++            rows = presentation.ranking_rows(result, exp_only=True)
+             for row in rows:
+                 self.ranking_table.insert("", "end", values=row)
+-            statuses = "; ".join(f"{name}: {presentation.status_text(snapshot.get('status', 'Sem dados'))}" for name, snapshot in result["rankings"].items())
++            statuses = presentation.status_text(result["rankings"].get("exp", {}).get("status", "Sem dados"))
+             self.ranking_status.set(f"{datetime.now().astimezone().strftime('%d/%m/%Y %H:%M:%S')} · {len(rows)} personagens · {statuses}")
++            if self.market_result is not None:
++                self._render_market()
++            self._render_purchase_list()
+ 
+     def _render_market(self):
+         result = self.market_result or {}
+         market = 0 if self.market_scope.get() == "Local" else 1
++        selected = self.product_tree.selection()
++        opened = {key for key in self.product_tree.get_children() if self.product_tree.item(key, "open")}
++        self.product_tree.delete(*self.product_tree.get_children())
+         self.market_table.delete(*self.market_table.get_children())
+-        rows = presentation.market_rows(result, market, self.market_search.get(), self.market_refine.get())
+-        for row in rows:
+-            self.market_table.insert("", "end", values=tuple(row.get(key) or ("Sem dados" if key.endswith("_time") else row.get(key, "")) for key in self.market_table["columns"]))
+-        self.summary_table.delete(*self.summary_table.get_children())
++        self._product_nodes, self._offer_nodes = {}, {}
+         query = self.market_search.get().strip().casefold()
+-        for row in report.summary_rows([i for i in result.get("items", []) if i.get("exchange_server_type") == market]):
+-            if not query or query in (str(row["produto"]) + " " + str(row["item_index"])).casefold():
+-                row["status"] = presentation.status_text(row["status"])
+-                self.summary_table.insert("", "end", values=tuple(row[key] for key in self.summary_table["columns"]))
++        refine = self.market_refine.get()
++        for product in presentation.market_tree(result, market, getattr(self, "rankings_result", None)):
++            if query and query not in f"{product['name']} {product['item_index']}".casefold():
++                continue
++            key = product["key"]
++            self.product_tree.insert("", "end", iid=key, text=product["name"], values=(str(product["item_index"]),), open=key in opened)
++            for level in product["refinements"]:
++                if refine != "Todos" and str(level["enchant_level"]) != refine:
++                    continue
++                title = f"+{level['enchant_level']}" if level["enchant_level"] is not None else "Refino sem dados"
++                self.product_tree.insert(key, "end", iid=level["key"], text=f"{title} · {len(level['offers'])} ofertas")
++                self._product_nodes[level["key"]] = level["offers"]
++        if selected and selected[0] in self._product_nodes:
++            self.product_tree.selection_set(selected[0])
++            self._select_product()
+         if self.market_result is not None:
+-            self.capture_status.set(f"{self.capture_time} · {presentation.market_summary(result, market)} · {len(rows)} ofertas exibidas. " + result.get("diagnostic", ""))
++            self.capture_status.set(f"{self.capture_time} · {presentation.market_summary(result, market)} · Expanda um produto e selecione o refino. " + result.get("diagnostic", ""))
++
++    def _select_product(self, event=None):
++        selected = self.product_tree.selection()
++        self.market_table.delete(*self.market_table.get_children())
++        self._offer_nodes = {}
++        if selected and selected[0] not in self._product_nodes:
++            self.product_tree.item(selected[0], open=True)
++        for index, row in enumerate(self._product_nodes.get(selected[0] if selected else "", [])):
++            key = str(index)
++            self._offer_nodes[key] = row
++            self.market_table.insert("", "end", iid=key, values=tuple(
++                row.get(field, "") if row.get(field) not in (None, "") else "Sem dados"
++                for field in self.market_table["columns"]))
++
++    def _change_font_size(self, value):
++        from .desktop_shell import apply_font_size
++        try:
++            size = max(8, min(20, int(float(value))))
++            apply_font_size(self, size)
++            (Path(__file__).resolve().parent.parent / "ui-settings.json").write_text(
++                json.dumps({"font_size": size}), encoding="utf-8")
++        except (ValueError, OSError) as exc:
++            self.status.set(f"Não foi possível salvar o tamanho da fonte: {exc}")
++
++    def _purchase_store(self):
++        if not hasattr(self, "purchase_store"):
++            from .purchase_list import PurchaseList
++            self.purchase_store = PurchaseList(Path(__file__).resolve().parent.parent / "purchase-list.json")
++        return self.purchase_store
++
++    def _add_market_selection(self):
++        selected = self.market_table.selection()
++        if not selected:
++            messagebox.showinfo("Lista de compra", "Selecione uma oferta detalhada após escolher o refino.")
++            return
++        row = self._offer_nodes[selected[0]]
++        try:
++            if not row.get("request"):
++                raise ValueError("Oferta incompleta; atualize a captura")
++            self._purchase_store().add(row["request"], row["quantity"], row["produto"], self.capture_ref)
++            self._render_purchase_list()
++            self.purchase_list_status.set("Oferta adicionada. Revise a lista antes de executar.")
++        except (OSError, ValueError, RuntimeError) as exc:
++            messagebox.showerror("Lista de compra", str(exc))
++
++    def _render_purchase_list(self):
++        if not hasattr(self, "local_purchase_table"):
++            return
++        try:
++            entries = self._purchase_store().items()
++        except (OSError, ValueError) as exc:
++            self.purchase_list_status.set(f"Lista indisponível: {exc}")
++            return
++        sellers = presentation._seller_labels(getattr(self, "rankings_result", None) or self.market_result or {})
++        for table, local_only in ((self.local_purchase_table, True), (self.execution_table, False)):
++            table.delete(*table.get_children())
++            for entry in entries:
++                if local_only and entry["source"] != "local":
++                    continue
++                request = entry["request"]
++                table.insert("", "end", iid=entry["entry_id"], values=(entry["name"], request["enchant_level"],
++                    entry["quantity"], request["selling_price"], "Local" if request["exchange_server_type"] == 0 else "Global",
++                    sellers.get(str(request["pc_id"]), ("Vendedor não informado", ""))[0],
++                    str(request["exchange_index"]), presentation.status_text(entry["status"])))
++        self.purchase_list_status.set(f"{sum(e['status'] == 'prepared' for e in entries)} ofertas preparadas · histórico salvo neste computador")
++
++    def _remove_purchase_selection(self, execution=False):
++        selected = (self.execution_table if execution else self.local_purchase_table).selection()
++        try:
++            for key in selected:
++                self._purchase_store().remove(key)
++            self._render_purchase_list()
++        except (OSError, ValueError, RuntimeError) as exc:
++            messagebox.showerror("Lista de compra", str(exc))
++
++    def _stop_purchase_list(self):
++        if getattr(self, "purchase_running", False) and self.stop_event:
++            self.stop_event.set()
++            self.list_execution_status.set("Parada solicitada; aguardando o resultado da oferta em andamento.")
++
++    def _execute_purchase_list(self, entry_ids=None, use_heartbeat=None):
++        if self._closing or getattr(self, "purchase_running", False) or any(t.is_alive() for t in self.mode_threads.values()) or (self.worker and self.worker.is_alive()):
++            messagebox.showinfo("Lista de compra", "Encerre a consulta ou compra em andamento primeiro.")
++            return
++        if use_heartbeat is None:
++            use_heartbeat = self.execution_mode.get() == "Heartbeat ativo"
++        service = self.heartbeat_service
++        if use_heartbeat and (not service.ready.is_set() or service.ended.is_set() or service.stop_event.is_set()):
++            messagebox.showinfo("Lista de compra", "Inicie o heartbeat e aguarde três confirmações.")
++            return
++        if not use_heartbeat and service.worker and service.worker.is_alive():
++            messagebox.showinfo("Lista de compra", "Pare o heartbeat antes de usar nova conexão.")
++            return
++        try:
++            store = self._purchase_store()
++            entries = [e for e in store.items() if e["status"] == "prepared" and (entry_ids is None or e["entry_id"] in entry_ids)]
++            if not entries:
++                raise ValueError("Não há ofertas preparadas na lista")
++            if entry_ids is not None and len(entries) != len(entry_ids):
++                raise ValueError("A seleção contém uma oferta já tentada ou removida")
++            if self.market_result is None:
++                raise ValueError("Consulte o mercado para revalidar as ofertas salvas")
++            live = {}
++            for market in (0, 1):
++                for product in presentation.market_tree(self.market_result, market, getattr(self, "rankings_result", None)):
++                    for level in product["refinements"]:
++                        for row in level["offers"]:
++                            if row.get("request"):
++                                key = (market, row["request"]["exchange_index"])
++                                old = live.get(key)
++                                live[key] = row if key not in live or old is not None and old["request"] == row["request"] and old["quantity"] == row["quantity"] else None
++            for entry in entries:
++                row = live.get((entry["request"]["exchange_server_type"], entry["request"]["exchange_index"]))
++                if row is None or row["request"] != entry["request"] or row["quantity"] != entry["quantity"]:
++                    raise ValueError(f"Oferta ausente ou alterada: {entry['name']}. Remova e selecione novamente.")
++                if row.get("lock") or row.get("broken") or (row.get("expired_time") and datetime.fromisoformat(row["expired_time"]) <= datetime.now().astimezone()):
++                    raise ValueError(f"Oferta expirada, bloqueada ou danificada: {entry['name']}")
++            self._validate_site_entries(entries)
++            loaded = {} if use_heartbeat else self._validate_config(self._current_config())
++        except (ValueError, OSError, RuntimeError) as exc:
++            messagebox.showerror("Lista de compra", str(exc))
++            return
++        capture_ref = self.capture_ref
++        preview = "\n".join(f"{e['name']} +{e['request']['enchant_level']} · lote {e['quantity']} · preço informado {e['request']['selling_price']} · oferta {e['request']['exchange_index']}" for e in entries)
++        mode_label = "Heartbeat ativo" if use_heartbeat else "Nova conexão por oferta"
++        if not messagebox.askyesno("Executar lista de compra", f"{mode_label}\n{preview}\n\nConfirmar {len(entries)} pedidos? A sequência para na primeira falha e não repete compras."):
++            return
++        if capture_ref != self.capture_ref:
++            messagebox.showinfo("Lista de compra", "A captura mudou durante a revisão; confirme novamente.")
++            return
++        try:
++            self._validate_site_entries(entries)
++        except ValueError as exc:
++            messagebox.showerror("Lista de compra", str(exc))
++            return
++        self.stop_event = threading.Event()
++        self.purchase_running = True
++        self._finished = False
++        self.list_execution_status.set("Executando lista confirmada...")
++        def execute_one(request, cancel):
++            if use_heartbeat:
++                return service.purchase(request, cancel)
++            config = copy.deepcopy(loaded)
++            config.update(manual_purchase=request, initialize_character=True, heartbeat_only=False, rankings=False, rankings_only=False)
++            config["heartbeat"] = dict(config.get("heartbeat", {}), enabled=True)
++            return session.run(config, self._observe, stop_event=cancel)
++        def observe(record):
++            self._control_queue.put(("purchase_list_progress", record))
++        def work():
++            result, error = None, None
++            try:
++                result = store.run([e["entry_id"] for e in entries], execute_one, self.stop_event, observe)
++            except Exception as exc:
++                error = str(exc)
++            self._control_queue.put(("purchase_list_done", result, error))
++        self.worker = threading.Thread(target=work, name="purchase-list", daemon=True)
++        self.worker.start()
++
++    def _reserved_site_quantities(self):
++        result = dict(getattr(self, "shopping_reservations", {}))
++        if hasattr(self, "purchase_store"):
++            for key, quantity in self.purchase_store.reserved_quantities().items():
++                result[key] = result.get(key, 0) + quantity
++        return result
++
++    def _validate_site_entries(self, entries):
++        items = {item["shopping_id"]: item for item in (self.shopping_snapshot or {}).get("items", [])}
++        available = {key: item["remaining_quantity"] for key, item in items.items()}
++        reserved = self._reserved_site_quantities()
++        for entry in entries:
++            if entry["source"] != "site":
++                continue
++            key = entry["shopping_id"]
++            item = items.get(key)
++            if item is None or item["item_index"] != entry["request"]["item_index"] or item["enchant_level"] != entry["request"]["enchant_level"]:
++                raise ValueError("Produto ou refino da lista do site mudou; prepare novamente.")
++            available[key] = available.get(key, 0) - entry["quantity"]
++            if available[key] < reserved.get(key, 0):
++                raise ValueError("Lista do site ausente ou saldo insuficiente após reservas. Receba e prepare novamente.")
++
++    def _add_site_proposals(self):
++        try:
++            store = self._purchase_store()
++            proposals = [p for p in self.proposals if p["status"] == "prepared"]
++            if not proposals or any(p["capture_ref"] != self.capture_ref for p in proposals):
++                raise ValueError("Prepare propostas da captura atual primeiro")
++            for proposal in proposals:
++                store.add(proposal["request"], proposal["quantity"], proposal["name"], proposal["capture_ref"],
++                          source="site", shopping_id=proposal["shopping_id"])
++            self._render_purchase_list()
++            self.shopping_tabs.select(2)
++        except (ValueError, OSError, RuntimeError) as exc:
++            messagebox.showerror("Lista de compra", str(exc))
+ 
+     def _fetch_shopping(self):
+         if self.shopping_worker and self.shopping_worker.is_alive():
+@@ -524,27 +567,28 @@ class DesktopApp:
+                 proposal["status"] = "attempted"
+         self._render_proposals()
+         if hasattr(self, "shopping_tabs"):
+-            self.shopping_tabs.select(1)
++            self.shopping_tabs.select(2)
+         unresolved = "; ".join(f"{r['name']}: {r['reason']} ({r['remaining_quantity']} restantes)" for r in prepared["unresolved"])
+         self.shopping_status.set(f"{len(self.proposals)} ofertas preparadas. {self._reservation_text()} " + unresolved)
+ 
+     def _unreserved_snapshot(self):
+         snapshot = copy.deepcopy(self.shopping_snapshot)
++        reserved = self._reserved_site_quantities()
+         for item in snapshot["items"]:
+             item["remaining_quantity"] = max(0, item["remaining_quantity"] -
+-                getattr(self, "shopping_reservations", {}).get(item["shopping_id"], 0))
++                reserved.get(item["shopping_id"], 0))
+         snapshot["items"] = [item for item in snapshot["items"] if item["remaining_quantity"] > 0]
+         return snapshot
+ 
+     def _proposal_available(self, proposal):
+         for item in (self.shopping_snapshot or {}).get("items", []):
+             if item["shopping_id"] == proposal["shopping_id"]:
+-                reserved = getattr(self, "shopping_reservations", {}).get(item["shopping_id"], 0)
++                reserved = self._reserved_site_quantities().get(item["shopping_id"], 0)
+                 return item["remaining_quantity"] - reserved >= proposal["quantity"]
+         return False
+ 
+     def _reservation_text(self):
+-        total = sum(getattr(self, "shopping_reservations", {}).values())
++        total = sum(self._reserved_site_quantities().values())
+         return f"Reserva local: {total} unidade(s) compradas ou aguardando confirmação; lista do site não alterada."
+ 
+     def _finish_proposal(self, result, error):
+@@ -587,17 +631,23 @@ class DesktopApp:
+         if proposal["capture_ref"] != self.capture_ref or proposal["status"] != "prepared" or not self._proposal_available(proposal):
+             messagebox.showinfo("Compra", "Oferta desatualizada ou já tentada. Consulte o resultado no diagnóstico.")
+             return
+-        if self._start_purchase(use_heartbeat, request=copy.deepcopy(proposal["request"]), proposal=proposal):
+-            proposal["status"] = "attempted"
+-            if not hasattr(self, "shopping_reservations"):
+-                self.shopping_reservations = {}
+-            key = proposal["shopping_id"]
+-            self.shopping_reservations[key] = self.shopping_reservations.get(key, 0) + proposal["quantity"]
+-            self.active_proposal = proposal
+-            self.shopping_status.set(self._reservation_text())
+-            if not hasattr(self, "attempted_offers"):
+-                self.attempted_offers = set()
+-            self.attempted_offers.add(self._offer_key(proposal))
++        try:
++            entry = self._purchase_store().add(proposal["request"], proposal["quantity"], proposal["name"],
++                proposal["capture_ref"], source="site", shopping_id=proposal["shopping_id"])
++            self._execute_purchase_list([entry["entry_id"]], use_heartbeat=use_heartbeat)
++            self._render_purchase_list()
++        except (ValueError, RuntimeError, OSError) as exc:
++            messagebox.showerror("Lista de compra", str(exc))
++
++    def _sync_proposal_results(self):
++        entries = {(e["request"]["exchange_server_type"], e["request"]["exchange_index"]): e
++                   for e in self._purchase_store().items()}
++        for proposal in self.proposals:
++            entry = entries.get(self._offer_key(proposal))
++            if entry:
++                proposal["status"] = entry["status"]
++                proposal["diagnostic"] = entry["diagnostic"]
++        if hasattr(self, "proposal_table"):
+             self._render_proposals()
+ 
+     @staticmethod
+@@ -981,6 +1031,29 @@ class DesktopApp:
+         self.root.after(50, self._drain_queue)
+ 
+     def _handle_event(self, event):
++        if hasattr(self, "upload_status"):
++            record = event[1] if len(event) > 1 and isinstance(event[1], dict) else {}
++            if record.get("record_type") == "upload" or event[0] == "upload_done":
++                self.upload_status.set(upload_status_text(record))
++            elif record.get("stage") == "upload":
++                self.upload_status.set(f"{record.get('completed', 0)}/{record.get('total', 0)} lotes")
++        if event[0] == "purchase_list_progress":
++            record = event[1]
++            self.list_execution_status.set(f"{record['completed']}/{record['total']} · {presentation.status_text(record['status'])} · {record.get('diagnostic', '')}")
++            self._render_purchase_list()
++            self._sync_proposal_results()
++            self.operation_events.append(record)
++            return
++        if event[0] == "purchase_list_done":
++            _, result, error = event
++            self.purchase_running = False
++            self._finished = True
++            self.mode_results["purchase_list"] = result
++            self.list_execution_status.set(error or (result or {}).get("diagnostic", "Lista encerrada"))
++            self._render_purchase_list()
++            self._sync_proposal_results()
++            self.shopping_status.set(self._reservation_text())
++            return
+         if event[0] == "shopping_done":
+             _, snapshot, error = event
+             self.shopping_status.set(error or f"{len(snapshot['items'])} itens recebidos do site. {self._reservation_text()} Prepare as ofertas para revisar.")
+@@ -1246,6 +1319,8 @@ class DesktopApp:
+                 records.append({"record_type": "shopping_snapshot", "snapshot": self.shopping_snapshot})
+             if getattr(self, "shopping_reservations", None):
+                 records.append({"record_type": "shopping_reservations", "quantities": self.shopping_reservations})
++            if hasattr(self, "purchase_store"):
++                records.append({"record_type": "purchase_list", "items": self.purchase_store.items()})
+             for proposal in getattr(self, "proposals", []):
+                 records.append({"record_type": "purchase_proposal", **proposal})
+             records.extend(getattr(self, "operation_events", ()))
+diff --git a/rfnext_market/desktop_shell.py b/rfnext_market/desktop_shell.py
+new file mode 100644
+index 0000000..b8eefd3
+--- /dev/null
++++ b/rfnext_market/desktop_shell.py
+@@ -0,0 +1,334 @@
++"""Desktop presentation only; network operations remain in DesktopApp callbacks."""
++from types import SimpleNamespace
++import tkinter as tk
++from tkinter import ttk, font
++
++BG = "#202326"
++SIDEBAR = "#181B1E"
++CARD = "#2B3035"
++TEXT = "#F4F6F7"
++MUTED = "#BFC6CB"
++BORDER = "#3A4148"
++ACCENT = "#44C8B0"
++PAGES = ("Captura", "Ranking", "Mercado", "Compras", "Configuração")
++
++
++def apply_font_size(app, value):
++    """Named fonts update every ttk widget without rebuilding or dropping state."""
++    size = max(8, min(20, int(float(value))))
++    for name, offset in (("body", 0), ("heading", 1), ("title", 10)):
++        app.ui_fonts[name].configure(size=size + offset)
++    app.ui_style.configure("Treeview", rowheight=size * 2 + 12)
++    app.font_size.set(str(size))
++    return size
++
++
++def _card(parent, title):
++    border = ttk.Frame(parent, padding=1, style="Border.TFrame")
++    border.pack(fill="x", pady=(0, 14))
++    surface = ttk.Frame(border, padding=16, style="Card.TFrame")
++    surface.pack(fill="both", expand=True)
++    ttk.Label(surface, text=title, style="CardHeading.TLabel").pack(anchor="w", pady=(0, 14))
++    panel = ttk.Frame(surface, style="Card.TFrame")
++    panel.pack(fill="both", expand=True)
++    return panel
++
++
++def _card_surfaces(widget, in_card=False):
++    kind = widget.winfo_class()
++    in_card = in_card or (kind == "TFrame" and widget.cget("style") == "Card.TFrame")
++    if in_card and kind in ("TLabel", "TFrame", "TCheckbutton"):
++        muted = kind == "TLabel" and widget.cget("style") in ("Muted.TLabel", "CardMuted.TLabel")
++        if widget.cget("style") != "CardHeading.TLabel":
++            widget.configure(style="CardMuted.TLabel" if muted else "Card." + kind)
++    for child in widget.winfo_children() or ():
++        _card_surfaces(child, in_card)
++
++
++def _scroll_page(parent):
++    canvas = tk.Canvas(parent, background=BG, highlightthickness=0)
++    scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
++    canvas.configure(yscrollcommand=scroll.set)
++    scroll.pack(side="right", fill="y")
++    canvas.pack(side="left", fill="both", expand=True)
++    content = ttk.Frame(canvas, padding=(0, 0, 12, 0))
++    window = canvas.create_window((0, 0), window=content, anchor="nw")
++    content.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
++    canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
++    return content
++
++
++def build(app):
++    style = app.ui_style = ttk.Style(app.root)
++    style.theme_use("clam")
++    installed = set(font.families(app.root))
++    family = "Arial Rounded MT Bold" if "Arial Rounded MT Bold" in installed else "Segoe UI"
++    app.ui_fonts = {name: font.Font(root=app.root, family=family, size=size)
++                    for name, size in (("body", 11), ("heading", 12), ("title", 21))}
++    style.configure(".", font=app.ui_fonts["body"], background=BG, foreground=TEXT,
++                    bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
++    style.configure("TFrame", background=BG)
++    style.configure("TLabel", background=BG, foreground=TEXT)
++    style.configure("TLabelframe", background=BG, bordercolor=BORDER)
++    style.configure("TLabelframe.Label", font=app.ui_fonts["heading"], foreground=TEXT)
++    for widget in ("TLabelframe", "TLabelframe.Label", "TLabel", "TFrame", "TCheckbutton"):
++        style.configure("Card." + widget, background=CARD)
++    style.configure("CardMuted.TLabel", background=CARD, foreground=MUTED)
++    style.configure("CardHeading.TLabel", background=CARD, foreground=TEXT, font=app.ui_fonts["heading"])
++    style.configure("Border.TFrame", background=BORDER)
++    style.configure("Title.TLabel", font=app.ui_fonts["title"])
++    style.configure("Muted.TLabel", foreground=MUTED)
++    style.configure("TButton", padding=(14, 9), background=CARD, foreground=TEXT, borderwidth=1)
++    style.map("TButton", background=[("active", "#3A434B"), ("disabled", BG)], foreground=[("disabled", "#7D868E")])
++    style.configure("Primary.TButton", background="#DAEB3C", foreground="#101411")
++    style.map("Primary.TButton", background=[("active", "#EAF66A"), ("disabled", CARD)], foreground=[("disabled", MUTED)])
++    style.configure("Sidebar.TFrame", background=SIDEBAR)
++    style.configure("Sidebar.TLabel", background=SIDEBAR)
++    style.configure("Nav.TButton", background=SIDEBAR, anchor="w", padding=(18, 14), borderwidth=0)
++    style.configure("Selected.Nav.TButton", background=CARD, foreground=ACCENT)
++    style.configure("TEntry", fieldbackground=CARD, foreground=TEXT, insertcolor=TEXT, padding=7)
++    style.map("TEntry", fieldbackground=[("readonly", CARD)], foreground=[("readonly", TEXT)])
++    style.configure("TCombobox", fieldbackground=CARD, background=CARD, foreground=TEXT, arrowcolor=TEXT, padding=6)
++    style.map("TCombobox", fieldbackground=[("readonly", CARD)], foreground=[("readonly", TEXT)])
++    style.configure("TCheckbutton", background=BG, foreground=TEXT, padding=6)
++    style.map("TCheckbutton", background=[("active", CARD)])
++    style.configure("Treeview", background=CARD, fieldbackground=CARD, foreground=TEXT, rowheight=34, borderwidth=0)
++    style.configure("Treeview.Heading", background=SIDEBAR, foreground=MUTED, font=app.ui_fonts["heading"], padding=10)
++    style.map("Treeview", background=[("selected", "#285F58")], foreground=[("selected", TEXT)])
++    style.configure("TNotebook", background=BG, borderwidth=0)
++    style.configure("TNotebook.Tab", background=SIDEBAR, foreground=MUTED, padding=(18, 12))
++    style.map("TNotebook.Tab", background=[("selected", CARD)], foreground=[("selected", TEXT)])
++    style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor=SIDEBAR, borderwidth=0, thickness=8)
++    app.root.configure(background=BG)
++    app.root.option_add("*Font", app.ui_fonts["body"])
++    app.root.option_add("*Text.background", CARD)
++    app.root.option_add("*Text.foreground", TEXT)
++    app.root.option_add("*Text.insertBackground", TEXT)
++    app.root.option_add("*TCombobox*Listbox.background", CARD)
++    app.root.option_add("*TCombobox*Listbox.foreground", TEXT)
++    app.font_size = tk.StringVar(value=str(getattr(app, "ui_font_size", 11)))
++    apply_font_size(app, app.font_size.get())
++
++    sidebar = ttk.Frame(app.root, style="Sidebar.TFrame", width=240, padding=(16, 26))
++    sidebar.pack(side="left", fill="y")
++    sidebar.pack_propagate(False)
++    ttk.Label(sidebar, text="RF NEXT\nCompanion", style="Sidebar.TLabel", font=app.ui_fonts["heading"]).pack(anchor="w", padx=16, pady=(0, 34))
++    body = ttk.Frame(app.root, padding=(28, 20))
++    body.pack(side="left", fill="both", expand=True)
++    header = ttk.Frame(body)
++    header.pack(fill="x", pady=(0, 22))
++    app.page_title = tk.StringVar(value="Captura")
++    ttk.Label(header, textvariable=app.page_title, style="Title.TLabel").pack(side="left")
++    app.stop_button = ttk.Button(header, text="Parar tudo", command=app._stop)
++    app.stop_button.pack(side="right")
++    ttk.Label(header, textvariable=app.mode_status["heartbeat"], style="Muted.TLabel").pack(side="right", padx=20)
++    container = ttk.Frame(body)
++    container.pack(fill="both", expand=True)
++    container.rowconfigure(0, weight=1)
++    container.columnconfigure(0, weight=1)
++    app.pages = {name: ttk.Frame(container) for name in PAGES}
++    buttons = {}
++    def show_page(name):
++        if name not in app.pages:
++            name = next(key for key, page in app.pages.items() if page is name)
++        app.pages[name].tkraise()
++        app.page_title.set(name)
++        for key, button in buttons.items():
++            button.configure(style="Selected.Nav.TButton" if key == name else "Nav.TButton")
++    app.show_page = show_page
++    app.navigation = SimpleNamespace(select=show_page)
++    for name, page in app.pages.items():
++        page.grid(row=0, column=0, sticky="nsew")
++        buttons[name] = ttk.Button(sidebar, text=name, style="Nav.TButton", command=lambda n=name: show_page(n))
++        buttons[name].pack(fill="x", pady=4)
++    ttk.Label(sidebar, text="CLIENTE · v37", style="Sidebar.TLabel").pack(side="bottom", anchor="w", padx=16)
++    app.status = tk.StringVar(value="Pronto. Nenhuma conexão foi aberta.")
++    ttk.Label(body, textvariable=app.status, style="Muted.TLabel", wraplength=900).pack(fill="x", pady=(14, 0))
++
++    capture = _scroll_page(app.pages["Captura"])
++    overview = ttk.Frame(capture)
++    overview.pack(fill="x", pady=(0, 18))
++    app.upload_status = tk.StringVar(value="Aguardando envio")
++    for column, (title, variable) in enumerate((("Mercado", app.mode_status["market"]),
++            ("Ranking", app.mode_status["rankings"]), ("Heartbeat", app.mode_status["heartbeat"]),
++            ("Envio", app.upload_status))):
++        overview.columnconfigure(column, weight=1, uniform="status")
++        border = ttk.Frame(overview, padding=1, style="Border.TFrame")
++        border.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else 5, 0 if column == 3 else 5))
++        card = ttk.Frame(border, padding=14, style="Card.TFrame")
++        card.pack(fill="both", expand=True)
++        ttk.Label(card, text=title, style="CardHeading.TLabel").pack(anchor="w", pady=(0, 12))
++        value = ttk.Label(card, textvariable=variable, style="CardMuted.TLabel", wraplength=135)
++        value.pack(anchor="w", fill="x")
++        card.bind("<Configure>", lambda event, label=value: label.configure(wraplength=max(60, event.width - 28)))
++    controls = _card(capture, "Coletas e consultas")
++    app.mode_buttons = {}
++    for row, (mode, label, command) in enumerate((("market", "Consultar mercado", app._start),
++            ("rankings", "Consultar ranking", app._start_rankings), ("complete", "Consulta completa", app._start_complete))):
++        button = ttk.Button(controls, text=label, command=command, style="Primary.TButton" if mode == "complete" else "TButton")
++        base = row * 3
++        button.grid(row=base, column=0, columnspan=4, sticky="w", pady=5)
++        app.mode_buttons[mode] = button
++        ttk.Checkbutton(controls, text="Contínua", variable=app.mode_continuous[mode]).grid(row=base + 1, column=0, sticky="w")
++        ttk.Label(controls, text="Intervalo (min)").grid(row=base + 1, column=1, padx=8)
++        ttk.Entry(controls, textvariable=app.mode_intervals[mode], width=4).grid(row=base + 1, column=2, padx=8)
++        ttk.Button(controls, text="Parar", command=lambda m=mode: app._stop_mode(m)).grid(row=base + 1, column=3, sticky="w")
++        label = ttk.Label(controls, textvariable=app.mode_status[mode], style="Muted.TLabel", wraplength=620)
++        label.grid(row=base + 2, column=0, columnspan=4, sticky="ew", pady=(0, 14))
++        label.bind("<Configure>", lambda event, widget=label: widget.configure(wraplength=max(80, event.width)))
++    ttk.Label(controls, text="O intervalo começa após o encerramento da consulta.", style="Muted.TLabel", wraplength=620).grid(row=9, column=0, columnspan=4, sticky="w")
++    app.start_button, app.rankings_button, app.complete_button = (app.mode_buttons[m] for m in ("market", "rankings", "complete"))
++    heartbeat = _card(capture, "Heartbeat")
++    app.heartbeat_button = ttk.Button(heartbeat, text="Iniciar heartbeat", command=app._start_heartbeat)
++    app.heartbeat_button.grid(row=0, column=0, sticky="w")
++    ttk.Button(heartbeat, text="Parar", command=lambda: app._stop_mode("heartbeat")).grid(row=0, column=1, padx=10)
++    ttk.Label(heartbeat, textvariable=app.mode_status["heartbeat"], style="Muted.TLabel", wraplength=620).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
++    reads = _card(capture, "Leitura das consultas")
++    sends = _card(capture, "Envio")
++    ttk.Checkbutton(sends, text="Enviar ao Companion", variable=app.companion_enabled).pack(anchor="w")
++    app.retry_button = ttk.Button(sends, text="Reenviar pendentes", command=app._retry_upload)
++    app.retry_button.pack(anchor="w", pady=(0, 10))
++    app.progress_bars, app.progress_labels = {}, {}
++    for key, title in (("read", "Consulta completa"), ("market:read", "Mercado"), ("rankings:read", "Ranking"),
++                       ("upload", "Consulta completa"), ("market:upload", "Mercado"), ("rankings:upload", "Ranking")):
++        target = sends if "upload" in key else reads
++        label = tk.StringVar(value=f"{title}: aguardando")
++        ttk.Label(target, textvariable=label, style="Muted.TLabel").pack(anchor="w", pady=(4, 5))
++        bar = ttk.Progressbar(target, maximum=100, mode="determinate")
++        bar.pack(fill="x", pady=(0, 10))
++        app.progress_labels[key], app.progress_bars[key] = label, bar
++
++    app.ranking_status = tk.StringVar(value="Nenhuma consulta de ranking EXP disponível.")
++    ttk.Label(app.pages["Ranking"], textvariable=app.ranking_status).pack(anchor="w", pady=8)
++    app.ranking_table = app._table(app.pages["Ranking"], (("kind", "Ranking", 90), ("rank", "Posição", 75),
++        ("name", "Personagem", 220), ("guild", "Guilda", 140), ("uid", "Character UID", 180), ("value", "EXP", 180), ("status", "Estado", 100)))
++
++    market = app.pages["Mercado"]
++    filters = ttk.Frame(market)
++    filters.pack(fill="x", pady=(0, 12))
++    app.market_scope = tk.StringVar(value="Local")
++    app.market_search = tk.StringVar()
++    app.market_refine = tk.StringVar(value="Todos")
++    filters.columnconfigure(1, weight=1)
++    ttk.Label(filters, text="Mercado").grid(row=0, column=0, sticky="w")
++    ttk.Label(filters, text="Buscar produto ou ID").grid(row=0, column=1, sticky="w", padx=(12, 0))
++    ttk.Combobox(filters, textvariable=app.market_scope, values=("Local", "Global"), state="readonly", width=8).grid(row=1, column=0, sticky="w")
++    ttk.Entry(filters, textvariable=app.market_search, width=12).grid(row=1, column=1, sticky="ew", padx=(12, 0))
++    ttk.Button(filters, text="Adicionar à lista de compra", command=app._add_market_selection, style="Primary.TButton").grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
++    app.capture_status = tk.StringVar(value="Nenhuma captura disponível. Consulte o mercado na aba Captura.")
++    ttk.Label(market, textvariable=app.capture_status, style="Muted.TLabel", wraplength=1000).pack(anchor="w")
++    panes = ttk.Panedwindow(market, orient="horizontal")
++    panes.pack(fill="both", expand=True, pady=12)
++    products = ttk.Frame(panes, padding=(0, 0, 12, 0))
++    offers = ttk.Frame(panes)
++    panes.add(products, weight=1)
++    panes.add(offers, weight=3)
++    ttk.Label(products, text="Produtos consultados", font=app.ui_fonts["heading"]).pack(anchor="w", pady=(0, 8))
++    app.product_tree = ttk.Treeview(products, columns=("item_index",), show="tree", selectmode="browse")
++    product_scroll = ttk.Scrollbar(products, orient="vertical", command=app.product_tree.yview)
++    app.product_tree.configure(yscrollcommand=product_scroll.set)
++    product_scroll.pack(side="right", fill="y")
++    app.product_tree.pack(fill="both", expand=True)
++    app.product_tree.bind("<<TreeviewSelect>>", app._select_product)
++    ttk.Label(offers, text="Ofertas detalhadas", font=app.ui_fonts["heading"]).pack(anchor="w")
++    app.market_table = app._table(offers, (("produto", "Produto", 220), ("enchant_level", "Refino", 70),
++        ("quantidade", "Qtd. lote", 90), ("selling_price", "Preço informado", 135), ("seller", "Personagem", 170),
++        ("pc_id", "PCID", 170), ("exchange_index", "Oferta", 170), ("registered_time", "Postagem UTC", 180), ("expired_time", "Expiração UTC", 180)))
++    for variable in (app.market_scope, app.market_search, app.market_refine):
++        variable.trace_add("write", lambda *_: app._render_market())
++
++    tabs = app.shopping_tabs = ttk.Notebook(app.pages["Compras"])
++    tabs.pack(fill="both", expand=True)
++    local, received, execute = (ttk.Frame(tabs, padding=14) for _ in range(3))
++    for page, label in ((local, "Lista de compra"), (received, "Lista recebida do site"), (execute, "Executar lista")):
++        tabs.add(page, text=label)
++    execute = _scroll_page(execute)
++    app.purchase_list_status = tk.StringVar(value="Adicione ofertas na aba Mercado.")
++    ttk.Label(local, textvariable=app.purchase_list_status).pack(anchor="w")
++    ttk.Button(local, text="Remover selecionada", command=app._remove_purchase_selection).pack(anchor="w", pady=8)
++    list_columns = (("name", "Produto", 220), ("refine", "Refino", 70), ("quantity", "Qtd. lote", 90),
++                    ("price", "Preço informado", 135), ("market", "Mercado", 90), ("seller", "Personagem", 160), ("offer", "Oferta", 170), ("state", "Estado", 140))
++    app.local_purchase_table = app._table(local, list_columns)
++    actions = ttk.Frame(received)
++    actions.pack(fill="x")
++    ttk.Button(actions, text="Receber lista do site", command=app._fetch_shopping).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
++    app.shopping_market = tk.StringVar(value="Local")
++    ttk.Combobox(actions, textvariable=app.shopping_market, values=("Local", "Global"), state="readonly", width=8).grid(row=1, column=0, sticky="w")
++    ttk.Button(actions, text="Preparar ofertas", command=app._prepare_shopping).grid(row=1, column=1, sticky="w", padx=8)
++    app.shopping_status = tk.StringVar(value="Integração conforme contrato salvo; depende da disponibilidade da rota no site.")
++    ttk.Label(received, textvariable=app.shopping_status, wraplength=900, style="Muted.TLabel").pack(anchor="w", pady=10)
++    app.shopping_list_table = app._table(received, (("name", "Produto", 250), ("refine", "Refino", 80),
++        ("remaining", "Pendente no site", 150), ("reference", "Referência / un.", 130), ("updated", "Atualizado em", 190)))
++    actions = ttk.Frame(execute)
++    actions.pack(fill="x")
++    app.execution_mode = tk.StringVar(value="Heartbeat ativo")
++    ttk.Combobox(actions, textvariable=app.execution_mode, values=("Heartbeat ativo", "Nova conexão"), state="readonly", width=16).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
++    ttk.Button(actions, text="Executar lista", command=app._execute_purchase_list, style="Primary.TButton").grid(row=1, column=0, sticky="w")
++    ttk.Button(actions, text="Parar lista", command=app._stop_purchase_list).grid(row=1, column=1, sticky="w", padx=8)
++    app.list_execution_status = tk.StringVar(value="Revise os lotes e os preços antes de executar.")
++    ttk.Label(execute, textvariable=app.list_execution_status, style="Muted.TLabel", wraplength=900).pack(anchor="w", pady=8)
++    app.execution_table = app._table(execute, list_columns)
++    ttk.Button(execute, text="Remover selecionada da execução", command=lambda: app._remove_purchase_selection(True)).pack(anchor="w", pady=(0, 12))
++    ttk.Label(execute, text="Ofertas preparadas da lista do site").pack(anchor="w")
++    app.proposal_table = app._table(execute, (("name", "Produto", 220), ("quantity", "Qtd. lote", 95),
++        ("price", "Preço informado", 135), ("reference", "Referência / un.", 115), ("market", "Mercado", 80), ("pcid", "PCID", 170), ("offer", "Oferta", 170), ("state", "Estado", 110)))
++    actions = ttk.Frame(execute)
++    actions.pack(fill="x")
++    ttk.Button(actions, text="Adicionar propostas à execução", command=app._add_site_proposals).pack(anchor="w", pady=4)
++    ttk.Button(actions, text="Oferta do site: nova conexão", command=lambda: app._buy_proposal(False)).pack(anchor="w", pady=4)
++    ttk.Button(actions, text="Oferta do site: heartbeat ativo", command=lambda: app._buy_proposal(True)).pack(anchor="w", pady=4)
++
++    settings_tabs = ttk.Notebook(app.pages["Configuração"])
++    settings_tabs.pack(fill="both", expand=True)
++    settings_outer, diagnostics = ttk.Frame(settings_tabs), ttk.Frame(settings_tabs, padding=12)
++    settings_tabs.add(settings_outer, text="Configuração")
++    settings_tabs.add(diagnostics, text="Diagnóstico")
++    settings = _scroll_page(settings_outer)
++    appearance = _card(settings, "Aparência")
++    ttk.Label(appearance, text=f"Fonte: {family}" + (" (alternativa; Arial Rounded MT Bold não está instalada)" if family != "Arial Rounded MT Bold" else "")).pack(anchor="w")
++    ttk.Label(appearance, text="Tamanho da fonte (8–20)").pack(side="left", pady=10)
++    size_control = ttk.Combobox(appearance, textvariable=app.font_size, values=tuple(map(str, range(8, 21))), state="readonly", width=5)
++    size_control.pack(side="left", padx=12)
++    size_control.bind("<<ComboboxSelected>>", lambda _: app._change_font_size(app.font_size.get()))
++    files = _card(settings, "Arquivos")
++    for row, label, variable, command, readonly in ((0, "Configuração", app.config_path, app._choose_config, False),
++            (1, "Sessão", app.session_path, app._choose_session, True), (2, "Base de itens", app.item_database, app._choose_items, True)):
++        app._file_row(files, row, label, variable, command, readonly)
++    for child in files.winfo_children() or ():
++        if child.winfo_class() == "TEntry":
++            child.configure(width=12)
++    connection = _card(settings, "Conexão")
++    fields = (("auth_host", "Login host"), ("auth_port", "Login porta"), ("auth_timeout", "Login timeout"),
++        ("game_host", "Jogo host"), ("game_port", "Jogo porta"), ("game_timeout", "Jogo timeout"), ("world_id", "World ID"), ("response_timeout", "Mercado timeout"))
++    for index, (name, label) in enumerate(fields):
++        row, column = divmod(index, 2)
++        ttk.Label(connection, text=label).grid(row=row * 2, column=column, sticky="w", padx=8, pady=(8, 0))
++        ttk.Entry(connection, textvariable=app.vars[name]).grid(row=row * 2 + 1, column=column, sticky="ew", padx=8)
++        connection.columnconfigure(column, weight=1)
++    actions = ttk.Frame(settings)
++    actions.pack(fill="x", pady=(0, 14))
++    app.open_button = ttk.Button(actions, text="Abrir configuração", command=app._choose_config)
++    app.open_button.pack(side="left")
++    ttk.Button(actions, text="Salvar configuração", command=app._save_config).pack(side="left", padx=8)
++    ttk.Button(actions, text="Validar", command=app._validate).pack(side="left")
++    companion = _card(settings, "Companion")
++    ttk.Label(companion, text="Servidor HTTPS").pack(anchor="w")
++    ttk.Entry(companion, textvariable=app.companion_url, state="readonly").pack(fill="x", pady=8)
++    ttk.Label(companion, text="Pasta da fila de envio").pack(anchor="w")
++    ttk.Entry(companion, textvariable=app.companion_state_dir).pack(fill="x", pady=8)
++    manual = _card(settings, "Compra manual por identificadores")
++    app.purchase_button = ttk.Button(manual, text="Comprar: nova conexão", command=app._start_purchase)
++    app.purchase_button.pack(anchor="w", pady=4)
++    app.purchase_heartbeat_button = ttk.Button(manual, text="Comprar: heartbeat ativo", command=lambda: app._start_purchase(True))
++    app.purchase_heartbeat_button.pack(anchor="w", pady=4)
++    actions = ttk.Frame(diagnostics)
++    actions.pack(fill="x", pady=(0, 12))
++    ttk.Button(actions, text="Inspecionar selecionada", command=app._inspect_selected).pack(side="left")
++    ttk.Button(actions, text="Exportar log completo", command=app._export).pack(side="left", padx=8)
++    logs = ttk.Notebook(diagnostics)
++    logs.pack(fill="both", expand=True)
++    app.tx, app.rx = app._log_pane(logs, "Mensagens enviadas"), app._log_pane(logs, "Mensagens recebidas / eventos")
++    logs.add(app.tx[0], text="TX · Envio")
++    logs.add(app.rx[0], text="RX · Recebimento")
++    _card_surfaces(app.root)
++    show_page("Captura")
+diff --git a/rfnext_market/presentation.py b/rfnext_market/presentation.py
+index d1ec8ad..da32e63 100644
+--- a/rfnext_market/presentation.py
++++ b/rfnext_market/presentation.py
+@@ -1,5 +1,5 @@
+ """Read-only table projections. Large identifiers remain decimal text."""
+-from . import report, rankings
++from . import purchase, report, rankings
+ 
+ 
+ def status_text(value):
+@@ -8,19 +8,73 @@ def status_text(value):
+             "unconfirmed": "Sem confirmação", "blocked": "Bloqueada", "rejected": "Rejeitada", "com_ofertas": "Com ofertas", "sem_ofertas": "Sem ofertas", "ausente": "Ausente", "erro": "Erro"}.get(value, value)
+ 
+ 
+-def market_rows(result, market=0, query="", refine="Todos"):
+-    query = query.strip().casefold()
+-    items = [i for i in result.get("items", []) if i.get("exchange_server_type") == market]
+-    names = rankings.seller_names(result)
+-    rows = []
+-    for row in report.offer_rows(items):
+-        if query and query not in (str(row["produto"]) + " " + str(row["item_index"])).casefold():
++def _seller_labels(result):
++    candidates = {}
++    for name, snapshot in result.get("rankings", {}).items():
++        if name not in ("exp", "accretia", "bellato", "cora") or snapshot.get("status") != "completed":
+             continue
+-        if refine != "Todos" and str(row["enchant_level"]) != refine.strip():
++        try:
++            rankings.validate(snapshot, name)
++        except (ValueError, KeyError, TypeError):
+             continue
+-        row["seller"] = names.get(row["pc_id"], "Vendedor não informado")
+-        rows.append(row)
+-    return rows
++        for entry in snapshot["records"]:
++            uid, character = entry.get("character_uid"), entry.get("character_name")
++            if type(uid) is int and 0 < uid < 2**64 and isinstance(character, str) and character.strip() and len(character) <= 96:
++                candidates.setdefault(str(uid), {}).setdefault(character, set()).add(name)
++    return {uid: (next(iter(names)), "Ranking: " + ", ".join(sorted(next(iter(names.values())))))
++            if len(names) == 1 else ("Vendedor não informado", "Nomes conflitantes nos rankings")
++            for uid, names in candidates.items()}
++
++
++def market_tree(result, market=0, rankings_result=None):
++    """Product/refinement/offer projection; only validated raw integers form a purchase."""
++    sellers = _seller_labels(result if rankings_result is None else rankings_result)
++    products = {}
++    for item in result.get("items", []):
++        index = item.get("item_index")
++        if item.get("exchange_server_type") != market or type(index) is not int:
++            continue
++        product = products.setdefault(index, {"key": f"product:{market}:{index}", "item_index": index,
++            "name": item.get("produto") or str(index), "refinements": []})
++        for offer in item.get("offers", []):
++            if not isinstance(offer, dict):
++                continue
++            info = offer.get("item_info")
++            info = info if isinstance(info, dict) else {}
++            safe_info = dict(info)
++            safe_info["talic_indices"] = info.get("talic_indices") if isinstance(info.get("talic_indices"), list) else []
++            safe_info["item_options"] = [o for o in (info.get("item_options") or []) if isinstance(o, dict)] if isinstance(info.get("item_options"), list) else []
++            row = report.offer_rows([{**item, "produto": product["name"], "offers": [{**offer, "item_info": safe_info}]}])[0]
++            row["seller"], row["seller_source"] = sellers.get(row["pc_id"], ("Vendedor não informado", "Sem correspondência exata em ranking concluído"))
++            quantity = info.get("count")
++            row["quantity"] = quantity if type(quantity) is int and quantity > 0 else None
++            request = {"exchange_server_type": market, "exchange_index": offer.get("exchange_index"),
++                       "pc_id": offer.get("pc_id"), "selling_price": offer.get("selling_price"),
++                       "item_index": info.get("index"), "enchant_level": info.get("enchant_level")}
++            try:
++                purchase.build(request)
++                if request["item_index"] != index or row["quantity"] is None:
++                    raise ValueError("Oferta divergente ou quantidade ausente")
++            except ValueError:
++                request = None
++            row["request"] = request
++            refine = info.get("enchant_level")
++            refine = refine if type(refine) is int and 0 <= refine < 2**16 else None
++            group = next((g for g in product["refinements"] if g["enchant_level"] == refine), None)
++            if group is None:
++                group = {"key": f"{product['key']}:refine:{refine}", "enchant_level": refine, "offers": []}
++                product["refinements"].append(group)
++            row["key"] = f"{group['key']}:offer:{row['exchange_index']}:{row['pc_id']}"
++            group["offers"].append(row)
++    return list(products.values())
++
++
++def market_rows(result, market=0, query="", refine="Todos", rankings_result=None):
++    query = query.strip().casefold()
++    return [row for product in market_tree(result, market, rankings_result)
++            for group in product["refinements"] for row in group["offers"]
++            if (not query or query in (str(row["produto"]) + " " + str(row["item_index"])).casefold())
++            and (refine == "Todos" or str(row["enchant_level"]) == refine.strip())]
+ 
+ 
+ def market_summary(result, market):
+@@ -30,9 +84,11 @@ def market_summary(result, market):
+     return f"{len(rows)} produtos · {sum(r['ofertas'] for r in rows)} ofertas · {status_text(result.get('status', 'Sem dados'))}"
+ 
+ 
+-def ranking_rows(result):
++def ranking_rows(result, exp_only=False):
+     rows = []
+     for name, snapshot in result.get("rankings", {}).items():
++        if exp_only and name != "exp":
++            continue
+         for entry in snapshot.get("records", []):
+             rows.append((name, entry.get("rank", ""), entry.get("character_name", ""),
+                          entry.get("guild_name", ""), str(entry.get("character_uid", "")),
+diff --git a/rfnext_market/purchase_list.py b/rfnext_market/purchase_list.py
+new file mode 100644
+index 0000000..128a769
+--- /dev/null
++++ b/rfnext_market/purchase_list.py
+@@ -0,0 +1,198 @@
++"""Lista persistente de ofertas; cada tentativa exige seleção e confirmação externas."""
++import copy
++import json
++import os
++from pathlib import Path
++import tempfile
++import threading
++import uuid
++
++from .purchase import build
++
++_STATUSES = {"prepared", "sending", "confirmed", "unconfirmed", "rejected", "blocked", "cancelled"}
++
++
++class PurchaseList:
++    def __init__(self, path):
++        self.path = Path(path)
++        self._lock = threading.RLock()
++        self._running = False
++        self._items = []
++        if self.path.exists():
++            data = json.loads(self.path.read_text(encoding="utf-8"))
++            if not isinstance(data, list):
++                raise ValueError("Lista de compras inválida")
++            ids, offers = set(), set()
++            required = {"entry_id", "request", "quantity", "name", "capture_ref", "source",
++                        "shopping_id", "status", "diagnostic"}
++            for entry in data:
++                if not isinstance(entry, dict) or set(entry) != required:
++                    raise ValueError("Entrada de compra possui campos inválidos ou ausentes")
++                build(entry["request"])
++                self._validate_metadata(entry["quantity"], entry["name"], entry["capture_ref"],
++                                        entry["source"], entry["shopping_id"])
++                identity = self._identity(entry["request"])
++                if (not isinstance(entry["entry_id"], str) or not entry["entry_id"]
++                        or entry["entry_id"] in ids or identity in offers
++                        or not isinstance(entry["status"], str) or entry["status"] not in _STATUSES or not isinstance(entry["diagnostic"], str)):
++                    raise ValueError("Entrada de compra inválida ou duplicada")
++                ids.add(entry["entry_id"])
++                offers.add(identity)
++            self._items = data
++            changed = False
++            for entry in self._items:
++                if entry["status"] == "sending":
++                    entry.update(status="unconfirmed", diagnostic="Execução interrompida; resultado desconhecido. Não reenviar.")
++                    changed = True
++            if changed:
++                self._save()
++
++    @staticmethod
++    def _identity(request):
++        return request["exchange_server_type"], request["exchange_index"]
++
++    @staticmethod
++    def _validate_metadata(quantity, name, capture_ref, source, shopping_id):
++        if type(quantity) is not int or quantity <= 0:
++            raise ValueError("Quantidade deve ser um inteiro positivo")
++        if not isinstance(name, str) or not isinstance(capture_ref, str):
++            raise ValueError("Nome e referência da captura devem ser textos")
++        if source not in ("local", "site") or (shopping_id is not None and not isinstance(shopping_id, str)):
++            raise ValueError("Origem ou identificador da lista inválido")
++        if source == "local" and shopping_id is not None:
++            raise ValueError("Compra local não pode ter shopping_id")
++        if source == "site" and not shopping_id:
++            raise ValueError("Compra do site exige shopping_id")
++
++    def _save(self):
++        self.path.parent.mkdir(parents=True, exist_ok=True)
++        fd, name = tempfile.mkstemp(prefix=self.path.name + ".", suffix=".tmp", dir=self.path.parent)
++        try:
++            with os.fdopen(fd, "w", encoding="utf-8") as stream:
++                json.dump(self._items, stream, ensure_ascii=False, indent=2)
++                stream.flush()
++                os.fsync(stream.fileno())
++            os.replace(name, self.path)
++        finally:
++            if os.path.exists(name):
++                os.unlink(name)
++
++    def items(self):
++        with self._lock:
++            return copy.deepcopy(self._items)
++
++    def add(self, request, quantity, name, capture_ref, source="local", shopping_id=None):
++        request = copy.deepcopy(request)
++        build(request)
++        self._validate_metadata(quantity, name, capture_ref, source, shopping_id)
++        with self._lock:
++            if self._running:
++                raise RuntimeError("Lista em execução")
++            for entry in self._items:
++                if self._identity(entry["request"]) == self._identity(request):
++                    if entry["request"] != request or entry["quantity"] != quantity:
++                        raise ValueError("Oferta já registrada com dados diferentes")
++                    if entry["source"] != source or entry["shopping_id"] != shopping_id:
++                        raise ValueError("Oferta já associada a outra origem ou lista de compras")
++                    if entry["status"] == "prepared":
++                        previous = dict(entry)
++                        entry.update(capture_ref=capture_ref, name=name)
++                        try:
++                            self._save()
++                        except Exception:
++                            entry.clear()
++                            entry.update(previous)
++                            raise
++                    return copy.deepcopy(entry)
++            entry = dict(entry_id=str(uuid.uuid4()), request=request, quantity=quantity, name=name,
++                         capture_ref=capture_ref, source=source, shopping_id=shopping_id,
++                         status="prepared", diagnostic="")
++            self._items.append(entry)
++            try:
++                self._save()
++            except Exception:
++                self._items.pop()
++                raise
++            return copy.deepcopy(entry)
++
++    def remove(self, entry_id):
++        with self._lock:
++            if self._running:
++                raise RuntimeError("Lista em execução")
++            index = next((i for i, entry in enumerate(self._items) if entry["entry_id"] == entry_id), None)
++            if index is None:
++                raise ValueError("Oferta não encontrada")
++            if self._items[index]["status"] != "prepared":
++                raise ValueError("O histórico de uma tentativa não pode ser removido")
++            entry = self._items.pop(index)
++            try:
++                self._save()
++            except Exception:
++                self._items.insert(index, entry)
++                raise
++
++    def reserved_quantities(self):
++        with self._lock:
++            result = {}
++            for entry in self._items:
++                key = entry["shopping_id"]
++                if entry["source"] == "site" and key and entry["status"] in ("sending", "confirmed", "unconfirmed"):
++                    result[key] = result.get(key, 0) + entry["quantity"]
++            return result
++
++    def run(self, entry_ids, execute_one, cancel, emit):
++        ids = tuple(entry_ids)
++        with self._lock:
++            if self._running:
++                raise RuntimeError("Lista em execução")
++            if not ids or len(set(ids)) != len(ids):
++                raise ValueError("Selecione ofertas únicas para executar")
++            lookup = {entry["entry_id"]: entry for entry in self._items}
++            selected = []
++            for key in ids:
++                entry = lookup.get(key)
++                if entry is None or entry["status"] != "prepared":
++                    raise ValueError("A seleção contém oferta ausente ou já tentada")
++                build(entry["request"])
++                selected.append(entry)
++            self._running = True
++        results = []
++        try:
++            for entry in selected:
++                if cancel.is_set():
++                    return dict(status="cancelled", items=results, diagnostic="Cancelado antes do próximo envio")
++                with self._lock:
++                    entry["status"] = "sending"
++                    try:
++                        self._save()
++                    except Exception:
++                        entry["status"] = "prepared"
++                        raise
++                try:
++                    answer = execute_one(copy.deepcopy(entry["request"]), cancel)
++                    status = answer.get("status")
++                    if status not in _STATUSES - {"prepared", "sending"}:
++                        raise ValueError("Resultado da compra inválido")
++                    diagnostic = str(answer.get("diagnostic", ""))
++                    if status == "cancelled" and diagnostic not in (
++                            "Cancelado antes do envio", "Compra cancelada antes do envio"):
++                        status = "unconfirmed"
++                        diagnostic = f"Cancelamento sem confirmação de pré-envio: {diagnostic}; não reenviar"
++                except Exception as exc:
++                    status, diagnostic = "unconfirmed", f"Resultado desconhecido: {exc}; não reenviar"
++                with self._lock:
++                    entry.update(status=status, diagnostic=diagnostic)
++                    try:
++                        self._save()
++                    except Exception:
++                        entry.update(status="unconfirmed", diagnostic="Falha ao salvar resultado; não reenviar")
++                        raise
++                result = dict(entry_id=entry["entry_id"], status=status, diagnostic=diagnostic)
++                results.append(result)
++                emit(dict(record_type="purchase_list_progress", completed=len(results), total=len(selected), **result))
++                if status != "confirmed":
++                    return dict(status=status, items=results, diagnostic=diagnostic)
++            return dict(status="completed", items=results, diagnostic="Compras confirmadas pelo servidor")
++        finally:
++            with self._lock:
++                self._running = False
+diff --git a/tests/test_complete.py b/tests/test_complete.py
+index 34e7c3d..e7de8af 100644
+--- a/tests/test_complete.py
++++ b/tests/test_complete.py
+@@ -120,6 +120,8 @@ class CompleteTest(unittest.TestCase):
+         self.assertFalse(any(op>>8==0x1D for op in ops)); self.assertIn(0x1A01,ops)
+ 
+     def test_actual_ui_wires_three_independent_controls(self):
++        from rfnext_market import desktop_shell
++        from tests.test_desktop_shell import Variable
+         app=desktop.DesktopApp.__new__(desktop.DesktopApp)
+         app.root=Mock(); app.vars={name:Mock() for name in ("auth_host","auth_port","auth_timeout","game_host","game_port","game_timeout","world_id","response_timeout")}
+         for name in ("config_path","session_path","item_database","companion_enabled","companion_url","companion_state_dir"):
+@@ -128,14 +130,17 @@ class CompleteTest(unittest.TestCase):
+         app.mode_intervals={m:Mock() for m in app.mode_continuous}
+         app.mode_status={m:Mock() for m in (*app.mode_continuous,"heartbeat")}
+         app._file_row=Mock(); app._log_pane=Mock(return_value=(Mock(),Mock()))
+-        with patch.object(desktop,'ttk') as widgets, patch.object(desktop.tk,'StringVar',return_value=Mock()):
++        app._table=Mock(return_value=Mock())
++        app.root.winfo_children.return_value=[]
++        with patch.object(desktop_shell,'ttk') as widgets, patch.object(desktop_shell.tk,'StringVar',Variable), patch.object(
++                desktop_shell.tk,'Canvas'), patch.object(desktop_shell.font,'families',return_value=('Arial Rounded MT Bold',)), patch.object(desktop_shell.font,'Font'):
+             app._build()
+         buttons={c.kwargs.get('text'):c.kwargs.get('command') for c in widgets.Button.call_args_list}
+         self.assertEqual(buttons['Consultar mercado'],app._start)
+-        self.assertEqual(buttons['Consultar rankings'],app._start_rankings)
++        self.assertEqual(buttons['Consultar ranking'],app._start_rankings)
+         self.assertEqual(buttons['Consulta completa'],app._start_complete)
+         self.assertEqual(buttons['Iniciar heartbeat'],app._start_heartbeat)
+-        toggles=[c.kwargs['variable'] for c in widgets.Checkbutton.call_args_list if c.kwargs.get('text')=='Continuamente']
++        toggles=[c.kwargs['variable'] for c in widgets.Checkbutton.call_args_list if c.kwargs.get('text')=='Contínua']
+         self.assertEqual(toggles,list(app.mode_continuous.values()))
+         entries=[c.kwargs.get('textvariable') for c in widgets.Entry.call_args_list]
+         for variable in app.mode_intervals.values():self.assertIn(variable,entries)
+diff --git a/tests/test_desktop_list_flow.py b/tests/test_desktop_list_flow.py
+new file mode 100644
+index 0000000..8f5cb70
+--- /dev/null
++++ b/tests/test_desktop_list_flow.py
+@@ -0,0 +1,114 @@
++"""Controller integration without a window or external requests."""
++import copy
++import queue
++import tempfile
++import threading
++import unittest
++from collections import deque
++from pathlib import Path
++from unittest.mock import Mock, MagicMock, patch
++from rfnext_market import desktop
++from rfnext_market.purchase_list import PurchaseList
++from tests.test_shopping import capture
++
++
++class DesktopListFlowTest(unittest.TestCase):
++    def test_product_click_expands_and_refinement_displays_offers(self):
++        app=desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app.product_tree=Mock();app.market_table=MagicMock()
++        app.market_table.__getitem__.return_value=('produto','pc_id')
++        app._product_nodes={'refine:6':[{'produto':'Rifle','pc_id':'6150242608290003288'}]}
++        app.product_tree.selection.return_value=('product',)
++        app._select_product()
++        app.product_tree.item.assert_called_once_with('product',open=True)
++        app.market_table.insert.assert_not_called()
++        app.product_tree.selection.return_value=('refine:6',)
++        app._select_product()
++        app.market_table.insert.assert_called_once_with('', 'end', iid='0', values=('Rifle','6150242608290003288'))
++
++    def app(self):
++        folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
++        app=desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app.purchase_store=PurchaseList(Path(folder.name)/'list.json')
++        app.market_result=capture();app.rankings_result=None;app.capture_ref='capture'
++        app.shopping_snapshot=None;app.proposals=[];app.shopping_reservations={}
++        app._closing=False;app.purchase_running=False;app.mode_threads={};app.mode_results={};app.worker=None
++        app.execution_mode=Mock();app.execution_mode.get.return_value='Heartbeat ativo'
++        app.heartbeat_service=Mock();app.heartbeat_service.ready.is_set.return_value=True
++        app.heartbeat_service.ended.is_set.return_value=False;app.heartbeat_service.stop_event.is_set.return_value=False
++        app.heartbeat_service.purchase.return_value={'status':'confirmed'}
++        app._control_queue=queue.Queue();app.operation_events=deque()
++        app._render_purchase_list=Mock();app._sync_proposal_results=Mock()
++        app.list_execution_status=Mock();app.shopping_status=Mock();app._observe=Mock()
++        app._current_config=Mock(return_value={});app._validate_config=Mock(return_value={})
++        rows=desktop.presentation.market_rows(app.market_result,0)
++        app.entries=[app.purchase_store.add(row['request'],row['quantity'],row['produto'],'capture') for row in rows]
++        return app
++
++    def drain(self,app):
++        app.worker.join(2);self.assertFalse(app.worker.is_alive())
++        while not app._control_queue.empty():app._handle_event(app._control_queue.get_nowait())
++
++    def test_confirmed_list_uses_active_worker_only_and_cannot_repeat(self):
++        app=self.app()
++        with patch.object(desktop.messagebox,'askyesno',return_value=True), patch.object(desktop.session,'run') as run:
++            app._execute_purchase_list();self.drain(app)
++        self.assertEqual(app.heartbeat_service.purchase.call_count,2);run.assert_not_called()
++        self.assertTrue(all(e['status']=='confirmed' for e in app.purchase_store.items()))
++        self.assertFalse(app.purchase_running)
++        with patch.object(desktop.messagebox,'showerror') as error:
++            app._execute_purchase_list()
++            error.assert_called_once()
++        self.assertEqual(app.heartbeat_service.purchase.call_count,2)
++
++    def test_new_connection_dispatch_and_stop_first_unconfirmed(self):
++        app=self.app();app.heartbeat_service.worker=None
++        app.execution_mode.get.return_value='Nova conexão'
++        with patch.object(desktop.messagebox,'askyesno',return_value=True), patch.object(desktop.session,'run',return_value={'status':'unconfirmed'}) as run:
++            app._execute_purchase_list();self.drain(app)
++        self.assertEqual(run.call_count,1)
++        cfg=run.call_args.args[0]
++        self.assertTrue(cfg['initialize_character']);self.assertTrue(cfg['heartbeat']['enabled'])
++        self.assertFalse(cfg['rankings']);app.heartbeat_service.purchase.assert_not_called()
++        self.assertEqual([e['status'] for e in app.purchase_store.items()],['unconfirmed','prepared'])
++
++    def test_cancel_confirmation_changed_capture_and_changed_offer_send_nothing(self):
++        for mode in ('cancel','capture','offer'):
++            app=self.app()
++            def confirm(*args):
++                if mode=='capture':app.capture_ref='new'
++                return mode!='cancel'
++            if mode=='offer':app.market_result['items'][0]['offers'][1]['selling_price']+=1
++            with patch.object(desktop.messagebox,'askyesno',side_effect=confirm), patch.object(desktop.messagebox,'showinfo'), patch.object(desktop.messagebox,'showerror'):
++                app._execute_purchase_list()
++            self.assertIsNone(app.worker);app.heartbeat_service.purchase.assert_not_called()
++
++    def test_site_balance_and_refresh_during_modal_are_checked(self):
++        from tests.test_shopping import snapshot
++        app=self.app()
++        for entry in app.entries:app.purchase_store.remove(entry['entry_id'])
++        row=desktop.presentation.market_rows(app.market_result,0)[0]
++        app.purchase_store.add(row['request'],row['quantity'],'Rifle','capture',source='site',shopping_id='1')
++        app.shopping_snapshot=snapshot(1)
++        def confirm(*args):
++            app.shopping_snapshot={'items':[]}
++            return True
++        with patch.object(desktop.messagebox,'askyesno',side_effect=confirm), patch.object(desktop.messagebox,'showerror'):
++            app._execute_purchase_list()
++        app.heartbeat_service.purchase.assert_not_called();self.assertIsNone(app.worker)
++        app.shopping_snapshot=snapshot(1)
++        app.shopping_snapshot['items'][0]['enchant_level']=7
++        with patch.object(desktop.messagebox,'showerror'),patch.object(desktop.messagebox,'askyesno') as confirm:
++            app._execute_purchase_list()
++            confirm.assert_not_called()
++        app.heartbeat_service.purchase.assert_not_called()
++
++    def test_conflicting_and_expired_offers_block_whole_batch(self):
++        for mode in ('conflict','expired'):
++            app=self.app();offer=app.market_result['items'][0]['offers'][0]
++            if mode=='conflict':app.market_result['items'][0]['offers'].append(dict(offer,selling_price=999))
++            else:offer['expired_time']=1600000000
++            with patch.object(desktop.messagebox,'showerror'),patch.object(desktop.messagebox,'askyesno') as confirm:
++                app._execute_purchase_list()
++                confirm.assert_not_called()
++            app.heartbeat_service.purchase.assert_not_called()
+diff --git a/tests/test_desktop_shell.py b/tests/test_desktop_shell.py
+new file mode 100644
+index 0000000..1941964
+--- /dev/null
++++ b/tests/test_desktop_shell.py
+@@ -0,0 +1,98 @@
++"""Headless shell checks: routing, callback wiring and scalable named fonts."""
++import unittest
++from types import SimpleNamespace
++from unittest.mock import Mock, patch
++from rfnext_market import desktop_shell as shell
++
++
++class Variable:
++    def __init__(self, value=""):
++        self.value = value
++    def get(self):
++        return self.value
++    def set(self, value):
++        self.value = value
++    def trace_add(self, *args):
++        pass
++
++
++class Widget:
++    all = []
++    def __init__(self, parent=None, **kwargs):
++        self.options = kwargs
++        self.bindings = {}
++        self.tabs = []
++        self.raised = False
++        self.all.append(self)
++    def configure(self, **kwargs):
++        self.options.update(kwargs)
++    def bind(self, event, callback):
++        self.bindings[event] = callback
++    def add(self, child, **kwargs):
++        self.tabs.append((child, kwargs))
++    def tkraise(self):
++        self.raised = True
++    def __getattr__(self, name):
++        return lambda *args, **kwargs: None
++
++
++class ShellTests(unittest.TestCase):
++    def make_app(self):
++        app = SimpleNamespace(root=Widget(), ui_font_size=14)
++        callbacks = ("_stop _start _start_rankings _start_complete _stop_mode _start_heartbeat _retry_upload "
++                     "_add_market_selection _select_product _render_market _remove_purchase_selection "
++                     "_fetch_shopping _prepare_shopping _execute_purchase_list _stop_purchase_list "
++                     "_buy_proposal _add_site_proposals _change_font_size _choose_config _choose_session _choose_items "
++                     "_file_row _save_config _validate _start_purchase _inspect_selected _export")
++        for name in callbacks.split():
++            setattr(app, name, Mock())
++        for name in ("config_path session_path item_database companion_enabled companion_url companion_state_dir").split():
++            setattr(app, name, Variable())
++        app.vars = {key: Variable() for key in ("auth_host auth_port auth_timeout game_host game_port game_timeout world_id response_timeout").split()}
++        app.mode_status = {key: Variable("Parado") for key in ("market", "rankings", "complete", "heartbeat")}
++        app.mode_continuous = {key: Variable(False) for key in ("market", "rankings", "complete")}
++        app.mode_intervals = {key: Variable("5") for key in app.mode_continuous}
++        app._table = lambda parent, columns: Widget(parent, columns=columns)
++        app._log_pane = lambda parent, title: (Widget(parent), Widget(parent))
++        return app
++
++    def test_routes_controls_and_scale_without_rebuilding(self):
++        Widget.all = []
++        app = self.make_app()
++        fake_ttk = SimpleNamespace(**{name: Widget for name in ("Frame Label LabelFrame Button Entry Combobox Checkbutton Notebook Treeview Scrollbar Progressbar Panedwindow").split()}, Style=lambda root: Mock())
++        with patch.object(shell, "ttk", fake_ttk), patch.object(shell.tk, "Canvas", Widget), patch.object(shell.tk, "StringVar", Variable), patch.object(shell.font, "families", return_value=("Segoe UI",)), patch.object(shell.font, "Font", side_effect=lambda **kw: Widget(**kw)):
++            shell.build(app)
++        self.assertEqual(tuple(app.pages), shell.PAGES)
++        self.assertEqual(app.page_title.get(), "Captura")
++        self.assertEqual(app.upload_status.get(), "Aguardando envio")
++        self.assertTrue(any(w.options.get("textvariable") is app.mode_status["market"] for w in Widget.all))
++        self.assertTrue(any(w.options.get("textvariable") is app.upload_status for w in Widget.all))
++        self.assertTrue(any(w.options.get("text") == "Remover selecionada da execução" for w in Widget.all))
++        app.show_page("Mercado")
++        self.assertTrue(app.pages["Mercado"].raised)
++        self.assertEqual(app.page_title.get(), "Mercado")
++        with self.assertRaises(StopIteration):
++            app.show_page("missing")
++        app.mode_buttons["rankings"].options["command"]()
++        app._start_rankings.assert_called_once()
++        app._start.assert_not_called()
++        app.purchase_heartbeat_button.options["command"]()
++        app._start_purchase.assert_called_once_with(True)
++        app.product_tree.bindings["<<TreeviewSelect>>"]("selection")
++        app._select_product.assert_called_once_with("selection")
++        self.assertEqual([opts["text"] for _, opts in app.shopping_tabs.tabs], ["Lista de compra", "Lista recebida do site", "Executar lista"])
++        self.assertEqual(set(app.progress_bars), {"read", "upload", "market:read", "market:upload", "rankings:read", "rankings:upload"})
++        before = app.market_table
++        self.assertEqual(shell.apply_font_size(app, 99), 20)
++        self.assertEqual(app.ui_fonts["body"].options["size"], 20)
++        self.assertEqual(app.ui_fonts["title"].options["size"], 30)
++        self.assertIs(before, app.market_table)
++        self.assertEqual(shell.apply_font_size(app, 1), 8)
++        self.assertTrue(any("alternativa" in w.options.get("text", "") for w in Widget.all))
++        with self.assertRaises(ValueError):
++            shell.apply_font_size(app, "not a number")
++        self.assertEqual(app.font_size.get(), "8")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_market_tree.py b/tests/test_market_tree.py
+new file mode 100644
+index 0000000..a484d64
+--- /dev/null
++++ b/tests/test_market_tree.py
+@@ -0,0 +1,69 @@
++import unittest
++from rfnext_market import presentation
++
++UID = 6150242608290003288
++OFFER = 6150242609210084203
++
++def item(market=0, refine=6):
++    return {'exchange_server_type': market, 'produto': 'Rifle', 'item_index': 1000078,
++            'offers': [{'exchange_index': OFFER, 'pc_id': UID, 'account_id': 99, 'selling_price': 11,
++                        'item_info': {'index': 1000078, 'count': 2, 'enchant_level': refine}}]}
++
++def rank(name='Carlos', kind='exp', status='completed', uid=UID):
++    return {'rankings': {kind: {'status': status, 'records': [{'rank': 1, 'character_uid': uid,
++       'character_uid_repeat': uid, 'character_name': name, 'scope_id_raw': 1, 'ranking_cycle_raw': 2}]}}}
++
++class MarketTreeTest(unittest.TestCase):
++    def test_hierarchy_scope_empty_product_and_exact_request(self):
++        result = {'items': [item(), item(0, 7), item(1),
++                           {'exchange_server_type': 0, 'produto': 'Empty', 'item_index': 2, 'offers': []}]}
++        tree = presentation.market_tree(result, 0)
++        self.assertEqual(len(tree), 2)
++        self.assertEqual([g['enchant_level'] for g in tree[0]['refinements']], [6, 7])
++        self.assertEqual(tree[1]['refinements'], [])
++        row = tree[0]['refinements'][0]['offers'][0]
++        self.assertEqual(row['pc_id'], str(UID))
++        self.assertEqual(row['exchange_index'], str(OFFER))
++        self.assertEqual(row['quantity'], 2)
++        self.assertEqual(row['request'], dict(exchange_server_type=0, exchange_index=OFFER, pc_id=UID,
++                         selling_price=11, item_index=1000078, enchant_level=6))
++        self.assertEqual(presentation.market_tree(result, 1)[0]['refinements'][0]['offers'][0]['request']['exchange_server_type'], 1)
++        self.assertEqual(row['key'], presentation.market_rows(result)[0]['key'])
++
++    def test_separate_rank_refresh_conflicts_and_incomplete(self):
++        result = {'items': [item()]}
++        self.assertEqual(presentation.market_rows(result)[0]['seller'], 'Vendedor não informado')
++        separate = rank()
++        self.assertEqual(presentation.market_rows(result, rankings_result=separate)[0]['seller'], 'Carlos')
++        separate['rankings'].update(rank('Outro', 'cora')['rankings'])
++        row = presentation.market_rows(result, rankings_result=separate)[0]
++        self.assertEqual(row['seller'], 'Vendedor não informado')
++        self.assertIn('conflitantes', row['seller_source'])
++        for snapshot in (rank(status='incomplete'), rank(uid=UID+1), rank(uid=99)):
++            self.assertEqual(presentation.market_rows(result, rankings_result=snapshot)[0]['seller'], 'Vendedor não informado')
++        malformed = rank()
++        malformed['rankings']['exp']['records'][0]['character_uid_repeat'] = UID+1
++        self.assertEqual(presentation.market_rows(result, rankings_result=malformed)[0]['seller'], 'Vendedor não informado')
++
++    def test_invalid_offer_is_visible_but_never_executable(self):
++        for key, value in [('pc_id', str(UID)), ('pc_id', float(UID)), ('selling_price', -1), ('exchange_index', True)]:
++            product = item()
++            product['offers'][0][key] = value
++            row = presentation.market_rows({'items': [product]})[0]
++            self.assertIsNone(row['request'])
++        for key, value in [('index', 2), ('count', '2'), ('enchant_level', None)]:
++            product = item()
++            product['offers'][0]['item_info'][key] = value
++            self.assertIsNone(presentation.market_rows({'items': [product]})[0]['request'])
++        product = item()
++        product['offers'][0]['item_info'] = None
++        self.assertIsNone(presentation.market_rows({'items': [product]})[0]['request'])
++
++    def test_exp_filter_preserves_default(self):
++        result = rank()
++        result['rankings'].update(rank('Outro', 'cora')['rankings'])
++        self.assertEqual(len(presentation.ranking_rows(result)), 2)
++        self.assertEqual([r[0] for r in presentation.ranking_rows(result, exp_only=True)], ['exp'])
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/tests/test_product_ui.py b/tests/test_product_ui.py
+index 0768279..e3d0aa8 100644
+--- a/tests/test_product_ui.py
++++ b/tests/test_product_ui.py
+@@ -3,6 +3,9 @@ import copy
+ import queue
+ import threading
+ import unittest
++import tempfile
++from pathlib import Path
++from rfnext_market.purchase_list import PurchaseList
+ from unittest.mock import Mock, patch
+ 
+ from rfnext_market import desktop, presentation, shopping
+@@ -31,28 +34,14 @@ class ProductUITest(unittest.TestCase):
+             dialog.assert_not_called()
+             run.assert_not_called()
+ 
+-    def test_navigation_build_keeps_callbacks_separate_without_display(self):
+-        from contextlib import ExitStack
+-        with ExitStack() as stack:
+-            constructors = {}
+-            for name in ("Style", "Frame", "Label", "Notebook", "LabelFrame", "Entry", "Button", "Checkbutton", "Progressbar", "Panedwindow", "Scrollbar", "Treeview", "Combobox", "Separator"):
+-                constructors[name] = stack.enter_context(patch.object(desktop.ttk, name))
+-            stack.enter_context(patch.object(desktop.tk, "StringVar"))
+-            stack.enter_context(patch.object(desktop.tk, "BooleanVar"))
+-            app = desktop.DesktopApp(Mock())
+-            self.assertEqual(list(app.pages), ["Mercado", "Rankings", "Compras", "Configurações", "Diagnóstico"])
+-            commands = {call.kwargs.get("text"): call.kwargs.get("command") for call in constructors["Button"].call_args_list}
+-            app._start_mode = Mock()
+-            commands["Consultar mercado"]()
+-            commands["Consultar rankings"]()
+-            commands["Consulta completa"]()
+-            self.assertEqual([call.args for call in app._start_mode.call_args_list], [("market",), ("rankings",), ("complete",)])
+-            app._start_purchase = Mock()
+-            commands["Comprar: heartbeat ativo"]()
+-            app._start_purchase.assert_called_once_with(True)
+-            app.shopping_stop.clear()
+-            commands["Parar tudo"]()
+-            self.assertTrue(app.shopping_stop.is_set())
++    def test_navigation_controllers_keep_operations_separate(self):
++        # Shell widget wiring is covered by test_desktop_shell; check real controllers here.
++        app = desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app._start_mode = Mock()
++        app._start()
++        app._start_rankings()
++        app._start_complete()
++        self.assertEqual([call.args for call in app._start_mode.call_args_list], [("market",), ("rankings",), ("complete",)])
+ 
+     def test_projection_scope_search_and_exact_identifiers(self):
+         rows = presentation.market_rows(result(), 0, "RIFLE")
+@@ -72,6 +61,10 @@ class ProductUITest(unittest.TestCase):
+ 
+     def app(self):
+         app = desktop.DesktopApp.__new__(desktop.DesktopApp)
++        directory = tempfile.TemporaryDirectory()
++        self.addCleanup(directory.cleanup)
++        app.purchase_store = PurchaseList(Path(directory.name) / "purchase-list.json")
++        app._render_purchase_list = Mock()
+         app.capture_ref = "capture"
+         app.shopping_snapshot = {"items": [{"shopping_id": "1", "remaining_quantity": 1}]}
+         app.proposals = [proposal()]
+@@ -81,26 +74,40 @@ class ProductUITest(unittest.TestCase):
+         app.shopping_status = Mock()
+         return app
+ 
++    def execute(self, app, answer=None, error=None, cancel=None):
++        def run(ids, use_heartbeat):
++            def one(request, stop):
++                if error:
++                    raise OSError(error)
++                return answer or {"status": "confirmed"}
++            app.purchase_store.run(ids, one, cancel or threading.Event(), Mock())
++            app._sync_proposal_results()
++        app._execute_purchase_list = Mock(side_effect=run)
++
+     def test_selected_purchase_modes_and_no_repeat(self):
+         for mode in (False, True):
+             app = self.app()
+-            app._start_purchase = Mock(return_value=True)
++            self.execute(app)
+             app._buy_proposal(mode)
+-            app._start_purchase.assert_called_once_with(mode, request=REQUEST, proposal=app.proposals[0])
+-            self.assertEqual(app.proposals[0]["status"], "attempted")
++            entry = app.purchase_store.items()[0]
++            app._execute_purchase_list.assert_called_once_with([entry["entry_id"]], use_heartbeat=mode)
++            self.assertEqual(entry["request"], REQUEST)
++            self.assertEqual(app.proposals[0]["status"], "confirmed")
+             with patch.object(desktop.messagebox, "showinfo"):
+                 app._buy_proposal(mode)
+-            self.assertEqual(app._start_purchase.call_count, 1)
++            self.assertEqual(app._execute_purchase_list.call_count, 1)
+ 
+     def test_cancel_and_stale_proposal_send_nothing(self):
+         app = self.app()
+-        app._start_purchase = Mock(return_value=None)
++        app._execute_purchase_list = Mock()  # Modal confirmation declined, no store.run.
+         app._buy_proposal(True)
+         self.assertEqual(app.proposals[0]["status"], "prepared")
++        self.assertEqual(app.purchase_store.items()[0]["status"], "prepared")
++        self.assertEqual(app._reserved_site_quantities(), {})
+         app.capture_ref = "new"
+         with patch.object(desktop.messagebox, "showinfo"):
+             app._buy_proposal(True)
+-        self.assertEqual(app._start_purchase.call_count, 1)
++        self.assertEqual(app._execute_purchase_list.call_count, 1)
+ 
+     def test_prepare_passes_explicit_market_and_never_executes(self):
+         app = self.app()
+@@ -117,19 +124,16 @@ class ProductUITest(unittest.TestCase):
+         from tests.test_shopping import snapshot, capture
+         for outcome, error, reserved in (("confirmed", None, 1), ("unconfirmed", None, 1),
+                 ("failed", "broken pipe", 1), ("blocked", None, 0), ("rejected", None, 0),
+-                ("cancelled", None, 1)):
++                ("cancelled", None, 0)):
+             with self.subTest(outcome=outcome):
+                 app = self.app()
+                 app.shopping_snapshot = snapshot(1)
+                 app.market_result = capture()
+                 app.shopping_market = Mock();app.shopping_market.get.return_value = "Local"
+                 app._prepare_shopping()
+-                app._start_purchase = Mock(return_value=True)
++                self.execute(app, {"status": outcome, "diagnostic": "Cancelado antes do envio" if outcome == "cancelled" else ""}, error)
+                 app._buy_proposal(True)
+-                self.assertEqual(app.shopping_reservations, {"1": 1})
+-                app.purchase_button=Mock();app.status=Mock();app.mode_results={}
+-                app._handle_event(("purchase_done", {"status":outcome}, error))
+-                self.assertEqual(app.shopping_reservations, {"1":reserved})
++                self.assertEqual(app._reserved_site_quantities().get("1", 0), reserved)
+                 self.assertEqual(app.proposals[0]["status"], outcome if not error else "unconfirmed")
+                 app._handle_event(("shopping_done", snapshot(1), None))
+                 # A new capture with a different offer must not replenish the shopping quota.
+@@ -147,14 +151,16 @@ class ProductUITest(unittest.TestCase):
+         first, second = proposal(), proposal()
+         second["request"]["exchange_index"] += 1
+         app.proposals = [first, second]
+-        app._start_purchase = Mock(return_value=True)
++        self.execute(app)
+         app._buy_proposal(True)
+-        app._finish_proposal({"status":"confirmed"}, None)
+         app.proposal_table.selection.return_value=("1",)
++        cancel = threading.Event()
++        cancel.set()
++        self.execute(app, cancel=cancel)
+         app._buy_proposal(True)
+-        self.assertEqual(app.shopping_reservations["1"], 2)
+-        app._finish_proposal({"status":"cancelled", "diagnostic":"Cancelado antes do envio"}, None)
+-        self.assertEqual(app.shopping_reservations["1"], 1)
++        self.assertEqual(app._reserved_site_quantities()["1"], 1)
++        self.assertEqual(app.purchase_store.items()[1]["status"], "prepared")
++        self.assertEqual(app.proposals[1]["status"], "prepared")
+ 
+     def test_receive_only_companion_config_and_endpoint_error_visible(self):
+         app = self.app()
+diff --git a/tests/test_purchase_list.py b/tests/test_purchase_list.py
+new file mode 100644
+index 0000000..47d9bbd
+--- /dev/null
++++ b/tests/test_purchase_list.py
+@@ -0,0 +1,170 @@
++import json
++from pathlib import Path
++import tempfile
++import threading
++import unittest
++from unittest.mock import Mock, patch
++
++from rfnext_market.purchase_list import PurchaseList
++
++REQUEST = dict(exchange_server_type=0, exchange_index=6150242609210084203,
++               pc_id=6150242608290003288, selling_price=11, item_index=1000078, enchant_level=6)
++
++
++class PurchaseListTest(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.path = Path(self.temp.name) / 'list.json'
++        self.list = PurchaseList(self.path)
++        self.cancel = threading.Event()
++        self.emit = Mock()
++
++    def add(self, offset=0, **kw):
++        return self.list.add(dict(REQUEST, exchange_index=REQUEST['exchange_index'] + offset),
++                             2, 'Rifle', 'capture1', **kw)
++
++    def test_duplicate_snapshot_refresh_and_exact_ids(self):
++        entry = self.add()
++        repeat = self.list.add(REQUEST, 2, 'Rifle atualizado', 'capture2')
++        self.assertEqual(entry['entry_id'], repeat['entry_id'])
++        self.assertEqual(repeat['capture_ref'], 'capture2')
++        entry['request']['pc_id'] = 1
++        self.assertEqual(PurchaseList(self.path).items()[0]['request'], REQUEST)
++        with self.assertRaises(ValueError):
++            self.list.add(dict(REQUEST, selling_price=12), 2, 'Rifle', 'capture2')
++        self.assertEqual(len(self.list.items()), 1)
++
++    def test_success_one_execution_per_offer_and_durable_history(self):
++        a = self.add(source='site', shopping_id='42')
++        b = self.add(1)
++        execute = Mock(return_value={'status':'confirmed', 'diagnostic':'ok', 'credentials':'not saved'})
++        result = self.list.run([a['entry_id'], b['entry_id']], execute, self.cancel, self.emit)
++        self.assertEqual(result['status'], 'completed')
++        self.assertEqual(execute.call_count, 2)
++        self.assertEqual(self.emit.call_args.kwargs, {})
++        self.assertEqual(self.emit.call_args.args[0]['completed'], 2)
++        loaded = PurchaseList(self.path)
++        self.assertEqual(loaded.reserved_quantities(), {'42':2})
++        self.assertNotIn('credentials', self.path.read_text())
++        self.assertEqual(loaded.add(REQUEST, 2, 'Rifle', 'new', 'site', '42')['status'], 'confirmed')
++        with self.assertRaises(ValueError):
++            loaded.run([a['entry_id']], execute, self.cancel, self.emit)
++        with self.assertRaises(ValueError):
++            loaded.remove(a['entry_id'])
++        self.assertEqual(execute.call_count, 2)
++
++    def test_stop_on_failure_and_reserve_ambiguous_only(self):
++        for status in ('rejected', 'blocked', 'cancelled', 'unconfirmed', 'invalid'):
++            with self.subTest(status=status):
++                queue = PurchaseList(Path(self.temp.name) / (status + '.json'))
++                a = queue.add(REQUEST, 2, 'x', 'c', 'site', '42')
++                b = queue.add(dict(REQUEST, exchange_index=1), 1, 'y', 'c')
++                execute = Mock(return_value={'status':status, 'diagnostic':'Cancelado antes do envio' if status == 'cancelled' else ''})
++                result = queue.run([a['entry_id'], b['entry_id']], execute, self.cancel, self.emit)
++                self.assertEqual(execute.call_count, 1)
++                self.assertEqual(queue.items()[1]['status'], 'prepared')
++                self.assertEqual(result['status'], 'unconfirmed' if status == 'invalid' else status)
++                self.assertEqual(queue.reserved_quantities(), {'42':2} if status in ('unconfirmed','invalid') else {})
++
++    def test_callback_cancellation_only_releases_known_pre_send(self):
++        for number, diagnostic in enumerate(("Cancelado antes do envio", "Compra cancelada antes do envio",
++                                             "Cancelado", "", "socket fechado após enviar")):
++            queue = PurchaseList(Path(self.temp.name) / f"cancel{number}.json")
++            entry = queue.add(REQUEST, 2, "x", "c", "site", "42")
++            execute = Mock(return_value={"status":"cancelled", "diagnostic":diagnostic})
++            result = queue.run([entry["entry_id"]], execute, self.cancel, self.emit)
++            expected = "cancelled" if number < 2 else "unconfirmed"
++            self.assertEqual(result["status"], expected)
++            loaded = PurchaseList(queue.path)
++            self.assertEqual(loaded.items()[0]["status"], expected)
++            self.assertEqual(loaded.reserved_quantities(), {} if number < 2 else {"42":2})
++            execute.assert_called_once()
++            with self.assertRaises(ValueError):
++                loaded.run([entry["entry_id"]], execute, self.cancel, self.emit)
++            execute.assert_called_once()
++
++    def test_cancel_preflight_and_cancel_between_entries(self):
++        a, b = self.add(), self.add(1)
++        execute = Mock(return_value={'status':'confirmed'})
++        with self.assertRaises(ValueError):
++            self.list.run([a['entry_id'], 'missing'], execute, self.cancel, self.emit)
++        execute.assert_not_called()
++        self.cancel.set()
++        self.assertEqual(self.list.run([a['entry_id']], execute, self.cancel, self.emit)['status'], 'cancelled')
++        execute.assert_not_called()
++        self.assertEqual(self.list.items()[0]['status'], 'prepared')
++        self.cancel.clear()
++        def first(request, cancel):
++            cancel.set()
++            return {'status':'confirmed'}
++        result = self.list.run([a['entry_id'], b['entry_id']], first, self.cancel, self.emit)
++        self.assertEqual(result['status'], 'cancelled')
++        self.assertEqual(self.list.items()[1]['status'], 'prepared')
++
++    def test_interruption_before_return_is_durable_unconfirmed(self):
++        a = self.add(source='site', shopping_id='42')
++        def crash(request, cancel):
++            self.assertEqual(json.loads(self.path.read_text())[0]['status'], 'sending')
++            raise KeyboardInterrupt()
++        with self.assertRaises(KeyboardInterrupt):
++            self.list.run([a['entry_id']], crash, self.cancel, self.emit)
++        loaded = PurchaseList(self.path)
++        self.assertEqual(loaded.items()[0]['status'], 'unconfirmed')
++        self.assertEqual(loaded.reserved_quantities(), {'42':2})
++        self.assertEqual(json.loads(self.path.read_text())[0]['status'], 'unconfirmed')
++
++    def test_socket_exception_is_ambiguous_and_mutations_blocked(self):
++        a = self.add()
++        def execute(request, cancel):
++            for operation in (lambda: self.add(1), lambda: self.list.remove(a['entry_id']),
++                              lambda: self.list.run([a['entry_id']], Mock(), cancel, self.emit)):
++                with self.assertRaises(RuntimeError):
++                    operation()
++            request['pc_id'] = 1
++            raise BrokenPipeError('socket closed')
++        result = self.list.run([a['entry_id']], execute, self.cancel, self.emit)
++        self.assertEqual(result['status'], 'unconfirmed')
++        self.assertEqual(self.list.items()[0]['request'], REQUEST)
++
++    def test_invalid_entry_schema_is_value_error_and_file_is_preserved(self):
++        entry = self.add()
++        cases = [None, [], {}, {**entry, "status": []}, {**entry, "request": []},
++                 {**entry, "entry_id": []}, {**entry, "quantity": True},
++                 {**entry, "source": {}}, {**entry, "unexpected": "value"}]
++        for invalid in cases:
++            with self.subTest(invalid=invalid):
++                content = json.dumps([invalid])
++                self.path.write_text(content)
++                with self.assertRaises(ValueError):
++                    PurchaseList(self.path)
++                self.assertEqual(self.path.read_text(), content)
++
++    def test_conflicting_list_association_is_rejected(self):
++        entry = self.add(source="site", shopping_id="42")
++        for source, shopping_id in (("local", None), ("site", "43"), ("local", "42")):
++            with self.subTest(source=source, shopping_id=shopping_id), self.assertRaises(ValueError):
++                self.list.add(REQUEST, 2, "Rifle", "capture2", source, shopping_id)
++        self.assertEqual(self.list.items(), [entry])
++        with self.assertRaises(ValueError):
++            self.add(1, source="local", shopping_id="42")
++        self.assertEqual(PurchaseList(self.path).items(), [entry])
++
++    def test_invalid_file_and_failed_atomic_replace_never_send(self):
++        a = self.add()
++        old = self.path.read_bytes()
++        execute = Mock()
++        with patch('rfnext_market.purchase_list.os.replace', side_effect=OSError('disk')):
++            with self.assertRaises(OSError):
++                self.list.run([a['entry_id']], execute, self.cancel, self.emit)
++        execute.assert_not_called()
++        self.assertEqual(self.path.read_bytes(), old)
++        self.assertEqual(self.list.items()[0]['status'], 'prepared')
++        self.path.write_text('{broken')
++        with self.assertRaises(ValueError):
++            PurchaseList(self.path)
++        self.assertEqual(self.path.read_text(), '{broken')
++
++
++if __name__ == '__main__':
++    unittest.main()
