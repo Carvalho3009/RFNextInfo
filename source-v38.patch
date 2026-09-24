@@ -1,0 +1,3946 @@
+diff --git a/package_v22.py b/package_v22.py
+index ef17284..356acb4 100644
+--- a/package_v22.py
++++ b/package_v22.py
+@@ -10,10 +10,14 @@ name = f'rfnext-market-local-global-20260919-v{version}.zip'
+ updated = {p.relative_to(root).as_posix() for folder in ('rfnext_market', 'tests')
+            for p in (root/folder).iterdir() if p.suffix in ('.py', '.json')}
+ updated.update({'package_v22.py', f'LEIA-ME-v{version}.md', f'VALIDACAO-v{version}.md'})
++updated.update(p for p in ('preparar_teste_do_dump.py', 'rfnext_dump_portable.py',
++                          f'INVENTARIO-DASHBOARD-v{version}.md') if (root/p).is_file())
+ with ZipFile(channel/f'rfnext-market-local-global-20260919-v{version-1}.zip') as old, ZipFile(channel/name,'w',ZIP_DEFLATED) as new:
+     for entry in old.infolist():
+         if '__pycache__' in entry.filename or entry.filename.endswith('.pyc') or entry.filename in updated:
+             continue
++        if entry.filename.split('/')[0] in ('accounts', 'companion-state') or Path(entry.filename).name in ('purchase-list.json', 'ui-settings.json', 'site-executors.sqlite3'):
++            continue
+         new.writestr(entry.filename,old.read(entry))
+     for path in sorted(updated):
+         new.write(root/path,path)
+diff --git a/preparar_teste_do_dump.py b/preparar_teste_do_dump.py
+new file mode 100644
+index 0000000..7000e4b
+--- /dev/null
++++ b/preparar_teste_do_dump.py
+@@ -0,0 +1,31 @@
++"""Prepare an explicitly selected passive capture session; no network traffic."""
++import argparse
++import json
++from pathlib import Path
++from rfnext_market.capture_import import inspect_capture, prepare_candidate
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument('dump', type=Path)
++    parser.add_argument('--auth-host')
++    parser.add_argument('--game-host')
++    parser.add_argument('--world-id', type=int)
++    parser.add_argument('--candidate')
++    parser.add_argument('--output-dir', type=Path, default=Path('.'))
++    parser.add_argument('--initialize-character', action='store_true', default=None)
++    args = parser.parse_args()
++    result = inspect_capture(args.dump)
++    candidates = result['candidates']
++    if args.candidate: candidates = [c for c in candidates if c['candidate_id'] == args.candidate]
++    if len(candidates) != 1:
++        raise SystemExit('Selecione --candidate: ' + ', '.join(f"{c['candidate_id']} ({c['account_id']})" for c in result['candidates']))
++    overrides = {key: value for key, value in vars(args).items() if key in ('auth_host', 'game_host', 'world_id', 'initialize_character') and value is not None}
++    prepared = prepare_candidate(candidates[0], overrides)
++    output = args.output_dir.resolve(); output.mkdir(parents=True, exist_ok=True)
++    for key in ('session', 'config', 'provenance', 'dashboard'):
++        (output / f'{key}.json').write_text(json.dumps(prepared[key], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
++    print(f"gerados: {output / 'session.json'} e {output / 'config.json'}")
++
++
++if __name__ == '__main__': main()
+diff --git a/rfnext_dump_portable.py b/rfnext_dump_portable.py
+new file mode 100644
+index 0000000..500e929
+--- /dev/null
++++ b/rfnext_dump_portable.py
+@@ -0,0 +1,96 @@
++"""Portable RF NEXT all-opcode dump (Python 3.10+, standard library only)."""
++import argparse, collections, datetime, hashlib, json, socket, struct
++from pathlib import Path
++
++def frame_len(h):
++    if not h[0] & 0x80: return int.from_bytes(h[1:3], 'little')
++    s=h[0]^0xEF; lo=h[1]^s; s=h[1]^0xEF; hi=h[2]^s; return lo|(hi<<8)
++
++def xor_unwrap(f):
++    if not f[0]&0x80: return f
++    b=bytearray(f); state=b[0]^0xEF
++    for i in range(1,len(b)):
++        c=b[i]; b[i]=c^state; state=c^((-0x11*i)&255)
++    b[0]&=0x7f; return bytes(b)
++
++def lz4(src):
++    out=bytearray(); p=0
++    def ext(n):
++        nonlocal p
++        if n!=15:return n
++        z=15
++        while True:
++            v=src[p];p+=1;z+=v
++            if v!=255:return z
++    while p<len(src):
++        t=src[p];p+=1; n=ext(t>>4); out+=src[p:p+n];p+=n
++        if p==len(src):break
++        off=src[p]|src[p+1]<<8;p+=2; m=ext(t&15)+4
++        for _ in range(m): out.append(out[-off])
++    return bytes(out)
++
++def decode(f):
++    f=xor_unwrap(f); comp=bool(f[0]&0x40)
++    if comp:
++        body=lz4(f[6:]); f=f[:6]+body; f=bytes([f[0]&0xbf])+len(f).to_bytes(2,'little')+f[3:]
++    return f
++
++def streams(path, port):
++    raw=path.read_bytes(); endian='<' if raw[:4] in (b'\xd4\xc3\xb2\xa1',b'\x4d\x3c\xb2\xa1') else '>'
++    link=struct.unpack_from(endian+'IHHIIII',raw)[6]; cur=24; flows=collections.defaultdict(list)
++    while cur+16<=len(raw):
++        sec,usec,cap,_=struct.unpack_from(endian+'IIII',raw,cur);cur+=16; pkt=raw[cur:cur+cap];cur+=cap
++        if link==1: net=pkt[14:] if len(pkt)>=14 else b''
++        elif link==101: net=pkt
++        else: continue
++        if len(net)<20 or net[0]>>4!=4 or net[9]!=6: continue
++        ihl=(net[0]&15)*4
++        if len(net)<ihl+20: continue
++        tcp=net[ihl:]; sp,dp,seq,_,of=struct.unpack_from('!HHIIH',tcp); hl=(of>>12)*4; data=tcp[hl:]
++        if not data or port not in (sp,dp): continue
++        a=socket.inet_ntoa(net[12:16]); b=socket.inet_ntoa(net[16:20]); key=(a,sp,b,dp)
++        flows[key].append((seq,data,sec*10**9+usec*1000))
++    for key, segs in flows.items():
++        segs.sort(); buf=bytearray(); spans=[]; end=None
++        for seq,data,ts in segs:
++            if end is None: end=seq
++            if seq<end: data=data[end-seq:]; seq=end
++            if seq!=end: continue
++            buf+=data; end+=len(data); spans.append((len(buf),ts))
++        yield key,bytes(buf),spans
++
++def utf16(payload,p):
++    n=struct.unpack_from('<H',payload,p)[0];p+=2; return payload[p:p+n*2].decode('utf-16le'),p+n*2
++
++def parse_auth(f):
++    if int.from_bytes(f[4:6],'little')!=0x0101 or len(f)<8:return None
++    p=6; account,p=utf16(f,p); mode=struct.unpack_from('<H',f,p)[0];p+=2; country,p=utf16(f,p); device,p=utf16(f,p); jwt,p=utf16(f,p); host,p=utf16(f,p); key,p=utf16(f,p)
++    return {'account_id':account,'connection_mode':mode,'country_code':country,'device_info':json.loads(device),'auth_jwt':jwt,'auth_host':host,'session_key':key,'auth_jwt_length':len(jwt),'session_key_length':len(key)}
++
++def main():
++    ap=argparse.ArgumentParser();ap.add_argument('pcap',type=Path);ap.add_argument('-o','--output',type=Path,required=True);ap.add_argument('--ports',type=int,nargs='+',default=[12000,12010,12020,12040]);a=ap.parse_args(); rows=[]
++    for port in a.ports:
++      for flow,stream,spans in streams(a.pcap,port):
++        pos=0; i=0
++        while pos+3<=len(stream):
++            n=frame_len(stream[pos:pos+3])
++            if n<6 or pos+n>len(stream):break
++            wire=stream[pos:pos+n]; ts=next((t for end,t in spans if end>=pos+n),None)
++            try:
++                dec=decode(wire); op=int.from_bytes(dec[4:6],'little')
++            except (IndexError, ValueError, struct.error) as exc:
++                rows.append({'frame_index':i,'flow':f'{flow[0]}:{flow[1]} -> {flow[2]}:{flow[3]}','port':port,'direction':'client_to_server' if flow[3]==port else 'server_to_client','record_type':'decode_error','wire_length':n,'pcap_time_ns':ts,'error':f'{type(exc).__name__}: {exc}','wire_sha256':hashlib.sha256(wire).hexdigest()})
++                pos+=n; i+=1; continue
++            row={'frame_index':i,'flow':f'{flow[0]}:{flow[1]} -> {flow[2]}:{flow[3]}','port':port,'direction':'client_to_server' if flow[3]==port else 'server_to_client','opcode':f'0x{op:04X}','decoded_length':len(dec),'wire_length':n,'sha256':hashlib.sha256(dec).hexdigest(),'decoded_hex':dec.hex()}
++            if ts: row['pcap_time_ns']=ts
++            if op==0x0101 and port==12000:
++                try:
++                    row['authentication']=parse_auth(dec)
++                except (IndexError, ValueError, struct.error, UnicodeError) as exc:
++                    row['authentication_error']=f'{type(exc).__name__}: {exc}'
++            if op==0x1d02 and len(dec)>=12:
++                cnt=struct.unpack_from('<H',dec,10)[0]; row['market_item_count']=cnt; row['market_end']=bool(dec[7]); row['market_server_type']=dec[8]
++            rows.append(row)
++            pos+=n;i+=1
++    a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps({'pcap':str(a.pcap),'ports':a.ports,'records':rows},ensure_ascii=False,indent=2)+'\n',encoding='utf-8');print(f'{len(rows)} quadros gravados em {a.output}')
++if __name__=='__main__':main()
+diff --git a/rfnext_market/account_ui.py b/rfnext_market/account_ui.py
+new file mode 100644
+index 0000000..9ba0af2
+--- /dev/null
++++ b/rfnext_market/account_ui.py
+@@ -0,0 +1,415 @@
++"""One Tk window; each profile owns a controller, view and workers for its lifetime."""
++from __future__ import annotations
++
++import json
++import hashlib
++import queue
++import sqlite3
++import threading
++import time
++from pathlib import Path
++from tkinter import ttk, filedialog, messagebox, simpledialog
++import tkinter as tk
++
++from .accounts import AccountStore, AccountRegistry
++
++
++class AccountWindow:
++    def __init__(self, root, base=None):
++        self.root = root
++        self.base = Path(base or Path(__file__).resolve().parent.parent)
++        self.store = AccountStore(self.base)
++        self.registry = AccountRegistry()
++        self.apps = {}
++        self.selected = None
++        self.closing = False
++        self.import_worker = None
++        self.import_queue = queue.SimpleQueue()
++        self.root.title("RF Next Companion · v38")
++        self.root.geometry("1280x860")
++        self.root.minsize(1050, 700)
++        self.root.configure(background="#202326")
++        bar = ttk.Frame(root, padding=(18, 10))
++        bar.pack(fill="x")
++        ttk.Label(bar, text="Conta").grid(row=0, column=0, sticky="w")
++        self.choice = tk.StringVar()
++        self.selector = ttk.Combobox(bar, textvariable=self.choice, width=18)
++        self.selector.grid(row=0, column=1, sticky="ew", padx=10)
++        self.selector.bind("<<ComboboxSelected>>", self._selected)
++        self.selector.bind("<Return>", self._selected)
++        self.selector.bind("<KeyRelease>", self._filter)
++        self.selector.configure(postcommand=self._open_choices)
++        actions = ttk.Frame(bar)
++        actions.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
++        ttk.Button(actions, text="Adicionar", command=self.add).pack(side="left", padx=4)
++        ttk.Button(actions, text="Importar PCAP", command=self.import_capture).pack(side="left", padx=4)
++        ttk.Button(actions, text="Renomear", command=self.rename).pack(side="left", padx=4)
++        self.context = tk.StringVar(value="Nenhuma conexão aberta")
++        context_label = ttk.Label(bar, textvariable=self.context, wraplength=950)
++        context_label.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
++        context_label.bind("<Configure>", lambda event: context_label.configure(wraplength=max(80, event.width)))
++        bar.columnconfigure(1, weight=1)
++        self.body = ttk.Frame(root)
++        self.body.pack(fill="both", expand=True)
++        self.body.rowconfigure(0, weight=1)
++        self.body.columnconfigure(0, weight=1)
++        self.store.migrate_legacy(self.base)
++        profiles = self.store.list()
++        if not profiles:
++            profiles = [self.store.create("Conta 1")]
++        self.refresh()
++        self.select(profiles[0]["id"])
++        root.protocol("WM_DELETE_WINDOW", self.close)
++        root.after(200, self.tick)
++
++    def refresh(self):
++        self.profiles = self.store.list()
++        self.labels = {}
++        for profile in self.profiles:
++            app = self.apps.get(profile["id"])
++            character = (getattr(app, "dashboard_snapshot", {}).get("character_name") or {}).get("value")
++            suffix = f" · {character}" if character else ""
++            suffix += f" · {app.mode_status['heartbeat'].get()}" if app else " · Parada"
++            self.labels[f"{profile['name']} · {profile['id'][:8]}{suffix}"] = profile["id"]
++        self.selector.configure(values=list(self.labels))
++        if self.selected:
++            self.choice.set(next((label for label, pid in self.labels.items() if pid == self.selected), ""))
++
++    def _filter(self, event=None):
++        term = self.choice.get().casefold()
++        self.selector.configure(values=[label for label in self.labels if term in label.casefold()])
++
++    def _open_choices(self):
++        typed = self.choice.get()
++        searching = typed not in self.labels
++        self.refresh()
++        if searching:
++            self.choice.set(typed)
++            self._filter()
++
++    def _selected(self, event=None):
++        pid = self.labels.get(self.choice.get())
++        if pid:
++            self.select(pid)
++
++    def select(self, pid):
++        if self.closing:
++            return
++        if pid not in self.apps:
++            from .desktop import DesktopApp
++            profile = self.store.load(pid)
++            frame = ttk.Frame(self.body)
++            frame.grid(row=0, column=0, sticky="nsew")
++            app = DesktopApp(self.root, container=frame, profile=profile, manager=self)
++            self.apps[pid] = app
++            self.load_profile(app)
++        self.selected = pid
++        self.apps[pid].container.tkraise()
++        self.refresh()
++        self.update_context()
++
++    def load_profile(self, app):
++        profile = self.store.load(app.profile_id)
++        app.profile = profile
++        app.profile_label = profile["name"]
++        config_path = Path(profile["config_file"])
++        if config_path.exists():
++            try:
++                config = json.loads(config_path.read_text(encoding="utf-8"))
++                app._load_values(config, config_path.parent)
++                app.config_document = config
++                app.config_path.set(str(config_path))
++            except (ValueError, OSError, TypeError) as exc:
++                app.status.set(f"Configuração do perfil incompleta: {exc}")
++        app.session_path.set(profile["session_file"])
++        snapshot_path = Path(profile["path"]) / "dashboard.json"
++        if snapshot_path.exists():
++            try:
++                app.dashboard_snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
++                self.render_dashboard(app)
++            except (ValueError, OSError):
++                app.status.set("Snapshot do dashboard inválido; importe novamente a captura.")
++
++    def add(self):
++        if self.closing:
++            return
++        name = simpledialog.askstring("Adicionar conta", "Apelido da conta:", parent=self.root)
++        if name and name.strip():
++            profile = self.store.create(name.strip())
++            self.select(profile["id"])
++
++    def rename(self):
++        if self.closing or not self.selected:
++            return
++        name = simpledialog.askstring("Renomear conta", "Novo apelido:", parent=self.root)
++        if name and name.strip():
++            self.store.update(self.selected, name=name.strip())
++            self.apps[self.selected].profile_label = name.strip()
++            self.apps[self.selected].profile_label_var.set(name.strip())
++            self.refresh()
++
++    def authorize(self, app, config):
++        identity = (config.get("credentials") or {}).get("account_id") or getattr(app, "runtime_account_id", None)
++        if not identity:
++            raise ValueError("A sessão precisa identificar a conta antes da conexão")
++        saved_path = Path(self.store.load(app.profile_id)["session_file"])
++        saved_id = None
++        if saved_path.is_file():
++            saved_id = json.loads(saved_path.read_text(encoding="utf-8")).get("account_id")
++            if saved_id and str(saved_id).casefold() != str(identity).casefold():
++                raise ValueError("Esta sessão pertence a outra conta. Adicione um perfil para ela")
++        signature = hashlib.sha256(json.dumps({k: config.get(k) for k in ("credentials", "auth", "game", "world_id")}, sort_keys=True).encode()).hexdigest() if config else getattr(app, "session_signature", None)
++        if app.is_busy() and getattr(app, "session_signature", signature) != signature:
++            raise ValueError("A sessão ou os servidores foram alterados. Pare as operações desta conta antes de usar os novos dados")
++        for pid, other in self.apps.items():
++            if not other.is_busy():
++                self.registry.release(pid)
++        if not self.registry.acquire(str(identity), app.profile_id):
++            raise ValueError("Esta conta já está em execução em outro perfil")
++        if not saved_id:
++            if not config.get("credentials"):
++                raise ValueError("Salve a sessão deste perfil antes de iniciar o heartbeat")
++            persisted = {key: value for key, value in config.items() if key != "credentials"}
++            self.store.update(app.profile_id, config=persisted, session=config["credentials"])
++            self.load_profile(app)
++        app.runtime_account_id = str(identity)
++        app.session_signature = signature
++
++    def claim_site(self, app):
++        config = app._companion_config().get("companion")
++        if not config:
++            raise ValueError("Configure o vínculo Companion antes de executar a lista recebida")
++        path = Path(config["state_dir"]) / "market-upload.sqlite3"
++        if not path.is_file():
++            raise ValueError("Vínculo Companion não encontrado")
++        from .protected_state import unprotect
++        with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as db:
++            row = db.execute("SELECT secret FROM identity WHERE id=1").fetchone()
++        if not row:
++            raise ValueError("Identidade Companion não encontrada")
++        installation = json.loads(unprotect(bytes(row[0])))["installation_id"]
++        shopping_ids = [item["shopping_id"] for item in (app.shopping_snapshot or {}).get("items", [])]
++        if not self.store.claim_site_executor(app.profile_id, config["state_dir"], installation, shopping_ids=shopping_ids):
++            raise ValueError("A lista deste vínculo tem outro perfil executor; isso evita repetir compras entre contas")
++
++    def save_config(self, app, config):
++        source = Path(config["session_file"])
++        session = json.loads(source.read_text(encoding="utf-8"))
++        self.store.update(app.profile_id, config=config, session=session)
++        self.load_profile(app)
++
++    def apply_font_size(self, size):
++        from .desktop_shell import apply_font_size
++        for app in self.apps.values():
++            apply_font_size(app, size)
++
++    def import_capture(self):
++        if self.closing:
++            return
++        if self.import_worker and self.import_worker.is_alive():
++            messagebox.showinfo("Importação", "Uma captura já está sendo analisada.")
++            return
++        path = filedialog.askopenfilename(parent=self.root, filetypes=(("Captura ou dump", "*.pcap *.json *.jsonl"), ("Todos", "*.*")))
++        if not path:
++            return
++        self.context.set("Analisando captura; as contas em execução continuam ativas...")
++        def work():
++            try:
++                from .capture_import import inspect_capture
++                self.import_queue.put((inspect_capture(path), None))
++            except Exception as exc:
++                self.import_queue.put((None, str(exc)))
++        self.import_worker = threading.Thread(target=work, name="capture-import", daemon=True)
++        self.import_worker.start()
++
++    def choose_candidate(self, result):
++        candidates = result.get("candidates", [])
++        if not candidates:
++            messagebox.showerror("Captura", "Nenhuma sessão identificada.\n" + "\n".join(map(str, result.get("diagnostics", []))))
++            return
++        window = tk.Toplevel(self.root)
++        window.title("Selecionar sessão da captura")
++        window.geometry("950x560")
++        window.transient(self.root)
++        window.columnconfigure(0, weight=1)
++        window.rowconfigure(0, weight=1)
++        table = ttk.Treeview(window, columns=("account", "auth", "game", "world"), show="headings", selectmode="browse")
++        for col, title in zip(table["columns"], ("Conta", "Login host", "Game host", "World ID")):
++            table.heading(col, text=title)
++            table.column(col, width=170, stretch=True)
++        table.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
++        scroll = ttk.Scrollbar(window, orient="vertical", command=table.yview)
++        scroll.grid(row=0, column=1, sticky="ns")
++        table.configure(yscrollcommand=scroll.set)
++        details = tk.Text(window, height=8, wrap="word")
++        details.grid(row=1, column=0, columnspan=2, sticky="ew", padx=12)
++        for i, candidate in enumerate(candidates):
++            table.insert("", "end", iid=str(i), values=tuple(candidate.get(key) for key in ("account_id", "auth_host", "game_host", "world_id")))
++        def show(event=None):
++            if table.selection():
++                candidate = candidates[int(table.selection()[0])]
++                details.configure(state="normal")
++                details.delete("1.0", "end")
++                details.insert("1.0", json.dumps({k: candidate.get(k) for k in ("candidate_id", "account_id", "diagnostics", "provenance")}, ensure_ascii=False, indent=2, default=str))
++                details.configure(state="disabled")
++        table.bind("<<TreeviewSelect>>", show)
++        def accept():
++            if not table.selection():
++                return
++            candidate = candidates[int(table.selection()[0])]
++            overrides = {}
++            for key, label in (("auth_host", "IP do login host"), ("game_host", "IP do game host"), ("world_id", "World ID")):
++                if candidate.get(key) is None or candidate.get(key) == "":
++                    value = simpledialog.askstring("Campo não encontrado", f"{label} não observado. Informe o valor para revisão manual:", parent=window)
++                    if value is None:
++                        return
++                    if key == "world_id":
++                        try:
++                            value = int(value)
++                        except ValueError:
++                            messagebox.showerror("World ID", "Informe um número inteiro.", parent=window)
++                            return
++                    overrides[key] = value
++            try:
++                from .capture_import import prepare_candidate
++                prepared = prepare_candidate(candidate, overrides)
++                self.install_candidate(candidate, prepared)
++            except (ValueError, TypeError, OSError) as exc:
++                messagebox.showerror("Não foi possível importar", str(exc), parent=window)
++                return
++            window.destroy()
++        ttk.Button(window, text="Salvar sessão no perfil", command=accept).grid(row=2, column=0, sticky="e", padx=12, pady=12)
++        table.selection_set("0")
++        show()
++
++    def install_candidate(self, candidate, prepared):
++        if self.closing:
++            raise ValueError("O programa está encerrando")
++        identity = prepared["session"].get("account_id")
++        if not identity:
++            raise ValueError("Captura sem identidade da conta")
++        matching = []
++        for profile in self.store.list():
++            path = Path(profile["session_file"])
++            if path.exists():
++                saved = json.loads(path.read_text(encoding="utf-8"))
++                if saved.get("account_id") == identity:
++                    matching.append(profile)
++        if len(matching) > 1:
++            raise ValueError("Há vários perfis desta conta; resolva a duplicidade antes de importar")
++        if matching:
++            profile = matching[0]
++            app = self.apps.get(profile["id"])
++            if app and app.is_busy():
++                raise ValueError("Encerre as operações desta conta antes de atualizar a sessão")
++            if not messagebox.askyesno("Atualizar sessão", f"Atualizar a captura da conta {profile['name']}? Histórico e vínculo serão preservados.", parent=self.root):
++                return
++            existing = json.loads(Path(profile["config_file"]).read_text(encoding="utf-8"))
++            for key in ("companion",):
++                if key in existing:
++                    prepared["config"][key] = existing[key]
++            self.store.update(profile["id"], config=prepared["config"], session=prepared["session"])
++        else:
++            name = simpledialog.askstring("Nova conta", "Apelido da conta:", initialvalue=str(identity), parent=self.root)
++            if not name:
++                return
++            selected = self.apps.get(self.selected)
++            if selected:
++                prepared["config"].update(selected._companion_config())
++            profile = self.store.create(name, config=prepared["config"], session=prepared["session"])
++        folder = Path(profile["path"])
++        for name, value in (("capture-provenance.json", prepared.get("provenance", {})), ("dashboard.json", prepared.get("dashboard", {}))):
++            temporary = folder / (name + ".tmp")
++            temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
++            temporary.replace(folder / name)
++        if profile["id"] in self.apps:
++            previous = self.apps.pop(profile["id"])
++            previous.closed = True
++            previous.container.destroy()
++        self.select(profile["id"])
++
++    def observe(self, app, event):
++        # Called only by the owning DesktopApp's Tk event drain, never its worker.
++        record = event[1] if len(event) > 1 and isinstance(event[1], dict) else None
++        if record and record.get("record_type") == "frame":
++            self.observe_dashboard(app, record)
++
++    def observe_dashboard(self, app, record):
++        from . import dashboard
++        state = getattr(app, "dashboard_snapshot", None)
++        if not isinstance(state, dict) or any(k not in state for k in dashboard.KEYS):
++            state = dashboard.empty()
++        before = dict(state)
++        app.dashboard_snapshot = dashboard.consume(state, record)
++        if before != state:
++            app.dashboard_dirty = True
++            self.render_dashboard(app)
++
++    def render_dashboard(self, app):
++        from .dashboard import display_value
++        values = getattr(app, "dashboard_values", {})
++        snapshot = getattr(app, "dashboard_snapshot", {})
++        fields = snapshot.get("fields", snapshot)
++        for key, variable in values.items():
++            field = fields.get(key)
++            value = field.get("value") if isinstance(field, dict) else None
++            if value is None:
++                variable.set("Não observado")
++            else:
++                stamp = field.get("timestamp") or "Horário não observado"
++                variable.set(f"{display_value(key, value)}\n{field.get('source') or 'Captura'} · {stamp}")
++        if hasattr(app, "dashboard_meta"):
++            app.dashboard_meta.set("Últimos valores observados · cada campo informa sua origem e horário; heartbeat não atualiza todos os dados")
++
++    def update_context(self):
++        app = self.apps.get(self.selected)
++        if app:
++            active = sum(other.is_busy() for other in self.apps.values())
++            self.context.set(f"{app.profile_label} · {app.mode_status['heartbeat'].get()} · {active} conta(s) em execução")
++
++    def tick(self):
++        while not self.import_queue.empty():
++            result, error = self.import_queue.get()
++            if not self.closing:
++                if error:
++                    messagebox.showerror("Importação", error)
++                else:
++                    self.choose_candidate(result)
++        for app in self.apps.values():
++            if getattr(app, "dashboard_dirty", False) and not getattr(app, "dashboard_save_blocked", False) and time.monotonic() - getattr(app, "dashboard_saved_at", 0) >= 2:
++                try:
++                    folder = Path(app.profile["path"])
++                    temp = folder / "dashboard.json.tmp"
++                    temp.write_text(json.dumps(app.dashboard_snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
++                    temp.replace(folder / "dashboard.json")
++                    app.dashboard_dirty = False
++                    app.dashboard_saved_at = time.monotonic()
++                except OSError as exc:
++                    app.dashboard_saved_at = time.monotonic()
++                    app.status.set(f"Falha ao salvar dashboard: {exc}")
++                    if self.closing:
++                        discard = messagebox.askyesno("Falha ao salvar dashboard", f"Conta: {app.profile_label}\n{exc}\n\nEncerrar sem salvar a última atualização do dashboard?\nNão mantém a janela aberta; feche novamente para tentar salvar outra vez.", parent=self.root)
++                        if discard:
++                            app.dashboard_dirty = False
++                        else:
++                            app.dashboard_save_blocked = True
++        if self.closing and all(app.closed for app in self.apps.values()) and not (self.import_worker and self.import_worker.is_alive()):
++            if any(getattr(app, "dashboard_dirty", False) for app in self.apps.values()):
++                for app in self.apps.values():
++                    if not getattr(app, "dashboard_save_blocked", False):
++                        app.dashboard_saved_at = 0
++            else:
++                self.root.destroy()
++                return
++        self.update_context()
++        self.root.after(200, self.tick)
++
++    def close(self):
++        if self.closing:
++            for app in self.apps.values():
++                app.dashboard_save_blocked = False
++                app.dashboard_saved_at = 0
++            return
++        self.closing = True
++        for app in self.apps.values():
++            app._close()
+diff --git a/rfnext_market/accounts.py b/rfnext_market/accounts.py
+new file mode 100644
+index 0000000..cf318cd
+--- /dev/null
++++ b/rfnext_market/accounts.py
+@@ -0,0 +1,242 @@
++"""Perfis locais isolados e reservas de identidade; não abre conexões."""
++import copy
++import json
++import os
++from pathlib import Path
++from contextlib import closing
++import sqlite3
++import tempfile
++import threading
++import uuid
++
++
++def _write(path, value):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    fd, temporary = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
++    try:
++        with os.fdopen(fd, "w", encoding="utf-8") as stream:
++            json.dump(value, stream, ensure_ascii=False, indent=2)
++            stream.flush()
++            os.fsync(stream.fileno())
++        os.replace(temporary, path)
++    finally:
++        if os.path.exists(temporary):
++            os.unlink(temporary)
++
++
++class AccountStore:
++    def __init__(self, base):
++        self.base = Path(base).resolve()
++        self.directory = self.base / "accounts"
++        self.directory.mkdir(parents=True, exist_ok=True)
++        self._lock = threading.RLock()
++
++    def _folder(self, profile_id):
++        try:
++            canonical = str(uuid.UUID(profile_id))
++        except (ValueError, TypeError, AttributeError) as exc:
++            raise ValueError("Identificador de perfil inválido") from exc
++        return self.directory / canonical
++
++    def load(self, profile_id):
++        folder = self._folder(profile_id)
++        data = json.loads((folder / "profile.json").read_text(encoding="utf-8"))
++        if data.get("id") != folder.name or not isinstance(data.get("name"), str):
++            raise ValueError("Perfil inválido")
++        generation = data.get("generation")
++        current = folder
++        if generation is not None:
++            try:
++                current = folder / "generations" / str(uuid.UUID(generation))
++            except (ValueError, TypeError, AttributeError) as exc:
++                raise ValueError("Geração do perfil inválida") from exc
++        return dict(data, path=str(folder), config_file=str(current / "config.json"),
++                    session_file=str(current / "session.json"))
++
++    def list(self):
++        return [self.load(path.parent.name) for path in sorted(self.directory.glob("*/profile.json"))]
++
++    def _config(self, folder, config, origin):
++        if not isinstance(config, dict):
++            raise ValueError("Configuração deve ser um objeto")
++        value = copy.deepcopy(config)
++        value["session_file"] = str(folder / "session.json")
++        companion = value.get("companion")
++        if companion is not None:
++            if not isinstance(companion, dict):
++                raise ValueError("Companion deve ser um objeto")
++            raw = companion.get("state_dir")
++            state = Path(raw) if raw else folder / "companion-state"
++            if not state.is_absolute():
++                state = origin / state
++            companion["state_dir"] = str(state.resolve())
++        market = value.get("market")
++        if isinstance(market, dict) and market.get("item_database"):
++            path = Path(market["item_database"])
++            market["item_database"] = str((origin / path).resolve())
++        return value
++
++    def create(self, name, config=None, session=None):
++        with self._lock:
++            return self._create(str(uuid.uuid4()), name, config, session, self.base)
++
++    def _create(self, profile_id, name, config, session, origin):
++        if not isinstance(name, str) or not name.strip():
++            raise ValueError("Nome do perfil obrigatório")
++        if session is not None and not isinstance(session, dict):
++            raise ValueError("Sessão deve ser um objeto")
++        folder = self._folder(profile_id)
++        document = self._config(folder, {} if config is None else config, origin)
++        return self._commit(folder, {"id": profile_id, "name": name.strip()}, document, session)
++
++    def _commit(self, folder, metadata, config, session):
++        # One pointer publishes both files; interrupted writes never mix credentials.
++        configured = (config.get("credentials") or {}).get("account_id")
++        observed = (session or {}).get("account_id")
++        if configured is not None and (observed is None or str(configured).strip().casefold() != str(observed).strip().casefold()):
++            raise ValueError("Identidade da configuração difere da sessão")
++        generation = str(uuid.uuid4())
++        current = folder / "generations" / generation
++        config["session_file"] = str(current / "session.json")
++        _write(current / "config.json", config)
++        if session is not None:
++            _write(current / "session.json", session)
++        _write(folder / "profile.json", dict(metadata, generation=generation))
++        return self.load(metadata["id"])
++
++    def update(self, profile_id, name=None, config=None, session=None):
++        with self._lock:
++            profile = self.load(profile_id)
++            if name is not None and (not isinstance(name, str) or not name.strip()):
++                raise ValueError("Nome do perfil obrigatório")
++            if session is not None and not isinstance(session, dict):
++                raise ValueError("Sessão deve ser um objeto")
++            folder = self._folder(profile_id)
++            metadata = json.loads((folder / "profile.json").read_text(encoding="utf-8"))
++            if name is not None:
++                metadata["name"] = name.strip()
++            if config is None and session is None:
++                _write(folder / "profile.json", metadata)
++                return self.load(profile_id)
++            old_path = Path(profile["session_file"])
++            old_session = json.loads(old_path.read_text(encoding="utf-8")) if old_path.exists() else None
++            if session is not None and old_session and old_session.get("account_id"):
++                old_identity = str(old_session["account_id"]).strip().casefold()
++                new_identity = str(session.get("account_id", "")).strip().casefold()
++                if old_identity != new_identity:
++                    raise ValueError("Sessão pertence a outra conta; crie outro perfil")
++            if config is None:
++                config = json.loads(Path(profile["config_file"]).read_text(encoding="utf-8"))
++            document = self._config(folder, config, folder)
++            return self._commit(folder, metadata, document, session if session is not None else old_session)
++
++    def migrate_legacy(self, legacy_dir=None):
++        """Importação idempotente; preserva arquivos e identidade Companion originais."""
++        origin = Path(legacy_dir or self.base).resolve()
++        profile_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "rfnext-legacy:" + os.path.normcase(str(origin))))
++        with self._lock:
++            folder = self._folder(profile_id)
++            if (folder / "profile.json").exists():
++                profile = self.load(profile_id)
++                self._reserve_legacy_executor(profile, origin)
++                return profile
++            source = origin / "config.json"
++            if not source.exists() and not (origin / "purchase-list.json").exists() and not (origin / "session.json").exists():
++                return None
++            config = json.loads(source.read_text(encoding="utf-8-sig")) if source.exists() else {}
++            if not isinstance(config, dict):
++                raise ValueError("Configuração legada inválida")
++            session_path = origin / config.get("session_file", "session.json")
++            session = json.loads(session_path.read_text(encoding="utf-8-sig")) if session_path.exists() else None
++            if "companion" not in config and (origin / "companion-state").is_dir():
++                config["companion"] = {"base_url": "https://apirf.karvalho.dev.br"}
++            if isinstance(config.get("companion"), dict):
++                config["companion"].setdefault("state_dir", str(origin / "companion-state"))
++            purchase = origin / "purchase-list.json"
++            if purchase.exists():
++                # Parse first so invalid state is surfaced instead of silently discarded.
++                purchases = json.loads(purchase.read_text(encoding="utf-8-sig"))
++                if not isinstance(purchases, list):
++                    raise ValueError("Lista de compras legada inválida")
++                _write(folder / "purchase-list.json", purchases)
++            profile = self._create(profile_id, "Conta existente", config, session, origin)
++            self._reserve_legacy_executor(profile, origin)
++            return profile
++
++    def _reserve_legacy_executor(self, profile, origin):
++        purchase = Path(profile["path"]) / "purchase-list.json"
++        if not purchase.exists():
++            return
++        entries = json.loads(purchase.read_text(encoding="utf-8"))
++        if not any(entry.get("source") == "site" and entry.get("status") in
++                   {"sending", "confirmed", "unconfirmed"} for entry in entries):
++            return
++        config = json.loads(Path(profile["config_file"]).read_text(encoding="utf-8"))
++        state = Path((config.get("companion") or {}).get("state_dir", origin / "companion-state"))
++        installation = None
++        database = state / "market-upload.sqlite3"
++        if database.exists():
++            with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as db:
++                row = db.execute("SELECT secret FROM identity WHERE id=1").fetchone()
++            if row:
++                from .protected_state import unprotect
++                installation = json.loads(unprotect(bytes(row[0])))["installation_id"]
++        shopping_ids = [entry["shopping_id"] for entry in entries if entry.get("source") == "site"
++                        and entry.get("status") in {"sending", "confirmed", "unconfirmed"}
++                        and entry.get("shopping_id") is not None]
++        if not self.claim_site_executor(profile["id"], state, installation, shopping_ids):
++            raise ValueError("Histórico legado conflita com outro executor da lista do site")
++
++    def claim_site_executor(self, profile_id, state_dir, installation_id=None, shopping_ids=()):
++        """Dono permanente por diretório/instalação, inclusive entre processos."""
++        profile_id = self.load(profile_id)["id"]
++        if not state_dir:
++            raise ValueError("Diretório Companion obrigatório")
++        keys = ["state:" + os.path.normcase(str(Path(state_dir).resolve()))]
++        if installation_id:
++            keys.append("installation:" + str(uuid.UUID(installation_id)))
++        for identity in shopping_ids:
++            if not isinstance(identity, str) or not identity.isascii() or not identity.isdecimal() or int(identity) <= 0:
++                raise ValueError("shopping_id deve ser um decimal positivo")
++            keys.append("shopping:" + str(int(identity)))
++        with closing(sqlite3.connect(self.base / "site-executors.sqlite3", timeout=10)) as db, db:
++            db.execute("CREATE TABLE IF NOT EXISTS owners (identity TEXT PRIMARY KEY, profile TEXT NOT NULL)")
++            db.execute("BEGIN IMMEDIATE")
++            for key in keys:
++                row = db.execute("SELECT profile FROM owners WHERE identity=?", (key,)).fetchone()
++                if row and row[0] != profile_id:
++                    return False
++            db.executemany("INSERT OR IGNORE INTO owners VALUES (?, ?)", [(key, profile_id) for key in keys])
++        return True
++
++
++class AccountRegistry:
++    """Uma identidade autenticada por perfil ativo nesta instância do aplicativo."""
++    def __init__(self):
++        self._owners = {}
++        self._lock = threading.Lock()
++
++    @staticmethod
++    def _identity(account_id):
++        if account_id is None or not str(account_id).strip():
++            raise ValueError("Identidade da conta não observada")
++        return str(account_id).strip().casefold()
++
++    def acquire(self, account_id, profile_id):
++        key = self._identity(account_id)
++        if not profile_id:
++            raise ValueError("Perfil obrigatório")
++        with self._lock:
++            if key in self._owners and self._owners[key] != profile_id:
++                return False
++            self._owners[key] = profile_id
++            return True
++
++    def release(self, profile_id):
++        with self._lock:
++            for key in [key for key, owner in self._owners.items() if owner == profile_id]:
++                del self._owners[key]
++
++    def owner(self, account_id):
++        with self._lock:
++            return self._owners.get(self._identity(account_id))
+diff --git a/rfnext_market/biosuits.json b/rfnext_market/biosuits.json
+new file mode 100644
+index 0000000..ee1c058
+--- /dev/null
++++ b/rfnext_market/biosuits.json
+@@ -0,0 +1,1706 @@
++{
++  "version": "1.28.5",
++  "biosuits": {
++    "2000000": {
++      "name": "Biosuit Básico",
++      "name_en": "Basic Biosuit",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 1
++    },
++    "2011011": {
++      "name": "Shooter Point",
++      "name_en": "Point Shooter",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 1
++    },
++    "2011012": {
++      "name": "Shooter Tactical",
++      "name_en": "Tactical Shooter",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 1
++    },
++    "2011013": {
++      "name": "Shooter Direct",
++      "name_en": "Direct Shooter",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 1
++    },
++    "2012011": {
++      "name": "Ranger Corrosive",
++      "name_en": "Corrosive Ranger",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 2
++    },
++    "2012012": {
++      "name": "Ranger Blazing",
++      "name_en": "Blazing Ranger",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 2
++    },
++    "2012013": {
++      "name": "Ranger Burning",
++      "name_en": "Burning Ranger",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 2
++    },
++    "2012021": {
++      "name": "Ranger Flash",
++      "name_en": "Flash Ranger",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 2
++    },
++    "2012022": {
++      "name": "Ranger Burst",
++      "name_en": "Burst Ranger",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 2
++    },
++    "2012023": {
++      "name": "Ranger Spark",
++      "name_en": "Spark Ranger",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 2
++    },
++    "2013011": {
++      "name": "Striker Ardent",
++      "name_en": "Ardent Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2013012": {
++      "name": "Striker Heat",
++      "name_en": "Heat Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2013013": {
++      "name": "Striker Explosion",
++      "name_en": "Explosion Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2013014": {
++      "name": "Striker Flame",
++      "name_en": "Flame Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2013021": {
++      "name": "Striker Smoke",
++      "name_en": "Smoke Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2013022": {
++      "name": "Striker Spreadshot",
++      "name_en": "Spreadshot Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2013023": {
++      "name": "Striker Suppression",
++      "name_en": "Suppression Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2013024": {
++      "name": "Striker Scorching",
++      "name_en": "Scorching Striker",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 3
++    },
++    "2014011": {
++      "name": "Sentinel Combustum",
++      "name_en": "Combustum Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2014012": {
++      "name": "Sentinel Revello",
++      "name_en": "Revello Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2014021": {
++      "name": "Sentinel Tumoru",
++      "name_en": "Tumoru Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2014022": {
++      "name": "Sentinel Seditio",
++      "name_en": "Seditio Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2014031": {
++      "name": "Sentinel Scissio",
++      "name_en": "Scissio Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2014032": {
++      "name": "Sentinel Motus",
++      "name_en": "Motus Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2014041": {
++      "name": "Sentinel Ferocia",
++      "name_en": "Ferocia Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2014042": {
++      "name": "Sentinel Flama",
++      "name_en": "Flama Sentinel",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 4
++    },
++    "2015011": {
++      "name": "Blaster Topus",
++      "name_en": "Topus Blaster",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 5
++    },
++    "2015021": {
++      "name": "Blaster Derribo",
++      "name_en": "Derribo Blaster",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 5
++    },
++    "2015031": {
++      "name": "Blaster Ustra",
++      "name_en": "Ustra Blaster",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 5
++    },
++    "2015041": {
++      "name": "Blaster Ruptis",
++      "name_en": "Ruptis Blaster",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 5
++    },
++    "2016011": {
++      "name": "Punisher Furious",
++      "name_en": "Furious Punisher",
++      "biosuit_type": 1,
++      "class_name": "Punisher",
++      "grade": 6
++    },
++    "2021011": {
++      "name": "Panther Nimble",
++      "name_en": "Nimble Panther",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 1
++    },
++    "2021012": {
++      "name": "Panther Swift",
++      "name_en": "Swift Panther",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 1
++    },
++    "2021013": {
++      "name": "Panther Agile",
++      "name_en": "Agile Panther",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 1
++    },
++    "2022011": {
++      "name": "Sprinter Extreme",
++      "name_en": "Extreme Sprinter",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 2
++    },
++    "2022012": {
++      "name": "Sprinter Cling",
++      "name_en": "Fastened Sprinter",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 2
++    },
++    "2022013": {
++      "name": "Sprinter Fatal",
++      "name_en": "Fatal Sprinter",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 2
++    },
++    "2022021": {
++      "name": "Sprinter Stealth",
++      "name_en": "Stealth Sprinter",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 2
++    },
++    "2022022": {
++      "name": "Sprinter Proxima",
++      "name_en": "Proxima Sprinter",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 2
++    },
++    "2022023": {
++      "name": "Sprinter Convert",
++      "name_en": "Switch Sprinter",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 2
++    },
++    "2023011": {
++      "name": "Blader Noticeable",
++      "name_en": "Distinct Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2023012": {
++      "name": "Blader Dark",
++      "name_en": "Dark Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2023013": {
++      "name": "Blader Deadly",
++      "name_en": "Deadly Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2023014": {
++      "name": "Blader Piercing",
++      "name_en": "Piercing Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2023021": {
++      "name": "Blader Frost",
++      "name_en": "Frost Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2023022": {
++      "name": "Blader Chill",
++      "name_en": "Sharp Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2023023": {
++      "name": "Blader Freezing",
++      "name_en": "Ice Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2023024": {
++      "name": "Blader Grim",
++      "name_en": "Grim Blader",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 3
++    },
++    "2024011": {
++      "name": "Shadower Latus",
++      "name_en": "Latus Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2024012": {
++      "name": "Shadower Opertum",
++      "name_en": "Opertum Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2024021": {
++      "name": "Shadower Cor",
++      "name_en": "Cor Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2024022": {
++      "name": "Shadower Sica",
++      "name_en": "Sica Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2024031": {
++      "name": "Shadower Levis",
++      "name_en": "Levis Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2024032": {
++      "name": "Shadower Tenax",
++      "name_en": "Tenax Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2024041": {
++      "name": "Shadower Asidus",
++      "name_en": "Asidus Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2024042": {
++      "name": "Shadower Tacite",
++      "name_en": "Tacite Shadower",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 4
++    },
++    "2025011": {
++      "name": "Assassin Peto",
++      "name_en": "Peto Assassin",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 5
++    },
++    "2025021": {
++      "name": "Assassin Lenitudo",
++      "name_en": "Lenitudo Assassin",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 5
++    },
++    "2025031": {
++      "name": "Assassin Remitto",
++      "name_en": "Remitto Assassin",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 5
++    },
++    "2025041": {
++      "name": "Assassin Tempestas",
++      "name_en": "Tempestas Assassin",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 5
++    },
++    "2026011": {
++      "name": "Phantom Secretive",
++      "name_en": "Hidden Phantom",
++      "biosuit_type": 2,
++      "class_name": "Phantom",
++      "grade": 6
++    },
++    "2031011": {
++      "name": "Guard Daring",
++      "name_en": "Daring Guard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 1
++    },
++    "2031012": {
++      "name": "Guard Exacting",
++      "name_en": "Exacting Guard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 1
++    },
++    "2031013": {
++      "name": "Guard Mighty",
++      "name_en": "Mighty Guard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 1
++    },
++    "2032011": {
++      "name": "Defender Resolute",
++      "name_en": "Resolute Defender",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 2
++    },
++    "2032012": {
++      "name": "Defender Somber",
++      "name_en": "Somber Defender",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 2
++    },
++    "2032013": {
++      "name": "Defender Certain",
++      "name_en": "Doubtless Defender",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 2
++    },
++    "2032021": {
++      "name": "Defender Pledge",
++      "name_en": "Pledge Defender",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 2
++    },
++    "2032022": {
++      "name": "Defender Wish",
++      "name_en": "Wish Defender",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 2
++    },
++    "2032023": {
++      "name": "Defender Aegis",
++      "name_en": "Aegis Defender",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 2
++    },
++    "2033011": {
++      "name": "Vanguard Unbroken",
++      "name_en": "Unbroken Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2033012": {
++      "name": "Vanguard Reprimand",
++      "name_en": "Rebuker Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2033013": {
++      "name": "Vanguard Vigilant",
++      "name_en": "Vigilant Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2033014": {
++      "name": "Vanguard Entourage",
++      "name_en": "Entourage Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2033021": {
++      "name": "Vanguard Prime",
++      "name_en": "Prime Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2033022": {
++      "name": "Vanguard Earnest",
++      "name_en": "Earnest Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2033023": {
++      "name": "Vanguard Brave",
++      "name_en": "Brave Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2033024": {
++      "name": "Vanguard Ambitious",
++      "name_en": "Visionary Vanguard",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 3
++    },
++    "2034011": {
++      "name": "Templar Una",
++      "name_en": "Una Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2034012": {
++      "name": "Templar Foedus",
++      "name_en": "Foedus Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2034021": {
++      "name": "Templar Honoris",
++      "name_en": "Honoris Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2034022": {
++      "name": "Templar Otium",
++      "name_en": "Otium Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2034031": {
++      "name": "Templar Signum",
++      "name_en": "Signum Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2034032": {
++      "name": "Templar Noster",
++      "name_en": "Noster Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2034041": {
++      "name": "Templar Jecur",
++      "name_en": "Jecur Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2034042": {
++      "name": "Templar Nox",
++      "name_en": "Nox Templar",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 4
++    },
++    "2035011": {
++      "name": "Guardian Verum",
++      "name_en": "Verum Guardian",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 5
++    },
++    "2035021": {
++      "name": "Guardian Constans",
++      "name_en": "Constans Guardian",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 5
++    },
++    "2035031": {
++      "name": "Guardian Sacrum",
++      "name_en": "Sacrum Guardian",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 5
++    },
++    "2035041": {
++      "name": "Guardian Regentis",
++      "name_en": "Regentis Guardian",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 5
++    },
++    "2036011": {
++      "name": "Enforcer Valiant",
++      "name_en": "Valiant Enforcer",
++      "biosuit_type": 3,
++      "class_name": "Enforcer",
++      "grade": 6
++    },
++    "2041011": {
++      "name": "Esper Space",
++      "name_en": "Space Esper",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 1
++    },
++    "2041012": {
++      "name": "Esper Void",
++      "name_en": "Void Esper",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 1
++    },
++    "2041013": {
++      "name": "Esper Blank",
++      "name_en": "Blank Esper",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 1
++    },
++    "2042011": {
++      "name": "Mentalist Perfect",
++      "name_en": "Perfect Mentalist",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 2
++    },
++    "2042012": {
++      "name": "Mentalist Splendorous",
++      "name_en": "Splendorous Mentalist",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 2
++    },
++    "2042013": {
++      "name": "Mentalist Cosmic",
++      "name_en": "Cosmic Mentalist",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 2
++    },
++    "2042021": {
++      "name": "Mentalist Great",
++      "name_en": "Great Mentalist",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 2
++    },
++    "2042022": {
++      "name": "Mentalist Excellent",
++      "name_en": "Excellent Mentalist",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 2
++    },
++    "2042023": {
++      "name": "Mentalist Supreme",
++      "name_en": "Supreme Mentalist",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 2
++    },
++    "2043011": {
++      "name": "Psychic Confusion",
++      "name_en": "Confusion Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2043012": {
++      "name": "Psychic Banishing",
++      "name_en": "Banishing Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2043013": {
++      "name": "Psychic Chaos",
++      "name_en": "Chaos Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2043014": {
++      "name": "Psychic Split",
++      "name_en": "Split Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2043021": {
++      "name": "Psychic Herald",
++      "name_en": "Herald Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2043022": {
++      "name": "Psychic Consequence",
++      "name_en": "Consequence Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2043023": {
++      "name": "Psychic Prophetic",
++      "name_en": "Prophetic Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2043024": {
++      "name": "Psychic Decisive",
++      "name_en": "Decisive Psychic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 3
++    },
++    "2044011": {
++      "name": "Kinesis Inferi",
++      "name_en": "Inferi Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2044012": {
++      "name": "Kinesis Sopor",
++      "name_en": "Sopor Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2044021": {
++      "name": "Kinesis Crimen",
++      "name_en": "Crimen Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2044022": {
++      "name": "Kinesis Vandor",
++      "name_en": "Vandor Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2044031": {
++      "name": "Kinesis Poena",
++      "name_en": "Poena Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2044032": {
++      "name": "Kinesis Ruina",
++      "name_en": "Ruina Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2044041": {
++      "name": "Kinesis Malum",
++      "name_en": "Malum Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2044042": {
++      "name": "Kinesis Imago",
++      "name_en": "Imago Kinesis",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 4
++    },
++    "2045011": {
++      "name": "Mystic Recessus",
++      "name_en": "Recessus Mystic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 5
++    },
++    "2045021": {
++      "name": "Mystic Dirae",
++      "name_en": "Dirae Mystic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 5
++    },
++    "2045031": {
++      "name": "Mystic Taedium",
++      "name_en": "Taedium Mystic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 5
++    },
++    "2045041": {
++      "name": "Mystic Insania",
++      "name_en": "Insania Mystic",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 5
++    },
++    "2046011": {
++      "name": "Psypher Declaratus",
++      "name_en": "Declaratus Psypher",
++      "biosuit_type": 4,
++      "class_name": "Psypher",
++      "grade": 6
++    },
++    "2051011": {
++      "name": "Breaker Renegade",
++      "name_en": "Renegade Breaker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 1
++    },
++    "2051012": {
++      "name": "Breaker Beast",
++      "name_en": "Beast Breaker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 1
++    },
++    "2051013": {
++      "name": "Breaker Demon",
++      "name_en": "Demon Breaker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 1
++    },
++    "2052011": {
++      "name": "Slayer Wrath",
++      "name_en": "Wrath Slayer",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 2
++    },
++    "2052012": {
++      "name": "Slayer Pride",
++      "name_en": "Pride Slayer",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 2
++    },
++    "2052013": {
++      "name": "Slayer Envy",
++      "name_en": "Envy Slayer",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 2
++    },
++    "2052021": {
++      "name": "Slayer Gluttony",
++      "name_en": "Gluttony Slayer",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 2
++    },
++    "2052022": {
++      "name": "Slayer Sloth",
++      "name_en": "Sloth Slayer",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 2
++    },
++    "2052023": {
++      "name": "Slayer Greed",
++      "name_en": "Greed Slayer",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 2
++    },
++    "2053011": {
++      "name": "Berserker Dark",
++      "name_en": "Dark Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2053012": {
++      "name": "Berserker Calamity",
++      "name_en": "Calamity Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2053013": {
++      "name": "Berserker Sacrificial",
++      "name_en": "Sacrificial Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2053014": {
++      "name": "Berserker Accuser",
++      "name_en": "Accuser Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2053021": {
++      "name": "Berserker Assault",
++      "name_en": "Assault Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2053022": {
++      "name": "Berserker Rust",
++      "name_en": "Rust Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2053023": {
++      "name": "Berserker Deceptive",
++      "name_en": "Deceptive Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2053024": {
++      "name": "Berserker Penance",
++      "name_en": "Penance Berserker",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 3
++    },
++    "2054011": {
++      "name": "Demonic Anima",
++      "name_en": "Anima Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2054012": {
++      "name": "Demonic Crur",
++      "name_en": "Crur Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2054021": {
++      "name": "Demonic Vetitum",
++      "name_en": "Vetitum Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2054022": {
++      "name": "Demonic Querella",
++      "name_en": "Querella Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2054031": {
++      "name": "Demonic Ictus",
++      "name_en": "Ictus Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2054032": {
++      "name": "Demonic Lucrum",
++      "name_en": "Lucrum Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2054041": {
++      "name": "Demonic Erecta",
++      "name_en": "Erecta Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2054042": {
++      "name": "Demonic Plaga",
++      "name_en": "Plaga Demonic",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 4
++    },
++    "2055011": {
++      "name": "Tyrant Bonum",
++      "name_en": "Bonum Tyrant",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 5
++    },
++    "2055021": {
++      "name": "Tyrant Defectus",
++      "name_en": "Defectus Tyrant",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 5
++    },
++    "2055031": {
++      "name": "Tyrant Domus",
++      "name_en": "Domus Tyrant",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 5
++    },
++    "2055041": {
++      "name": "Tyrant Tonitru",
++      "name_en": "Tonitru Tyrant",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 5
++    },
++    "2056011": {
++      "name": "Dreadnought Cruel",
++      "name_en": "Cruel Dreadnought",
++      "biosuit_type": 5,
++      "class_name": "Dreadnought",
++      "grade": 6
++    },
++    "2061011": {
++      "name": "Guide Smart",
++      "name_en": "Smart Guide",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 1
++    },
++    "2061012": {
++      "name": "Guide Bind",
++      "name_en": "Bind Guide",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 1
++    },
++    "2061013": {
++      "name": "Guide Versatile",
++      "name_en": "Versatile Guide",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 1
++    },
++    "2062011": {
++      "name": "Maker Wisdom",
++      "name_en": "Wisdom Maker",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 2
++    },
++    "2062012": {
++      "name": "Maker Change",
++      "name_en": "Change Maker",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 2
++    },
++    "2062013": {
++      "name": "Maker Knowledge",
++      "name_en": "Knowledge Maker",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 2
++    },
++    "2062021": {
++      "name": "Maker Notion",
++      "name_en": "Sight Maker",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 2
++    },
++    "2062022": {
++      "name": "Maker Notion",
++      "name_en": "Notion Maker",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 2
++    },
++    "2062023": {
++      "name": "Maker Unity",
++      "name_en": "Unity Maker",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 2
++    },
++    "2063011": {
++      "name": "Engineer Blessing",
++      "name_en": "Blessing Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2063012": {
++      "name": "Engineer Blissful",
++      "name_en": "Blissful Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2063013": {
++      "name": "Engineer Eternity",
++      "name_en": "Eternity Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2063014": {
++      "name": "Engineer Sanguine",
++      "name_en": "Sanguine Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2063021": {
++      "name": "Engineer Worry",
++      "name_en": "Burdened Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2063022": {
++      "name": "Engineer Harmony",
++      "name_en": "Harmony Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2063023": {
++      "name": "Engineer Relativity",
++      "name_en": "Relativity Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2063024": {
++      "name": "Engineer Follower",
++      "name_en": "Follower Engineer",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 3
++    },
++    "2064011": {
++      "name": "Creator Serenus",
++      "name_en": "Serenus Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2064012": {
++      "name": "Creator Risus",
++      "name_en": "Risus Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2064021": {
++      "name": "Creator Nitens",
++      "name_en": "Nitens Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2064022": {
++      "name": "Creator Pulcher",
++      "name_en": "Pulcher Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2064031": {
++      "name": "Creator Sermo",
++      "name_en": "Sermo Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2064032": {
++      "name": "Creator Pullus",
++      "name_en": "Pullus Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2064041": {
++      "name": "Creator Fortuna",
++      "name_en": "Fortuna Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2064042": {
++      "name": "Creator Arrideo",
++      "name_en": "Arrideo Creator",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 4
++    },
++    "2065011": {
++      "name": "Precursor Palma",
++      "name_en": "Palma Precursor",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 5
++    },
++    "2065021": {
++      "name": "Precursor Jubar",
++      "name_en": "Jubar Precursor",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 5
++    },
++    "2065031": {
++      "name": "Precursor Honor",
++      "name_en": "Honor Precursor",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 5
++    },
++    "2065041": {
++      "name": "Precursor Visio",
++      "name_en": "Visio Precursor",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 5
++    },
++    "2066011": {
++      "name": "Technician Almighty",
++      "name_en": "Almighty Technician",
++      "biosuit_type": 6,
++      "class_name": "Technician",
++      "grade": 6
++    },
++    "2071011": {
++      "name": "Sabre Deadly",
++      "name_en": "Deadly Sabre",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 1
++    },
++    "2071012": {
++      "name": "Sabre Mortal",
++      "name_en": "Mortal Sabre",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 1
++    },
++    "2071013": {
++      "name": "Sabre Dire",
++      "name_en": "Dire Sabre",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 1
++    },
++    "2072011": {
++      "name": "Knight Dreadful",
++      "name_en": "Dreadful Knight",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 2
++    },
++    "2072012": {
++      "name": "Knight Solitary",
++      "name_en": "Solitary Knight",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 2
++    },
++    "2072013": {
++      "name": "Knight Wandering",
++      "name_en": "Wandering Knight",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 2
++    },
++    "2072021": {
++      "name": "Knight Shadow",
++      "name_en": "Shadow Knight",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 2
++    },
++    "2072022": {
++      "name": "Knight Grim",
++      "name_en": "Grim Knight",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 2
++    },
++    "2072023": {
++      "name": "Knight Agonizing",
++      "name_en": "Agonizing Knight",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 2
++    },
++    "2073011": {
++      "name": "Avenger Ferocious",
++      "name_en": "Ferocious Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2073012": {
++      "name": "Avenger Tormenting",
++      "name_en": "Tormenting Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2073013": {
++      "name": "Avenger Grieving",
++      "name_en": "Grieving Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2073014": {
++      "name": "Avenger Scourge",
++      "name_en": "Scourge Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2073021": {
++      "name": "Avenger Angsty",
++      "name_en": "Angsty Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2073022": {
++      "name": "Avenger Grievous",
++      "name_en": "Grievous Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2073023": {
++      "name": "Avenger Vicious",
++      "name_en": "Vicious Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2073024": {
++      "name": "Avenger Malignant",
++      "name_en": "Malignant Avenger",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 3
++    },
++    "2074011": {
++      "name": "Sovereign Nexiles",
++      "name_en": "Nexiles Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2074012": {
++      "name": "Sovereign Verus",
++      "name_en": "Verus Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2074021": {
++      "name": "Sovereign Atrox",
++      "name_en": "Atrox Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2074022": {
++      "name": "Sovereign Grandis",
++      "name_en": "Grandis Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2074031": {
++      "name": "Sovereign Caligo",
++      "name_en": "Caligo Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2074032": {
++      "name": "Sovereign Nominis",
++      "name_en": "Nominis Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2074041": {
++      "name": "Sovereign Colitur",
++      "name_en": "Colitur Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2074042": {
++      "name": "Sovereign Dignitas",
++      "name_en": "Dignitas Sovereign",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 4
++    },
++    "2075011": {
++      "name": "Revenant Arcanum",
++      "name_en": "Arcanum Revenant",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 5
++    },
++    "2075021": {
++      "name": "Revenant Liber",
++      "name_en": "Liber Revenant",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 5
++    },
++    "2075031": {
++      "name": "Revenant Beatus",
++      "name_en": "Beatus Revenant",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 5
++    },
++    "2075041": {
++      "name": "Revenant Caelum",
++      "name_en": "Caelum Revenant",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 5
++    },
++    "2076011": {
++      "name": "Arbiter Ultimate",
++      "name_en": "Ultimate Arbiter",
++      "biosuit_type": 7,
++      "class_name": "Arbiter",
++      "grade": 6
++    },
++    "2081011": {
++      "name": "Ignição de Fogo",
++      "name_en": "Fire Igniter",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 1
++    },
++    "2081012": {
++      "name": "Ignição Ascendente",
++      "name_en": "Rising Igniter",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 1
++    },
++    "2081013": {
++      "name": "Ignitor de Aceleração",
++      "name_en": "Acceleration Igniter",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 1
++    },
++    "2082011": {
++      "name": "Barragem de Flare",
++      "name_en": "Flare Barrage",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 2
++    },
++    "2082012": {
++      "name": "Rajada Hiper",
++      "name_en": "Hyper Barrage",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 2
++    },
++    "2082013": {
++      "name": "Rajada Voltic",
++      "name_en": "Voltic Barrage",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 2
++    },
++    "2083011": {
++      "name": "Atlas Impacter",
++      "name_en": "Atlas Impacter",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 3
++    },
++    "2083012": {
++      "name": "Nova Impactador",
++      "name_en": "Nova Impacter",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 3
++    },
++    "2083013": {
++      "name": "Impactador de Clades",
++      "name_en": "Clades Impacter",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 3
++    },
++    "2083014": {
++      "name": "Impactador Vulcânico",
++      "name_en": "Volcanic Impacter",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 3
++    },
++    "2084011": {
++      "name": "Explosor Ventus",
++      "name_en": "Ventus Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2084012": {
++      "name": "Explosor de Orbis",
++      "name_en": "Orbis Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2084021": {
++      "name": "Explosor de Ferrum",
++      "name_en": "Ferrum Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2084022": {
++      "name": "Explosor de Boreas",
++      "name_en": "Boreas Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2084031": {
++      "name": "Explosor de Aurum",
++      "name_en": "Aurum Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2084032": {
++      "name": "Explosor de Lacuna",
++      "name_en": "Lacuna Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2084041": {
++      "name": "Explosor de Ignium",
++      "name_en": "Ignium Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2084042": {
++      "name": "Explosor Vulcanus",
++      "name_en": "Vulcanus Exploder",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 4
++    },
++    "2085011": {
++      "name": "Exterminador Abyssus",
++      "name_en": "Abyssus Terminator",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 5
++    },
++    "2085021": {
++      "name": "Exterminador Aeterno",
++      "name_en": "Aeterno Terminator",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 5
++    },
++    "2085031": {
++      "name": "Destilador Terminator",
++      "name_en": "Destillo Terminator",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 5
++    },
++    "2085041": {
++      "name": "Executor Terminador",
++      "name_en": "Executor Terminator",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 5
++    },
++    "2086011": {
++      "name": "Demolidor de Infinium",
++      "name_en": "Infinium Demolisher",
++      "biosuit_type": 8,
++      "class_name": "Demolisher",
++      "grade": 6
++    },
++    "2911011": {
++      "name": "Punisher Otimizado",
++      "name_en": "Optimized Punisher",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2921011": {
++      "name": "Phantom Otimizado",
++      "name_en": "Optimized Phantom",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2931011": {
++      "name": "Enforcer Otimizado",
++      "name_en": "Optimized Enforcer",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2941011": {
++      "name": "Psypher Otimizado",
++      "name_en": "Optimized Psypher",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2951011": {
++      "name": "Dreadnought Otimizado",
++      "name_en": "Optimized Dreadnought",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2961011": {
++      "name": "Technician Otimizado",
++      "name_en": "Optimized Technician",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2971011": {
++      "name": "Enforcer Otimizado",
++      "name_en": "Optimized Enforcer",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2981011": {
++      "name": "Psypher Otimizado",
++      "name_en": "Optimized Psypher",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 3
++    },
++    "2990001": {
++      "name": "Carta de Biosuit Lendário Prime",
++      "name_en": "Prime Legendary Biosuit Card",
++      "biosuit_type": 0,
++      "class_name": "",
++      "grade": 5
++    }
++  }
++}
+diff --git a/rfnext_market/capture_import.py b/rfnext_market/capture_import.py
+new file mode 100644
+index 0000000..07f5a2a
+--- /dev/null
++++ b/rfnext_market/capture_import.py
+@@ -0,0 +1,244 @@
++"""Passive capture import. Never opens a network connection."""
++import json
++import socket
++import struct
++from datetime import datetime, timezone
++from pathlib import Path
++
++from . import auth, character, selection, transport
++
++
++def _pcap(path):
++    from rfnext_dump_portable import decode, frame_len
++    raw = path.read_bytes()
++    magics = {b'\xd4\xc3\xb2\xa1': ('<', 1000), b'\xa1\xb2\xc3\xd4': ('>', 1000),
++              b'\x4d\x3c\xb2\xa1': ('<', 1), b'\xa1\xb2\x3c\x4d': ('>', 1)}
++    if len(raw) < 24 or raw[:4] not in magics:
++        raise ValueError('PCAP clássico inválido; PCAPNG não suportado')
++    endian, scale = magics[raw[:4]]
++    link = struct.unpack_from(endian + 'I', raw, 20)[0]
++    if link not in (0, 1, 101, 108):
++        raise ValueError(f'Link PCAP não suportado: {link}')
++    flows, generations, diagnostics = {}, {}, []
++    pos = 24
++    while pos < len(raw):
++        if pos + 16 > len(raw):
++            raise ValueError('Cabeçalho de pacote PCAP truncado')
++        sec, fraction, size, original = struct.unpack_from(endian + 'IIII', raw, pos)
++        pos += 16
++        if pos + size > len(raw):
++            raise ValueError('Pacote PCAP truncado')
++        packet = raw[pos:pos + size]; pos += size
++        offset = 14 if link == 1 else 4 if link in (0, 108) else 0
++        net = packet[offset:]
++        if len(net) < 20 or net[0] >> 4 != 4 or net[9] != 6:
++            continue
++        ihl = (net[0] & 15) * 4
++        total = int.from_bytes(net[2:4], 'big')
++        if ihl < 20 or total > len(net) or total < ihl + 20 or int.from_bytes(net[6:8], 'big') & 0x3fff:
++            diagnostics.append('Pacote IPv4 truncado/fragmentado ignorado'); continue
++        tcp = net[ihl:total]
++        sp, dp, seq = struct.unpack_from('!HHI', tcp)
++        if not {sp, dp} & {12000, 12020}:
++            continue
++        hlen = (tcp[12] >> 4) * 4
++        if hlen < 20 or hlen > len(tcp):
++            diagnostics.append('Cabeçalho TCP inválido'); continue
++        a, b = socket.inet_ntoa(net[12:16]), socket.inet_ntoa(net[16:20])
++        pair = tuple(sorted(((a, sp), (b, dp))))
++        if tcp[13] & 2 and not tcp[13] & 16:
++            marker = generations.get(pair)
++            if marker is None or marker[1] != seq:
++                generations[pair] = ((marker[0] + 1) if marker else 1, seq)
++        generation = generations.get(pair, (0, None))[0]
++        key = (a, sp, b, dp, generation)
++        if tcp[hlen:]:
++            flows.setdefault(key, []).append((seq + bool(tcp[13] & 2), tcp[hlen:], sec * 10**9 + fraction * scale))
++    records = []
++    for key, segments in flows.items():
++        a, sp, b, dp, generation = key
++        port = dp if dp in (12000, 12020) else sp
++        connection = repr((tuple(sorted(((a, sp), (b, dp)))), generation))
++        buf, spans, end, broken = bytearray(), [], None, False
++        for seq, data, timestamp in sorted(segments):
++            if end is None: end = seq
++            if seq > end:
++                diagnostics.append(f'Lacuna TCP: {connection}'); broken = True; break
++            overlap = end - seq
++            if overlap:
++                start = len(buf) - overlap
++                if start < 0 or bytes(buf[start:start + min(overlap, len(data))]) != data[:overlap]:
++                    diagnostics.append(f'Retransmissão conflitante: {connection}'); broken = True; break
++                data = data[overlap:]
++            if data:
++                buf.extend(data); end += len(data); spans.append((len(buf), timestamp))
++        if broken: continue
++        cursor = 0
++        while cursor < len(buf):
++            if len(buf) - cursor < 6: diagnostics.append(f'Frame incompleto: {connection}'); break
++            length = frame_len(buf[cursor:cursor+3])
++            if length < 6 or cursor + length > len(buf): diagnostics.append(f'Frame inválido/truncado: {connection}'); break
++            try: frame = decode(bytes(buf[cursor:cursor+length]))
++            except (ValueError, IndexError, struct.error) as exc:
++                diagnostics.append(f'Falha de decode: {type(exc).__name__}'); break
++            timestamp = next(ts for stop, ts in spans if stop >= cursor + length)
++            records.append({'connection_id': connection, 'port': port,
++                            'direction': 'client_to_server' if dp == port else 'server_to_client',
++                            'remote_endpoint': f'{b}:{dp}' if dp == port else f'{a}:{sp}',
++                            'local_endpoint': f'{a}:{sp}' if dp == port else f'{b}:{dp}',
++                            'pcap_time_ns': timestamp, 'opcode': f'0x{int.from_bytes(frame[4:6], "little"):04X}',
++                            'decoded_hex': frame.hex()})
++            cursor += length
++    return sorted(records, key=lambda r: r['pcap_time_ns']), diagnostics
++
++
++def _endpoint(row):
++    if row.get('remote_endpoint'): return str(row['remote_endpoint'])
++    flow = row.get('flow', '').split(' -> ')
++    if len(flow) == 2: return flow[1] if _out(row) else flow[0]
++    return ''
++
++
++def _out(row):
++    return row.get('direction') in ('client_to_server', transport.DIRECTION_C2S, 'c2s')
++
++
++def _parse(row):
++    frame = bytes.fromhex(row['decoded_hex'])
++    opcode = int(str(row['opcode']), 16)
++    if len(frame) < 6 or int.from_bytes(frame[4:6], 'little') != opcode:
++        raise ValueError('Cabeçalho/opcode divergente')
++    return auth.parse_message(int(row['port']), transport.DIRECTION_C2S if _out(row) else transport.DIRECTION_S2C, opcode, frame[6:])
++
++
++
++def _capture_times(rows):
++    times = []
++    for row in rows:
++        try:
++            if row.get('pcap_time_ns') is not None:
++                timestamp = datetime.fromtimestamp(int(row['pcap_time_ns']) / 1_000_000_000, timezone.utc)
++            elif row.get('timestamp'):
++                timestamp = datetime.fromisoformat(str(row['timestamp']).replace('Z', '+00:00'))
++                if timestamp.tzinfo is None: continue
++                timestamp = timestamp.astimezone(timezone.utc)
++            else: continue
++            times.append(timestamp)
++        except (ValueError, TypeError, OverflowError, OSError): continue
++    return {'started_at': min(times).isoformat() if times else None,
++            'ended_at': max(times).isoformat() if times else None}
++
++
++def inspect_capture(path):
++    path = Path(path)
++    if path.suffix.lower() in ('.pcap', '.cap'): records, diagnostics = _pcap(path)
++    else:
++        text = path.read_text(encoding='utf-8-sig')
++        try: data = json.loads(text)
++        except json.JSONDecodeError: data = [json.loads(line) for line in text.splitlines() if line.strip()]
++        records = data.get('records', []) if isinstance(data, dict) else data
++        if not isinstance(records, list): raise ValueError('records precisa ser uma lista')
++        diagnostics = []
++    groups = {}
++    for row in records:
++        if not isinstance(row, dict) or not row.get('decoded_hex'): continue
++        row = dict(row)
++        row['port'] = row.get('port', row.get('service_port', 0))
++        if int(row['port']) not in (12000, 12020): continue
++        if isinstance(row.get('opcode'), int): row['opcode'] = f"0x{row['opcode']:04X}"
++        identity = row.get('connection_id')
++        if not identity:
++            flow = row.get('flow', '').split(' -> ')
++            identity = repr(sorted(flow)) if len(flow) == 2 else None
++        if not identity:
++            diagnostics.append('Frame sem identidade de conexão ignorado'); continue
++        groups.setdefault((str(identity), int(row.get('port', 0))), []).append(row)
++    logins, games = [], []
++    for (connection, port), rows in groups.items():
++        target = '0x0101' if port == 12000 else '0x0103'
++        starts = [i for i, r in enumerate(rows) if _out(r) and str(r.get('opcode')).lower() == target]
++        for number, start in enumerate(starts):
++            segment = rows[start:starts[number+1] if number+1 < len(starts) else len(rows)]
++            # The short game preamble precedes authentication, but belongs to this connection.
++            if port == 12020:
++                previous = starts[number-1] + 1 if number else 0
++                segment = rows[previous:start] + segment
++            try: fields = _parse(rows[start])['fields']
++            except (ValueError, KeyError, TypeError) as exc:
++                diagnostics.append(f'Autenticação incompleta: {exc}'); continue
++            item = {'connection': connection, 'records': segment, 'fields': fields}
++            (logins if port == 12000 else games).append(item)
++    candidates = []
++    for login in logins:
++        matches = [g for g in games if all(g['fields'].get(k) == login['fields'].get(k) and login['fields'].get(k) for k in ('account_id', 'session_key'))]
++        for game in matches or [None]:
++            rows = login['records'] + (game['records'] if game else [])
++            worlds = set()
++            for row in login['records']:
++                if str(row.get('opcode')).lower() == '0x0107' and _out(row):
++                    try: worlds.add(_parse(row)['fields']['world_id'])
++                    except ValueError: pass
++            responses=[]
++            for row in login['records']:
++                if str(row.get('opcode')).lower()=='0x0108' and not _out(row):
++                    try: responses.append(_parse(row)['fields'])
++                    except ValueError: pass
++            successful={r['world_id'] for r in responses if r['result_code']==0}
++            world_conflict=bool(successful and successful != worlds)
++            issue = []
++            if world_conflict: issue.append('World ID da resposta diverge do pedido; não preparar esta sessão')
++            if responses and not successful: issue.append('Entrada de mundo não confirmada nesta captura')
++            if len(matches) > 1: issue.append('Múltiplas conexões de jogo para mesma credencial; selecione a conexão correta')
++            if not game: issue.append('Autenticação de jogo não observada')
++            if len(worlds) != 1: issue.append('World ID ausente ou ambíguo; informar manualmente')
++            ambiguous_auth = sum(all(other['fields'].get(k) == login['fields'].get(k) for k in ('account_id', 'session_key')) for other in logins) > 1
++            if ambiguous_auth: issue.append('Credencial repetida em logins diferentes; recorte uma sessão antes de importar')
++            timing = _capture_times(rows)
++            candidates.append({**timing, 'world_conflict': world_conflict, 'ambiguous_auth': ambiguous_auth, 'candidate_id': str(len(candidates)+1), 'account_id': login['fields']['account_id'],
++                               'auth_host': _endpoint(login['records'][0]).rsplit(':', 1)[0] or None,
++                               'game_host': _endpoint(game['records'][-1]).rsplit(':', 1)[0] if game else None,
++                               'world_id': next(iter(worlds)) if len(worlds) == 1 else None,
++                               'records': rows, 'diagnostics': issue,
++                               'provenance': {**timing, 'capture': str(path.resolve()), 'auth_connection': login['connection'],
++                                              'game_connection': game['connection'] if game else None}})
++    if not candidates: diagnostics.append('Nenhum login completo identificado nas conexões suportadas')
++    return {'candidates': candidates, 'diagnostics': diagnostics}
++
++
++def prepare_candidate(candidate, overrides=None):
++    from .dashboard import snapshot
++    if candidate.get('world_conflict'): raise ValueError('World ID divergente entre pedido e resposta')
++    if candidate.get('ambiguous_auth'): raise ValueError('Associação login/jogo ambígua: credencial repetida')
++    overrides = overrides or {}
++    selected = {key: overrides.get(key, candidate.get(key)) for key in ('auth_host', 'game_host', 'world_id')}
++    if any(not isinstance(selected[k], str) or not selected[k].strip() for k in ('auth_host', 'game_host')):
++        raise ValueError('Login host e game host obrigatórios')
++    if type(selected['world_id']) is not int or not 0 <= selected['world_id'] <= 65535:
++        raise ValueError('World ID ausente/inválido; não existe valor padrão')
++    session = {}
++    rows = candidate['records']
++    for port, opcode in ((12000, '0x0101'), (12020, '0x0103'), (12020, '0x0101')):
++        matches = [r for r in rows if int(r['port']) == port and str(r['opcode']).lower() == opcode and _out(r)]
++        if len(matches) != 1: raise ValueError(f'Autenticação {port}/{opcode} ausente ou ambígua')
++        parsed = _parse(matches[0])
++        session.update(parsed['fields'])
++        session.update({v['name'] + '_hex': v['hex'] for v in parsed['unknown_fields']})
++    session.pop('u64@2688', None)
++    entries = [r for r in rows if int(r['port']) == 12020 and str(r['opcode']).lower() == '0x0201' and _out(r)]
++    initialize = bool(overrides.get('initialize_character', bool(entries)))
++    if initialize:
++        if len(entries) != 1: raise ValueError('Template 0x0201 ausente ou ambíguo')
++        session['character_enter_payload_hex'] = bytes.fromhex(entries[0]['decoded_hex'])[6:].hex()
++        character.template(session)
++    config = {'rankings': True, 'initialize_character': initialize,
++              'heartbeat': {'enabled': False, 'constant': -371988797, 'flag': 0},
++              'auth': {'host': selected['auth_host'], 'port': 12000, 'timeout': 10.0},
++              'game': {'host': selected['game_host'], 'port': 12020, 'timeout': 10.0},
++              'world_id': selected['world_id'], 'session_file': 'session.json',
++              'market': {'list_requests': [{'payload_hex': '0000'}], 'detail_requests': [], 'trailing_u8': 0,
++                         'both_markets': True, 'detail_all_items': True, 'products': dict(selection.PRODUCTS), 'response_timeout': 10.0}}
++    supplied = {key: overrides[key] for key in ('auth_host', 'game_host', 'world_id', 'initialize_character') if key in overrides}
++    sources = {'auth_host': '12000/TCP remote_endpoint', 'game_host': '12020/TCP remote_endpoint', 'world_id': '12000/client_to_server/0x0107 payload[0:2] u16le'}
++    sources.update({key: 'manual_override' for key in supplied if key in sources})
++    return {'config': config, 'session': session, 'provenance': dict(candidate['provenance'], overrides=supplied, resolved=selected, sources=sources),
++            'dashboard': snapshot(rows)}
+diff --git a/rfnext_market/dashboard.py b/rfnext_market/dashboard.py
+new file mode 100644
+index 0000000..8742f4c
+--- /dev/null
++++ b/rfnext_market/dashboard.py
+@@ -0,0 +1,143 @@
++"""Bounded account observations using verified prefixes, never ranking guesses."""
++import struct
++import json
++from pathlib import Path
++from functools import lru_cache
++
++@lru_cache(maxsize=1)
++def _biosuits():
++    return json.loads(Path(__file__).with_name("biosuits.json").read_text(encoding="utf-8"))["biosuits"]
++
++DUNGEONS = {"android_junkyard": (20,19), "secret_nemesis_base": (22,21), "exclusive_mining_field": (54,53)}
++
++def _times(balances):
++    output = {}
++    for name,(basic,charged) in DUNGEONS.items():
++        b,c=balances.get(basic),balances.get(charged)
++        if b is not None or c is not None:
++            output[name]={"default_seconds":b,"charged_seconds":c,"remaining_seconds":b+c if b is not None and c is not None else None}
++    if any(i in balances for i in (58,55,56,57)):
++        b=balances.get(58)
++        output["public_mining_field"]={"default_seconds":b,"charged_by_faction":{f:balances.get(i) for f,i in (("accretia",55),("bellato",56),("cora",57))},"remaining_seconds":None}
++    return output
++
++KEYS = ('character_name', 'character_uid', 'diamonds', 'class', 'biosuit', 'rover', 'level', 'cp',
++        'daily_missions', 'android_junkyard', 'secret_nemesis_base', 'public_mining_field',
++        'exclusive_mining_field', 'location')
++
++
++def empty():
++    return {key: {'value': None, 'status': 'not_observed', 'source': None, 'timestamp': None} for key in KEYS}
++
++
++def consume(state, record):
++    """Mutate and return a bounded snapshot; caller scopes records to one account."""
++    if record.get('direction') not in ('server_to_client', 's2c') :
++        return state
++    try:
++        frame = bytes.fromhex(record.get('decoded_hex', ''))
++        if len(frame) < 6: return state
++        port = record.get('service_port', record.get('port'))
++        if port not in (12020,12010,12040): return state
++        opcode = int.from_bytes(frame[4:6], 'little'); raw = frame[6:]
++        values = {}
++        if port in (12010,12040):
++            # Only callers with verified realtime-flow ownership may set this flag.
++            if record.get('account_scoped') is not True or not state['character_uid']['value']: return state
++            if opcode == 0x0401 and len(raw)==786: values={'cp':struct.unpack_from('<Q',raw,772)[0]}
++            elif port==12010 and opcode==0x0423 and len(raw)==762: values={'cp':struct.unpack_from('<Q',raw,752)[0]}
++            else: return state
++        elif opcode == 0x0202:
++            ret, uid = struct.unpack_from('<HQ', raw)
++            if ret == 0: values = {'character_uid': str(uid)}
++        elif opcode == 0x0305:
++            uid, units = struct.unpack_from('<QH', raw)
++            # Other visible players must never overwrite this account.
++            if state['character_uid']['value'] != str(uid): return state
++            end = 10 + units * 2
++            if len(raw) < end + 46: return state
++            values = {'character_name': raw[10:end].decode('utf-16le'),
++                      'level': struct.unpack_from('<H', raw, end)[0],
++                      'diamonds': struct.unpack_from('<Q', raw, end + 38)[0]}
++            if len(raw)-end in (1057,1065):
++                balances={i:struct.unpack_from('<q',raw,end+22+(i-1)*8)[0] for i in (19,20,21,22,53,54,55,56,57,58)}
++                instant=struct.unpack_from('<q',raw,end+102)[0]
++                values['daily_missions']={'completed':None,'remaining':None,'limit':10,'instant_completed':instant if instant>=0 else None}
++                values.update(_times({i:v if v>=0 else None for i,v in balances.items()}))
++            if len(raw)-end-46 in (988,996,1004,1012):
++                values['biosuit']=struct.unpack_from('<I',raw,end+829)[0]
++                values['rover']=struct.unpack_from('<I',raw,end+834)[0]
++        elif opcode in (0x1304,0x1403) and len(raw)==(15 if opcode==0x1304 else 7):
++            if not state['character_uid']['value'] or int.from_bytes(raw[:2],'little')!=0: return state
++            values['biosuit' if opcode==0x1304 else 'rover']=struct.unpack_from('<I',raw,2)[0]
++        elif opcode==0x0325 and len(raw)==43:
++            if not state['character_uid']['value'] or int.from_bytes(raw[:2],'little')!=0: return state
++            values['location']={'map_index':struct.unpack_from('<I',raw,22)[0]}
++            if struct.unpack_from('<I',raw,2)[0]==7: values['location']['position']=list(struct.unpack_from('<fff',raw,27))
++        elif opcode==0x0407 and len(raw)==14:
++            if not state['character_uid']['value']: return state
++            _,kind,balance=struct.unpack('<HIq',raw)
++            balances={}
++            for name,(basic,charged) in DUNGEONS.items():
++                previous=state[name]['value'] or {}
++                balances[basic]=previous.get('default_seconds');balances[charged]=previous.get('charged_seconds')
++            previous=state['public_mining_field']['value'] or {}
++            balances[58]=previous.get('default_seconds')
++            for f,i in (('accretia',55),('bellato',56),('cora',57)): balances[i]=previous.get('charged_by_faction',{}).get(f)
++            if kind in balances:
++                balances[kind]=balance if balance>=0 else None
++                times=_times(balances)
++                values={name:value for name,value in times.items() if (kind in DUNGEONS.get(name,()) or name=='public_mining_field' and kind in (58,55,56,57))}
++            elif kind==11 and balance>=0 and struct.unpack_from('<H',raw)[0]==3412:
++                values['daily_missions']={'completed':None,'remaining':None,'limit':10,'instant_completed':balance}
++            elif kind==3 and balance>=0: values['diamonds']=balance
++        else: return state
++        if 'biosuit' in values:
++            item=_biosuits().get(str(values['biosuit']),{})
++            values['class']=item.get('class_name') or None
++        timestamp = record.get('timestamp', record.get('pcap_time_ns'))
++        if 'character_uid' in values and state['character_uid']['value'] not in (None, values['character_uid']):
++            state.clear(); state.update(empty())
++        for key, value in values.items():
++            old = state[key]['timestamp']
++            if old is not None and timestamp is not None and type(old) is type(timestamp) and timestamp < old: continue
++            state[key] = {'value': value, 'status': 'observed' if value is not None else 'not_observed', 'source': f'{port}/0x{opcode:04X}', 'timestamp': timestamp}
++    except (ValueError, TypeError, struct.error, UnicodeError):
++        pass  # Partial capture does not erase the last complete observation.
++    return state
++
++
++def snapshot(records, character_uid=None):
++    state = empty()
++    if character_uid is not None:
++        state['character_uid'] = {'value': str(character_uid), 'status': 'observed', 'source': 'selected_character', 'timestamp': None}
++    for record in records: consume(state, record)
++    return state
++
++
++def _duration(value):
++    if value is None: return 'Não observado'
++    hours, remainder = divmod(value, 3600)
++    minutes, seconds = divmod(remainder, 60)
++    return f'{hours:02d}:{minutes:02d}:{seconds:02d}'
++
++
++def display_value(key, value):
++    if value is None: return 'Não observado'
++    if key=='daily_missions':
++        instant=value.get('instant_completed')
++        return f"Total: não observado / {value['limit']} · instantâneas: {instant if instant is not None else 'Não observado'}"
++    if key in DUNGEONS:
++        total=value.get('remaining_seconds')
++        return _duration(total) if total is not None else f"Básico: {_duration(value.get('default_seconds'))} · recarga: {_duration(value.get('charged_seconds'))}"
++    if key=='public_mining_field':
++        charged=value.get('charged_by_faction', {})
++        return ' · '.join([f"Básico: {_duration(value.get('default_seconds'))}"]+[f"{label}: {_duration(charged.get(faction))}" for faction,label in (('accretia','Accretia'),('bellato','Bellato'),('cora','Cora'))])
++    if key=='location':
++        text=f"Mapa {value.get('map_index', 'Não observado')}"
++        position=value.get('position')
++        return text + (' · '+', '.join(f'{axis} {number:.1f}' for axis,number in zip(('X','Y','Z'),position)) if position else '')
++    if key=='biosuit':
++        item=_biosuits().get(str(value),{})
++        return f"{item.get('name', 'Biosuit')} ({value})"
++    return str(value)
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index 74d63de..93ac05d 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -10,6 +10,7 @@ import json
+ import queue
+ import tempfile
+ import threading
++import uuid
+ from collections import deque
+ from datetime import datetime
+ from pathlib import Path
+@@ -190,11 +191,19 @@ def upload_status_text(value):
+ 
+ 
+ class DesktopApp:
+-    def __init__(self, root: tk.Tk):
++    def __init__(self, root: tk.Tk, *, container=None, profile=None, manager=None):
+         self.root = root
+-        self.root.title("RF Next Companion · v37")
+-        self.root.minsize(1050, 700)
+-        self.root.geometry("1280x820")
++        self.container = container if container is not None else root
++        self.manager = manager
++        self.profile = profile
++        self.profile_id = profile["id"] if profile else "legacy"
++        self.profile_label = profile["name"] if profile else "Conta atual"
++        self.data_dir = Path(profile["path"]) if profile else Path(__file__).resolve().parent.parent
++        self.closed = False
++        self.root.title("RF Next Companion · v38")
++        if manager is None:
++            self.root.minsize(1050, 700)
++            self.root.geometry("1280x820")
+         self.config_document = {}
+         self.config_path = tk.StringVar()
+         self.session_path = tk.StringVar()
+@@ -251,9 +260,35 @@ class DesktopApp:
+             self.ui_font_size = 11
+         self._build()
+         self._render_purchase_list()
+-        self.root.protocol("WM_DELETE_WINDOW", self._close)
++        if manager is None:
++            self.root.protocol("WM_DELETE_WINDOW", self._close)
+         self.root.after(50, self._drain_queue)
+ 
++    def is_busy(self):
++        workers = [getattr(self, name, None) for name in
++                   ("worker", "heartbeat_worker", "rankings_worker", "complete_worker", "shopping_worker")]
++        workers.extend(getattr(self, "mode_threads", {}).values())
++        service = getattr(self, "heartbeat_service", None)
++        workers.append(service.worker if service else None)
++        pending = any(q is not None and not q.empty() for q in (getattr(self, "_queue", None), getattr(self, "_control_queue", None)))
++        return any(worker and worker.is_alive() for worker in workers) or pending
++
++    def _authorize_account(self, config):
++        if getattr(self, "manager", None):
++            self.manager.authorize(self, config)
++
++    def _execution_observer(self):
++        run_id = str(uuid.uuid4())
++        return lambda record: self._observe(dict(record, run_id=run_id))
++
++    def _allow_config_change(self):
++        if getattr(self, "_closing", False) or getattr(self, "closed", False):
++            return False
++        if self.is_busy():
++            messagebox.showinfo("Conta em execução", "Encerre as operações desta conta antes de alterar sua sessão ou configuração.")
++            return False
++        return True
++
+     def _build(self):
+         from . import desktop_shell
+         desktop_shell.build(self)
+@@ -346,6 +381,8 @@ class DesktopApp:
+         try:
+             size = max(8, min(20, int(float(value))))
+             apply_font_size(self, size)
++            if getattr(self, "manager", None):
++                self.manager.apply_font_size(size)
+             (Path(__file__).resolve().parent.parent / "ui-settings.json").write_text(
+                 json.dumps({"font_size": size}), encoding="utf-8")
+         except (ValueError, OSError) as exc:
+@@ -354,7 +391,7 @@ class DesktopApp:
+     def _purchase_store(self):
+         if not hasattr(self, "purchase_store"):
+             from .purchase_list import PurchaseList
+-            self.purchase_store = PurchaseList(Path(__file__).resolve().parent.parent / "purchase-list.json")
++            self.purchase_store = PurchaseList(getattr(self, "data_dir", Path(__file__).resolve().parent.parent) / "purchase-list.json")
+         return self.purchase_store
+ 
+     def _add_market_selection(self):
+@@ -446,13 +483,16 @@ class DesktopApp:
+                     raise ValueError(f"Oferta expirada, bloqueada ou danificada: {entry['name']}")
+             self._validate_site_entries(entries)
+             loaded = {} if use_heartbeat else self._validate_config(self._current_config())
++            self._authorize_account(loaded)
++            if getattr(self, "manager", None) and any(entry["source"] == "site" for entry in entries):
++                self.manager.claim_site(self)
+         except (ValueError, OSError, RuntimeError) as exc:
+             messagebox.showerror("Lista de compra", str(exc))
+             return
+         capture_ref = self.capture_ref
+         preview = "\n".join(f"{e['name']} +{e['request']['enchant_level']} · lote {e['quantity']} · preço informado {e['request']['selling_price']} · oferta {e['request']['exchange_index']}" for e in entries)
+         mode_label = "Heartbeat ativo" if use_heartbeat else "Nova conexão por oferta"
+-        if not messagebox.askyesno("Executar lista de compra", f"{mode_label}\n{preview}\n\nConfirmar {len(entries)} pedidos? A sequência para na primeira falha e não repete compras."):
++        if not messagebox.askyesno("Executar lista de compra", f"Conta: {getattr(self, 'profile_label', 'Conta atual')}\n{mode_label}\n{preview}\n\nConfirmar {len(entries)} pedidos? A sequência para na primeira falha e não repete compras."):
+             return
+         if capture_ref != self.capture_ref:
+             messagebox.showinfo("Lista de compra", "A captura mudou durante a revisão; confirme novamente.")
+@@ -522,6 +562,8 @@ class DesktopApp:
+             messagebox.showerror("Lista de compra", str(exc))
+ 
+     def _fetch_shopping(self):
++        if getattr(self, "_closing", False) or getattr(self, "closed", False):
++            return
+         if self.shopping_worker and self.shopping_worker.is_alive():
+             return
+         try:
+@@ -677,6 +719,8 @@ class DesktopApp:
+         return frame, tree
+ 
+     def _choose_config(self):
++        if not self._allow_config_change():
++            return
+         path = filedialog.askopenfilename(filetypes=(("JSON", "*.json"), ("Todos", "*.*")))
+         if not path:
+             return
+@@ -739,6 +783,8 @@ class DesktopApp:
+         return values
+ 
+     def _choose_session(self):
++        if not self._allow_config_change():
++            return
+         path = filedialog.askopenfilename(filetypes=(("JSON", "*.json"), ("Todos", "*.*")))
+         if path:
+             self.session_path.set(path)
+@@ -818,6 +864,8 @@ class DesktopApp:
+                 pass
+ 
+     def _save_config(self):
++        if not self._allow_config_change():
++            return
+         try:
+             config = self._current_config()
+         except (ValueError, TypeError) as exc:
+@@ -828,11 +876,15 @@ class DesktopApp:
+         if not path:
+             return
+         try:
+-            Path(path).write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
++            if getattr(self, "manager", None):
++                self.manager.save_config(self, config)
++                path = self.config_path.get()
++            else:
++                Path(path).write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
++                self.config_document = config
+             self.config_path.set(path)
+-            self.config_document = config
+             self.status.set("Configuração salva.")
+-        except OSError as exc:
++        except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Falha ao salvar", str(exc))
+ 
+     def _start(self):
+@@ -851,7 +903,8 @@ class DesktopApp:
+             return
+         try:
+             loaded = self._validate_config(self._current_config())
+-            self.heartbeat_service.start(loaded, self._observe)
++            self._authorize_account(loaded)
++            self.heartbeat_service.start(loaded, self._execution_observer())
+             self.heartbeat_worker = self.heartbeat_service.worker
+             self.heartbeat_stop_event = self.heartbeat_service.stop_event
+             self.mode_status["heartbeat"].set("Aguardando confirmações 0/3")
+@@ -877,10 +930,11 @@ class DesktopApp:
+         try:
+             purchase.build(request)
+             loaded = {} if use_heartbeat else self._validate_config(self._current_config())
++            self._authorize_account(loaded)
+         except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Compra", str(exc))
+             return
+-        preview = ("Conexão do heartbeat ativo" if use_heartbeat else "Nova conexão autenticada") + "\n" + "\n".join(f"{key}: {value}" for key, value in request.items())
++        preview = f"Conta: {getattr(self, 'profile_label', 'Conta atual')}\n" + ("Conexão do heartbeat ativo" if use_heartbeat else "Nova conexão autenticada") + "\n" + "\n".join(f"{key}: {value}" for key, value in request.items())
+         if proposal is not None:
+             preview = f"{proposal['name']} · {proposal['quantity']} unidade(s) no lote\n" + preview
+         if not messagebox.askyesno("Confirmar compra", preview +
+@@ -931,6 +985,7 @@ class DesktopApp:
+             if not math.isfinite(interval) or interval <= 0:
+                 raise ValueError("Informe um intervalo positivo em minutos")
+             loaded = self._validate_config(self._current_config())
++            self._authorize_account(loaded)
+         except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Não foi possível iniciar", str(exc))
+             return
+@@ -940,8 +995,9 @@ class DesktopApp:
+         self.mode_buttons[mode].configure(state="disabled")
+         self.mode_status[mode].set("Iniciando")
+         self._reset_progress((f"{mode}:read", f"{mode}:upload") if mode != "complete" else ("read", "upload"))
++        emit = self._execution_observer()
+         def observe(record):
+-            self._observe(dict(record, operation=record.get("operation", mode)))
++            emit(dict(record, operation=record.get("operation", mode)))
+         def work():
+             result, error = None, None
+             try:
+@@ -984,6 +1040,8 @@ class DesktopApp:
+         self.progress_labels[key].set(f"{title}: {completed}/{total} ({percent:.0f}%){suffix}")
+ 
+     def _observe(self, record):
++        if getattr(self, "manager", None):
++            record = dict(record, profile_id=self.profile_id)
+         if record.get("record_type") in ("countdown", "operation_state", "heartbeat_progress", "cycle"):
+             self._control_queue.put(("mode_state", record))
+             return
+@@ -1002,6 +1060,8 @@ class DesktopApp:
+             self._dropped_records += 1
+ 
+     def _drain_queue(self):
++        if getattr(self, "closed", False):
++            return
+         record_queue = getattr(self, "_queue", None)
+         if record_queue is not None:
+             for _ in range(DRAIN_BATCH):
+@@ -1026,11 +1086,15 @@ class DesktopApp:
+         worker_alive = worker_alive or bool(service and service.worker and service.worker.is_alive())
+         pending = bool(record_queue is not None and not record_queue.empty())
+         if self._closing and not worker_alive and not pending and getattr(self, "_finished", True):
+-            self.root.destroy()
++            self.closed = True
++            if getattr(self, "manager", None) is None:
++                self.root.destroy()
+             return
+         self.root.after(50, self._drain_queue)
+ 
+     def _handle_event(self, event):
++        if getattr(self, "manager", None):
++            self.manager.observe(self, event)
+         if hasattr(self, "upload_status"):
+             record = event[1] if len(event) > 1 and isinstance(event[1], dict) else {}
+             if record.get("record_type") == "upload" or event[0] == "upload_done":
+@@ -1220,6 +1284,8 @@ class DesktopApp:
+         self.status.set("Parada solicitada; aguardando encerramento cooperativo...")
+ 
+     def _retry_upload(self):
++        if getattr(self, "_closing", False) or getattr(self, "closed", False):
++            return
+         if (self.worker and self.worker.is_alive()) or any(w.is_alive() for w in getattr(self, "mode_threads", {}).values()):
+             return
+         try:
+@@ -1354,7 +1420,8 @@ class DesktopApp:
+ 
+ def main() -> int:
+     root = tk.Tk()
+-    DesktopApp(root)
++    from .account_ui import AccountWindow
++    AccountWindow(root)
+     root.mainloop()
+     return 0
+ 
+diff --git a/rfnext_market/desktop_shell.py b/rfnext_market/desktop_shell.py
+index b8eefd3..cfe95eb 100644
+--- a/rfnext_market/desktop_shell.py
++++ b/rfnext_market/desktop_shell.py
+@@ -10,7 +10,7 @@ TEXT = "#F4F6F7"
+ MUTED = "#BFC6CB"
+ BORDER = "#3A4148"
+ ACCENT = "#44C8B0"
+-PAGES = ("Captura", "Ranking", "Mercado", "Compras", "Configuração")
++PAGES = ("Dashboard", "Captura", "Ranking", "Mercado", "Compras", "Configuração")
+ 
+ 
+ def apply_font_size(app, value):
+@@ -19,6 +19,8 @@ def apply_font_size(app, value):
+     for name, offset in (("body", 0), ("heading", 1), ("title", 10)):
+         app.ui_fonts[name].configure(size=size + offset)
+     app.ui_style.configure("Treeview", rowheight=size * 2 + 12)
++    if getattr(app, "sidebar", None) is not None:
++        app.sidebar.configure(width=max(220, size * 13 + 40))
+     app.font_size.set(str(size))
+     return size
+ 
+@@ -39,14 +41,15 @@ def _card_surfaces(widget, in_card=False):
+     in_card = in_card or (kind == "TFrame" and widget.cget("style") == "Card.TFrame")
+     if in_card and kind in ("TLabel", "TFrame", "TCheckbutton"):
+         muted = kind == "TLabel" and widget.cget("style") in ("Muted.TLabel", "CardMuted.TLabel")
+-        if widget.cget("style") != "CardHeading.TLabel":
++        if widget.cget("style") not in ("CardHeading.TLabel", "CardValue.TLabel"):
+             widget.configure(style="CardMuted.TLabel" if muted else "Card." + kind)
+     for child in widget.winfo_children() or ():
+         _card_surfaces(child, in_card)
+ 
+ 
+ def _scroll_page(parent):
+-    canvas = tk.Canvas(parent, background=BG, highlightthickness=0)
++    canvas = tk.Canvas(parent, background=BG, highlightthickness=1,
++                       highlightbackground=BG, highlightcolor=ACCENT, takefocus=True)
+     scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+     canvas.configure(yscrollcommand=scroll.set)
+     scroll.pack(side="right", fill="y")
+@@ -55,10 +58,65 @@ def _scroll_page(parent):
+     window = canvas.create_window((0, 0), window=content, anchor="nw")
+     content.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+     canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
++    def scroll_pages(amount):
++        canvas.yview_scroll(amount, "pages")
++        return "break"
++    canvas.bind("<Prior>", lambda _: scroll_pages(-1))
++    canvas.bind("<Next>", lambda _: scroll_pages(1))
+     return content
+ 
+ 
++def _dashboard(app):
++    page = _scroll_page(app.pages["Dashboard"])
++    values = app.dashboard_values = getattr(app, "dashboard_values", {})
++    fields = (("character_name", "Personagem"), ("character_uid", "Character UID"),
++              ("diamonds", "Diamantes"), ("level", "Nível"), ("cp", "CP"),
++              ("class", "Classe"), ("biosuit", "Biosuit"), ("rover", "Rover"),
++              ("daily_missions", "Missões realizadas / 10"), ("location", "Localização"),
++              ("android_junkyard", "Android Junkyard"), ("secret_nemesis_base", "Secret Nemesis Base"),
++              ("public_mining_field", "Public Mining Field"),
++              ("exclusive_mining_field", "Exclusive Mining Field"))
++    for key, _ in fields:
++        if key not in values:
++            values[key] = tk.StringVar(value="Não observado")
++    if not hasattr(app, "dashboard_meta"):
++        app.dashboard_meta = tk.StringVar(value="Nenhum dado da conta foi observado nesta sessão.")
++    meta = ttk.Label(page, textvariable=app.dashboard_meta, style="Muted.TLabel", wraplength=640)
++    meta.pack(fill="x", pady=(0, 18))
++    meta.bind("<Configure>", lambda event: meta.configure(wraplength=max(80, event.width)))
++
++    def rows(panel, keys):
++        panel.columnconfigure(0, weight=1)
++        panel.columnconfigure(1, weight=2)
++        for row, (key, label) in enumerate(keys):
++            title = ttk.Label(panel, text=label, style="CardMuted.TLabel", wraplength=220)
++            title.grid(row=row, column=0, sticky="nw", padx=(0, 16), pady=7)
++            value = ttk.Label(panel, textvariable=values[key], style="Card.TLabel", wraplength=380)
++            value.grid(row=row, column=1, sticky="new", pady=7)
++            for widget in (title, value):
++                widget.bind("<Configure>", lambda event, target=widget: target.configure(wraplength=max(80, event.width)))
++
++    identity = _card(page, "Personagem e localização")
++    rows(identity, (fields[0], fields[1], fields[9]))
++    metrics = ttk.Frame(page)
++    metrics.pack(fill="x", pady=(0, 14))
++    for column, (key, label) in enumerate(fields[2:5]):
++        metrics.columnconfigure(column, weight=1, uniform="account_metrics")
++        border = ttk.Frame(metrics, padding=1, style="Border.TFrame")
++        border.grid(row=0, column=column, sticky="nsew", padx=(0, 8 if column < 2 else 0))
++        panel = ttk.Frame(border, padding=16, style="Card.TFrame")
++        panel.pack(fill="both", expand=True)
++        ttk.Label(panel, text=label, style="CardMuted.TLabel").pack(anchor="w", pady=(0, 10))
++        value = ttk.Label(panel, textvariable=values[key], style="CardValue.TLabel", wraplength=170)
++        value.pack(fill="x", anchor="w")
++        panel.bind("<Configure>", lambda event, target=value: target.configure(wraplength=max(80, event.width - 32)))
++    rows(_card(page, "Desenvolvimento"), fields[5:8])
++    rows(_card(page, "Missões diárias"), (fields[8],))
++    rows(_card(page, "Dungeons limitadas · tempo restante"), fields[10:])
++
++
+ def build(app):
++    mount = getattr(app, "container", app.root)
+     style = app.ui_style = ttk.Style(app.root)
+     style.theme_use("clam")
+     installed = set(font.families(app.root))
+@@ -75,6 +133,7 @@ def build(app):
+         style.configure("Card." + widget, background=CARD)
+     style.configure("CardMuted.TLabel", background=CARD, foreground=MUTED)
+     style.configure("CardHeading.TLabel", background=CARD, foreground=TEXT, font=app.ui_fonts["heading"])
++    style.configure("CardValue.TLabel", background=CARD, foreground=TEXT, font=app.ui_fonts["title"])
+     style.configure("Border.TFrame", background=BORDER)
+     style.configure("Title.TLabel", font=app.ui_fonts["title"])
+     style.configure("Muted.TLabel", foreground=MUTED)
+@@ -109,19 +168,28 @@ def build(app):
+     app.font_size = tk.StringVar(value=str(getattr(app, "ui_font_size", 11)))
+     apply_font_size(app, app.font_size.get())
+ 
+-    sidebar = ttk.Frame(app.root, style="Sidebar.TFrame", width=240, padding=(16, 26))
++    sidebar = app.sidebar = ttk.Frame(mount, style="Sidebar.TFrame",
++                                     width=max(220, int(app.font_size.get()) * 13 + 40), padding=(12, 22))
+     sidebar.pack(side="left", fill="y")
+     sidebar.pack_propagate(False)
+     ttk.Label(sidebar, text="RF NEXT\nCompanion", style="Sidebar.TLabel", font=app.ui_fonts["heading"]).pack(anchor="w", padx=16, pady=(0, 34))
+-    body = ttk.Frame(app.root, padding=(28, 20))
++    body = ttk.Frame(mount, padding=(24, 20))
+     body.pack(side="left", fill="both", expand=True)
+     header = ttk.Frame(body)
+     header.pack(fill="x", pady=(0, 22))
+-    app.page_title = tk.StringVar(value="Captura")
+-    ttk.Label(header, textvariable=app.page_title, style="Title.TLabel").pack(side="left")
+-    app.stop_button = ttk.Button(header, text="Parar tudo", command=app._stop)
+-    app.stop_button.pack(side="right")
+-    ttk.Label(header, textvariable=app.mode_status["heartbeat"], style="Muted.TLabel").pack(side="right", padx=20)
++    header.columnconfigure(0, weight=1)
++    app.page_title = tk.StringVar(value="Dashboard")
++    ttk.Label(header, textvariable=app.page_title, style="Title.TLabel").grid(row=0, column=0, sticky="w")
++    profile = getattr(app, "profile_label", "Conta atual")
++    app.profile_label_var = tk.StringVar(value=profile)
++    label = ttk.Label(header, textvariable=app.profile_label_var, style="Muted.TLabel", wraplength=640)
++    label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
++    label.bind("<Configure>", lambda event: label.configure(wraplength=max(80, event.width)))
++    app.stop_button = ttk.Button(header, text="Parar esta conta", command=app._stop)
++    app.stop_button.grid(row=0, column=1, sticky="e", padx=(12, 0))
++    heartbeat_state = ttk.Label(header, textvariable=app.mode_status["heartbeat"], style="Muted.TLabel", wraplength=640)
++    heartbeat_state.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
++    heartbeat_state.bind("<Configure>", lambda event: heartbeat_state.configure(wraplength=max(80, event.width)))
+     container = ttk.Frame(body)
+     container.pack(fill="both", expand=True)
+     container.rowconfigure(0, weight=1)
+@@ -141,10 +209,11 @@ def build(app):
+         page.grid(row=0, column=0, sticky="nsew")
+         buttons[name] = ttk.Button(sidebar, text=name, style="Nav.TButton", command=lambda n=name: show_page(n))
+         buttons[name].pack(fill="x", pady=4)
+-    ttk.Label(sidebar, text="CLIENTE · v37", style="Sidebar.TLabel").pack(side="bottom", anchor="w", padx=16)
++    ttk.Label(sidebar, text="CLIENTE · v38", style="Sidebar.TLabel").pack(side="bottom", anchor="w", padx=16)
+     app.status = tk.StringVar(value="Pronto. Nenhuma conexão foi aberta.")
+     ttk.Label(body, textvariable=app.status, style="Muted.TLabel", wraplength=900).pack(fill="x", pady=(14, 0))
+ 
++    _dashboard(app)
+     capture = _scroll_page(app.pages["Captura"])
+     overview = ttk.Frame(capture)
+     overview.pack(fill="x", pady=(0, 18))
+@@ -330,5 +399,5 @@ def build(app):
+     app.tx, app.rx = app._log_pane(logs, "Mensagens enviadas"), app._log_pane(logs, "Mensagens recebidas / eventos")
+     logs.add(app.tx[0], text="TX · Envio")
+     logs.add(app.rx[0], text="RX · Recebimento")
+-    _card_surfaces(app.root)
+-    show_page("Captura")
++    _card_surfaces(mount)
++    show_page("Dashboard")
+diff --git a/tests/test_accounts.py b/tests/test_accounts.py
+new file mode 100644
+index 0000000..a8131fb
+--- /dev/null
++++ b/tests/test_accounts.py
+@@ -0,0 +1,154 @@
++import json
++from pathlib import Path
++import tempfile
++import unittest
++from unittest.mock import patch
++
++from rfnext_market.accounts import AccountRegistry, AccountStore
++
++
++class AccountsTests(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.tmp.cleanup)
++        self.base = Path(self.tmp.name)
++        self.store = AccountStore(self.base)
++
++    def test_hundreds_isolated_profiles(self):
++        profiles = [self.store.create(f"Conta {i}", {"companion": {}}, {"id": i}) for i in range(210)]
++        self.assertEqual(len(self.store.list()), 210)
++        states = set()
++        for profile in profiles:
++            config = json.loads(Path(profile["config_file"]).read_text())
++            self.assertEqual(config["session_file"], profile["session_file"])
++            states.add(config["companion"]["state_dir"])
++        self.assertEqual(len(states), 210)
++        self.store.update(profiles[0]["id"], name="Renomeada", session={"id": "new"})
++        self.assertEqual(self.store.load(profiles[0]["id"])["name"], "Renomeada")
++        self.assertEqual(json.loads(Path(profiles[1]["session_file"]).read_text()), {"id": 1})
++
++    def test_legacy_idempotent_preserves_original_and_companion(self):
++        documents = {"config.json": {"session_file": "old-session.json", "companion": {"state_dir": "identity"}},
++                     "old-session.json": {"secret": "kept"}, "purchase-list.json": [{"status": "confirmed"}]}
++        for name, value in documents.items():
++            (self.base / name).write_text(json.dumps(value))
++        profile = self.store.migrate_legacy()
++        self.assertEqual(profile, AccountStore(self.base).migrate_legacy())
++        self.assertEqual(len(self.store.list()), 1)
++        config = json.loads(Path(profile["config_file"]).read_text())
++        self.assertEqual(config["companion"]["state_dir"], str(self.base / "identity"))
++        self.assertEqual(json.loads((Path(profile["path"]) / "purchase-list.json").read_text()), documents["purchase-list.json"])
++        for name, value in documents.items():
++            self.assertEqual(json.loads((self.base / name).read_text()), value)
++
++    def test_legacy_list_without_config_and_invalid_documents(self):
++        self.assertIsNone(self.store.migrate_legacy())
++        (self.base / "purchase-list.json").write_text('[{"status":"confirmed"}]')
++        profile = self.store.migrate_legacy()
++        self.assertTrue((Path(profile["path"]) / "purchase-list.json").exists())
++        self.assertEqual(self.store.migrate_legacy(), profile)
++        with self.assertRaises(ValueError):
++            self.store.create("Invalid", config=[])
++        self.assertEqual(len(self.store.list()), 1)
++
++    def test_invalid_and_failed_update_preserve_valid_data(self):
++        profile = self.store.create("One")
++        original = Path(profile["config_file"]).read_bytes()
++        with self.assertRaises(ValueError):
++            self.store.update(profile["id"], config={"companion": []})
++        with self.assertRaises(ValueError):
++            self.store.load("../escape")
++        with patch("rfnext_market.accounts.os.replace", side_effect=OSError("disk")):
++            with self.assertRaises(OSError):
++                self.store.update(profile["id"], config={"world_id": 3})
++        self.assertEqual(Path(profile["config_file"]).read_bytes(), original)
++        self.assertEqual(list(Path(profile["path"]).glob("*.tmp")), [])
++
++    def test_pair_commit_failure_keeps_old_generation_and_identity(self):
++        from rfnext_market import accounts
++        profile = self.store.create("One", {"world_id": 1}, {"account_id": "abc", "token": "old"})
++        write = accounts._write
++        for fail_at in (1, 2, 3):
++            calls = []
++            def failing(path, value):
++                calls.append(path)
++                if len(calls) == fail_at:
++                    raise OSError("simulated failure")
++                return write(path, value)
++            with patch.object(accounts, "_write", side_effect=failing):
++                with self.assertRaises(OSError):
++                    self.store.update(profile["id"], config={"world_id": 2}, session={"account_id": "abc", "token": "new"})
++            self.assertEqual(self.store.load(profile["id"]), profile)
++            self.assertEqual(json.loads(Path(profile["session_file"]).read_text())["token"], "old")
++        with self.assertRaises(ValueError):
++            self.store.update(profile["id"], session={"account_id": "other"})
++        with self.assertRaises(ValueError):
++            self.store.update(profile["id"], config={"credentials": {"account_id": "other"}})
++        latest = self.store.update(profile["id"], config={"world_id": 2}, session={"account_id": "ABC", "token": "new"})
++        self.assertNotEqual(latest["session_file"], profile["session_file"])
++        self.assertEqual(json.loads(Path(latest["config_file"]).read_text())["world_id"], 2)
++        self.assertEqual(json.loads(Path(latest["session_file"]).read_text())["token"], "new")
++
++    def test_missing_legacy_config_reuses_existing_companion_directory(self):
++        (self.base / "companion-state").mkdir()
++        (self.base / "purchase-list.json").write_text("[]")
++        profile = self.store.migrate_legacy()
++        config = json.loads(Path(profile["config_file"]).read_text())
++        self.assertEqual(config["companion"]["state_dir"], str(self.base / "companion-state"))
++
++    def test_identity_registry_blocks_duplicates_and_releases_only_owner(self):
++        registry = AccountRegistry()
++        self.assertTrue(registry.acquire("ABC", "one"))
++        self.assertTrue(registry.acquire("abc", "one"))
++        self.assertFalse(registry.acquire("abc", "two"))
++        registry.release("two")
++        self.assertEqual(registry.owner("abc"), "one")
++        registry.release("one")
++        self.assertTrue(registry.acquire("abc", "two"))
++        with self.assertRaises(ValueError):
++            registry.acquire(None, "one")
++
++    def test_legacy_site_attempt_claimed_before_other_profile(self):
++        import sqlite3
++        from contextlib import closing
++        install = "8e2d5ab1-2adc-449e-87e0-4511fd2aab2f"
++        state = self.base / "companion-state"
++        state.mkdir()
++        with closing(sqlite3.connect(state / "market-upload.sqlite3")) as db, db:
++            db.execute("CREATE TABLE identity (id INTEGER PRIMARY KEY, secret BLOB)")
++            db.execute("INSERT INTO identity VALUES (1, ?)", (b"protected",))
++        (self.base / "purchase-list.json").write_text('[{"source":"site","status":"unconfirmed","shopping_id":"321"}]')
++        with patch("rfnext_market.protected_state.unprotect", return_value=json.dumps({"installation_id": install}).encode()):
++            first = self.store.migrate_legacy()
++            self.assertEqual(first, self.store.migrate_legacy())
++        other = self.store.create("Other")
++        self.assertFalse(self.store.claim_site_executor(other["id"], state))
++        self.assertFalse(self.store.claim_site_executor(other["id"], self.base / "alias", install))
++        self.assertTrue(self.store.claim_site_executor(first["id"], state, install))
++        self.assertFalse(self.store.claim_site_executor(other["id"], self.base / "other", shopping_ids=["321"]))
++
++    def test_shopping_identity_blocks_across_installations_after_restart(self):
++        first, second = self.store.create("One"), self.store.create("Two")
++        installation1 = "8e2d5ab1-2adc-449e-87e0-4511fd2aab2f"
++        installation2 = "8e2d5ab1-2adc-449e-87e0-4511fd2aab20"
++        self.assertTrue(self.store.claim_site_executor(first["id"], self.base / "one", installation1, ["123"]))
++        restarted = AccountStore(self.base)
++        self.assertFalse(restarted.claim_site_executor(second["id"], self.base / "two", installation2, ["00123"]))
++        self.assertTrue(restarted.claim_site_executor(second["id"], self.base / "two", installation2, ["124"]))
++        for invalid in ("0", "-1", "a", 123, "１２３"):
++            with self.assertRaises(ValueError):
++                restarted.claim_site_executor(first["id"], self.base / "one", shopping_ids=[invalid])
++
++    def test_site_executor_sticky_and_installation_aliases(self):
++        first, second = self.store.create("One"), self.store.create("Two")
++        install = "8e2d5ab1-2adc-449e-87e0-4511fd2aab2f"
++        self.assertTrue(self.store.claim_site_executor(first["id"], self.base / "shared", install))
++        restarted = AccountStore(self.base)
++        self.assertFalse(restarted.claim_site_executor(second["id"], self.base / "shared"))
++        self.assertFalse(restarted.claim_site_executor(second["id"], self.base / "alias", install))
++        self.assertTrue(restarted.claim_site_executor(first["id"], self.base / "alias", install))
++        self.assertTrue(restarted.claim_site_executor(second["id"], self.base / "independent"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_capture_import.py b/tests/test_capture_import.py
+new file mode 100644
+index 0000000..35006cd
+--- /dev/null
++++ b/tests/test_capture_import.py
+@@ -0,0 +1,108 @@
++import json
++import struct
++import tempfile
++import unittest
++from pathlib import Path
++from rfnext_market import auth, capture_import as ci, transport
++
++
++def fields(port, opcode, account='a', key='key'):
++    output = {}
++    for name, kind in auth.LAYOUTS[(port, transport.DIRECTION_C2S, opcode)][2]:
++        if isinstance(kind, tuple): output[name + '_hex'] = (b'\0' * (kind[1] or 1)).hex()
++        elif kind == 'str': output[name] = {'account_id':account, 'session_key':key}.get(name, 'x')
++        else: output[name] = 0
++    return output
++
++
++def row(port, opcode, values, conn):
++    payload = auth.build_payload(port, opcode, values)
++    frame = b'\0' + (len(payload)+6).to_bytes(2,'little') + b'\0' + opcode.to_bytes(2,'little') + payload
++    return {'port':port, 'opcode':f'0x{opcode:04X}', 'direction':'client_to_server',
++            'connection_id':conn, 'remote_endpoint':f'10.1.1.{1 if port==12000 else 2}:{port}', 'decoded_hex':frame.hex()}
++
++
++def session(account='a', key='key', suffix=''):
++    return [row(12000,0x0101,fields(12000,0x0101,account,key),'a'+suffix),
++            row(12000,0x0107,{'world_id':12},'a'+suffix),
++            row(12020,0x0101,fields(12020,0x0101),'g'+suffix),
++            row(12020,0x0103,fields(12020,0x0103,account,key),'g'+suffix)]
++
++
++class CaptureImportTests(unittest.TestCase):
++    def inspect(self, rows):
++        with tempfile.TemporaryDirectory() as directory:
++            path=Path(directory)/'dump.json'; path.write_text(json.dumps({'records':rows}))
++            return ci.inspect_capture(path)
++
++    def test_isolated_accounts_and_actual_world(self):
++        found=self.inspect(session()+session('b','second','2'))['candidates']
++        self.assertEqual(len(found),2)
++        prepared=ci.prepare_candidate(found[1])
++        self.assertEqual(prepared['session']['account_id'],'b')
++        self.assertEqual(prepared['config']['world_id'],12)
++        self.assertEqual(prepared['config']['auth']['host'],'10.1.1.1')
++        self.assertNotIn('u64@2688',prepared['session'])
++
++    def test_missing_world_no_default_and_missing_game_blocked(self):
++        found=self.inspect([r for r in session() if r['opcode']!='0x0107'])['candidates'][0]
++        with self.assertRaisesRegex(ValueError,'World ID'): ci.prepare_candidate(found)
++        self.assertEqual(ci.prepare_candidate(found,{'world_id':9})['config']['world_id'],9)
++        found=self.inspect(session()[:2])['candidates'][0]
++        with self.assertRaises(ValueError): ci.prepare_candidate(found,{'game_host':'example'})
++
++    def test_same_credential_repeated_login_rejected(self):
++        found=self.inspect(session()+session(suffix='2'))['candidates']
++        with self.assertRaisesRegex(ValueError,'credencial repetida'): ci.prepare_candidate(found[0])
++
++    def test_live_dump_shape(self):
++        rows=session()
++        for r in rows: r['service_port']=r.pop('port'); r['opcode']=int(r['opcode'],16)
++        self.assertEqual(ci.prepare_candidate(self.inspect(rows)['candidates'][0])['config']['world_id'],12)
++
++    def test_invalid_pcap(self):
++        with tempfile.TemporaryDirectory() as directory:
++            path=Path(directory)/'x.pcap'; path.write_bytes(b'garbage')
++            with self.assertRaisesRegex(ValueError,'PCAP'): ci.inspect_capture(path)
++
++    def test_pcap_reassembly_and_gap(self):
++        def packet(seq,data):
++            ip=bytearray(20); ip[0]=0x45; ip[9]=6; ip[2:4]=(40+len(data)).to_bytes(2,'big'); ip[12:16]=bytes([192,168,1,2]); ip[16:20]=bytes([10,1,1,1])
++            tcp=bytearray(20); struct.pack_into('!HHI',tcp,0,5555,12000,seq); tcp[12]=0x50
++            pkt=bytes(ip+tcp)+data
++            return struct.pack('<IIII',1,2,len(pkt),len(pkt))+pkt
++        header=struct.pack('<IHHIIII',0xa1b2c3d4,2,4,0,0,65535,101)
++        frame=bytes.fromhex(session()[0]['decoded_hex'])
++        with tempfile.TemporaryDirectory() as directory:
++            path=Path(directory)/'x.pcap'
++            path.write_bytes(header+packet(100,frame[:20])+packet(120,frame[20:]))
++            rows,diag=ci._pcap(path); self.assertEqual(len(rows),1); self.assertEqual(diag,[])
++            path.write_bytes(header+packet(100,frame[:20])+packet(121,frame[20:]))
++            rows,diag=ci._pcap(path); self.assertEqual(rows,[]); self.assertIn('Lacuna',diag[0])
++
++    def test_world_response_conflict_blocks_preparation(self):
++        rows=session()
++        payload=struct.pack('<HHHQH',0,13,0,0,0)+struct.pack('<H',1)+'x'.encode('utf-16le')+struct.pack('<H',12020)
++        frame=b'\0'+(6+len(payload)).to_bytes(2,'little')+b'\0'+(0x0108).to_bytes(2,'little')+payload
++        response=dict(rows[0],opcode='0x0108',direction='server_to_client',decoded_hex=frame.hex())
++        rows.insert(2,response)
++        candidate=self.inspect(rows)['candidates'][0]
++        with self.assertRaisesRegex(ValueError,'divergente'): ci.prepare_candidate(candidate)
++
++    def test_times_and_manual_provenance(self):
++        rows=session()
++        rows[0]['pcap_time_ns']=1_000_000_000
++        rows[-1]['timestamp']='1970-01-01T00:00:03+00:00'
++        candidate=self.inspect(rows)['candidates'][0]
++        self.assertEqual(candidate['started_at'],'1970-01-01T00:00:01+00:00')
++        self.assertEqual(candidate['ended_at'],'1970-01-01T00:00:03+00:00')
++        automatic=ci.prepare_candidate(candidate)['provenance']
++        self.assertEqual(automatic['overrides'],{})
++        self.assertIn('0x0107',automatic['sources']['world_id'])
++        manual=ci.prepare_candidate(candidate,{'world_id':99})['provenance']
++        self.assertEqual(manual['overrides'],{'world_id':99})
++        self.assertEqual(manual['resolved']['world_id'],99)
++        self.assertEqual(manual['sources']['world_id'],'manual_override')
++        self.assertEqual(manual['started_at'],candidate['started_at'])
++
++if __name__=='__main__': unittest.main()
+diff --git a/tests/test_dashboard.py b/tests/test_dashboard.py
+new file mode 100644
+index 0000000..5f13cab
+--- /dev/null
++++ b/tests/test_dashboard.py
+@@ -0,0 +1,75 @@
++import struct
++import unittest
++from rfnext_market import dashboard
++
++
++def record(op, payload, timestamp=1):
++    return {'service_port':12020,'direction':'server_to_client','timestamp':timestamp,
++            'decoded_hex':(b'\0'*4+op.to_bytes(2,'little')+payload).hex()}
++
++
++def player(uid, name, diamonds=3):
++    encoded=name.encode('utf-16le'); tail=bytearray(46); struct.pack_into('<H',tail,0,55);struct.pack_into('<Q',tail,38,diamonds)
++    return record(0x0305,struct.pack('<QH',uid,len(encoded)//2)+encoded+tail)
++
++
++class DashboardTests(unittest.TestCase):
++    def test_own_identity_not_nearby_player(self):
++        state=dashboard.snapshot([record(0x0202,struct.pack('<HQ',0,42)),player(99,'Other'),player(42,'Own',0)])
++        self.assertEqual(state['character_name']['value'],'Own')
++        self.assertEqual(state['diamonds']['value'],0)
++        self.assertEqual(state['diamonds']['status'],'observed')
++        self.assertIsNone(state['daily_missions']['value'])
++        self.assertEqual(state['diamonds']['source'],'12020/0x0305')
++
++    def test_unknown_uid_and_truncation(self):
++        state=dashboard.snapshot([player(42,'Unknown'),record(0x0202,b'x')])
++        self.assertIsNone(state['character_name']['value'])
++        self.assertIsNone(state['diamonds']['value'])
++
++    def test_changed_character_clears_previous_values(self):
++        state=dashboard.snapshot([record(0x0202,struct.pack('<HQ',0,42)),player(42,'Own')])
++        dashboard.consume(state,record(0x0202,struct.pack('<HQ',0,43),2))
++        self.assertIsNone(state['diamonds']['value'])
++        self.assertEqual(state['character_uid']['value'],'43')
++
++    def test_failed_initialization_does_not_establish_identity(self):
++        state=dashboard.snapshot([record(0x0202,struct.pack('<HQ',1,42)),player(42,'Own')])
++        self.assertIsNone(state['character_uid']['value'])
++
++    def test_currencies_partial_daily_and_absolute_update(self):
++        name='Own'.encode('utf-16le'); tail=bytearray(1057)
++        for kind,value in ((19,100),(20,200),(11,3),(58,40),(55,10),(56,20),(57,30)):
++            struct.pack_into('<q',tail,22+(kind-1)*8,value)
++        frame=record(0x0305,struct.pack('<QH',42,3)+name+tail)
++        state=dashboard.snapshot([record(0x0202,struct.pack('<HQ',0,42)),frame])
++        self.assertEqual(state['android_junkyard']['value']['remaining_seconds'],300)
++        self.assertIsNone(state['daily_missions']['value']['completed'])
++        self.assertEqual(state['daily_missions']['value']['instant_completed'],3)
++        dashboard.consume(state,record(0x0407,struct.pack('<HIq',0,20,40),2))
++        self.assertEqual(state['android_junkyard']['value']['remaining_seconds'],140)
++        self.assertIsNone(state['public_mining_field']['value']['remaining_seconds'])
++
++    def test_biosuit_rover_location_and_scoped_cp(self):
++        state=dashboard.snapshot([record(0x0202,struct.pack('<HQ',0,42))])
++        dashboard.consume(state,record(0x1304,struct.pack('<HIQB',0,2075041,0,0)))
++        self.assertEqual(state['class']['value'],'Arbiter')
++        dashboard.consume(state,record(0x1403,struct.pack('<HIB',0,4400011,0)))
++        self.assertEqual(state['rover']['value'],4400011)
++        teleport=bytearray(43);struct.pack_into('<I',teleport,22,101)
++        dashboard.consume(state,record(0x0325,teleport))
++        self.assertEqual(state['location']['value']['map_index'],101)
++        cp=bytearray(786);struct.pack_into('<Q',cp,772,123456)
++        event=record(0x0401,cp);event['service_port']=12010
++        dashboard.consume(state,event);self.assertIsNone(state['cp']['value'])
++        event['account_scoped']=True;dashboard.consume(state,event)
++        self.assertEqual(state['cp']['value'],123456)
++
++    def test_display_durations_and_unknowns(self):
++        text=dashboard.display_value('public_mining_field',{'default_seconds':3661,'charged_by_faction':{'accretia':None,'cora':0}})
++        self.assertIn('01:01:01',text);self.assertIn('Accretia: Não observado',text);self.assertIn('Cora: 00:00:00',text)
++        self.assertNotIn('None',text);self.assertNotIn('{',text)
++        self.assertIn('instantâneas: Não observado',dashboard.display_value('daily_missions',{'limit':10}))
++        self.assertEqual(dashboard.display_value('location',{'map_index':5,'position':[1,2,3]}),'Mapa 5 · X 1.0, Y 2.0, Z 3.0')
++
++if __name__=='__main__': unittest.main()
+diff --git a/tests/test_desktop_shell.py b/tests/test_desktop_shell.py
+index 1941964..805304d 100644
+--- a/tests/test_desktop_shell.py
++++ b/tests/test_desktop_shell.py
+@@ -19,6 +19,7 @@ class Variable:
+ class Widget:
+     all = []
+     def __init__(self, parent=None, **kwargs):
++        self.parent = parent
+         self.options = kwargs
+         self.bindings = {}
+         self.tabs = []
+@@ -63,7 +64,7 @@ class ShellTests(unittest.TestCase):
+         with patch.object(shell, "ttk", fake_ttk), patch.object(shell.tk, "Canvas", Widget), patch.object(shell.tk, "StringVar", Variable), patch.object(shell.font, "families", return_value=("Segoe UI",)), patch.object(shell.font, "Font", side_effect=lambda **kw: Widget(**kw)):
+             shell.build(app)
+         self.assertEqual(tuple(app.pages), shell.PAGES)
+-        self.assertEqual(app.page_title.get(), "Captura")
++        self.assertEqual(app.page_title.get(), "Dashboard")
+         self.assertEqual(app.upload_status.get(), "Aguardando envio")
+         self.assertTrue(any(w.options.get("textvariable") is app.mode_status["market"] for w in Widget.all))
+         self.assertTrue(any(w.options.get("textvariable") is app.upload_status for w in Widget.all))
+@@ -93,6 +94,38 @@ class ShellTests(unittest.TestCase):
+             shell.apply_font_size(app, "not a number")
+         self.assertEqual(app.font_size.get(), "8")
+ 
++    def test_profile_container_dashboard_values_and_no_global_stop(self):
++        Widget.all = []
++        app = self.make_app()
++        app.container = Widget(app.root)
++        app.profile_label = "Conta Alpha · 123"
++        name, diamonds, meta = Variable("Personagem Alpha"), Variable("0"), Variable("Último valor conhecido · 12:00")
++        app.dashboard_values = {"character_name": name, "diamonds": diamonds}
++        app.dashboard_meta = meta
++        fake_ttk = SimpleNamespace(**{key: Widget for key in ("Frame Label LabelFrame Button Entry Combobox Checkbutton Notebook Treeview Scrollbar Progressbar Panedwindow").split()}, Style=lambda root: Mock())
++        with patch.object(shell, "ttk", fake_ttk), patch.object(shell.tk, "Canvas", Widget), patch.object(shell.tk, "StringVar", Variable), patch.object(shell.font, "families", return_value=("Arial Rounded MT Bold",)), patch.object(shell.font, "Font", side_effect=lambda **kw: Widget(**kw)):
++            shell.build(app)
++        self.assertEqual(tuple(app.pages), ("Dashboard", "Captura", "Ranking", "Mercado", "Compras", "Configuração"))
++        self.assertEqual(len([w for w in Widget.all if w.parent is app.container]), 2)
++        self.assertEqual([w for w in Widget.all if w.parent is app.root], [app.container])
++        self.assertIs(app.dashboard_values["character_name"], name)
++        self.assertIs(app.dashboard_values["diamonds"], diamonds)
++        self.assertIs(app.dashboard_meta, meta)
++        self.assertEqual(app.dashboard_values["diamonds"].get(), "0")
++        expected = {"character_name", "character_uid", "diamonds", "class", "biosuit", "rover", "level", "cp", "daily_missions", "android_junkyard", "secret_nemesis_base", "public_mining_field", "exclusive_mining_field", "location"}
++        self.assertEqual(set(app.dashboard_values), expected)
++        for key in expected - {"character_name", "diamonds"}:
++            self.assertEqual(app.dashboard_values[key].get(), "Não observado")
++        for value in app.dashboard_values.values():
++            self.assertTrue(any(w.options.get("textvariable") is value for w in Widget.all))
++        self.assertEqual(app.profile_label_var.get(), app.profile_label)
++        self.assertTrue(any(w.options.get("textvariable") is app.profile_label_var for w in Widget.all))
++        self.assertEqual(app.stop_button.options["text"], "Parar esta conta")
++        app.stop_button.options["command"]()
++        app._stop.assert_called_once()
++        self.assertFalse(any(w.options.get("text") == "Parar tudo" for w in Widget.all))
++        self.assertEqual(app.ui_fonts["body"].options["family"], "Arial Rounded MT Bold")
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_multiconta.py b/tests/test_multiconta.py
+new file mode 100644
+index 0000000..f310bc9
+--- /dev/null
++++ b/tests/test_multiconta.py
+@@ -0,0 +1,156 @@
++"""Two real worker threads, fake transport, no Tk window or game connection."""
++import copy
++import json
++import queue
++import struct
++import tempfile
++import threading
++import unittest
++from pathlib import Path
++from types import SimpleNamespace
++from unittest.mock import Mock, patch
++
++from rfnext_market.account_ui import AccountWindow
++from rfnext_market.accounts import AccountStore, AccountRegistry
++from rfnext_market.desktop import DesktopApp
++from rfnext_market import desktop, dashboard
++
++
++class MultiAccountTests(unittest.TestCase):
++    def setUp(self):
++        self.folder = tempfile.TemporaryDirectory()
++        self.addCleanup(self.folder.cleanup)
++        self.host = AccountWindow.__new__(AccountWindow)
++        self.host.store = AccountStore(self.folder.name)
++        self.host.registry = AccountRegistry()
++        self.host.apps = {}
++
++    def app(self, account):
++        profile = self.host.store.create(account, session={"account_id": account})
++        app = DesktopApp.__new__(DesktopApp)
++        app.manager = self.host; app.profile_id = profile["id"]; app.profile = profile
++        app.profile_label = account; app.data_dir = Path(profile["path"])
++        app._closing = False; app._finished = True; app.closed = False; app.purchase_running = False
++        app.worker = None; app.mode_threads = {}; app.mode_stops = {}; app.mode_results = {}
++        app.heartbeat_service = SimpleNamespace(worker=None, stop=Mock())
++        app.mode_intervals = {mode: Mock(get=lambda: "5") for mode in ("market", "rankings", "complete")}
++        app.mode_continuous = {mode: Mock(get=lambda: False) for mode in app.mode_intervals}
++        app.mode_buttons = {mode: Mock() for mode in app.mode_intervals}
++        app.mode_status = {mode: Mock() for mode in app.mode_intervals}
++        app._current_config = lambda: {"credentials": {"account_id": account}, "world_id": 3}
++        app._validate_config = copy.deepcopy
++        app._reset_progress = Mock()
++        app._queue = queue.Queue(); app._control_queue = queue.SimpleQueue(); app._dropped_records = 0
++        self.host.apps[app.profile_id] = app
++        return app
++
++    def test_two_running_accounts_selection_and_stop_are_isolated(self):
++        a, b = self.app("A"), self.app("B")
++        entered = {name: threading.Event() for name in ("A", "B")}
++        owners = {}
++        def run(config, emit, stop, *args, **kwargs):
++            account = config["credentials"]["account_id"]
++            owners[account] = kwargs["heartbeat"]
++            entered[account].set()
++            stop.wait(3)
++            emit({"record_type": "completion", "status": "cancelled", "account": account})
++            return {"status": "cancelled"}
++        with patch.object(desktop.complete, "run", side_effect=run):
++            a._start_mode("market"); b._start_mode("rankings")
++            try:
++                self.assertTrue(entered["A"].wait(1)); self.assertTrue(entered["B"].wait(1))
++                self.host.selected = b.profile_id
++                a._stop_mode("market")
++                a.mode_threads["market"].join(1)
++                self.assertTrue(b.mode_threads["rankings"].is_alive())
++                self.assertFalse(b.mode_stops["rankings"].is_set())
++                event = a._control_queue.get()
++                self.assertEqual(event[1]["profile_id"], a.profile_id)
++                self.assertEqual(event[1]["account"], "A")
++                self.assertIs(owners["A"], a.heartbeat_service)
++                self.assertIs(owners["B"], b.heartbeat_service)
++            finally:
++                for app in (a, b):
++                    for stop in app.mode_stops.values(): stop.set()
++                    for worker in app.mode_threads.values(): worker.join(2)
++
++    def test_duplicate_identity_and_mutated_live_config_are_rejected(self):
++        a, b = self.app("A"), self.app("A")
++        self.host.authorize(a, a._current_config())
++        a.worker = Mock(is_alive=lambda: True)
++        with self.assertRaisesRegex(ValueError, "outro perfil"):
++            self.host.authorize(b, b._current_config())
++        changed = a._current_config(); changed["world_id"] = 4
++        with self.assertRaisesRegex(ValueError, "alterados"):
++            self.host.authorize(a, changed)
++        a.worker = None
++        changed["credentials"]["account_id"] = "B"
++        with self.assertRaisesRegex(ValueError, "outra conta"):
++            self.host.authorize(a, changed)
++
++    def test_purchase_files_and_dashboard_never_follow_selected_profile(self):
++        a, b = self.app("A"), self.app("B")
++        request = dict(exchange_server_type=0, exchange_index=5, pc_id=9, selling_price=11, item_index=1002, enchant_level=0)
++        a._purchase_store().add(request, 1, "Item", "capture-A")
++        self.assertEqual(b._purchase_store().items(), [])
++        self.host.selected = b.profile_id
++        self.host.render_dashboard = Mock()
++        payload = struct.pack("<HQ", 0, 123)
++        frame = bytes([0]) + (6 + len(payload)).to_bytes(2, "little") + bytes([0]) + bytes.fromhex("0202") + payload
++        self.host.observe(a, ("record", {"record_type": "frame", "direction": "server_to_client", "service_port": 12020, "decoded_hex": frame.hex()}))
++        self.assertEqual(a.dashboard_snapshot["character_uid"]["value"], "123")
++        self.assertFalse(hasattr(b, "dashboard_snapshot"))
++        self.host.render_dashboard.assert_called_once_with(a)
++
++    def test_profile_close_does_not_destroy_shared_tk(self):
++        a = self.app("A")
++        a.root = Mock(); a._closing = True
++        a._drain_queue()
++        self.assertTrue(a.closed)
++        a.root.destroy.assert_not_called()
++
++    def test_pending_events_block_session_changes_and_shutdown_blocks_new_work(self):
++        app = self.app("A")
++        app._queue.put(("record", {"record_type": "frame"}))
++        self.assertTrue(app.is_busy())
++        with patch.object(desktop.messagebox, "showinfo"):
++            self.assertFalse(app._allow_config_change())
++        app._closing = True
++        app._fetch_shopping()
++        app._retry_upload()
++        self.assertIsNone(app.worker)
++        self.assertFalse(hasattr(app, "shopping_worker"))
++
++    def test_state_paths_stay_on_latest_generation(self):
++        app = self.app("A")
++        session = self.host.store.load(app.profile_id)["session_file"]
++        app.config_path = Mock(); app.session_path = Mock(); app._load_values = Mock()
++        self.host.save_config(app, {"session_file": session, "world_id": 4})
++        profile = self.host.store.load(app.profile_id)
++        self.assertEqual(app.config_path.set.call_args.args[0], profile["config_file"])
++        self.assertEqual(app.session_path.set.call_args.args[0], profile["session_file"])
++        self.assertEqual(app.config_document["world_id"], 4)
++
++    def test_failed_dashboard_save_can_close_or_wait_for_explicit_retry(self):
++        for discard in (False, True):
++            app = self.app("save-test")
++            app.closed = True; app.dashboard_dirty = True; app.dashboard_snapshot = dashboard.empty()
++            app.status = Mock()
++            self.host.apps = {app.profile_id: app}
++            self.host.root = Mock(); self.host.closing = True; self.host.import_worker = None
++            self.host.import_queue = queue.SimpleQueue(); self.host.update_context = Mock()
++            with patch.object(Path, "write_text", side_effect=OSError("disk unavailable")), patch.object(desktop.messagebox, "askyesno", return_value=discard) as confirm:
++                self.host.tick()
++                self.assertEqual(confirm.call_count, 1)
++                if discard:
++                    self.host.root.destroy.assert_called_once()
++                else:
++                    self.host.tick()
++                    self.assertEqual(confirm.call_count, 1)
++                    self.host.root.destroy.assert_not_called()
++                    self.host.close()
++                    self.assertFalse(app.dashboard_save_blocked)
++
++
++if __name__ == "__main__":
++    unittest.main()
