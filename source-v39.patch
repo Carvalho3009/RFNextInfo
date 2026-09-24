@@ -1,0 +1,73 @@
+diff --git a/rfnext_market/account_ui.py b/rfnext_market/account_ui.py
+index 9ba0af2..afa41c9 100644
+--- a/rfnext_market/account_ui.py
++++ b/rfnext_market/account_ui.py
+@@ -25,7 +25,7 @@ class AccountWindow:
+         self.closing = False
+         self.import_worker = None
+         self.import_queue = queue.SimpleQueue()
+-        self.root.title("RF Next Companion · v38")
++        self.root.title("RF Next Companion · v39")
+         self.root.geometry("1280x860")
+         self.root.minsize(1050, 700)
+         self.root.configure(background="#202326")
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index 93ac05d..1c3613f 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -200,7 +200,7 @@ class DesktopApp:
+         self.profile_label = profile["name"] if profile else "Conta atual"
+         self.data_dir = Path(profile["path"]) if profile else Path(__file__).resolve().parent.parent
+         self.closed = False
+-        self.root.title("RF Next Companion · v38")
++        self.root.title("RF Next Companion · v39")
+         if manager is None:
+             self.root.minsize(1050, 700)
+             self.root.geometry("1280x820")
+diff --git a/rfnext_market/desktop_shell.py b/rfnext_market/desktop_shell.py
+index cfe95eb..648b8e9 100644
+--- a/rfnext_market/desktop_shell.py
++++ b/rfnext_market/desktop_shell.py
+@@ -184,7 +184,7 @@ def build(app):
+     app.profile_label_var = tk.StringVar(value=profile)
+     label = ttk.Label(header, textvariable=app.profile_label_var, style="Muted.TLabel", wraplength=640)
+     label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+-    label.bind("<Configure>", lambda event: label.configure(wraplength=max(80, event.width)))
++    label.bind("<Configure>", lambda event, target=label: target.configure(wraplength=max(80, event.width)))
+     app.stop_button = ttk.Button(header, text="Parar esta conta", command=app._stop)
+     app.stop_button.grid(row=0, column=1, sticky="e", padx=(12, 0))
+     heartbeat_state = ttk.Label(header, textvariable=app.mode_status["heartbeat"], style="Muted.TLabel", wraplength=640)
+@@ -209,7 +209,7 @@ def build(app):
+         page.grid(row=0, column=0, sticky="nsew")
+         buttons[name] = ttk.Button(sidebar, text=name, style="Nav.TButton", command=lambda n=name: show_page(n))
+         buttons[name].pack(fill="x", pady=4)
+-    ttk.Label(sidebar, text="CLIENTE · v38", style="Sidebar.TLabel").pack(side="bottom", anchor="w", padx=16)
++    ttk.Label(sidebar, text="CLIENTE · v39", style="Sidebar.TLabel").pack(side="bottom", anchor="w", padx=16)
+     app.status = tk.StringVar(value="Pronto. Nenhuma conexão foi aberta.")
+     ttk.Label(body, textvariable=app.status, style="Muted.TLabel", wraplength=900).pack(fill="x", pady=(14, 0))
+ 
+diff --git a/tests/test_desktop_shell.py b/tests/test_desktop_shell.py
+index 805304d..c000aa4 100644
+--- a/tests/test_desktop_shell.py
++++ b/tests/test_desktop_shell.py
+@@ -38,6 +38,20 @@ class Widget:
+ 
+ 
+ class ShellTests(unittest.TestCase):
++    def test_resize_callbacks_after_build_keep_their_widget(self):
++        Widget.all = []
++        app = self.make_app()
++        fake_ttk = SimpleNamespace(**{name: Widget for name in ("Frame Label LabelFrame Button Entry Combobox Checkbutton Notebook Treeview Scrollbar Progressbar Panedwindow").split()}, Style=lambda root: Mock())
++        with patch.object(shell, "ttk", fake_ttk), patch.object(shell.tk, "Canvas", Widget), patch.object(shell.tk, "StringVar", Variable), patch.object(shell.font, "families", return_value=("Segoe UI",)), patch.object(shell.font, "Font", side_effect=lambda **kw: Widget(**kw)):
++            shell.build(app)
++        profile_label = next(w for w in Widget.all if w.options.get("textvariable") is app.profile_label_var)
++        callbacks = [(w, w.bindings["<Configure>"]) for w in Widget.all if "<Configure>" in w.bindings]
++        self.assertGreater(len(callbacks), 10)
++        for width in (640, 40):
++            for widget, callback in callbacks:
++                callback(SimpleNamespace(widget=widget, width=width))
++            self.assertEqual(profile_label.options["wraplength"], max(80, width))
++
+     def make_app(self):
+         app = SimpleNamespace(root=Widget(), ui_font_size=14)
+         callbacks = ("_stop _start _start_rankings _start_complete _stop_mode _start_heartbeat _retry_upload "
