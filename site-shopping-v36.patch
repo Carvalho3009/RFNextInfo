@@ -1,0 +1,244 @@
+--- a/app/main.py
++++ b/app/main.py
+@@ -563,6 +563,26 @@
+             server_time=_server_time(),
+         ))
+ 
++    @app.post("/api/qol/v1/agent/shopping/sync")
++    async def sync_agent_shopping(request: Request):
++        signed_request = await signed_agent_request(request, 4 * 1024)
++        payload = _json(signed_request["body"])
++        if payload != {"schema": "rf-qol.shopping-sync/v1"}:
++            raise ApiError(400, "invalid_shopping_sync", "Sincronização inválida.")
++        try:
++            result = await run_in_threadpool(
++                store.sync_shopping_list,
++                signed_request["installation_id"], signed_request["key_id"],
++                signed_request["nonce"],
++                nonce_retention_seconds=settings.timestamp_tolerance_seconds * 2,
++                server_time=_server_time(),
++            )
++        except ContractError as error:
++            if error.code in {"registration_required", "installation_not_active", "pairing_required"}:
++                raise ApiError(403, error.code, str(error)) from error
++            raise
++        return JSONResponse(result)
++
+     @app.post("/api/qol/v1/ingest/batches")
+     @app.post("/api/qol/v1/alts/batches")
+     async def ingest(request: Request):
+--- a/app/storage.py
++++ b/app/storage.py
+@@ -3404,6 +3404,69 @@
+             "server_time": server_time,
+         }
+ 
++    def sync_shopping_list(
++        self, installation_id: str, key_id: str, nonce: str, *,
++        nonce_retention_seconds: int, server_time: str,
++    ) -> dict[str, Any]:
++        """Read the linked owner's active shopping list; never execute purchases."""
++        now_ns = _now_ns()
++        cutoff_ns = now_ns - nonce_retention_seconds * 1_000_000_000
++        with self.session() as database:
++            database.execute("BEGIN IMMEDIATE")
++            installation = database.execute(
++                "SELECT key_id,status,owner_user_id FROM installations WHERE installation_id=?"
++                + (" FOR UPDATE" if self.is_postgres else ""),
++                (installation_id,),
++            ).fetchone()
++            if installation is None or installation["key_id"] != key_id:
++                raise ContractError("registration_required", "Instalação não registrada.")
++            if installation["status"] != "active":
++                raise ContractError("installation_not_active", "Instalação não autorizada.")
++            if installation["owner_user_id"] is None:
++                raise ContractError("pairing_required", "Vincule a instalação à sua conta no Companion.")
++            try:
++                database.execute(
++                    """INSERT INTO request_nonces
++                       (installation_id,key_id,nonce,seen_ns) VALUES(?,?,?,?)""",
++                    (installation_id, key_id, nonce, now_ns),
++                )
++            except INTEGRITY_ERRORS as error:
++                raise ContractError("replayed_request", "Nonce já utilizado.") from error
++            database.execute("DELETE FROM request_nonces WHERE seen_ns < ?", (cutoff_ns,))
++            rows = database.execute(
++                """SELECT shopping_id,item_index,item_name,enhance,
++                          quantity-COALESCE(bought_quantity,0) AS remaining_quantity,
++                          planned_unit_price,updated_ns
++                   FROM shopping_list_items
++                   WHERE user_id=? AND status='active'
++                     AND quantity>COALESCE(bought_quantity,0)
++                   ORDER BY priority,created_ns,shopping_id""",
++                (installation["owner_user_id"],),
++            ).fetchall()
++            items = [{
++                "shopping_id": str(row["shopping_id"]),
++                "item_index": int(row["item_index"]),
++                "name": str(row["item_name"]),
++                "enchant_level": int(row["enhance"]),
++                "remaining_quantity": int(row["remaining_quantity"]),
++                "reference_unit_price": (
++                    int(row["planned_unit_price"]) if row["planned_unit_price"] is not None else None
++                ),
++                "updated_at": (
++                    datetime.fromtimestamp(row["updated_ns"] / 1_000_000_000, timezone.utc).isoformat()
++                    if row["updated_ns"] is not None else None
++                ),
++            } for row in rows]
++            database.execute(
++                "UPDATE installations SET last_seen_ns=? WHERE installation_id=?",
++                (now_ns, installation_id),
++            )
++            database.commit()
++        return {
++            "schema": "rf-qol.shopping-sync/v1", "installation_id": installation_id,
++            "server_time": server_time, "items": items,
++        }
++
+     def sync_character_profiles(
+         self, installation_id: str, key_id: str, nonce: str, *,
+         nonce_retention_seconds: int, server_time: str, limit: int = 128,
+--- /dev/null
++++ b/tests/test_agent_shopping_sync.py
+@@ -0,0 +1,140 @@
++import tempfile
++import unittest
++from datetime import datetime
++from pathlib import Path
++from unittest.mock import patch
++
++from fastapi.testclient import TestClient
++
++from app.config import Settings
++from app.main import create_app
++from tests.test_ingest import Identity
++
++
++PATH = "/api/qol/v1/agent/shopping/sync"
++REQUEST = {"schema": "rf-qol.shopping-sync/v1"}
++
++
++class AgentShoppingSyncTest(unittest.TestCase):
++    def setUp(self):
++        self.folder = tempfile.TemporaryDirectory()
++        self.client = TestClient(create_app(Settings(
++            database_path=Path(self.folder.name) / "test.sqlite3",
++            registration_status="active",
++        )))
++        self.client.__enter__()
++        self.store = self.client.app.state.store
++        self.owner = self.store.create_user("buyer", "senha-segura", "viewer")
++        self.other = self.store.create_user("other", "senha-segura", "viewer")
++        self.identity = Identity()
++        response = self.client.post(
++            "/api/qol/v1/installations/register", json=self.identity.registration()
++        )
++        self.assertEqual(response.status_code, 202, response.text)
++        self.store.assign_installation_owner(self.identity.installation_id, self.owner)
++
++    def tearDown(self):
++        self.client.__exit__(None, None, None)
++        self.folder.cleanup()
++
++    def post(self, payload=None, identity=None):
++        body, headers = (identity or self.identity).signed_payload(
++            PATH, REQUEST if payload is None else payload
++        )
++        return self.client.post(PATH, content=body, headers=headers)
++
++    def test_owner_only_active_remaining_and_nonce_replay(self):
++        # Above JavaScript's exact integer range: the wire ID must stay a string.
++        shopping_id = 9007199254740993
++        with self.store.session() as db:
++            for offset, user, status, quantity, bought, price in (
++                (0, self.owner, "active", 5, 2, 11),
++                (1, self.owner, "active", 1, 0, None),
++                (2, self.other, "active", 7, 0, 3),
++                (3, self.owner, "paused", 7, 0, 3),
++                (4, self.owner, "bought", 7, 0, 3),
++                (5, self.owner, "active", 2, 2, 3),
++                (6, self.owner, "active", 1, 2, 3),
++            ):
++                db.execute(
++                    """INSERT INTO shopping_list_items
++                       (shopping_id,user_id,item_index,item_name,enhance,quantity,
++                        status,bought_quantity,planned_unit_price,created_ns,updated_ns)
++                       VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
++                    (shopping_id + offset, user, 1000078, "Specter +6", 6,
++                     quantity, status, bought, price, 1, 1_000_000_000),
++                )
++            before = [tuple(row) for row in db.execute("SELECT * FROM shopping_list_items")]
++            db.commit()
++        body, headers = self.identity.signed_payload(PATH, REQUEST)
++        response = self.client.post(PATH, content=body, headers=headers)
++        self.assertEqual(response.status_code, 200, response.text)
++        result = response.json()
++        self.assertEqual(set(result), {"schema", "installation_id", "server_time", "items"})
++        self.assertEqual(result["schema"], REQUEST["schema"])
++        self.assertEqual(result["installation_id"], self.identity.installation_id)
++        datetime.fromisoformat(result["server_time"].replace("Z", "+00:00"))
++        self.assertEqual(result["items"], [{
++            "shopping_id": str(shopping_id + offset), "item_index": 1000078,
++            "name": "Specter +6", "enchant_level": 6,
++            "remaining_quantity": remaining, "reference_unit_price": price,
++            "updated_at": "1970-01-01T00:00:01+00:00",
++        } for offset, remaining, price in ((0, 3, 11), (1, 1, None))])
++        repeated = self.client.post(PATH, content=body, headers=headers)
++        self.assertEqual(repeated.status_code, 422)
++        self.assertEqual(repeated.json()["error"], "replayed_request")
++        with self.store.session() as db:
++            self.assertEqual(before, [tuple(row) for row in db.execute("SELECT * FROM shopping_list_items")])
++            self.assertEqual(db.execute("SELECT COUNT(*) FROM request_nonces").fetchone()[0], 1)
++
++    def test_authentication_owner_and_exact_contract_required(self):
++        self.assertEqual(self.post().json()["items"], [])
++        for payload in ({}, [], {**REQUEST, "user_id": self.other}, {"schema": "wrong"}):
++            self.assertEqual(self.post(payload).status_code, 400)
++        self.assertEqual(self.post(identity=Identity()).status_code, 403)
++        body, headers = self.identity.signed_payload(PATH, REQUEST)
++        headers["X-RFQOL-Signature"] = "A" * 86
++        self.assertEqual(self.client.post(PATH, content=body, headers=headers).status_code, 401)
++        with self.store.session() as db:
++            db.execute("UPDATE installations SET owner_user_id=NULL")
++            db.commit()
++        response = self.post()
++        self.assertEqual(response.status_code, 403)
++        self.assertEqual(response.json()["error"], "pairing_required")
++        for status in ("pending", "revoked"):
++            with self.store.session() as db:
++                db.execute("UPDATE installations SET status=?", (status,))
++                db.commit()
++            self.assertEqual(self.post().status_code, 403)
++
++    def test_revocation_or_key_change_between_signature_and_read_rolls_back(self):
++        original = self.store.installation
++        def change_after_auth(installation_id, key_id):
++            row = original(installation_id, key_id)
++            with self.store.session() as db:
++                db.execute(change)
++                db.commit()
++            return row
++
++        for change, error in (
++            ("UPDATE installations SET status='revoked'", "installation_not_active"),
++            ("UPDATE installations SET owner_user_id=NULL", "pairing_required"),
++            ("UPDATE installations SET key_id='changed'", "registration_required"),
++        ):
++            with self.subTest(error=error):
++                with self.store.session() as db:
++                    db.execute(
++                        "UPDATE installations SET status='active',owner_user_id=?,key_id=?",
++                        (self.owner, self.identity.key_id),
++                    )
++                    db.commit()
++                with patch.object(self.store, "installation", side_effect=change_after_auth):
++                    response = self.post()
++                self.assertEqual(response.status_code, 403, response.text)
++                self.assertEqual(response.json()["error"], error)
++                with self.store.session() as db:
++                    self.assertEqual(db.execute("SELECT COUNT(*) FROM request_nonces").fetchone()[0], 0)
++
++
++if __name__ == "__main__":
++    unittest.main()

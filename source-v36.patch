@@ -1,0 +1,1048 @@
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index 78bde80..a420d68 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -16,7 +16,7 @@ from pathlib import Path
+ import tkinter as tk
+ from tkinter import filedialog, messagebox, ttk, simpledialog
+ 
+-from . import dump, report, session, upload, complete, purchase
++from . import dump, report, session, upload, complete, purchase, presentation
+ 
+ class PurchaseDialog(simpledialog.Dialog):
+     def body(self, master):
+@@ -192,8 +192,9 @@ def upload_status_text(value):
+ class DesktopApp:
+     def __init__(self, root: tk.Tk):
+         self.root = root
+-        self.root.title("RF Next — consultas v35")
+-        self.root.minsize(900, 560)
++        self.root.title("RF Next Companion · v36")
++        self.root.minsize(1050, 700)
++        self.root.geometry("1280x820")
+         self.config_document = {}
+         self.config_path = tk.StringVar()
+         self.session_path = tk.StringVar()
+@@ -232,18 +233,46 @@ class DesktopApp:
+         self._tree_order = deque()
+         self._tree_records = {}
+         self._last_selected_tree = None
++        self.market_result = None
++        self.capture_ref = None
++        self.shopping_snapshot = None
++        self.proposals = []
++        self.shopping_reservations = {}
++        self.active_proposal = None
++        self.shopping_worker = None
++        self.shopping_stop = threading.Event()
+         self._build()
+         self.root.protocol("WM_DELETE_WINDOW", self._close)
+         self.root.after(50, self._drain_queue)
+ 
+     def _build(self):
+-        files = ttk.LabelFrame(self.root, text="Arquivos locais")
++        style = ttk.Style(self.root)
++        style.theme_use("clam")
++        style.configure(".", font=("Segoe UI", 10), background="#f3f5f8", foreground="#1d2b3a")
++        style.configure("TButton", padding=(12, 7))
++        style.configure("TNotebook.Tab", padding=(22, 10))
++        style.configure("Treeview", background="white", fieldbackground="white", rowheight=30)
++        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), padding=7)
++        style.map("Treeview", background=[("selected", "#185c87")], foreground=[("selected", "white")])
++        style.configure("Title.TLabel", font=("Segoe UI", 20, "bold"))
++        header = ttk.Frame(self.root, padding=(20, 12))
++        header.pack(fill="x")
++        ttk.Label(header, text="RF Next Companion", style="Title.TLabel").pack(side="left")
++        ttk.Label(header, textvariable=self.mode_status["heartbeat"]).pack(side="right")
++        self.navigation = ttk.Notebook(self.root)
++        self.navigation.pack(fill="both", expand=True, padx=16, pady=8)
++        self.pages = {}
++        for name in ("Mercado", "Rankings", "Compras", "Configurações", "Diagnóstico"):
++            page = ttk.Frame(self.navigation, padding=12)
++            self.pages[name] = page
++            self.navigation.add(page, text=name)
++        files = ttk.LabelFrame(self.pages["Configurações"], text="Arquivos locais")
+         files.pack(fill="x", padx=8, pady=8)
+         self._file_row(files, 0, "Configuração", self.config_path, self._choose_config, False)
+         self._file_row(files, 1, "Sessão", self.session_path, self._choose_session, True)
+         self._file_row(files, 2, "Base de itens", self.item_database, self._choose_items, True)
+ 
+-        settings = ttk.LabelFrame(self.root, text="Configurações editáveis")
++        settings = ttk.LabelFrame(self.pages["Configurações"], text="Configurações editáveis")
+         settings.pack(fill="x", padx=8, pady=(0, 8))
+         fields = (
+             ("auth_host", "Login host"), ("auth_port", "Login porta"),
+@@ -258,26 +287,30 @@ class DesktopApp:
+                 row=row * 2 + 1, column=col, sticky="ew", padx=5, pady=(0, 4))
+             settings.columnconfigure(col, weight=1)
+ 
+-        actions = ttk.Frame(self.root)
++        actions = ttk.Frame(self.pages["Configurações"])
+         actions.pack(fill="x", padx=8, pady=(0, 8))
+         self.open_button = ttk.Button(actions, text="Abrir configuração", command=self._choose_config)
+         self.open_button.pack(side="left")
+         ttk.Button(actions, text="Salvar configuração", command=self._save_config).pack(side="left", padx=5)
+         ttk.Button(actions, text="Validar", command=self._validate).pack(side="left")
+-        controls = ttk.LabelFrame(self.root, text="Consultas independentes")
++        controls = ttk.LabelFrame(self.pages["Mercado"], text="Coleta e consulta completa")
+         controls.pack(fill="x", padx=8, pady=5)
+         self.mode_buttons = {}
+         for row, (mode, label, command) in enumerate((("market", "Consultar mercado", self._start),
+                 ("rankings", "Consultar rankings", self._start_rankings),
+                 ("complete", "Consulta completa", self._start_complete))):
+-            button = ttk.Button(controls, text=label, command=command)
++            target = self.pages["Rankings"] if mode == "rankings" else controls
++            if mode == "rankings":
++                target = ttk.Frame(target)
++                target.pack(fill="x", pady=8)
++            button = ttk.Button(target, text=label, command=command)
+             button.grid(row=row, column=0, sticky="ew")
+             self.mode_buttons[mode] = button
+-            ttk.Checkbutton(controls, text="Continuamente", variable=self.mode_continuous[mode]).grid(row=row, column=1)
+-            ttk.Label(controls, text="Intervalo após encerrar (min)").grid(row=row, column=2)
+-            ttk.Entry(controls, textvariable=self.mode_intervals[mode], width=6).grid(row=row, column=3)
+-            ttk.Button(controls, text="Parar", command=lambda m=mode: self._stop_mode(m)).grid(row=row, column=4)
+-            ttk.Label(controls, textvariable=self.mode_status[mode]).grid(row=row, column=5, sticky="w", padx=8)
++            ttk.Checkbutton(target, text="Continuamente", variable=self.mode_continuous[mode]).grid(row=row, column=1)
++            ttk.Label(target, text="Intervalo após encerrar (min)").grid(row=row, column=2)
++            ttk.Entry(target, textvariable=self.mode_intervals[mode], width=6).grid(row=row, column=3)
++            ttk.Button(target, text="Parar", command=lambda m=mode: self._stop_mode(m)).grid(row=row, column=4)
++            ttk.Label(target, textvariable=self.mode_status[mode]).grid(row=row, column=5, sticky="w", padx=8)
+         self.start_button = self.mode_buttons["market"]
+         self.rankings_button = self.mode_buttons["rankings"]
+         self.complete_button = self.mode_buttons["complete"]
+@@ -285,16 +318,18 @@ class DesktopApp:
+         self.heartbeat_button.grid(row=3, column=0, sticky="ew")
+         ttk.Button(controls, text="Parar heartbeat", command=lambda: self._stop_mode("heartbeat")).grid(row=3, column=4)
+         ttk.Label(controls, textvariable=self.mode_status["heartbeat"]).grid(row=3, column=5, sticky="w", padx=8)
+-        self.stop_button = ttk.Button(actions, text="Parar tudo", command=self._stop)
+-        self.stop_button.pack(side="left")
+-        self.purchase_button = ttk.Button(actions, text="Comprar: nova conexão", command=self._start_purchase)
+-        self.purchase_button.pack(side="left", padx=5)
+-        self.purchase_heartbeat_button = ttk.Button(actions, text="Comprar: heartbeat ativo", command=lambda: self._start_purchase(True))
+-        self.purchase_heartbeat_button.pack(side="left", padx=5)
+-        ttk.Button(actions, text="Inspecionar selecionada", command=self._inspect_selected).pack(side="right", padx=5)
+-        ttk.Button(actions, text="Exportar log completo", command=self._export).pack(side="right")
+-
+-        companion = ttk.LabelFrame(self.root, text="Companion")
++        self.stop_button = ttk.Button(header, text="Parar tudo", command=self._stop)
++        self.stop_button.pack(side="right", padx=12)
++        self.purchase_button = ttk.Button(self.pages["Compras"], text="Comprar: nova conexão", command=self._start_purchase)
++        self.purchase_button.pack(anchor="w", pady=4)
++        self.purchase_heartbeat_button = ttk.Button(self.pages["Compras"], text="Comprar: heartbeat ativo", command=lambda: self._start_purchase(True))
++        self.purchase_heartbeat_button.pack(anchor="w", pady=4)
++        diagnostic_actions = ttk.Frame(self.pages["Diagnóstico"])
++        diagnostic_actions.pack(fill="x", pady=8)
++        ttk.Button(diagnostic_actions, text="Inspecionar selecionada", command=self._inspect_selected).pack(side="left", padx=5)
++        ttk.Button(diagnostic_actions, text="Exportar log completo", command=self._export).pack(side="left")
++
++        companion = ttk.LabelFrame(self.pages["Configurações"], text="Companion")
+         companion.pack(fill="x", padx=8, pady=(0, 8))
+         ttk.Checkbutton(companion, text="Enviar ao Companion", variable=self.companion_enabled).grid(row=0, column=0, padx=5)
+         ttk.Label(companion, text="Servidor (HTTPS)").grid(row=0, column=1)
+@@ -307,7 +342,7 @@ class DesktopApp:
+         self.progress_bars = {}
+         self.progress_labels = {}
+         for key, title in (("read", "Leitura"), ("upload", "Envio ao site"), ("market:read", "Mercado: leitura"), ("market:upload", "Mercado: envio"), ("rankings:read", "Rankings: leitura"), ("rankings:upload", "Rankings: envio")):
+-            frame = ttk.Frame(self.root)
++            frame = ttk.Frame(self.pages["Rankings"] if key.startswith("rankings:") else self.pages["Mercado"])
+             frame.pack(fill="x", padx=8, pady=(0, 5))
+             label = tk.StringVar(value=f"{title}: aguardando")
+             ttk.Label(frame, textvariable=label, width=52).pack(side="left")
+@@ -315,15 +350,256 @@ class DesktopApp:
+             bar.pack(side="left", fill="x", expand=True)
+             self.progress_bars[key] = bar
+             self.progress_labels[key] = label
+-        panes = ttk.Panedwindow(self.root, orient="horizontal")
++        panes = ttk.Panedwindow(self.pages["Diagnóstico"], orient="horizontal")
+         panes.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+         self.tx = self._log_pane(panes, "Mensagens enviadas (TX)")
+         self.rx = self._log_pane(panes, "Mensagens recebidas / eventos (RX)")
+         panes.add(self.tx[0], weight=1)
+         panes.add(self.rx[0], weight=1)
++        self._build_results()
+         self.status = tk.StringVar(value="Pronto. Nenhuma conexão foi aberta.")
+         ttk.Label(self.root, textvariable=self.status, anchor="w").pack(fill="x", padx=8, pady=(0, 8))
+ 
++    @staticmethod
++    def _table(parent, columns):
++        frame = ttk.Frame(parent)
++        frame.pack(fill="both", expand=True, pady=8)
++        tree = ttk.Treeview(frame, columns=[key for key, _, _ in columns], show="headings", selectmode="browse")
++        for key, title, width in columns:
++            tree.heading(key, text=title)
++            tree.column(key, width=width, minwidth=60, anchor="w", stretch=key in ("produto", "name"))
++        vertical = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
++        horizontal = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
++        tree.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
++        tree.grid(row=0, column=0, sticky="nsew")
++        vertical.grid(row=0, column=1, sticky="ns")
++        horizontal.grid(row=1, column=0, sticky="ew")
++        frame.rowconfigure(0, weight=1)
++        frame.columnconfigure(0, weight=1)
++        return tree
++
++    def _build_results(self):
++        page = self.pages["Mercado"]
++        filters = ttk.Frame(page)
++        filters.pack(fill="x", pady=8)
++        self.market_scope = tk.StringVar(value="Local")
++        self.market_search = tk.StringVar()
++        self.market_refine = tk.StringVar(value="Todos")
++        ttk.Label(filters, text="Mercado").pack(side="left")
++        selector = ttk.Combobox(filters, textvariable=self.market_scope, values=("Local", "Global"), state="readonly", width=10)
++        selector.pack(side="left", padx=8)
++        ttk.Label(filters, text="Buscar produto ou ID").pack(side="left")
++        ttk.Entry(filters, textvariable=self.market_search, width=32).pack(side="left", padx=8)
++        ttk.Label(filters, text="Refino").pack(side="left")
++        ttk.Combobox(filters, textvariable=self.market_refine, values=("Todos", *map(str, range(21))), width=6).pack(side="left", padx=8)
++        self.capture_status = tk.StringVar(value="Nenhuma captura disponível. Execute uma consulta de mercado.")
++        ttk.Label(page, textvariable=self.capture_status, wraplength=1000).pack(anchor="w")
++        tables = ttk.Notebook(page)
++        tables.pack(fill="both", expand=True, pady=8)
++        offers_page, summary_page = ttk.Frame(tables), ttk.Frame(tables)
++        tables.add(offers_page, text="Ofertas detalhadas")
++        tables.add(summary_page, text="Produtos consultados")
++        self.summary_table = self._table(summary_page, (("produto", "Produto", 260), ("item_index", "Item ID", 100),
++            ("ofertas", "Ofertas recebidas", 120), ("menor_preco", "Menor preço informado", 150),
++            ("maior_preco", "Maior preço informado", 150), ("quantidade_total", "Quantidade", 100), ("status", "Estado", 140)))
++        self.market_table = self._table(offers_page, (("produto", "Produto", 230), ("enchant_level", "Refino", 65),
++            ("quantidade", "Qtd. no lote", 95), ("selling_price", "Preço informado", 105),
++            ("seller", "Vendedor", 170), ("pc_id", "PCID", 170), ("exchange_index", "Oferta", 170),
++            ("registered_time", "Postagem (UTC)", 180), ("expired_time", "Expiração (UTC)", 180)))
++        self.market_scope.trace_add("write", lambda *_: self._render_market())
++        self.market_search.trace_add("write", lambda *_: self._render_market())
++        self.market_refine.trace_add("write", lambda *_: self._render_market())
++        self.ranking_status = tk.StringVar(value="Nenhuma consulta de ranking disponível.")
++        ttk.Label(self.pages["Rankings"], textvariable=self.ranking_status).pack(anchor="w", pady=8)
++        self.ranking_table = self._table(self.pages["Rankings"], (("kind", "Ranking", 100), ("rank", "Posição", 70),
++            ("name", "Personagem", 230), ("guild", "Guilda", 150), ("uid", "Character UID", 180),
++            ("value", "EXP / Contribuição", 180), ("status", "Estado", 100)))
++        page = self.pages["Compras"]
++        ttk.Separator(page).pack(fill="x", pady=10)
++        actions = ttk.Frame(page)
++        actions.pack(fill="x")
++        ttk.Button(actions, text="Receber lista do site", command=self._fetch_shopping).pack(side="left")
++        self.shopping_market = tk.StringVar(value="Local")
++        ttk.Combobox(actions, textvariable=self.shopping_market, values=("Local", "Global"), state="readonly", width=10).pack(side="left", padx=8)
++        ttk.Button(actions, text="Preparar ofertas", command=self._prepare_shopping).pack(side="left")
++        ttk.Label(page, text="A lista prepara lotes inteiros para revisão. Preço de referência não é um limite. Cada compra exige confirmação.", wraplength=1000).pack(anchor="w", pady=8)
++        self.shopping_status = tk.StringVar(value="Receba a lista do site e consulte o mercado antes de preparar ofertas.")
++        ttk.Label(page, textvariable=self.shopping_status, wraplength=1050).pack(anchor="w")
++        shopping_tabs = ttk.Notebook(page)
++        shopping_tabs.pack(fill="both", expand=True, pady=8)
++        list_page, proposal_page = ttk.Frame(shopping_tabs), ttk.Frame(shopping_tabs)
++        shopping_tabs.add(list_page, text="Lista recebida")
++        shopping_tabs.add(proposal_page, text="Ofertas preparadas")
++        self.shopping_tabs = shopping_tabs
++        self.shopping_list_table = self._table(list_page, (("name", "Produto", 250), ("refine", "Refino", 80),
++            ("remaining", "Pendente no site", 150), ("reference", "Referência / un.", 130), ("updated", "Atualizado em", 190)))
++        self.proposal_table = self._table(proposal_page, (("name", "Produto", 220), ("quantity", "Qtd. no lote", 95),
++            ("price", "Preço informado", 105), ("reference", "Referência / un.", 115), ("market", "Mercado", 80),
++            ("pcid", "PCID", 170), ("offer", "Oferta", 170), ("state", "Estado", 110)))
++        actions = ttk.Frame(proposal_page)
++        actions.pack(fill="x")
++        ttk.Button(actions, text="Comprar selecionada: nova conexão", command=lambda: self._buy_proposal(False)).pack(side="left", padx=4)
++        ttk.Button(actions, text="Comprar selecionada: heartbeat ativo", command=lambda: self._buy_proposal(True)).pack(side="left", padx=4)
++
++    def _show_capture(self, result, mode):
++        if not hasattr(self, "market_table"):
++            return
++        # A repeated mode_done event refers to the same completed cycle.
++        if mode in ("market", "complete") and result is not self.market_result:
++            from uuid import uuid4
++            self.market_result = result
++            self.capture_ref = uuid4().hex
++            self.capture_time = datetime.now().astimezone().isoformat(timespec="seconds")
++            self.proposals = []
++            self._render_proposals()
++            self.shopping_status.set("Nova captura: prepare novamente as ofertas da lista. " + self._reservation_text())
++            self._render_market()
++        if result.get("rankings"):
++            self.ranking_table.delete(*self.ranking_table.get_children())
++            rows = presentation.ranking_rows(result)
++            for row in rows:
++                self.ranking_table.insert("", "end", values=row)
++            statuses = "; ".join(f"{name}: {presentation.status_text(snapshot.get('status', 'Sem dados'))}" for name, snapshot in result["rankings"].items())
++            self.ranking_status.set(f"{datetime.now().astimezone().strftime('%d/%m/%Y %H:%M:%S')} · {len(rows)} personagens · {statuses}")
++
++    def _render_market(self):
++        result = self.market_result or {}
++        market = 0 if self.market_scope.get() == "Local" else 1
++        self.market_table.delete(*self.market_table.get_children())
++        rows = presentation.market_rows(result, market, self.market_search.get(), self.market_refine.get())
++        for row in rows:
++            self.market_table.insert("", "end", values=tuple(row.get(key) or ("Sem dados" if key.endswith("_time") else row.get(key, "")) for key in self.market_table["columns"]))
++        self.summary_table.delete(*self.summary_table.get_children())
++        query = self.market_search.get().strip().casefold()
++        for row in report.summary_rows([i for i in result.get("items", []) if i.get("exchange_server_type") == market]):
++            if not query or query in (str(row["produto"]) + " " + str(row["item_index"])).casefold():
++                row["status"] = presentation.status_text(row["status"])
++                self.summary_table.insert("", "end", values=tuple(row[key] for key in self.summary_table["columns"]))
++        if self.market_result is not None:
++            self.capture_status.set(f"{self.capture_time} · {presentation.market_summary(result, market)} · {len(rows)} ofertas exibidas. " + result.get("diagnostic", ""))
++
++    def _fetch_shopping(self):
++        if self.shopping_worker and self.shopping_worker.is_alive():
++            return
++        try:
++            companion = self._companion_config().get("companion")
++            if companion is None:
++                raise ValueError("Ative o Companion em Configurações e use a instalação vinculada ao site.")
++        except (OSError, ValueError, TypeError) as exc:
++            messagebox.showerror("Lista de compras", str(exc))
++            return
++        self.shopping_snapshot = None
++        self.proposals = []
++        if hasattr(self, "shopping_list_table"):
++            self.shopping_list_table.delete(*self.shopping_list_table.get_children())
++        self._render_proposals()
++        self.shopping_stop.clear()
++        self.shopping_status.set("Recebendo lista do site...")
++        def work():
++            from . import shopping
++            snapshot, error = None, None
++            try:
++                snapshot = shopping.fetch(companion, stop_event=self.shopping_stop)
++            except Exception as exc:
++                error = f"Não foi possível receber a lista: {exc}"
++            self._control_queue.put(("shopping_done", snapshot, error))
++        self.shopping_worker = threading.Thread(target=work, name="shopping-sync", daemon=True)
++        self.shopping_worker.start()
++
++    def _prepare_shopping(self):
++        from . import shopping
++        if self.shopping_snapshot is None or self.market_result is None:
++            messagebox.showinfo("Preparar ofertas", "Receba a lista do site e conclua uma consulta de mercado primeiro.")
++            return
++        try:
++            prepared = shopping.prepare(self._unreserved_snapshot(), self.market_result, self.capture_ref,
++                                        market=0 if self.shopping_market.get() == "Local" else 1)
++        except (ValueError, TypeError, KeyError) as exc:
++            messagebox.showerror("Preparar ofertas", str(exc))
++            return
++        attempted = getattr(self, "attempted_offers", set())
++        self.proposals = prepared["proposals"]
++        for proposal in self.proposals:
++            if self._offer_key(proposal) in attempted:
++                proposal["status"] = "attempted"
++        self._render_proposals()
++        if hasattr(self, "shopping_tabs"):
++            self.shopping_tabs.select(1)
++        unresolved = "; ".join(f"{r['name']}: {r['reason']} ({r['remaining_quantity']} restantes)" for r in prepared["unresolved"])
++        self.shopping_status.set(f"{len(self.proposals)} ofertas preparadas. {self._reservation_text()} " + unresolved)
++
++    def _unreserved_snapshot(self):
++        snapshot = copy.deepcopy(self.shopping_snapshot)
++        for item in snapshot["items"]:
++            item["remaining_quantity"] = max(0, item["remaining_quantity"] -
++                getattr(self, "shopping_reservations", {}).get(item["shopping_id"], 0))
++        snapshot["items"] = [item for item in snapshot["items"] if item["remaining_quantity"] > 0]
++        return snapshot
++
++    def _proposal_available(self, proposal):
++        for item in (self.shopping_snapshot or {}).get("items", []):
++            if item["shopping_id"] == proposal["shopping_id"]:
++                reserved = getattr(self, "shopping_reservations", {}).get(item["shopping_id"], 0)
++                return item["remaining_quantity"] - reserved >= proposal["quantity"]
++        return False
++
++    def _reservation_text(self):
++        total = sum(getattr(self, "shopping_reservations", {}).values())
++        return f"Reserva local: {total} unidade(s) compradas ou aguardando confirmação; lista do site não alterada."
++
++    def _finish_proposal(self, result, error):
++        proposal = getattr(self, "active_proposal", None)
++        if proposal is None:
++            return
++        outcome = (result or {}).get("status", "unconfirmed")
++        no_purchase = not error and (outcome in ("blocked", "rejected") or
++            (outcome == "cancelled" and (result or {}).get("diagnostic") in
++             ("Cancelado antes do envio", "Compra cancelada antes do envio")))
++        if no_purchase:
++            key = proposal["shopping_id"]
++            self.shopping_reservations[key] = max(0, self.shopping_reservations.get(key, 0) - proposal["quantity"])
++        proposal["status"] = outcome if not error else "unconfirmed"
++        proposal["diagnostic"] = error or (result or {}).get("diagnostic", "")
++        self.active_proposal = None
++        self._render_proposals()
++        self.shopping_status.set(f"{proposal['name']}: {presentation.status_text(proposal['status'])}. {self._reservation_text()}")
++
++    @staticmethod
++    def _offer_key(proposal):
++        request = proposal["request"]
++        return request["exchange_server_type"], request["exchange_index"]
++
++    def _render_proposals(self):
++        self.proposal_table.delete(*self.proposal_table.get_children())
++        for index, proposal in enumerate(self.proposals):
++            request = proposal["request"]
++            self.proposal_table.insert("", "end", iid=str(index), values=(proposal["name"], proposal["quantity"],
++                request["selling_price"], proposal.get("reference_unit_price") if proposal.get("reference_unit_price") is not None else "Sem dados",
++                "Local" if request["exchange_server_type"] == 0 else "Global", str(request["pc_id"]), str(request["exchange_index"]),
++                presentation.status_text(proposal["status"])))
++
++    def _buy_proposal(self, use_heartbeat):
++        selected = self.proposal_table.selection()
++        if not selected:
++            messagebox.showinfo("Compra", "Selecione uma oferta preparada.")
++            return
++        proposal = self.proposals[int(selected[0])]
++        if proposal["capture_ref"] != self.capture_ref or proposal["status"] != "prepared" or not self._proposal_available(proposal):
++            messagebox.showinfo("Compra", "Oferta desatualizada ou já tentada. Consulte o resultado no diagnóstico.")
++            return
++        if self._start_purchase(use_heartbeat, request=copy.deepcopy(proposal["request"]), proposal=proposal):
++            proposal["status"] = "attempted"
++            if not hasattr(self, "shopping_reservations"):
++                self.shopping_reservations = {}
++            key = proposal["shopping_id"]
++            self.shopping_reservations[key] = self.shopping_reservations.get(key, 0) + proposal["quantity"]
++            self.active_proposal = proposal
++            self.shopping_status.set(self._reservation_text())
++            if not hasattr(self, "attempted_offers"):
++                self.attempted_offers = set()
++            self.attempted_offers.add(self._offer_key(proposal))
++            self._render_proposals()
++
+     @staticmethod
+     def _file_row(parent, row, label, variable, command, readonly):
+         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=5, pady=3)
+@@ -532,9 +808,11 @@ class DesktopApp:
+         except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Não foi possível iniciar", str(exc))
+ 
+-    def _start_purchase(self, use_heartbeat=False):
++    def _start_purchase(self, use_heartbeat=False, request=None, proposal=None):
++        if getattr(self, "purchase_running", False):
++            return
+         service = getattr(self, "heartbeat_service", None)
+-        if (self._closing or any(w.is_alive() for w in self.mode_threads.values())
++        if (self._closing or getattr(self, "purchase_running", False) or any(w.is_alive() for w in self.mode_threads.values())
+                 or (self.worker and self.worker.is_alive())
+                 or (not use_heartbeat and service and service.worker and service.worker.is_alive())):
+             messagebox.showinfo("Compra", "Pare as consultas e o heartbeat antes da compra manual.")
+@@ -542,18 +820,27 @@ class DesktopApp:
+         if use_heartbeat and (service is None or not service.ready.is_set() or service.ended.is_set() or service.stop_event.is_set()):
+             messagebox.showinfo("Compra", "Inicie o heartbeat e aguarde as três confirmações.")
+             return
+-        request = PurchaseDialog(self.root, "Compra manual de uma oferta").result
++        if request is None:
++            request = PurchaseDialog(self.root, "Compra manual de uma oferta").result
+         if request is None:
+             return
+         try:
++            purchase.build(request)
+             loaded = {} if use_heartbeat else self._validate_config(self._current_config())
+         except (OSError, ValueError, TypeError) as exc:
+             messagebox.showerror("Compra", str(exc))
+             return
+         preview = ("Conexão do heartbeat ativo" if use_heartbeat else "Nova conexão autenticada") + "\n" + "\n".join(f"{key}: {value}" for key, value in request.items())
++        if proposal is not None:
++            preview = f"{proposal['name']} · {proposal['quantity']} unidade(s) no lote\n" + preview
+         if not messagebox.askyesno("Confirmar compra", preview +
+                 "\n\nEnviar uma compra desta oferta com esse preço?\nNão haverá repetição automática."):
+             return
++        if proposal is not None and (proposal.get("capture_ref") != self.capture_ref
++                or not any(p is proposal for p in self.proposals) or proposal.get("status") != "prepared"
++                or not self._proposal_available(proposal)):
++            messagebox.showinfo("Compra", "A captura ou lista mudou durante a confirmação. Prepare novamente as ofertas.")
++            return
+         loaded = copy.deepcopy(loaded)
+         loaded.update(manual_purchase=request, initialize_character=True, heartbeat_only=False,
+                       rankings=False, rankings_only=False)
+@@ -575,6 +862,7 @@ class DesktopApp:
+                 self._control_queue.put(("purchase_done", result, error))
+         self.worker = threading.Thread(target=work, name="purchase", daemon=True)
+         self.worker.start()
++        return True
+ 
+     def _start_mode(self, mode):
+         if self._closing or getattr(self, "purchase_running", False):
+@@ -682,6 +970,7 @@ class DesktopApp:
+             getattr(self, "heartbeat_worker", None) and self.heartbeat_worker.is_alive()) or bool(
+             getattr(self, "rankings_worker", None) and self.rankings_worker.is_alive()) or bool(
+             getattr(self, "complete_worker", None) and self.complete_worker.is_alive())
++        worker_alive = worker_alive or bool(getattr(self, "shopping_worker", None) and self.shopping_worker.is_alive())
+         worker_alive = worker_alive or any(w.is_alive() for w in getattr(self, "mode_threads", {}).values())
+         service = getattr(self, "heartbeat_service", None)
+         worker_alive = worker_alive or bool(service and service.worker and service.worker.is_alive())
+@@ -692,8 +981,22 @@ class DesktopApp:
+         self.root.after(50, self._drain_queue)
+ 
+     def _handle_event(self, event):
++        if event[0] == "shopping_done":
++            _, snapshot, error = event
++            self.shopping_status.set(error or f"{len(snapshot['items'])} itens recebidos do site. {self._reservation_text()} Prepare as ofertas para revisar.")
++            if snapshot is not None:
++                self.shopping_snapshot = snapshot
++                if hasattr(self, "shopping_list_table"):
++                    self.shopping_list_table.delete(*self.shopping_list_table.get_children())
++                    for item in snapshot["items"]:
++                        self.shopping_list_table.insert("", "end", values=(item["name"], item["enchant_level"], item["remaining_quantity"],
++                            item.get("reference_unit_price") if item.get("reference_unit_price") is not None else "Sem dados", item.get("updated_at") or "Sem dados"))
++            self.proposals = []
++            self._render_proposals()
++            return
+         if event[0] == "purchase_done":
+             _, result, error = event
++            self._finish_proposal(result, error)
+             self.purchase_running = False
+             self._finished = True
+             self.purchase_button.configure(state="normal")
+@@ -710,6 +1013,7 @@ class DesktopApp:
+             if result is not None:
+                 self.result = result
+                 self.mode_results[mode] = result
++                self._show_capture(result, mode)
+             self.mode_buttons[mode].configure(state="normal")
+             summary = (result or {}).get("diagnostic") or (result or {}).get("status", "")
+             self.mode_status[mode].set(error or ("Encerrado: " + summary))
+@@ -736,13 +1040,14 @@ class DesktopApp:
+             if record.get("result") is not None:
+                 self.result = record["result"]
+                 self.mode_results[mode] = self.result
++                self._show_capture(self.result, mode)
+             return
+         if event[0] == "complete_done":
+             if event[1] is not None:
+                 self.result = event[1]
+             for button in (self.complete_button, self.start_button, self.rankings_button, self.heartbeat_button, self.retry_button):
+                 button.configure(state="normal")
+-            self.stop_button.configure(state="disabled")
++            self.stop_button.configure(state="normal")
+             self.status.set(event[2] or "Consulta completa encerrada")
+             return
+         if event[0] == "progress":
+@@ -768,7 +1073,7 @@ class DesktopApp:
+         elif event[0] == "collected":
+             self.result = event[1]
+             if self.result.get("connection", {}).get("status") == "open":
+-                self.stop_button.configure(text="Desconectar", state="normal")
++                self.stop_button.configure(text="Parar tudo", state="normal")
+                 suffix = "; " + upload_status_text(self.result["upload"]) if "upload" in self.result else ""
+                 self.status.set("Coleta concluída; conexão aberta" + suffix)
+         elif event[0] == "upload_done":
+@@ -777,7 +1082,7 @@ class DesktopApp:
+             if hasattr(self, "heartbeat_button"):
+                 self.heartbeat_button.configure(state="normal")
+             self.retry_button.configure(state="normal")
+-            self.stop_button.configure(state="disabled")
++            self.stop_button.configure(state="normal")
+             self.status.set(upload_status_text(event[1]))
+ 
+     def _append_record(self, record, summary=None):
+@@ -813,7 +1118,7 @@ class DesktopApp:
+             self.heartbeat_button.configure(state="normal")
+         if hasattr(self, "retry_button"):
+             self.retry_button.configure(state="normal")
+-        self.stop_button.configure(text="Parar", state="disabled")
++        self.stop_button.configure(text="Parar tudo", state="normal")
+         if error:
+             self.status.set(f"Erro local: {type(error).__name__}: {error}")
+         else:
+@@ -825,6 +1130,8 @@ class DesktopApp:
+             self.status.set(f"Finalizado: {status}; {diagnostic}{suffix}")
+ 
+     def _stop(self):
++        if hasattr(self, "shopping_stop"):
++            self.shopping_stop.set()
+         for stop in getattr(self, "mode_stops", {}).values():
+             stop.set()
+         if getattr(self, "heartbeat_service", None):
+@@ -866,6 +1173,8 @@ class DesktopApp:
+         self.worker.start()
+ 
+     def _close(self):
++        if hasattr(self, "shopping_stop"):
++            self.shopping_stop.set()
+         for stop in getattr(self, "mode_stops", {}).values():
+             stop.set()
+         if getattr(self, "heartbeat_service", None):
+@@ -933,6 +1242,12 @@ class DesktopApp:
+             return
+         try:
+             records = list(self.records)
++            if getattr(self, "shopping_snapshot", None) is not None:
++                records.append({"record_type": "shopping_snapshot", "snapshot": self.shopping_snapshot})
++            if getattr(self, "shopping_reservations", None):
++                records.append({"record_type": "shopping_reservations", "quantities": self.shopping_reservations})
++            for proposal in getattr(self, "proposals", []):
++                records.append({"record_type": "purchase_proposal", **proposal})
+             records.extend(getattr(self, "operation_events", ()))
+             omitted = getattr(self, "_dropped_records", 0)
+             if omitted:
+diff --git a/rfnext_market/presentation.py b/rfnext_market/presentation.py
+new file mode 100644
+index 0000000..d1ec8ad
+--- /dev/null
++++ b/rfnext_market/presentation.py
+@@ -0,0 +1,40 @@
++"""Read-only table projections. Large identifiers remain decimal text."""
++from . import report, rankings
++
++
++def status_text(value):
++    return {"completed": "Concluída", "incomplete": "Parcial", "failed": "Falhou", "cancelled": "Cancelada",
++            "prepared": "Preparada", "attempted": "Tentativa realizada", "confirmed": "Confirmada",
++            "unconfirmed": "Sem confirmação", "blocked": "Bloqueada", "rejected": "Rejeitada", "com_ofertas": "Com ofertas", "sem_ofertas": "Sem ofertas", "ausente": "Ausente", "erro": "Erro"}.get(value, value)
++
++
++def market_rows(result, market=0, query="", refine="Todos"):
++    query = query.strip().casefold()
++    items = [i for i in result.get("items", []) if i.get("exchange_server_type") == market]
++    names = rankings.seller_names(result)
++    rows = []
++    for row in report.offer_rows(items):
++        if query and query not in (str(row["produto"]) + " " + str(row["item_index"])).casefold():
++            continue
++        if refine != "Todos" and str(row["enchant_level"]) != refine.strip():
++            continue
++        row["seller"] = names.get(row["pc_id"], "Vendedor não informado")
++        rows.append(row)
++    return rows
++
++
++def market_summary(result, market):
++    rows = report.summary_rows([i for i in result.get("items", []) if i.get("exchange_server_type") == market])
++    if not rows:
++        return "Sem produtos recebidos para este mercado"
++    return f"{len(rows)} produtos · {sum(r['ofertas'] for r in rows)} ofertas · {status_text(result.get('status', 'Sem dados'))}"
++
++
++def ranking_rows(result):
++    rows = []
++    for name, snapshot in result.get("rankings", {}).items():
++        for entry in snapshot.get("records", []):
++            rows.append((name, entry.get("rank", ""), entry.get("character_name", ""),
++                         entry.get("guild_name", ""), str(entry.get("character_uid", "")),
++                         entry.get("total_exp", entry.get("contribution", "")), status_text(snapshot.get("status", ""))))
++    return rows
+diff --git a/rfnext_market/shopping.py b/rfnext_market/shopping.py
+new file mode 100644
+index 0000000..a9c72fb
+--- /dev/null
++++ b/rfnext_market/shopping.py
+@@ -0,0 +1,119 @@
++"""Lista do Companion e propostas locais; preparar nunca envia ao jogo."""
++import hashlib
++import secrets
++import uuid
++from datetime import datetime, timezone
++
++from . import purchase, report, upload
++
++SCHEMA = "rf-qol.shopping-sync/v1"
++PATH = "/api/qol/v1/agent/shopping/sync"
++
++
++def validate(snapshot):
++    if not isinstance(snapshot, dict) or snapshot.get("schema") != SCHEMA:
++        raise ValueError("Formato da lista de compras incompatível")
++    if not isinstance(snapshot.get("server_time"), str):
++        raise ValueError("Lista sem horário de leitura")
++    items = snapshot.get("items")
++    if not isinstance(items, list) or len(items) > 10000:
++        raise ValueError("Lista de compras inválida ou muito grande")
++    seen = set()
++    for item in items:
++        if not isinstance(item, dict):
++            raise ValueError("Item da lista inválido")
++        identity = item.get("shopping_id")
++        if not isinstance(identity, str) or not identity.isascii() or not identity.isdecimal() or int(identity) <= 0 or identity in seen:
++            raise ValueError("Identificador da lista inválido ou repetido")
++        seen.add(identity)
++        for field, maximum, minimum in (("item_index", 2**32-1, 1), ("enchant_level", 65535, 0),
++                                         ("remaining_quantity", 2**63-1, 1)):
++            upload._integer(item.get(field), maximum, field, minimum)
++        if not isinstance(item.get("name"), str):
++            raise ValueError("Nome do produto inválido")
++        if item.get("reference_unit_price") is not None:
++            upload._integer(item["reference_unit_price"], 2**64-1, "reference_unit_price")
++        if item.get("updated_at") is not None and not isinstance(item["updated_at"], str):
++            raise ValueError("Horário do item inválido")
++    return snapshot
++
++
++def fetch(config_companion, stop_event=None):
++    options = upload.validate_config({"companion": config_companion})
++    if options is None:
++        raise ValueError("Configure o vínculo com o Companion")
++    # A mesma identidade protegida do envio; nunca criar um segundo vínculo.
++    with upload._UPLOAD_LOCK:
++        with upload._database(options) as db:
++            registration, key = upload._identity(db, options)
++    body = upload._json({"schema": SCHEMA})
++    request_id, timestamp, nonce = str(uuid.uuid4()), upload._now(), secrets.token_hex(16)
++    digest = hashlib.sha256(body).hexdigest()
++    signed = "\n".join(("POST", PATH, request_id, timestamp, nonce, digest)).encode()
++    headers = {
++        "Idempotency-Key": request_id, "X-RFQOL-Installation-ID": registration["installation_id"],
++        "X-RFQOL-Key-ID": registration["key_id"], "X-RFQOL-Timestamp": timestamp,
++        "X-RFQOL-Nonce": nonce, "X-RFQOL-Body-SHA256": digest,
++        "X-RFQOL-Signature": upload._b64(key.sign(b"RFQOL-INGEST-V1\0" + signed)),
++    }
++    snapshot = upload._post(options, PATH, body, headers, stop_event=stop_event)
++    validate(snapshot)
++    if snapshot.get("installation_id") != registration["installation_id"]:
++        raise ValueError("Lista recebida pertence a outra instalação")
++    return snapshot
++
++
++def prepare(snapshot, result, capture_ref, market=0):
++    validate(snapshot)
++    if not isinstance(capture_ref, str) or not capture_ref.strip():
++        raise ValueError("Selecione uma captura identificada")
++    if type(market) is not int or market not in (0, 1):
++        raise ValueError("Selecione Mercado Local ou Global")
++    candidates, duplicates = {}, set()
++    now = datetime.now(timezone.utc)
++    for row in report.offer_rows(result.get("items", [])):
++        if type(row["exchange_server_type"]) is not int or row["exchange_server_type"] != market:
++            continue
++        try:
++            request = {"exchange_server_type": market, "item_index": row["item_index"],
++                       "enchant_level": row["enchant_level"], "selling_price": row["selling_price"]}
++            for field in ("exchange_index", "pc_id"):
++                raw = row[field]
++                if not isinstance(raw, str) or not raw.isascii() or not raw.isdecimal():
++                    raise ValueError("ID inválido")
++                request[field] = int(raw)
++            payload = purchase.build(request)
++            quantity = upload._integer(row["quantidade"], 2**64-1, "quantidade", 1)
++            if row["lock"] or row["broken"]:
++                continue
++            if row["expired_time"] and datetime.fromisoformat(row["expired_time"]) <= now:
++                continue
++        except (ValueError, TypeError, KeyError):
++            continue
++        identity = request["exchange_index"]
++        candidate = (request, quantity, payload.hex())
++        if identity in candidates and candidates[identity] != candidate:
++            duplicates.add(identity)
++        candidates[identity] = candidate
++    ordered = sorted((c for key, c in candidates.items() if key not in duplicates),
++                     key=lambda c: (c[0]["selling_price"], c[0]["exchange_index"]))
++    proposals, unresolved, used = [], [], set()
++    for item in snapshot["items"]:
++        remaining = item["remaining_quantity"]
++        for request, quantity, payload in ordered:
++            if (request["exchange_index"] in used or request["item_index"] != item["item_index"]
++                    or request["enchant_level"] != item["enchant_level"] or quantity > remaining):
++                continue
++            proposals.append({"shopping_id": item["shopping_id"], "name": item["name"],
++                              "quantity": quantity, "reference_unit_price": item.get("reference_unit_price"),
++                              "capture_ref": capture_ref, "request": dict(request),
++                              "payload_hex": payload, "status": "prepared"})
++            used.add(request["exchange_index"])
++            remaining -= quantity
++            if not remaining:
++                break
++        if remaining:
++            unresolved.append({"shopping_id": item["shopping_id"], "name": item["name"],
++                               "remaining_quantity": remaining,
++                               "reason": "Sem oferta detalhada compatível para lote inteiro nesta captura/mercado"})
++    return {"proposals": proposals, "unresolved": unresolved}
+diff --git a/tests/test_product_ui.py b/tests/test_product_ui.py
+new file mode 100644
+index 0000000..0768279
+--- /dev/null
++++ b/tests/test_product_ui.py
+@@ -0,0 +1,212 @@
++"""UI data and callbacks, without opening or controlling a graphical window."""
++import copy
++import queue
++import threading
++import unittest
++from unittest.mock import Mock, patch
++
++from rfnext_market import desktop, presentation, shopping
++from tests.test_purchase import REQUEST
++
++
++def result():
++    return {"status": "incomplete", "diagnostic": "Global sem resposta", "items": [
++        {"exchange_server_type": market, "produto": "Rifle", "item_index": REQUEST["item_index"],
++         "status": "com_ofertas", "offers": [{"exchange_index": REQUEST["exchange_index"],
++            "pc_id": REQUEST["pc_id"], "selling_price": REQUEST["selling_price"],
++            "item_info": {"index": REQUEST["item_index"], "count": 1, "enchant_level": 0}}]}
++        for market in (0, 1)]}
++
++
++def proposal():
++    return {"shopping_id": "1", "name": "Rifle", "quantity": 1, "request": dict(REQUEST), "status": "prepared", "capture_ref": "capture"}
++
++
++class ProductUITest(unittest.TestCase):
++    def test_purchase_waits_until_previous_result_is_processed(self):
++        app=desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app.purchase_running=True
++        with patch.object(desktop, "PurchaseDialog") as dialog, patch.object(desktop.session, "run") as run:
++            app._start_purchase(True,request=REQUEST)
++            dialog.assert_not_called()
++            run.assert_not_called()
++
++    def test_navigation_build_keeps_callbacks_separate_without_display(self):
++        from contextlib import ExitStack
++        with ExitStack() as stack:
++            constructors = {}
++            for name in ("Style", "Frame", "Label", "Notebook", "LabelFrame", "Entry", "Button", "Checkbutton", "Progressbar", "Panedwindow", "Scrollbar", "Treeview", "Combobox", "Separator"):
++                constructors[name] = stack.enter_context(patch.object(desktop.ttk, name))
++            stack.enter_context(patch.object(desktop.tk, "StringVar"))
++            stack.enter_context(patch.object(desktop.tk, "BooleanVar"))
++            app = desktop.DesktopApp(Mock())
++            self.assertEqual(list(app.pages), ["Mercado", "Rankings", "Compras", "Configurações", "Diagnóstico"])
++            commands = {call.kwargs.get("text"): call.kwargs.get("command") for call in constructors["Button"].call_args_list}
++            app._start_mode = Mock()
++            commands["Consultar mercado"]()
++            commands["Consultar rankings"]()
++            commands["Consulta completa"]()
++            self.assertEqual([call.args for call in app._start_mode.call_args_list], [("market",), ("rankings",), ("complete",)])
++            app._start_purchase = Mock()
++            commands["Comprar: heartbeat ativo"]()
++            app._start_purchase.assert_called_once_with(True)
++            app.shopping_stop.clear()
++            commands["Parar tudo"]()
++            self.assertTrue(app.shopping_stop.is_set())
++
++    def test_projection_scope_search_and_exact_identifiers(self):
++        rows = presentation.market_rows(result(), 0, "RIFLE")
++        self.assertEqual(len(rows), 1)
++        self.assertEqual(rows[0]["pc_id"], str(REQUEST["pc_id"]))
++        self.assertEqual(rows[0]["exchange_index"], str(REQUEST["exchange_index"]))
++        self.assertEqual(rows[0]["seller"], "Vendedor não informado")
++        self.assertEqual(rows[0]["exchange_server_type"], 0)
++        self.assertEqual(presentation.market_rows(result(), 0, refine="6"), [])
++        self.assertEqual(presentation.market_rows(result(), 1, "absent"), [])
++        self.assertIn("Parcial", presentation.market_summary(result(), 1))
++        self.assertIn("Sem produtos", presentation.market_summary({}, 0))
++        ranks = presentation.ranking_rows({"rankings": {"exp": {"status": "incomplete", "records": [
++            {"character_uid": 2**63+7, "rank": 1, "character_name": "Carlos", "total_exp": 123}]}}})
++        self.assertEqual(ranks[0][4], str(2**63+7))
++        self.assertEqual(ranks[0][-1], "Parcial")
++
++    def app(self):
++        app = desktop.DesktopApp.__new__(desktop.DesktopApp)
++        app.capture_ref = "capture"
++        app.shopping_snapshot = {"items": [{"shopping_id": "1", "remaining_quantity": 1}]}
++        app.proposals = [proposal()]
++        app.proposal_table = Mock()
++        app.proposal_table.selection.return_value = ("0",)
++        app._render_proposals = Mock()
++        app.shopping_status = Mock()
++        return app
++
++    def test_selected_purchase_modes_and_no_repeat(self):
++        for mode in (False, True):
++            app = self.app()
++            app._start_purchase = Mock(return_value=True)
++            app._buy_proposal(mode)
++            app._start_purchase.assert_called_once_with(mode, request=REQUEST, proposal=app.proposals[0])
++            self.assertEqual(app.proposals[0]["status"], "attempted")
++            with patch.object(desktop.messagebox, "showinfo"):
++                app._buy_proposal(mode)
++            self.assertEqual(app._start_purchase.call_count, 1)
++
++    def test_cancel_and_stale_proposal_send_nothing(self):
++        app = self.app()
++        app._start_purchase = Mock(return_value=None)
++        app._buy_proposal(True)
++        self.assertEqual(app.proposals[0]["status"], "prepared")
++        app.capture_ref = "new"
++        with patch.object(desktop.messagebox, "showinfo"):
++            app._buy_proposal(True)
++        self.assertEqual(app._start_purchase.call_count, 1)
++
++    def test_prepare_passes_explicit_market_and_never_executes(self):
++        app = self.app()
++        app.shopping_snapshot = {"items": []}
++        app.market_result = result()
++        app.shopping_market = Mock(); app.shopping_market.get.return_value = "Global"
++        app._start_purchase = Mock()
++        with patch.object(shopping, "prepare", return_value={"proposals": [], "unresolved": []}) as prepare:
++            app._prepare_shopping()
++            prepare.assert_called_once_with(app.shopping_snapshot, app.market_result, "capture", market=1)
++        app._start_purchase.assert_not_called()
++
++    def test_reservation_survives_capture_and_site_refresh_then_releases_only_proven_failure(self):
++        from tests.test_shopping import snapshot, capture
++        for outcome, error, reserved in (("confirmed", None, 1), ("unconfirmed", None, 1),
++                ("failed", "broken pipe", 1), ("blocked", None, 0), ("rejected", None, 0),
++                ("cancelled", None, 1)):
++            with self.subTest(outcome=outcome):
++                app = self.app()
++                app.shopping_snapshot = snapshot(1)
++                app.market_result = capture()
++                app.shopping_market = Mock();app.shopping_market.get.return_value = "Local"
++                app._prepare_shopping()
++                app._start_purchase = Mock(return_value=True)
++                app._buy_proposal(True)
++                self.assertEqual(app.shopping_reservations, {"1": 1})
++                app.purchase_button=Mock();app.status=Mock();app.mode_results={}
++                app._handle_event(("purchase_done", {"status":outcome}, error))
++                self.assertEqual(app.shopping_reservations, {"1":reserved})
++                self.assertEqual(app.proposals[0]["status"], outcome if not error else "unconfirmed")
++                app._handle_event(("shopping_done", snapshot(1), None))
++                # A new capture with a different offer must not replenish the shopping quota.
++                next_capture=capture()
++                next_capture["items"][0]["offers"][0]["exchange_index"] += 99
++                app.market_table=Mock();app._render_market=Mock()
++                app._show_capture(next_capture, "market")
++                app._prepare_shopping()
++                self.assertEqual(len(app.proposals), 0 if reserved else 1)
++                self.assertEqual(app.shopping_snapshot["items"][0]["remaining_quantity"], 1)
++
++    def test_multiple_prepared_lots_respect_reservations_and_precancel_releases(self):
++        app = self.app()
++        app.shopping_snapshot["items"][0]["remaining_quantity"] = 2
++        first, second = proposal(), proposal()
++        second["request"]["exchange_index"] += 1
++        app.proposals = [first, second]
++        app._start_purchase = Mock(return_value=True)
++        app._buy_proposal(True)
++        app._finish_proposal({"status":"confirmed"}, None)
++        app.proposal_table.selection.return_value=("1",)
++        app._buy_proposal(True)
++        self.assertEqual(app.shopping_reservations["1"], 2)
++        app._finish_proposal({"status":"cancelled", "diagnostic":"Cancelado antes do envio"}, None)
++        self.assertEqual(app.shopping_reservations["1"], 1)
++
++    def test_receive_only_companion_config_and_endpoint_error_visible(self):
++        app = self.app()
++        app.shopping_worker = None
++        app.shopping_stop = threading.Event()
++        app._control_queue = queue.Queue()
++        app._companion_config = Mock(return_value={"companion": {"state_dir": "paired"}})
++        app._current_config = Mock(side_effect=AssertionError("Game credentials must not be requested"))
++        with patch.object(shopping, "fetch", side_effect=ValueError("HTTP 404 endpoint indisponível")) as fetch:
++            app._fetch_shopping(); app.shopping_worker.join(2)
++            fetch.assert_called_once_with({"state_dir": "paired"}, stop_event=app.shopping_stop)
++        app._handle_event(app._control_queue.get_nowait())
++        self.assertIn("404", app.shopping_status.set.call_args.args[0])
++        self.assertEqual(app.proposals, [])
++
++    def test_new_capture_invalidates_proposals_only_for_market(self):
++        app = self.app()
++        app.market_table = Mock(); app.market_result = None
++        app._render_market = Mock()
++        app._show_capture({"items": []}, "rankings")
++        self.assertEqual(len(app.proposals), 1)
++        capture = result()
++        app._show_capture(capture, "market")
++        self.assertEqual(app.proposals, [])
++        identity = app.capture_ref
++        app._show_capture(capture, "market")
++        self.assertEqual(app.capture_ref, identity)
++
++    def test_modal_confirmation_rechecks_remaining_quota(self):
++        app = self.app()
++        app._closing=False;app.mode_threads={};app.worker=None;app.heartbeat_service=None
++        app._current_config=Mock(return_value={});app._validate_config=Mock(return_value={})
++        def confirm(*args):
++            app.shopping_reservations = {"1": 1}
++            return True
++        with patch.object(desktop.messagebox,"askyesno",side_effect=confirm), patch.object(
++                desktop.messagebox,"showinfo"), patch.object(desktop.session,"run") as run:
++            app._start_purchase(request=REQUEST, proposal=app.proposals[0])
++            run.assert_not_called()
++
++    def test_modal_confirmation_rechecks_snapshot(self):
++        app = self.app()
++        app._closing=False;app.mode_threads={};app.worker=None;app.heartbeat_service=None
++        app._current_config=Mock(return_value={});app._validate_config=Mock(return_value={})
++        def confirm(*args):
++            app.proposals = []
++            return True
++        with patch.object(desktop.messagebox,"askyesno",side_effect=confirm), patch.object(
++                desktop.messagebox,"showinfo"), patch.object(desktop.session,"run") as run:
++            app._start_purchase(request=REQUEST, proposal=app.proposals[0])
++            run.assert_not_called()
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_shopping.py b/tests/test_shopping.py
+new file mode 100644
+index 0000000..43bb150
+--- /dev/null
++++ b/tests/test_shopping.py
+@@ -0,0 +1,80 @@
++import copy
++import tempfile
++import unittest
++from unittest.mock import patch
++from pathlib import Path
++
++from rfnext_market import shopping, upload
++
++
++def snapshot(quantity=2):
++    return {"schema": shopping.SCHEMA, "server_time": "2026-09-23T00:00:00Z", "items": [
++        {"shopping_id":"1", "item_index":1000078,"name":"Rifle","enchant_level":6,
++         "remaining_quantity":quantity,"reference_unit_price":11,"updated_at":None}]}
++
++
++def capture():
++    def offer(uid, price=11, count=1):
++        return {"exchange_index":uid,"pc_id":6150242608290003288,"selling_price":price,
++                "item_info":{"index":1000078,"count":count,"enchant_level":6}}
++    return {"items":[{"produto":"Rifle","item_index":1000078,"exchange_server_type":0,
++                      "offers":[offer(6150242609210084203),offer(6150242609210084204,20,3)]},
++                     {"produto":"Rifle","item_index":1000078,"exchange_server_type":1,
++                      "offers":[offer(6150242609210084205,1)]}]}
++
++
++class ShoppingTest(unittest.TestCase):
++    def test_prepare_exact_ids_whole_lots_one_market_no_network(self):
++        original=snapshot(); result=capture(); saved=copy.deepcopy(result)
++        with patch.object(upload,"_post") as network:
++            plan=shopping.prepare(original,result,"capture-1",market=0)
++        network.assert_not_called()
++        self.assertEqual(len(plan["proposals"]),1)
++        proposal=plan["proposals"][0]
++        self.assertEqual(proposal["request"]["exchange_index"],6150242609210084203)
++        self.assertEqual(proposal["capture_ref"],"capture-1")
++        self.assertEqual(plan["unresolved"][0]["remaining_quantity"],1)
++        self.assertEqual(result,saved)
++        self.assertEqual(original,snapshot())
++        global_plan=shopping.prepare(original,result,"capture-1",market=1)
++        self.assertEqual(global_plan["proposals"][0]["request"]["exchange_server_type"],1)
++
++    def test_duplicate_offer_not_allocated_twice_conflicts_blocked(self):
++        data=snapshot(); data["items"].append(dict(data["items"][0],shopping_id="2"))
++        result=capture(); result["items"][0]["offers"].append(result["items"][0]["offers"][0])
++        self.assertEqual(len(shopping.prepare(data,result,"capture-1")["proposals"]),1)
++        result["items"][0]["offers"].append(dict(result["items"][0]["offers"][0],selling_price=999))
++        self.assertEqual(shopping.prepare(data,result,"capture-1")["proposals"],[])
++
++    def test_reject_bad_list_and_ignore_expired_inexact_ids(self):
++        for key,value in (("remaining_quantity",True),("item_index",1.5),("shopping_id",1),
++                          ("reference_unit_price",-1),("enchant_level",65536)):
++            bad=snapshot();bad["items"][0][key]=value
++            with self.assertRaises(ValueError): shopping.validate(bad)
++        result=capture(); result["items"][0]["offers"][0]["expired_time"]=1600000000
++        self.assertEqual(shopping.prepare(snapshot(),result,"capture-1")["proposals"],[])
++        result=capture();result["items"][0]["offers"][0]["exchange_index"]=1.5
++        self.assertEqual(shopping.prepare(snapshot(),result,"capture-1")["proposals"],[])
++
++    def test_fetch_reuses_identity_signs_path_and_rejects_other_installation(self):
++        import base64, hashlib
++        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
++        with tempfile.TemporaryDirectory() as folder, patch(
++                'rfnext_market.protected_state.protect_for_current_user',side_effect=lambda b:b), patch(
++                'rfnext_market.protected_state.unprotect',side_effect=lambda b:b):
++            options={"base_url":"https://apirf.karvalho.dev.br","state_dir":folder,"timeout":10}
++            with upload._database(options) as db:
++                registration,_=upload._identity(db,options)
++            def post(opts,path,body,headers,**kwargs):
++                self.assertEqual(path,shopping.PATH)
++                digest=hashlib.sha256(body).hexdigest()
++                self.assertEqual(headers["X-RFQOL-Body-SHA256"],digest)
++                signed='\n'.join(('POST',path,headers['Idempotency-Key'],headers['X-RFQOL-Timestamp'],headers['X-RFQOL-Nonce'],digest)).encode()
++                decode=lambda s:base64.urlsafe_b64decode(s+'='*(-len(s)%4))
++                Ed25519PublicKey.from_public_bytes(decode(registration['public_key'])).verify(
++                    decode(headers['X-RFQOL-Signature']),b'RFQOL-INGEST-V1\0'+signed)
++                return dict(snapshot(),installation_id=registration['installation_id'])
++            with patch.object(upload,'_post',side_effect=post):
++                self.assertEqual(shopping.fetch(options)['installation_id'],registration['installation_id'])
++            with patch.object(upload,'_post',return_value=dict(snapshot(),installation_id='other')):
++                with self.assertRaises(ValueError):shopping.fetch(options)
