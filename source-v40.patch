@@ -1,0 +1,250 @@
+diff --git a/rfnext_market/account_ui.py b/rfnext_market/account_ui.py
+index afa41c9..18af46d 100644
+--- a/rfnext_market/account_ui.py
++++ b/rfnext_market/account_ui.py
+@@ -25,7 +25,7 @@ class AccountWindow:
+         self.closing = False
+         self.import_worker = None
+         self.import_queue = queue.SimpleQueue()
+-        self.root.title("RF Next Companion · v39")
++        self.root.title("RF Next Companion · v40")
+         self.root.geometry("1280x860")
+         self.root.minsize(1050, 700)
+         self.root.configure(background="#202326")
+diff --git a/rfnext_market/desktop.py b/rfnext_market/desktop.py
+index 1c3613f..e68ae83 100644
+--- a/rfnext_market/desktop.py
++++ b/rfnext_market/desktop.py
+@@ -200,7 +200,7 @@ class DesktopApp:
+         self.profile_label = profile["name"] if profile else "Conta atual"
+         self.data_dir = Path(profile["path"]) if profile else Path(__file__).resolve().parent.parent
+         self.closed = False
+-        self.root.title("RF Next Companion · v39")
++        self.root.title("RF Next Companion · v40")
+         if manager is None:
+             self.root.minsize(1050, 700)
+             self.root.geometry("1280x820")
+diff --git a/rfnext_market/desktop_shell.py b/rfnext_market/desktop_shell.py
+index 648b8e9..23268e0 100644
+--- a/rfnext_market/desktop_shell.py
++++ b/rfnext_market/desktop_shell.py
+@@ -209,7 +209,7 @@ def build(app):
+         page.grid(row=0, column=0, sticky="nsew")
+         buttons[name] = ttk.Button(sidebar, text=name, style="Nav.TButton", command=lambda n=name: show_page(n))
+         buttons[name].pack(fill="x", pady=4)
+-    ttk.Label(sidebar, text="CLIENTE · v39", style="Sidebar.TLabel").pack(side="bottom", anchor="w", padx=16)
++    ttk.Label(sidebar, text="CLIENTE · v40", style="Sidebar.TLabel").pack(side="bottom", anchor="w", padx=16)
+     app.status = tk.StringVar(value="Pronto. Nenhuma conexão foi aberta.")
+     ttk.Label(body, textvariable=app.status, style="Muted.TLabel", wraplength=900).pack(fill="x", pady=(14, 0))
+ 
+diff --git a/rfnext_market/session.py b/rfnext_market/session.py
+index cac259b..c743402 100644
+--- a/rfnext_market/session.py
++++ b/rfnext_market/session.py
+@@ -323,6 +323,7 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+ 
+     if config.get("initialize_character", False):
+         character.template(credentials)  # validar antes de abrir conexão
++    game_server = None
+     rank_results = {}
+     status, diagnostic = "completed", ""
+     # Mapa de produtos validado antes de qualquer socket. A seleção só passa a existir
+@@ -380,6 +381,10 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+         _, enter = _await(a, 0x0108, t, state["stage"], heartbeat=True, stop_event=stop_event)
+         _require_ok(enter, state["stage"])
+         ef = enter["fields"]
++        if ef.get("world_id") != config["world_id"]:
++            raise _Stop("failed", f"{state['stage']}: world_id da resposta difere do solicitado")
++        game_server = {"world_id": ef["world_id"],
++                       "world_name": "Menkar 4" if ef["world_id"] == 5024 else None}
+         link_value = (ef["f4"] | (ef["f6"] << 16)) & 0xFFFFFFFFFFFFFFFF  # payload[4:12] do 0x0108
+         supplied = fields_for(12020, 0x0103).get("u64@2688")
+         if supplied is not None and supplied != link_value:
+@@ -447,6 +452,7 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+             state.update(stage="12020:0x1D12")
+             result = _purchase_on_link(g, config, config["manual_purchase"], emit, stop_event)
+             result.update(frames=frames, items=[], offers=[], market={}, rankings={})
++            result["game_server"] = dict(game_server)
+             return result
+ 
+         if config.get("heartbeat_only"):
+@@ -456,10 +462,12 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+                       "authenticated": state["authenticated"], "items": [], "offers": [],
+                       "errors": [], "frames": frames, "market": {}, "rankings": {},
+                       "unconfirmed": list(UNCONFIRMED)}
+-            emit({"record_type": "completion", "status": "completed", "stage": "heartbeat",
++            emit({"game_server": dict(game_server),
++                  "record_type": "completion", "status": "completed", "stage": "heartbeat",
+                   "diagnostic": "", "authenticated": state["authenticated"],
+                   "items": 0, "offers": 0, "errors": [], "frames": len(frames),
+                   "unconfirmed": list(UNCONFIRMED)})
++            result["game_server"] = dict(game_server)
+             return result
+ 
+         if config.get("rankings_only"):
+@@ -644,10 +652,12 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+                       "authenticated": state["authenticated"], "items": [], "offers": [],
+                       "errors": errors, "frames": frames, "market": {}, "rankings": rank_results,
+                       "unconfirmed": list(UNCONFIRMED)}
+-            emit({"record_type": "completion", "status": status, "stage": "rankings:done",
++            emit({"game_server": dict(game_server),
++                  "record_type": "completion", "status": status, "stage": "rankings:done",
+                   "diagnostic": diagnostic, "authenticated": state["authenticated"],
+                   "items": 0, "offers": 0, "errors": errors, "frames": len(frames),
+                   "unconfirmed": list(UNCONFIRMED)})
++            result["game_server"] = dict(game_server)
+             return result
+ 
+         if query_errors:
+@@ -673,11 +683,14 @@ def _collect(config: dict, emit, stop_event, links) -> dict:
+               "authenticated": state["authenticated"], "items": items, "offers": offers,
+               "errors": errors, "frames": frames, "market": snapshot, "rankings": rank_results,
+               "unconfirmed": list(UNCONFIRMED)}
+-    emit({"record_type": "completion", "status": status, "stage": state["stage"],
++    emit({**({"game_server": dict(game_server)} if game_server is not None else {}),
++          "record_type": "completion", "status": status, "stage": state["stage"],
+           "diagnostic": diagnostic, "authenticated": state["authenticated"],
+           **report.counts(items), "errors": errors, "frames": len(frames),
+           "unconfirmed": list(UNCONFIRMED)})
+     state["collection_complete"] = True
++    if game_server is not None:
++        result["game_server"] = dict(game_server)
+     return result
+ 
+ 
+diff --git a/rfnext_market/upload.py b/rfnext_market/upload.py
+index 7d7b35e..6967790 100644
+--- a/rfnext_market/upload.py
++++ b/rfnext_market/upload.py
+@@ -5,6 +5,8 @@ import base64
+ import hashlib
+ import http.client
+ import json
++import ipaddress
++import unicodedata
+ import math
+ import secrets
+ import socket
+@@ -438,6 +440,22 @@ def _run_locked(config, result, emit, stop_event):
+                 try:
+                     from .rankings import upload_payloads
+                     document = json.loads(saved["document"])
++                    game_server = document.get("game_server")
++                    if game_server is not None:
++                        if not isinstance(game_server, dict) or set(game_server) != {"world_id", "world_name"}:
++                            raise ValueError("game_server inválido")
++                        _integer(game_server["world_id"], 65535, "game_server.world_id", low=1)
++                        name = game_server["world_name"]
++                        if name is not None and (not isinstance(name, str) or not 1 <= len(name) <= 64
++                                                 or name != name.strip() or any(unicodedata.category(c).startswith("C") for c in name)):
++                            raise ValueError("game_server.world_name inválido")
++                        if name is not None:
++                            try:
++                                ipaddress.ip_address(name)
++                            except ValueError:
++                                pass
++                            else:
++                                raise ValueError("game_server.world_name não pode ser IP")
+                     payloads = market_payloads(document, captured)
+                     payloads.extend(upload_payloads(document, captured, emit))
+                 except (ValueError, KeyError, TypeError, OverflowError) as exc:
+@@ -462,6 +480,8 @@ def _run_locked(config, result, emit, stop_event):
+                                  "stream_id": result_ref, "sequence": sequence, "occurred_at": captured,
+                                  "client_ref": None, "type": event_type, "payload": payload,
+                                  "evidence": {"confidence": "decoded", "decoder_version": "rfnext-market-v1"}}
++                        if game_server is not None:
++                            event["game_server"] = dict(game_server)
+                         bid = hashlib.sha256(f"{registration['installation_id']}:{sequence}:{event_id}".encode()).hexdigest()
+                         batch = {"schema": "rf-qol.ingest-batch/v1", "batch_id": bid,
+                                  "installation_id": registration["installation_id"], "sent_at": captured,
+diff --git a/tests/test_game_server_upload.py b/tests/test_game_server_upload.py
+new file mode 100644
+index 0000000..96d514c
+--- /dev/null
++++ b/tests/test_game_server_upload.py
+@@ -0,0 +1,85 @@
++import json
++from contextlib import closing
++from pathlib import Path
++import sqlite3
++import struct
++import tempfile
++import unittest
++from unittest.mock import patch
++
++from rfnext_market import upload
++from tests import test_session as fixtures
++
++
++class GameServerTest(unittest.TestCase):
++    def collect(self, requested, returned, ret=0):
++        runner = fixtures.SessionTest()
++        cfg = fixtures.config()
++        cfg['world_id'] = requested
++        answer = bytearray(fixtures.ans_0108(ret))
++        struct.pack_into('<H', answer, 2, returned)
++        result = runner.run_session(cfg=cfg, auth_s=fixtures.auth_script({0x0107: [[(0x0108, bytes(answer))]]}))
++        return result, runner
++
++    def test_confirmed_server_and_unknown_name(self):
++        for world, name in ((5024, 'Menkar 4'), (1, None)):
++            result, _ = self.collect(world, world)
++            self.assertEqual(result['status'], 'completed')
++            self.assertEqual(result['game_server'], {'world_id': world, 'world_name': name})
++
++    def test_mismatch_or_rejection_does_not_connect_game_or_label_result(self):
++        for requested, returned, ret in ((5024, 1, 0), (5024, 5024, 1)):
++            result, runner = self.collect(requested, returned, ret)
++            self.assertEqual(result['status'], 'failed')
++            self.assertNotIn('game_server', result)
++            self.assertNotIn(12020, runner.conns)
++
++    def test_invalid_metadata_remains_unqueued(self):
++        invalid = [dict(world_id=0, world_name=None), dict(world_id=1, world_name=" x"),
++                   dict(world_id=1, world_name="x\n"), dict(world_id=1, world_name=""),
++                   dict(world_id=1, world_name="x" * 65),
++                   dict(world_id=1, world_name="127.0.0.1"), dict(world_id=1, world_name="x\u200b")]
++        with tempfile.TemporaryDirectory() as folder, \
++             patch.object(upload, '_identity', return_value=({'installation_id': 'test'}, None)):
++            config = {'companion': {'base_url': 'https://example.com', 'state_dir': folder}}
++            for metadata in invalid:
++                upload.submit_result({'game_server': metadata}, config)
++            with closing(sqlite3.connect(Path(folder) / 'market-upload.sqlite3')) as db:
++                self.assertEqual(db.execute('SELECT COUNT(*) FROM batches').fetchone()[0], 0)
++                self.assertEqual(db.execute('SELECT COUNT(*) FROM results WHERE queued=0 AND error IS NOT NULL').fetchone()[0], len(invalid))
++
++    def test_saved_document_drives_all_event_types_and_retries(self):
++        payloads = [{'items': []}, {'offers': []}]
++        ranks = [{'ranking_records': []}, {'faction_ranking_records': []}]
++        with tempfile.TemporaryDirectory() as folder:
++            config = {'world_id': 5024, 'companion': {'base_url': 'https://example.com', 'state_dir': folder}}
++            source = {'game_server': {'world_id': 5024, 'world_name': 'Menkar 4'}}
++            with patch.object(upload, '_identity', side_effect=ValueError('not linked')):
++                upload.submit_result(source, config)
++                upload.submit_result({}, config)  # historical document, no world metadata
++            config['world_id'] = 9
++            with patch.object(upload, '_identity', return_value=({'installation_id': 'test'}, None)), \
++                 patch.object(upload, '_flush', return_value={'status': 'pending'}), \
++                 patch.object(upload, 'market_payloads', side_effect=lambda *_: list(payloads)), \
++                 patch('rfnext_market.rankings.upload_payloads', return_value=ranks):
++                upload.retry_pending(config)
++                with closing(sqlite3.connect(Path(folder) / 'market-upload.sqlite3')) as db:
++                    before = db.execute('SELECT body FROM batches ORDER BY sequence').fetchall()
++                    documents = {row[0]: json.loads(row[1]) for row in db.execute('SELECT result_ref,document FROM results')}
++                upload.retry_pending(config)
++                with closing(sqlite3.connect(Path(folder) / 'market-upload.sqlite3')) as db:
++                    self.assertEqual(before, db.execute('SELECT body FROM batches ORDER BY sequence').fetchall())
++            self.assertEqual(len(before), 8)
++            types = set()
++            for row in before:
++                event = json.loads(row[0])['events'][0]
++                types.add(event['type'])
++                if 'game_server' in documents[event['session_ref']]:
++                    self.assertEqual(event['game_server'], source['game_server'])
++                else:
++                    self.assertNotIn('game_server', event)
++            self.assertEqual(len(types), 4)
++
++
++if __name__ == '__main__':
++    unittest.main()
