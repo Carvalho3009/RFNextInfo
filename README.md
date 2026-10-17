@@ -1,9 +1,7 @@
 # Canal beta do RF Next Companion
 
-Versão oferecida:2.0.0-beta.58, sequência68. Corrige a validação das opções location/etc e identifica grupo, posição e chave segura em novas rejeições. O receptor compatível foi publicado antes desta promoção, com backup. A chave exata rejeitada pela beta.57 permanece não confirmada.
+Versao oferecida:2.0.0-beta.59, sequencia69. Atribui dano de MAU e launcher ao dono confirmado por UID/PCID, preservando HP e isolamento das entidades e sem duplicacao.
 
-O Agent pode baixar em segundo plano, mas solicita confirmação para instalar. A captura só é encerrada quando o usuário aceita a instalação. Esta promoção não instala nem reinicia o Agent.
+749 testes:747 aprovados e2 ignorados. Replay da captura marcada, autoteste empacotado e instalacao isolada aprovados. Manifesto e procedencia Ed25519; instalador publico conferido por download e hash antes desta promocao. Validacao real em chefe desta versao ainda pendente.
 
-Mesmo instalador validado na publicação versionada, com tamanho, SHA256, manifesto e procedência Ed25519 conferidos. A procedência assinada registra a preparação local anterior; este commit promove o pacote já testado. previous-latest.json e o histórico Git preservam a oferta beta.57.
-
-Validação da votação real após instalar beta.58 ainda pendente.
+Download em segundo plano; instalacao e reinicio dependem da confirmacao no Agent. Esta promocao nao instala nem reinicia. Oferta beta.58 preservada em previous-latest.json e no historico Git.
