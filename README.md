@@ -1,7 +1,7 @@
-# RF Next Companion beta.63 â€” preparado localmente
+# RF Next Companion beta.63
 
-Corrige a origem de EXP, facÃ§Ã£o e mercado por personagem e conexÃ£o. Usa world_id explÃ­cito da lista sanitizada de personagens e confirmaÃ§Ã£o direta da conexÃ£o; nÃ£o deduz servidor por IP ou nÃºmero do UID. AusÃªncia/conflito mantÃ©m origem desconhecida; pÃ¡ginas de ranking com evidÃªncias diferentes nÃ£o se completam entre si.
+Corrige a origem de EXP, facção e mercado por personagem e conexão. Usa world_id explícito da lista sanitizada de personagens e confirmação direta da conexão; não deduz servidor por IP ou número do UID. Ausência/conflito mantém origem desconhecida; páginas de ranking com evidências diferentes não se completam entre si.
 
-783 testes: 781 aprovados e 2 ignorados. Contrato e projeÃ§Ã£o do site atual testados em SQLite descartÃ¡vel com Hecate 4 e Menkar 4. Autoteste empacotado, instalador isolado e comparaÃ§Ã£o dos mÃ³dulos aprovados. Manifesto e procedÃªncia Ed25519 preparados; canal automÃ¡tico inalterado.
+783 testes: 781 aprovados e 2 ignorados. Contrato e projeção do site atual testados em SQLite descartável com Hecate 4 e Menkar 4. Autoteste empacotado, instalador isolado e comparação dos módulos aprovados. Manifesto e procedência Ed25519 verificados. Publicação autorizada em 04/11/2026; atualização disponível pelo canal beta.
 
-Ainda nÃ£o instalado nem validado em captura real. ApÃ³s instalar, iniciar captura antes de entrar no personagem para observar lista e identidade; jogo jÃ¡ aberto pode permanecer sem origem atÃ© essa leitura. Conflito exige nova captura com evidÃªncia fresca. NÃ£o reclassifica histÃ³ricos antigos. Instalador sem Authenticode conforme polÃ­tica do produto.
+Ainda não instalado nem validado em captura real. Após instalar, iniciar captura antes de entrar no personagem para observar lista e identidade; jogo já aberto pode permanecer sem origem até essa leitura. Conflito exige nova captura com evidência fresca. Não reclassifica históricos antigos. Instalador sem Authenticode conforme política do produto.
