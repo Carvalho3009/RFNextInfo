@@ -3,17 +3,17 @@
   "product": "rf-qol-agent",
   "channel": "beta",
   "architecture": "windows-x64",
-  "version": "2.0.0-beta.62",
-  "release_sequence": 72,
-  "published_at": "2026-10-29T20:56:04.944718+00:00",
-  "expires_at": "2026-11-28T20:56:04.944718+00:00",
+  "version": "2.0.0-beta.63",
+  "release_sequence": 73,
+  "published_at": "2026-11-04T12:45:31.879336+00:00",
+  "expires_at": "2026-12-04T12:45:31.879336+00:00",
   "key_id": "update-agent-2026-08",
-  "file": "RF-Next-Companion-Setup-2.0.0-beta.62.exe",
-  "size": 36259461,
-  "sha256": "66ebb12c4cfafb10c9a2b3d797ed06fd3d5f0fded3724829dfe674b86a70e889",
-  "url": "https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.62/RF-Next-Companion-Setup-2.0.0-beta.62.exe",
+  "file": "RF-Next-Companion-Setup-2.0.0-beta.63.exe",
+  "size": 36265328,
+  "sha256": "e5e6c9c185095465d8c370ced23b627938b1804f9c0a523e8088459c5f63ef00",
+  "url": "https://raw.githubusercontent.com/Carvalho3009/RFNextInfo/download/rf-qol-agent-2.0.0-beta.63/RF-Next-Companion-Setup-2.0.0-beta.63.exe",
   "rollback_compatible_from": [
-    "2.0.0-beta.61"
+    "2.0.0-beta.62"
   ],
-  "signature": "bhXJilNr0URVyccxtOCdQD3V8dugeLrna-qypaD7yzS7CVo4fcFS0ZoHt8ZnUxpi12Raf_hDNrX8FUbcs-RVCg"
+  "signature": "qE77TduFGj4Lc68R7rFugpwy1hae4YuvowI6o_EolXlDDL6jMr5oqrlqu_CStogz-HuJigr5WTi1R6RP9nmTAA"
 }
