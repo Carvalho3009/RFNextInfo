@@ -1,0 +1,9 @@
+RF Next Companion — atualizações beta
+
+Por decisão do projeto, executável e instalador não usam Authenticode.
+Windows e antivírus podem mostrar avisos de reputação.
+Não são criadas exclusões no antivírus, desativadas proteções ou executados
+scripts remotos. Não usamos UPX nem drivers de captura adicionais.
+O atualizador verifica manifesto Ed25519, origem HTTPS, tamanho e SHA-256;
+a instalação exige confirmação visível do usuário.
+Consulte SHA256SUMS.txt na página de download da versão para o hash do instalador.
