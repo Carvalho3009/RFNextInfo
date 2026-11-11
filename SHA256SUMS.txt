@@ -1,1 +1,1 @@
-50c55dc921d3012d6882c7567bdd36d686c211b9150bac63979850051afedc0b  RF-Next-Companion-Setup-2.0.0-beta.64.exe
+61e1a8b852a24ea79000d9d8fd396fbb29b9e2ecc965d4ca95085685d843cf44  RF-Next-Companion-Setup-2.0.0-beta.66.exe

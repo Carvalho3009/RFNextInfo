@@ -1,9 +1,7 @@
-# RF Next Companion — canal beta
+# RF Next Companion 2.0.0-beta.66
 
-Oferta atual: **2.0.0-beta.64 / sequência74**. Identificação passiva de mundo por confirmação de login e personagem na mesma conexão; leituras complementares RFXuonz integradas, preservando as funções anteriores.
+Corrige o cálculo de contribuição no Farm quando a última leitura do cartão antes do início chega atrasada. O Agent usa o horário da captura para definir a referência inicial. Ao encerrar, o Agent dá tempo ao PktMon e ao decodificador para entregar leituras capturadas até a parada, inclusive de EXP.
 
-`latest.json` é o manifesto Ed25519 da beta.64; `previous-latest.json` preserva beta.63/seq73. O instalador está no download versionado indicado no manifesto.
+Atualize pelo botão de atualização do Companion. O atualizador salva a sessão para retomada e confere os vínculos de captura ao reabrir o Agent. A retomada depende de as conexões continuarem válidas durante a atualização. Em caso de perda de vínculo, reentre no personagem com a captura ativa.
 
-803 testes:801 aprovados e2 ignorados; pipeline isolado, autoteste empacotado e instalador DEV_SMOKE aprovados. A captura real da beta.64 ainda aguarda instalação pelo usuário. Publicação não instala nem reinicia o Agent. Após instalar, inicie a captura antes de entrar no personagem para observar as confirmações de mundo/UID. Ausência ou conflito mantém origem desconhecida.
-
-Reversão da oferta por novo commit, preservando mudanças concorrentes. Clientes que já aceitaram sequência74 não fazem downgrade automático para73. Sem Authenticode conforme política do produto; manifesto e procedência Ed25519 acompanham a entrega.
+O pacote usa a sequência 76 e o transporte existente. A versão beta.65 continua identificando a candidata anterior de homologação. A segunda comparação ao vivo da contribuição do cartão ainda faz parte do aceite único do Farm.
