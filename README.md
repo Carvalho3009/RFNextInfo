@@ -1,7 +1,5 @@
-# RF Next Companion 2.0.0-beta.66
+# RF Next Companion 2.0.0-beta.67
 
-Corrige o cálculo de contribuição no Farm quando a última leitura do cartão antes do início chega atrasada. O Agent usa o horário da captura para definir a referência inicial. Ao encerrar, o Agent dá tempo ao PktMon e ao decodificador para entregar leituras capturadas até a parada, inclusive de EXP.
+O Agent envia o servidor do personagem e do encontro de Chefe quando a captura confirma a origem. Leituras conflitantes deixam a origem do encontro como desconhecida. A atualização usa a sequência 77 do canal beta.
 
-Atualize pelo botão de atualização do Companion. O atualizador salva a sessão para retomada e confere os vínculos de captura ao reabrir o Agent. A retomada depende de as conexões continuarem válidas durante a atualização. Em caso de perda de vínculo, reentre no personagem com a captura ativa.
-
-O pacote usa a sequência 76 e o transporte existente. A versão beta.65 continua identificando a candidata anterior de homologação. A segunda comparação ao vivo da contribuição do cartão ainda faz parte do aceite único do Farm.
+Use Verificar atualização no Companion para acionar a retomada de captura. O próximo teste no jogo confere o servidor do encontro, o HP ao vivo e o DPS médio exibido no site.
