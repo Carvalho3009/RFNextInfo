@@ -1,5 +1,5 @@
-# RF Next Companion 2.0.0-beta.67
+# RF Next Companion 2.0.0-beta.68
 
-O Agent envia o servidor do personagem e do encontro de Chefe quando a captura confirma a origem. Leituras conflitantes deixam a origem do encontro como desconhecida. A atualização usa a sequência 77 do canal beta.
+A atualização corrige a leitura da origem do servidor nas respostas de entrada recentes do RF NEXT para PC e reduz reenvios de leituras de Chefe após a rotação da captura. O atualizador usa a sequência 78 do canal beta.
 
-Use Verificar atualização no Companion para acionar a retomada de captura. O próximo teste no jogo confere o servidor do encontro, o HP ao vivo e o DPS médio exibido no site.
+Clique em **Verificar atualização** no Companion. Após a atualização, faça um novo login no jogo com a captura ativa para que o Companion observe o servidor e a entrada do personagem.
