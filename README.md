@@ -1,5 +1,5 @@
-# RF Next Companion 2.0.0-beta.69
+# RF Next Companion 2.0.0-beta.70
 
-A atualização corrige a leitura de equipamentos no inventário do RF NEXT para PC. O atualizador usa a sequência 79 do canal beta.
+Esta atualização corrige a contagem de kills do Farm em sessões longas. O atualizador usa a sequência 80 do canal beta.
 
-Clique em **Verificar atualização** no Companion. Depois de instalar, entre novamente no personagem com a captura ativa para enviar uma nova leitura ao Companion.
+Clique em **Verificar atualização** no Companion, instale a beta.70 e entre no personagem com a captura ativa. Inicie uma nova subsessão de Farm para conferir o contador.
