@@ -1,5 +1,5 @@
-# RF Next Companion 2.0.0-beta.70
+# RF Next Companion 2.0.0-beta.71
 
-Esta atualização corrige a contagem de kills do Farm em sessões longas. O atualizador usa a sequência 80 do canal beta.
+Esta atualização contabiliza no Farm os abates feitos pelo MAU e pelo launcher quando o servidor identifica o personagem como dono da unidade.
 
-Clique em **Verificar atualização** no Companion, instale a beta.70 e entre no personagem com a captura ativa. Inicie uma nova subsessão de Farm para conferir o contador.
+Clique em **Verificar atualização** no Companion. Depois de instalar a beta.71, deixe a captura ativa antes de montar o MAU ou ativar o launcher. Inicie uma nova subsessão de Farm e confira o contador no site.
