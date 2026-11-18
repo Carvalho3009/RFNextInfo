@@ -1,5 +1,7 @@
-# RF Next Companion 2.0.0-beta.71
+# RF Next Companion 2.0.0-beta.72
 
-Esta atualização contabiliza no Farm os abates feitos pelo MAU e pelo launcher quando o servidor identifica o personagem como dono da unidade.
+Corrige a identificação do servidor nas capturas de Ranking após o patch 13212 do RF NEXT.
 
-Clique em **Verificar atualização** no Companion. Depois de instalar a beta.71, deixe a captura ativa antes de montar o MAU ou ativar o launcher. Inicie uma nova subsessão de Farm e confira o contador no site.
+No Companion, clique em **Verificar atualização**. Depois de instalar a beta.72, entre novamente no personagem com a captura ativa e abra os ranks de EXP e facção.
+
+A atualização preserva a separação dos servidores e não reclassifica capturas antigas sem origem. O envio real após atualizar ainda precisa ser conferido no jogo.
