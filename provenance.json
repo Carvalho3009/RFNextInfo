@@ -1,8 +1,8 @@
 {
   "product": "rf-qol",
   "component": "rf-qol-agent",
-  "version": "2.0.0-beta.77",
-  "release_sequence": 87,
+  "version": "2.0.0-beta.78",
+  "release_sequence": 88,
   "release": true,
   "authenticode": false,
   "source_dirty": true,
@@ -15,7 +15,7 @@
     "app/agent_paths.py": "095839028632b114b3e5abdc0501c5274edede4374d7bb3c7cbd9752b6a12b86",
     "app/agent_preferences.py": "af25ad7121a5e869c577d64f3110ca44b2032740c5a007d5895f9b6bd369b496",
     "app/alert_sound.py": "ea5e5a5e34b91c3fe1706d410364d46279aefcddfbc8ab46eee979818d832b5d",
-    "app/build_profile.py": "5cb6eb8ec5d2cc4bcd5e8392dc8b564b4cfe0db1dcb6936d62415490eacdaeac",
+    "app/build_profile.py": "9d20b711f4d6cad80ef9d206d917600bc809a4c7abfd4ef8bc4b1e96a04bffb7",
     "app/license.py": "0c7308835a04b4ab5ba35d91444abd5e562cd818c4c5c357974c5a5aa43272e3",
     "app/local_api.py": "93ea85340839b4d03eaea69e322c549bf6e72a2608a31563106bf7e0fce9e870",
     "app/main.py": "22cb6660d58dcdbdd50c9550cbef37755e60dab8bf6590902bfcec0a619f77b5",
@@ -59,7 +59,7 @@
     "core/pktmon_realtime.py": "81f897f6f9a1c0f8d9ffd9d05dbb7e4327a37189b4f72f410d4c5d05d44713a9",
     "core/program_status.py": "d10dfb808167cb7bbbcfae7595a94d99f11249a76431cf72f573d5c44a6eded7",
     "core/remote_subsessions.py": "ee488763032954091e112e2912aaf62259349177b0ed04b39ea2b95fd13d3303",
-    "core/rfnext_frame_decode.py": "6ceb7aa6b997c9d1c41b8f909e65616e7190dc9cd0031fb7574387c3409f3d5e",
+    "core/rfnext_frame_decode.py": "476a84634fd5051a968f4a04e31664ac0151bd0565427f8ec9d33c4d7a082c70",
     "core/rovers.json": "dafdebd689d7cd77a8b3cbc0314cd72574b7b728eac98f4be64cb335106b2961",
     "core/store.py": "dd12465afda97942c8bd4d70ea2f52cdc961366a81969c9e14ec1cf38f58f982",
     "core/subsession_context.py": "14f5e2752d0d0c712b9cb16d66f5104bb906b536f6c75381fa020891e0435210",
@@ -105,7 +105,7 @@
     "tests/test_alert_sound.py": "6510436440feffce41537ee293c45d99d190a2673f5f5cb67dd131e78f19e4ea",
     "tests/test_app.py": "b76b2eaa6110d4fbb21aa46dda8fc1fce30c06dd308eacb42caea2fd18d87f0b",
     "tests/test_boss_projected_ownership.py": "ad291e63d00ccd962c89b9be9d6f22d8c6de139b5fbf6c49f68c72fd60c79c79",
-    "tests/test_build_profile.py": "1fa13b1e5a00e500b06e504198e70121d98ea1a2efb4fae2d849e8afba141ed8",
+    "tests/test_build_profile.py": "d5df32173ac528233951b0d5e2dfc6b5afd8ea9625ae1f9077c7b2910557da9c",
     "tests/test_core.py": "c48d576640a3b34787894d1e99894ed5ecfd61f646910d48a6ff6fdd11ea2437",
     "tests/test_decoder_update.py": "60e68e5fa5b16c75b01c0d7001a794d0570019b93794dcac0812c2759fbbf243",
     "tests/test_equipment_delivery.py": "8972ac184d60b68667983bbd8703c7ea427120f965a1ed6d488f90c4e28ecc88",
@@ -151,21 +151,22 @@
     "tests/test_player_appearance_13212.py": "d12f2644055c4d027ccfdd45ed9c5a35db6fb1ac1f9bfc829b65e26b42e0df4d",
     "tests/test_farm_recovered_attribution.py": "cc4e4079093926e0e883ab2350883d92a4012d960479747e23c03a87f98ff96f",
     "tests/test_map_redirect.py": "28f933e1d353cdfcda0a645b955eba6c09614b55e2fb3faec56ac75f54e9a53e",
-    "tests/test_event_replica_bosses.py": "f0ab42e1b94d0d05e696241548eddee740e8c2c8346c9d79c3d195a590f19610"
+    "tests/test_event_replica_bosses.py": "f0ab42e1b94d0d05e696241548eddee740e8c2c8346c9d79c3d195a590f19610",
+    "tests/test_drop_opcodes.py": "b2064357a24ee417f1900fcc36473e76d95d5bfa999e9dbbac29c021e9252d6e"
   },
-  "changed_since_beta76": [
+  "changed_since_beta77": [
     "app/build_profile.py",
-    "core/boss_catalog.csv",
+    "core/rfnext_frame_decode.py",
     "tests/test_build_profile.py",
-    "tests/test_event_replica_bosses.py"
+    "tests/test_drop_opcodes.py"
   ],
-  "source_snapshot_sha256": "bcf0f6753d7fb0f12fdce018ef1dc309627b803caa87214fd3bc45b6e333e4ac",
+  "source_snapshot_sha256": "336c02f66793d5f8e2b03464b3fcb187cdb1fef269d3295e543b9bfc94bd46d0",
   "verified_packaged_modules": {
     "app.agent_main": "34a2919851ec9428809c553bae480cf13f3cc8423db4abb492fe43920171a775",
     "app.agent_maintenance": "48117c0b71e4efb334e12105e01f1145ddc8e127a560dc517bd4cfcbec4200d4",
     "app.agent_paths": "095839028632b114b3e5abdc0501c5274edede4374d7bb3c7cbd9752b6a12b86",
     "app.agent_preferences": "af25ad7121a5e869c577d64f3110ca44b2032740c5a007d5895f9b6bd369b496",
-    "app.build_profile": "5cb6eb8ec5d2cc4bcd5e8392dc8b564b4cfe0db1dcb6936d62415490eacdaeac",
+    "app.build_profile": "9d20b711f4d6cad80ef9d206d917600bc809a4c7abfd4ef8bc4b1e96a04bffb7",
     "app.protected_state": "545c3d9869bcbd49f6619a7d710fbcfdff9f2334ed4fc7c4589ca975ad97447e",
     "core.activity_contract": "4f8506892222b453a59a00675855e460231160dcb2075222ed4cf3be4f83b0ab",
     "core.agent_updates": "1ad2b5f9ade876b1c50444285e93e5833ea196d152525aa53e6cd1a636f564e1",
@@ -179,7 +180,7 @@
     "core.pktmon_etw": "a28f5e0916727202af06eca7259b967f5ba42a3121d1b7765d75ab42a29b8238",
     "core.pktmon_realtime": "81f897f6f9a1c0f8d9ffd9d05dbb7e4327a37189b4f72f410d4c5d05d44713a9",
     "core.remote_subsessions": "ee488763032954091e112e2912aaf62259349177b0ed04b39ea2b95fd13d3303",
-    "core.rfnext_frame_decode": "6ceb7aa6b997c9d1c41b8f909e65616e7190dc9cd0031fb7574387c3409f3d5e",
+    "core.rfnext_frame_decode": "476a84634fd5051a968f4a04e31664ac0151bd0565427f8ec9d33c4d7a082c70",
     "core.store": "dd12465afda97942c8bd4d70ea2f52cdc961366a81969c9e14ec1cf38f58f982",
     "core.vote_contract": "6670c749e65aa7afc947b28842f080b3a6fa4d500df77f8ad9359e11a6cfa0bd",
     "core.vote_estimate": "8cf4ccb0a65967f43f82d15b58687bc6e4ec86c918a74750e497f29d73505f11",
@@ -196,10 +197,10 @@
     "core.web_agent_transport": "920367514eda7aa766720432520fb59f99cd8083dccc499e23da9dd68be5589b",
     "core.windows_agent_capture": "caab4846e7f98e0e35e20f2fbad264b899757b89c557bf548ad1765cae3807b3"
   },
-  "installer_sha256": "84cf58a47e939442eca87e8a359c280b161225126991368b18e71e9b7baa413a",
-  "manifest_sha256": "588d4735b316ae9d0c8db32645f484a8178865a281ed3c4e33468c7ba05ab853",
+  "installer_sha256": "4a06dcea5796ad27c879efacf1df275e7fc00ad62649acfb59de3886d8d95248",
+  "manifest_sha256": "e1c68720746a85a78624719ea0f6ae82e94d58076d4471533b492a43863ee567",
   "regression": {
-    "tests": 828,
+    "tests": 832,
     "failures": 0,
     "errors": 0,
     "skipped": 2,
@@ -207,8 +208,12 @@
   },
   "packaged_self_test": "passed",
   "installer_smoke": "passed",
-  "live_capture_replay_appearances_tested": true,
-  "live_damage_after_install_tested": false,
+  "preserved_runtime_libraries_sha256": {
+    "libcrypto-3-x64.dll": "fe4b91999201e5c10d3f95950757eb1747e85b92d59aa199ee199c499beca948",
+    "libssl-3-x64.dll": "72871da88e444c6b579b18bb900769ba7d08aa1afd14f3308d261b3afe142e8a"
+  },
+  "recorded_drop_replay_tested": true,
+  "live_drop_after_install_tested": false,
   "live_game_capture_tested": false,
   "windows10_real_machine_tested": false,
   "distribution": "signed-beta-channel"
